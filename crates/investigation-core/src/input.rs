@@ -1,6 +1,6 @@
 //! Bounded JSON for versioned requests and journals. Original evidence is retained verbatim.
 
-use std::{collections::BTreeMap, fmt};
+use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
 use schemars::JsonSchema;
 use serde::{
@@ -271,6 +271,33 @@ impl DecimalString {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Compare numerical values without discarding the stored precision.
+    pub fn numeric_cmp(&self, other: &Self) -> Ordering {
+        fn parts(value: &str) -> (bool, &str, &str) {
+            let unsigned = value.strip_prefix('-').unwrap_or(value);
+            let (whole, fraction) = unsigned.split_once('.').unwrap_or((unsigned, ""));
+            let fraction = fraction.trim_end_matches('0');
+            let negative = value.starts_with('-') && (whole != "0" || !fraction.is_empty());
+            (negative, whole, fraction)
+        }
+
+        let (left_negative, left_whole, left_fraction) = parts(self.as_str());
+        let (right_negative, right_whole, right_fraction) = parts(other.as_str());
+        if left_negative != right_negative {
+            return right_negative.cmp(&left_negative);
+        }
+        let magnitude = left_whole
+            .len()
+            .cmp(&right_whole.len())
+            .then_with(|| left_whole.cmp(right_whole))
+            .then_with(|| left_fraction.cmp(right_fraction));
+        if left_negative {
+            magnitude.reverse()
+        } else {
+            magnitude
+        }
+    }
 }
 
 impl From<DecimalString> for String {
@@ -345,6 +372,22 @@ mod tests {
             assert_eq!((error.path.as_str(), error.kind), (path, kind));
         }
         assert!(parse_request(br#"{"n":9007199254740991}"#).is_ok());
+    }
+
+    #[test]
+    fn decimal_comparison_uses_numbers_and_keeps_original_spelling() {
+        for (left, right, order) in [
+            ("-0.00", "0", Ordering::Equal),
+            ("-999999999999999999999.12", "-9", Ordering::Less),
+            ("1.000000000000000000000001", "1", Ordering::Greater),
+            ("18.70", "18.7", Ordering::Equal),
+            ("18.70", "18.69", Ordering::Greater),
+        ] {
+            let left = DecimalString::try_from(left.to_owned()).unwrap();
+            let right = DecimalString::try_from(right.to_owned()).unwrap();
+            assert_eq!(left.numeric_cmp(&right), order);
+            assert_eq!(right.numeric_cmp(&left), order.reverse());
+        }
     }
 
     #[test]

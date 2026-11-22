@@ -1,0 +1,5 @@
+# W01 handoff development fixture
+
+This synthetic local source is a developer fixture, not pilot or sealed evaluation material. `transactions.json` starts a case and question through the currently active catalog; deterministic IDs and acceptance time are supplied by the test. The `drafts.json` entries describe subsequent planned source ingest and observation, hypothesis, assessment and candidate conclusion payloads. They are not accepted transactions or evidence of completed ingest: source/artifact creation requires real ingest, and observation and reasoning handlers are deferred to W03/W06. The expected successor content identifies the source, possible explanation, limitation and next measurement without promoting the candidate to a validated conclusion.
+
+For future CLI replay, run commands in order, substitute IDs from actual receipts, ingest `source.txt` through the real ingest path, and submit the drafts only after those operations are implemented. The fixed IDs in this fixture support pure type, schema and replay checks; they are not a claim about live generated IDs.

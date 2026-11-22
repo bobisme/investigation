@@ -1,0 +1,113 @@
+{
+  "source": {
+    "producer": "application log",
+    "publisher": null,
+    "identity": "source.txt",
+    "acquisition": {
+      "channel": "local_file",
+      "acquired_at": {
+        "timestamp": {
+          "state": "known",
+          "value": "2026-11-22T08:12:44.000Z"
+        },
+        "offset": {
+          "state": "known",
+          "value": "+00:00"
+        },
+        "clock_quality": "unverified"
+      },
+      "method": "local fixture read",
+      "context": "synthetic development fixture",
+      "environment": null
+    },
+    "access": "local_only",
+    "verification_limits": [
+      "Application-side report only; no independent database measurement."
+    ]
+  },
+  "observation": {
+    "value": {
+      "kind": "text",
+      "statement": "The application log reports a 900 ms database connection wait."
+    },
+    "basis": {
+      "kind": "source",
+      "artifact_ref": {
+        "id": "art_018d87fc-5234-7000-8000-000000000003",
+        "revision": 1
+      },
+      "selector": {
+        "schema_version": "inv.selector.v1",
+        "artifact_digest": "sha256:5cf77c98714e860a51e2b1e0ac82b374e645de692f751bea7d9f16dba27ba572",
+        "selector": {
+          "type": "byte_range",
+          "start": 0,
+          "end": 80
+        }
+      },
+      "text_quote": {
+        "exact": "At 10:00 UTC, the application log reported a database connection wait of 900 ms.",
+        "prefix": null,
+        "suffix": null
+      }
+    },
+    "extraction_method": "read log line",
+    "validity": "unknown",
+    "quality": [],
+    "limitations": [
+      "No database-side measurement."
+    ],
+    "evidence_kind": "observational",
+    "variables_changed": [],
+    "observed_at": null
+  },
+  "hypothesis": {
+    "question_ref": {
+      "id": "q_018d87fc-5234-7000-8000-000000000002",
+      "revision": 1
+    },
+    "statement": "Connection pool contention may have caused the wait.",
+    "applicability": "This recorded wait only.",
+    "possible_falsifiers": [
+      "Pool occupancy was low during the wait."
+    ],
+    "rival_refs": [],
+    "assumption_refs": []
+  },
+  "assessment": {
+    "subject_ref": {
+      "id": "hyp_018d87fc-5234-7000-8000-000000000005",
+      "revision": 1
+    },
+    "evidence_refs": [
+      {
+        "id": "obs_018d87fc-5234-7000-8000-000000000004",
+        "revision": 1
+      }
+    ],
+    "relation": "inconclusive",
+    "rival_expectations": [],
+    "rationale": "A wait is consistent with contention but does not distinguish it from other causes.",
+    "assumption_refs": [],
+    "confidence": null,
+    "likelihood": null
+  },
+  "conclusion": {
+    "statement": "The application reported a connection wait; its cause remains unknown.",
+    "scope": "The single synthetic log entry.",
+    "significance": "A next measurement can distinguish possible causes.",
+    "support_refs": [
+      {
+        "id": "obs_018d87fc-5234-7000-8000-000000000004",
+        "revision": 1
+      }
+    ],
+    "contradiction_refs": [],
+    "caveats": [
+      "No database-side or pool-occupancy measurements."
+    ],
+    "causal_factors": [],
+    "confidence": null,
+    "likelihood": null
+  }
+}

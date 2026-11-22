@@ -236,13 +236,15 @@ pub struct RecordHeader {
     pub schema_version: SchemaVersion,
     pub created_by: Actor,
     pub actor_descriptor_self_reported: Option<ActorDescriptor>,
+    pub created_at: UtcTimestamp,
     pub recorded_at: UtcTimestamp,
+    pub recorded_by: Actor,
     pub observed_at: Option<SourceTime>,
     pub acquired_at: Option<SourceTime>,
     pub acceptance_sequence: u64,
     pub revision: Revision,
-    /// Transactions that accepted earlier revisions, in acceptance order.
-    pub history: Vec<Id>,
+    /// Earlier revisions of this ID, in acceptance order.
+    pub history: Vec<Revision>,
     pub classification: Classification,
     pub provenance: Provenance,
     /// Opaque until a pinned pack supplies a schema. No executable semantics.

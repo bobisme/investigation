@@ -1,0 +1,4 @@
+[
+  {"schema_version":"inv.command.v0-alpha","command_id":"handoff-case","case_id":null,"actor":"agent:fixture","preconditions":[],"operations":[{"op":"case.create","payload":{"title":"Database wait investigation","mode":"explore","objective":"Explain the recorded wait"}}]},
+  {"schema_version":"inv.command.v0-alpha","command_id":"handoff-question","case_id":"case_018d87fc-5234-7000-8000-000000000001","actor":"agent:fixture","preconditions":[],"operations":[{"op":"question.create","client_ref":"question","payload":{"wording":"What explains the database connection wait?","importance":"normal"}}]}
+]

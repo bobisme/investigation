@@ -1,0 +1,2 @@
+At 10:00 UTC, the application log reported a database connection wait of 900 ms.
+No database-side measurements were collected.
