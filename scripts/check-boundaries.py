@@ -53,7 +53,7 @@ def neutral_surfaces():
     if re.search(r"(?m)^\s+init(?:\s|$)", help_text):
         with tempfile.TemporaryDirectory() as scratch:
             workspace = Path(scratch) / "workspace"
-            cargo(*command, "--workspace", str(workspace), "init")
+            cargo(*command, "init", str(workspace), "--no-vault")
             paths = sorted(path for path in workspace.rglob("*") if path.is_file())
             if not paths:
                 raise RuntimeError("investigation init created no workspace files")
