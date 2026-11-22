@@ -1,8 +1,8 @@
 # Investigation — implementation plan
 
 **Status:** implementation specification, not a description of a working product.  
-**Revision:** 3, 2026-11-21 — Sapper/nvwabase-informed retrieval, blindspot review, and methodological learning; domain-neutral core preserved.  
-**Product:** `investigation`; CLI executable `inv` (alias `investigation`); reusable Rust library and optional MCP adapter.  
+**Revision:** 4, 2026-11-21 — adopts changes from three independent reviews (`notes/plan.review.{1,2,3}.md`); see **Disposition of reviews** at the end. Revision 3 added Sapper/nvwabase-informed retrieval, blindspot review, and methodological learning; the domain-neutral core is preserved.  
+**Product:** `investigation`: an offline Rust CLI and reusable library with an optional MCP adapter. The shipped executable is `investigation`. In this specification, `inv` is shorthand for that executable. Install `inv` as an alias only where no other command has that name: Python Invoke already installs an `inv` command. First-use docs, repair argv and integration snippets use `investigation`, or the executable name the user configured.  
 **Scope:** general-purpose, agent-native investigative reasoning, evidence management, and decision support. No security-tool coupling.
 
 ## Read this first
@@ -41,6 +41,7 @@ The design bar: **a fresh agent can use the tool with no bespoke instruction; it
 | Vault | Managed casebook projection with safe human-owned Notes/Boards/Inbox; optional companion plugin, no required community plugins. |
 | Collaboration | Multi-process local writer lock, CAS and idempotency; no initial distributed CRDT claim. |
 | First release | Demonstrate the *same core* on a reproducible bug, a performance regression, a source-research question and an architecture choice; each includes layered reads, gap review, and a case retrospective. |
+| Product hypothesis | No published controlled study shows that structured evidence tracking helps agents more than free-form notes. Test that claim at Milestone A against a plain-Markdown-notes arm before freezing the wider catalog (§19.3, §20.5). |
 
 ### Build rules
 
@@ -121,7 +122,7 @@ Core never interprets a producer's `verdict` as a verified fact. A producer can 
 6. **Externality inversion:** producers bring evidence in; `inv` does not reach out to perform external actions.
 7. **Portability:** neutral serialization, normal files, native Obsidian features and optional adapters.
 8. **Inspectability:** exact source revisions, evidence selectors, immutable accepted history, explicit audit receipts.
-9. **No epistemic theater:** avoid made-up probabilities, automatic weighted winner scores, cosmetic votes, and agent councils as substitutes for validation.
+9. **No epistemic theater:** avoid unscored or tool-invented probabilities, automatic weighted winner scores, cosmetic votes, and agent councils as substitutes for validation. An attributed likelihood on a resolvable claim that is scored when the claim resolves is allowed (§5.7).
 10. **Layered attention:** preserve exhaustive truth in canonical records but make short reads useful and safe; a summary is not a new independent source.
 11. **Methodological learning without self-modification:** record reusable lessons, make adoption deliberate, and preserve what did not work.
 12. **Cold-start excellence:** agent UX must be measured using unfamiliar agents, not polished documentation judged by the author.
@@ -133,17 +134,23 @@ Core never interprets a producer's `verdict` as a verified fact. A producer can 
 | Research method | General principle | Product requirement | References |
 |---|---|---|---|
 | Scientific/hypothetico-deductive troubleshooting | Iterate between measured behavior, explanations, tests and causal intervention. | Capture baseline, competing root causes, test setup, valid/invalid outcomes and reproduction limits. | [G1], [G2] |
+| Strong inference and severe testing | A test supports H only to the extent it would probably have failed if H were false; devise tests whose outcomes differ between rivals. | Per-rival predicted outcomes on confirmatory plans; per-rival expectation on supporting Assessments; flag non-discriminating plans. | [R1], [R2] |
+| Causal structure | Controlling a confounder removes bias; conditioning on a mediator hides a real effect; filtering on a collider (e.g., failure-only logs) creates spurious association. | `causal-structure` guidance card; blindspot check for causal conclusions resting only on failure-filtered observations; observational vs. interventional evidence kind. | [R3] |
 | Delta debugging / differential testing | Isolate minimal difference between passing and failing conditions. | Support paired runs, fixed environment descriptions, reduction trials and source-linked claims. | [G3] |
 | Experimental controls and replication | Distinguish noise, confounds and invalid instruments from meaningful effects. | Immutable measurement conditions, controls, run groups, source independence and honest negative results. | [M10], [M11], [G4] |
 | Analysis of competing hypotheses / intelligence methods | Explicit alternatives, linchpin assumptions and diagnostic evidence. | Qualitative relationship matrix, contradictions, scoped standing, no evidence-vote score. | [M1]–[M5] |
-| Decision analysis / trade studies | Specify must-haves, criteria, option performance, sensitivity and uncertainty before choosing. | First-class options, criteria, versioned measurements and criterion assessments; conditional decisions. | [G5], [G6] |
-| Architecture decision records | Persist context, decision and consequences; supersede rather than rewrite accepted history. | Immutable accepted decisions and exportable ADR-style reports. | [G7], [G8] |
+| Decision analysis / trade studies | Specify must-haves, criteria, option performance, sensitivity and uncertainty before choosing; information that cannot change the choice has no decision value. | First-class options, criteria, versioned measurements and criterion assessments; weight-free Pareto status; value-of-information ranking in `next`; weights only with stated ranges; conditional decisions. | [G5], [G6], [R4] |
+| Analytic standards and evidence grading | Keep likelihood separate from confidence (ICD 203); grade confidence with named downgrade reasons (GRADE), not a score. | Separate optional likelihood (scored on resolution) and confidence with named downgrade reasons. | [M5], [R5] |
+| Systematic search reporting | An absence claim is only as good as the search behind it. | Optional `search_coverage` on search Runs; blindspot check for absence claims with no recorded search. | [R6] |
+| Architecture decision records | A *recording format* for context, decision and consequences; supersede rather than rewrite accepted history. No study shows ADRs improve decisions, so treat this as a format, not a method. | Immutable accepted decisions and exportable ADR-style reports. | [G7], [G8] |
 | Provenance / reproducible research | Separate provenance of entities, activities, agents, derivations and reports. | Evidence lineage, exact selectors, acquisition context, source quality, transformations and responsible actors. | [M6], [M8], [M9], [G9] |
 | Independent validation | Multiple agents/tools may share a failure mode or one original acquisition. | Review declares method, sources seen, dependence; corroboration never inferred from agent count. | [M7] |
 
 **Research must not become ritual.** Different kinds of knowledge require different checks. A citation-based research judgment can be defensible without a synthetic experiment. A performance comparison needs measurement validity and workload representativeness. An architecture decision can be rational without proving one design universally superior. The core enforces honest records and minimum mechanical gates, while methodology packs advise and optionally declare domain-specific obligations.
 
 **Caution about ACH:** the evidence-versus-hypothesis matrix is a reasoning aid, not a validated probability engine. Empirical studies have found mixed or negative effects on human judgment [M3, M4]. Expose qualitative relations and reasoning, and evaluate real task outcomes.
+
+**What those studies point to instead.** The per-hypothesis "consistent / inconsistent" rating is ACH's weakest step: its meaning is left to the rater, and evidence that fits every hypothesis still gets counted as support. Evidence strength is comparative. When live rivals exist, record how expected an observation is under each rival, not only whether it fits one hypothesis (§6.3). ACH also does nothing to make analysts consider base rates; the `reference-class` card covers that (§2.4).
 
 ### 2.2 What to borrow from `brenner_bot`
 
@@ -188,6 +195,10 @@ Ship **`general`** built-in as the only compulsory pack. Separately ship optiona
 | `discriminate` | Competing explanations | A test whose results distinguish hypotheses, with predicted outcomes. |
 | `negative-result` | Absence/non-effect | Observation opportunity, detection threshold, valid controls, bounds. |
 | `delta-debug` | Reproducible failure with many changed factors | Minimal reproducible difference and limitations of reduction. |
+| `intervene` | A suspected cause rests on logs, traces or correlation only | Change exactly one variable; record the reproduction rate before and after as k of n; apply the fix and see the failure stop, revert it and see it return. For bisection, record per-commit run counts, skipped commits and re-verified endpoints. |
+| `causal-structure` | Causal claim or a filtered dataset | Confounders (control), mediators (do not block), colliders/selection filters (do not analyze failure-only data without a healthy baseline). Would this test have caught H if H were false? |
+| `reference-class` | New explanatory question, forecast, or inside-view cost/effort/reliability estimate | Name a reference class and its base rates before weighing case evidence. Skippable with a reason. |
+| `premortem` | Before proposing or accepting a consequential decision | Assume the choice failed; trace concrete failure stories back to untested assumptions and reopen triggers. Advisory only. |
 | `criteria` | Choosing among options | Explicit must-haves, priorities, measurable/subjective criteria. |
 | `compare` | Option evaluation | Per-option/per-criterion evidence, uncertainty and missing cells. |
 | `sensitivity` | Close or uncertain choice | Which assumption/weight/measurement could reverse preference? |
@@ -264,7 +275,7 @@ A producer may emit a recording session or one Run with identity/version, intent
 flowchart TD
     A["Agent CLI or MCP"] --> C["Domain commands and validation"]
     P["Optional Obsidian companion"] --> C
-    I["Artifact import adapters"] --> C
+    I["Generic ingest / capture manifests"] --> C
     C --> E["Immutable transaction journal"]
     C --> B["Artifact store"]
     E --> S["SQLite projection"]
@@ -285,7 +296,7 @@ workspace/
   investigation.toml
   state/                             # Canonical; NOT the Obsidian vault
     workspace.json
-    events/000000000001-<sha256>.json
+    events/000000000001.json         # Sequence-only name; see §10.1
     blobs/sha256/<prefix>/<digest>
     checkpoints/<checkpoint-id>.json
     staging/<run-id>/               # Durable interrupted-producer recovery
@@ -312,6 +323,7 @@ workspace/
     Cases/<case-id>/Assessments/<id>.md
     Cases/<case-id>/Conclusions/<id>.md
     Cases/<case-id>/Reviews/<id>.md
+    Cases/<case-id>/Objections/<id>.md
     Cases/<case-id>/Retrospectives/<id>.md
     Cases/<case-id>/Decisions/<id>.md
     Cases/<case-id>/Views/*.base
@@ -375,11 +387,12 @@ Every readable record has a stable **display title** and a compact **synopsis vi
 | **Source** | Origin and collection context | Producer/publisher, acquisition, identity, time, access, verification limits. |
 | **Artifact** | Bytes or explicit external reference | Digest, size, format, source, transforms, availability and sensitivity. |
 | **Observation** | Bounded measured/reported datum | Value/statement/units, source selector, extraction method, quality, limitations. |
-| **InquiryPlan** | Planned inspection, experiment, benchmark or source check | Purpose, method, predictions if appropriate, controls, limits, desired observations. |
-| **Run** | One recorded attempt/execution/inspection | Exact plan ref, producer, tool/environment, timings, result assertion, artifacts, execution status. |
-| **Assessment** | Attributed interpretation of evidence about an object | Subject+revision, evidence refs, relation, rationale, assumptions, uncertainty, basis digest. |
+| **InquiryPlan** | Planned inspection, experiment, benchmark or source check | Purpose, method, controls, limits, desired observations. Confirmatory mode adds a per-rival predicted-outcome table, evidence/holdout boundary, declared prior exposure to the outcome and a stop/analysis rule (§6.5). |
+| **Run** | One recorded attempt/execution/inspection, including documentary or code searches | Exact plan ref, producer, tool/environment, timings, result assertion, artifacts, execution status, `evidence_kind` (`observational`/`interventional`) and variables changed; optional `search_coverage` (corpus and revision bounds, queries/filters, inclusion/exclusion rules, total/examined/empty hits). |
+| **Assessment** | Attributed interpretation of evidence about an object | Subject+revision, evidence refs, relation, per-rival expectation when rivals exist, rationale, assumptions, confidence/likelihood, basis digest. |
 | **Conclusion** | Bounded synthesized claim about what was learned | Statement, significance, scope, support/contradictions, review and effective disposition. |
-| **Review** | Attributed review of a case or a conclusion, comparison or decision | Review kind (`validation` or `blindspot`), exact subject/read-set, method, materials examined, source independence, objections/gaps, verdict and caveats. |
+| **Review** | Attributed review of a case or a conclusion, comparison or decision | Review kind (`validation` or `blindspot`), exact subject/read-set, method, materials examined, source independence, objections/gaps, verdict and caveats, `context_isolation` (§14.2) and the reviewer's actor descriptor. |
+| **Objection** | Attributed, specific challenge to a claim, comparison or decision | Exact subject revision, statement, scope, severity (`critical` or `material`), originating Review if any, evidence refs or explicit unknown, status `open | resolved | withdrawn`. Resolution is its own attributed record, never a flag flip. |
 | **Retrospective** | Attributed methodological account of an investigation | Case/snapshot, methods attempted, productive/invalid approaches, costs or constraints, linked examples, lessons and transfer limits; supersedable, not auto-applied. |
 | **Decision** | A chosen option or resolved question, with reasons | Choice, compared alternatives, criteria, evidence, tradeoffs, consequences, reopen trigger. |
 | **Annotation** | Human/agent comment or imported note | Subject, author claim, content/hash, classification, no automatic evidentiary status. |
@@ -404,7 +417,7 @@ Examples of a **debugging** case:
 - **Hypothesis:** the new transaction boundary holds connections across a network await.
 - **InquiryPlan:** repeat with a minimal reproducer, same workload, control build and connection-pool telemetry.
 - **Assessment:** evidence supports the transaction hypothesis within tested configurations, with alternative scheduler effects still unresolved.
-- **Conclusion:** a scoped root-cause explanation, not a claim that every timeout in production has that cause.
+- **Conclusion:** a scoped causal explanation naming one or more factors with roles (`trigger`, `latent_condition`, `contributor`), not a claim that every timeout in production has that cause. It stays `candidate` until an interventional result with a toggle (fix stops the failure, revert brings it back) confirms it.
 
 Examples of an **architecture** case:
 
@@ -425,6 +438,7 @@ A versioned discriminated union binds precise references to the **original or na
 | `whole` | Entire exact artifact; sensible only for bounded relevant inputs. |
 | `byte_range` | Half-open zero-based byte offsets on retained original bytes. |
 | `text_lines` | One-based inclusive line span on a named exact decoded-text derivative with its own digest, encoding and parser version. |
+| `text_quote` | Exact quoted text plus optional prefix/suffix (W3C Web Annotation `TextQuoteSelector` shape) on a named decoded-text derivative. The core checks byte-exact presence, with no normalization, and returns `verified`, `ambiguous` (more than one match without disambiguating context) or `not_found`. A verified quote shows the words are in the source. It does not show that they support the claim. |
 | `json_pointer` | RFC 6901 pointer against the exact JSON artifact; preserve parser identity where interpretation ambiguous. |
 | `table_cell` | Named table derivative, row identity/index plus column, extraction version and digest. |
 | `time_window` | Start/end, units, coordinate origin, channel/series, artifact digest; meaning determined by source metadata. |
@@ -432,6 +446,10 @@ A versioned discriminated union binds precise references to the **original or na
 | `external_selector` | Opaque namespaced format-specific selector (e.g., frame/packet/sample index), explicit schema URI/version, validator identity if available. |
 
 The core validates offsets and native selectors against retained bytes where possible. Unsupported external selectors are stored with `validation: unavailable`, **not falsely verified**. A producer/reader can later attach an attributed validation/extraction record. `whole` on a missing external reference remains unverified. An Obsidian link or generated block anchor is for navigation and never replaces canonical digest-bound identity.
+
+Text-based Observations carry a positional selector **and** a `text_quote`; the receipt returns the quote check, and `not_found` rejects the operation. Numeric and binary evidence mark the quote `not_applicable`.
+
+**Export mapping.** Document a mapping to W3C Web Annotation selectors for interchange: `byte_range` → `DataPositionSelector`, `text_lines` → RFC 5147, `text_quote` → `TextQuoteSelector`, `table_cell` → RFC 7111, `time_window` → Media Fragments. `json_pointer` stays an extension. Internal identity stays digest-bound.
 
 Implement parsers and selectors in bounded, trusted code with no command execution from source metadata. Preserve original bytes exactly; transformations create derivatives and lineage edges.
 
@@ -447,10 +465,12 @@ A Comparison depends on exact option/criterion revisions and selected evidence/a
 
 Record original acquisition, upstream source, collection run, method, fixture/environment, and known dependence groups. Show those dimensions in review. Exact byte deduplication is useful, but different bytes can still share one flawed origin.
 
+**Independence is per claim, not per document.** For a stated claim, record the origin of the observation or assertion separately from the activity that collected its document. One article may quote a specification value in one passage and report its own bench test in another. Assessments may link multiple origin roots with an attributed dependence judgment (`shared`, `partly_shared`, `independent_on_stated_dimensions`, `unknown`) and its basis. An absent link means `unknown`. Show document/acquisition counts separately from known claim origins. Every acquisition stays its own record.
+
 Separate:
 
 - byte integrity;
-- source authenticity/attribution;
+- source authenticity/attribution and source reliability (track record, competence, access), judged separately from the credibility of the specific datum, with `cannot_judge` allowed. Letter-number grading scales are not adopted;
 - measurement validity;
 - interpretive confidence;
 - reproduction status;
@@ -460,7 +480,11 @@ Do not collapse them into one score. `unknown` is a normal state. A new actor ID
 
 ### 5.7 Confidence and freshness
 
-Confidence is optional `low | moderate | high | not_assessed`, with a rationale, key limitations, and what would change it. It expresses the assessor's judgment about the evidentiary basis. Significance, decision consequence and severity (where a domain uses it) are separate from evidence confidence.
+**Confidence** is optional `low | moderate | high | not_assessed`, with a rationale, key limitations, and what would change it. It expresses the assessor's judgment about the evidentiary basis, never the probability of the claim. A `moderate` or `high` value on a promoted record names the downgrade reasons considered (GRADE-style prompts, not a score): validity/risk of bias, consistency across independent evidence, directness to scope, precision/sample adequacy, and search/reporting completeness. Each is `ok`, `concern` or `not_assessed`.
+
+**Likelihood** is a separate optional field: a number in [0, 1] or one of the seven ICD 203 terms. It is allowed only on a claim with a stated resolution condition and is never shown in the same sentence as confidence. When the claim resolves, the core records the outcome and computes a Brier score (arithmetic on recorded data). Calibration is reported per self-declared model family/version with the count of resolved claims. A stated likelihood never satisfies or blocks a gate.
+
+Significance, decision consequence and severity (where a domain uses it) are separate from both.
 
 Each assessment and review cites exact subject/evidence revisions. Maintain a dependency index. Retraction, material correction, invalidated measurement, changed applicability or unresolved contradiction marks dependent Assessments, Comparisons, Conclusions and Decisions `needs_review` according to declared materiality and relevance.
 
@@ -507,7 +531,7 @@ Not every case needs both branches. An architecture choice can be evidence-based
 | InquiryPlan | `draft`, `frozen`, `retired`; changes after freeze make a successor or explicit amendment with chronology. |
 | Run | `declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`; execution result independent of measurement validity. |
 | Conclusion | `candidate`, `review_ready`, `validated`, `rejected`, `retracted`, `superseded`; effective states include `needs_review`, `disputed`, `conditional`. |
-| Review | `draft`, `submitted`, `superseded`. `kind: validation` verdict `supports|objects|inconclusive`; `kind: blindspot` verdict `gaps_identified|no_gap_identified_within_scope|inconclusive`. A blindspot review never validates a finding by itself. |
+| Review | `submitted`, `superseded` (drafts live with the client, not the journal). `kind: validation` verdict `supports|objects|inconclusive`; `kind: blindspot` verdict `gaps_identified|no_gap_identified_within_scope|inconclusive`. A blindspot review never validates a finding by itself. |
 | Retrospective | `recorded`, `superseded`; evidence/read-set freshness overlay may be `needs_review`. A methodology lesson is a proposed transfer, never a globally installed rule. |
 | Decision | `proposed`, `accepted`, `superseded`; accepted content immutable, correction via supersession with links. |
 
@@ -522,7 +546,7 @@ Run events are immutable; reconcile unknown/partial outcomes through attributed 
 | External execution | `completed`, `failed`, `blocked`, `cancelled`, `unknown` | Was the requested operation attempted/completed? |
 | Evidence completeness | `complete`, `partial`, `missing`, `unknown` | Which intended original outputs survived? |
 | Measurement validity | `valid`, `invalid`, `partial`, `unknown` **per observation/channel** | Do instrument/setup/controls support interpreting this measurement? |
-| Assessment relation | `supports`, `contradicts`, `non_diagnostic`, `inconclusive` | What does specified evidence suggest about this hypothesis/claim? |
+| Assessment relation | `supports`, `contradicts`, `non_diagnostic`, `inconclusive`; when live rivals exist, a per-rival expectation `more_expected | equally_expected | less_expected | not_assessed` | What does specified evidence suggest about this hypothesis/claim, and would the same evidence be expected if a rival were true? Not required in `explore` mode before rivals exist. |
 | Comparison disposition | `meets`, `fails`, `partially_meets`, `unknown`, `not_applicable` | How does an option stand on a particular criterion, with assumptions? |
 | Decision state | `proposed`, `accepted`, `superseded` | What did someone choose? This is not a truth flag. |
 
@@ -533,17 +557,17 @@ A benchmark process exiting 0 does not establish a sound performance result. A t
 | Transition | Machine-checkable requirement | Human/agent judgment required |
 |---|---|---|
 | Import source/artifact | Honest bytes or external-reference state, acquisition context, valid schema. | Is source credible/relevant? Preserve first even if unclear. |
-| Record observation | Source selector or explicitly labeled assertion, extraction/measurement metadata. | Is statement genuinely observed rather than inferred? |
+| Record observation | Source selector or explicitly labeled assertion, extraction/measurement metadata; a text-based observation also carries a `text_quote`, and `not_found` rejects it. | Is statement genuinely observed rather than inferred? Does the quoted text support it? |
 | Freeze exploratory InquiryPlan | Purpose, method or inspection, observation channel and bounded stop rule. | Is exploration useful? |
-| Freeze confirmatory InquiryPlan | Exact question/hypothesis revisions, predicted results, observation and control conditions, boundaries. | Does the proposed test actually discriminate? |
+| Freeze confirmatory InquiryPlan | Exact question/hypothesis revisions, per-rival predicted outcomes, observation and control conditions, evidence/holdout boundary, declared prior exposure to the outcome, stop and analysis rule. | Would a plausible rival give a different outcome, and could the investigator already know this one? |
 | Record Run | Producer identity, plan or exploratory purpose, external reference, explicit status, honest completeness. | Were instruments valid? Was run comparable? |
 | Claim an informative absence | Expected signal, adequate opportunity/sampling, valid instrument/control or justified equivalent. | Are detection limits appropriate? |
 | Assess option versus criterion | Exact option/criterion revisions, evidence or explicit assumption, evaluation method, uncertainty. | Is metric comparable, criteria appropriate, subjective tradeoff fairly represented? |
 | Recommend/accept a decision | Candidate options and applicable active criteria, hard constraint disposition, material unknowns, rationale, consequences, reversibility/reopen trigger. | Does the trade justify the choice? |
 | Promote conclusion to review-ready | Bounded claim, direct support, applicability, alternative explanation treatment, limitations and inspectable evidence. | Is it convincing? |
-| Validate conclusion | Valid review/read-set, no unresolved critical blockers; method-specific policy obligations met. | Is residual uncertainty acceptable? |
-| Blindspot review (optional by default) | `inv blindspots` checks recorded structure; `review.submit` with `kind: blindspot` captures reviewed scope, gaps and exact read-set. | Did the investigator actively challenge omissions and rival accounts? A clean checklist is not proof of completeness. |
-| Close substantive case | Answer/choice/outcome or explicit inconclusive reason; outstanding questions, limitations, reopen triggers; attributed method Retrospective in same or prior transaction. `record`-only sessions are exempt. | Was this investigation sufficient, and what did its process teach? |
+| Validate conclusion | Current submitted validation review with a supportive verdict on the exact claim basis, current material sets (§10.3), satisfied method obligations and no unresolved critical Objection. | Is the scoped conclusion justified despite remaining caveats? |
+| Blindspot review (optional by default) | `inv blindspots` checks recorded structure; `review.submit` with `kind: blindspot` captures reviewed scope, gaps, exact read-set and `context_isolation`. | Did the challenge bring fresh context, a blinded packet or new external checks? Same-session self-critique without new information is shown as low-independence. A clean checklist is not proof of completeness. |
+| Close substantive case | Answer/choice/outcome or explicit inconclusive reason; outstanding questions, limitations, reopen triggers. A Retrospective in the same or prior transaction is required when the case is **material**: it has a promoted Conclusion, an accepted Decision, a failed/invalidated Run, a retracted/corrected source or observation, or a pack-declared trigger. Other cases may close with `retrospective_waived` and a short reason. `record`-only sessions are exempt. | Was this investigation sufficient, and are recorded lessons grounded in case events rather than boilerplate? |
 
 Do not make every case satisfy every gate. A documentary research case can rely on source criticism rather than an irrelevant control experiment. A performance case can close with a conditional improvement choice despite uncertain root cause. A design choice can be accepted with acknowledged subjective priorities, without claiming empirical truth.
 
@@ -555,12 +579,14 @@ A frozen test is immutable. `run.start` references its digest/revision. Outcomes
 
 Because Investigation does not execute the test, it cannot prove the first external packet happened after a local record. Store chronology strength:
 
-- `retrospective`: plan or interpretation recorded after known outcomes, or ordering unknown;
+- `retrospective`: plan recorded after the target Run or inspection; `order_unknown` when ordering cannot be established;
 - `recorded_before_run_declaration`: local journal order only;
-- `executor_bound`: a supported executor receipt binds the plan digest before its execution;
-- `externally_attested`: a future verifiable external timestamp/checkpoint, with authority and verification details.
+- `executor_bound`: an executor receipt binds the plan digest before its execution. Accept an in-toto Statement in a DSSE envelope as the receipt format rather than inventing one;
+- `externally_attested`: independently verifiable evidence binds the plan and the ordering of the relevant execution event (e.g., an RFC 3161 token, which verifies offline). A timestamp over the plan alone only dates the plan.
 
 Never upgrade chronology from timestamps alone. Exploration is valid; it becomes confirmation only through new, properly specified evidence.
+
+**Order, prior exposure and evidence reuse are separate axes.** Chronology says when the declaration or receipt happened. Separately, record the investigator's attributed exposure to the target result (`unseen_declared`, `partly_seen`, `seen`, `unknown`), including exposure through summaries or dashboards, and the observation units or partitions reserved for the test. At assessment, link actual inputs, exclusions, stop rule and deviations to the frozen basis. Re-extracting already-seen observations may support reproducibility, but it cannot count as a fresh prospective test. A previously collected, genuinely held-out set can qualify within its declared limits. A fixed-sample analysis stopped early after a favorable look is recorded with that deviation.
 
 ### 6.6 Stop reasons
 
@@ -603,13 +629,15 @@ Rank deterministically by:
 1. Canonical store integrity or invalid observation blockers.
 2. Time-sensitive preservation explicitly declared by investigator.
 3. Contradictions or missing hard requirements affecting a consequential conclusion/decision.
-4. Declared decision-changing value (`could_flip_choice`, `could_discriminate`, `context_only`, `unknown`).
+4. Decision-changing value: unresolved cells or assumptions that could change a hard-criterion disposition or an option's Pareto status (§15.1), or that discriminate live rivals (`could_flip_choice`, `could_discriminate`, `context_only`, `unknown`). Deprioritize measuring soft criteria on options already hard-disqualified or strictly dominated.
 5. Applicability/relevance to the current question and decision deadline.
 6. Bounded cost/effort supplied by the user, if comparable.
 7. Novelty compared to previous failed/inconclusive attempts.
 8. Stable ID/creation order tie-break.
 
 Expose each factor and its source. This is a **heuristic**, not a calculated expected information gain or probability. A decision comparison may support user-supplied weights, but the default does not declare a winner from arbitrary score sums. Sensitivity checks should ask whether plausible uncertainty could reverse the choice, not create false precision.
+
+**Say what the next observation would change.** Compact human output shows one leading recommendation, with up to two alternatives on request. For decision-changing or discriminating advice, show the missing observation and how each plausible outcome would change eligibility, standing or the choice, using recorded outcome branches or deterministic consequences of a typed threshold ("a pass keeps A eligible; a fail rules it out"). Label any investigator-supplied forecast with its source. If every branch leads to the same disposition, say so and rank the step by its narrower value (e.g., replication). If branch effects are unknown, ask for that information. When no feasible step can affect the decision, offer a justified stop or defer.
 
 Return at most three recommendations by default, plus counts of blocked/deferred actions, with a pagination/query path. `next` is read-only; claims and run execution must be separate explicit operations.
 
@@ -640,6 +668,8 @@ Offer a specific move: verify the instrument, inspect raw data, narrow the quest
 
 `inv frontier --case C --format json` is a read-only **complete, filterable inventory of investigable gaps** at a committed snapshot, while `inv next` provides a ranked top three. It distinguishes `ready_to_analyze`, `requires_source`, `requires_external_action`, `blocked_by_quality`, `stale_due_to_revision`, `deferred`, and `resolved`; each item includes the exact subject/read-set, source of the gap, reason for status, prerequisites and a safe `schema`/`show` route. Support `--kind`, `--status`, `--limit`, snapshot-bound pagination and `--explain GAP_ID` for the deterministic rule that emitted it.
 
+**Correcting advice.** An investigator can defer a recurring suggestion with `annotation.add` `role: advice_feedback` (rule/version, target IDs, material basis, `defer` or `resume`, reason, optional revisit condition). The advice is re-evaluated on material change or explicit resumption. Deferred items stay visible in `frontier`. Feedback changes only how advice is presented; the underlying gap, caveats and validation still come from canonical evidence and policy.
+
 A frontier item is **not** an external task assignment, an instruction to execute a test, proof that the suggested method is good, or a claim that all missing alternatives were discovered. External work systems may translate frontier items into tasks, but `inv` does not create or dispatch workers. Mark structural rule IDs/versions in the response so a changed rule is not mistaken for newly acquired evidence.
 
 ## 8. Agent experience
@@ -654,14 +684,16 @@ investigation — preserve evidence, test explanations, evaluate options.
 Use when a question needs multiple observations, a meaningful comparison,
 or a handoff. Skip for one-shot facts or ordinary implementation tasks.
 
-Start:   inv init ./casework
-Learn:   inv onboard --format json
-Resume:  inv brief --case <id> --format json
-Decide:  inv next --case <id> --format json
-Audit:   inv blindspots --case <id> --format json
-Inspect: inv show <id> --depth summary --format json
-Record:  inv schema observation.add --format json
-         inv record --input operation.json --format json
+Start:   investigation init ./casework
+         investigation start 'QUESTION' --attach FILE|- --command-id KEY
+Learn:   investigation onboard --format json
+Resume:  investigation brief --case <id> --format json
+Decide:  investigation next --case <id> --format json
+Audit:   investigation blindspots --case <id> --format json
+Inspect: investigation show <id> --depth summary --format json
+Record:  investigation observe "..." --source <id> --quote "..."
+         investigation record --input operation.json --format json
+Recover: investigation receipt KEY --format json
 
 Tool output is a source claim, not a conclusion. `inv` records; it never
 executes outside actions. Accepted writes return durable receipts.
@@ -684,7 +716,7 @@ Generate help, JSON schemas, MCP schemas, examples, and the operation index from
 
 `inv schema <operation>` must include an example by default. `--schema-only` returns just the JSON Schema. `inv schema --list` is a compact index grouped by workflow stage. An unknown operation suggests close matches and the catalog, without changing state.
 
-When a fresh workspace has no case, onboarding returns the exact `case.create` schema/example first. When an observation lacks source material, it returns the ingestion step first. The agent must not be sent straight to an observation payload whose prerequisite IDs do not exist.
+In an empty workspace, onboarding leads with one new-case route: the `start` form if the investigator already has a source, `case.create` if they only have a question. In a selected case, it offers the scoped ingest or observation route. When an observation lacks source material, it returns the ingestion step first. After each write, return one local read using the actual workspace, case and created IDs. The agent must not be sent straight to an observation payload whose prerequisite IDs do not exist.
 
 Do not optimize solely for a small top-level command count. A generic `record` with an undiscoverable bag of operation names is poor UX. State-aware examples and errors are part of the API contract.
 
@@ -713,7 +745,7 @@ Synopses are deterministic projections of trusted typed fields by default. An ex
 
 Support `--level compact|standard|deep` on `brief`: compact shows the essential decision/evidence/caveat index, standard is the current default, and deep includes fuller cited summaries within the same byte budget. Depth and budget are orthogonal. Title/synopsis views must be cheap enough for lists, but a short budget cannot remove a mandatory caveat. Budget is serialized UTF-8 bytes so behavior is deterministic across models; documentation may give an approximate token equivalent without promising tokenizer accuracy. Never cut a JSON string mid-field, remove a critical caveat while retaining the conclusion, or silently drop all contradictions. If the budget is too small for the mandatory header, return `BUDGET_TOO_SMALL` with the minimum size. Lists paginate using snapshot-bound cursors.
 
-`inv brief --since <transaction-id>` returns a semantic delta, not the entire case. Include critical gaps, retrospective/lesson references and any stale synopsis in the delta when relevant. `inv show ID --at <revision>` gives historical state. `inv explain ID` walks the recorded evidence/assessment chain with bounded depth; it is a deterministic presentation of committed rationale, not newly generated reasoning.
+`inv brief --since <transaction-id>` returns a semantic delta, not the entire case. Include critical gaps, retrospective/lesson references and any stale synopsis in the delta when relevant. `inv show ID --at <revision>` gives historical state. Navigation links in a brief carry the workspace and exact snapshot; `--snapshot TRANSACTION_ID` on `show`, `explain` and `brief` resolves the graph as known at that head and labels it historical. Disclosure and byte availability follow today's audience and retention policy, even for historical reads. One brief, including its links and pagination, uses one verified snapshot. `inv explain ID` walks the recorded evidence/assessment chain with bounded depth; it is a deterministic presentation of committed rationale, not newly generated reasoning.
 
 ### 8.4 Search and evidence reading
 
@@ -732,14 +764,20 @@ Support `--level compact|standard|deep` on `brief`: compact shows the essential 
 
 - A causal Conclusion lacks an acknowledged rival account or explicit reason alternatives were not useful.
 - Confirmatory empirical claims rely on invalid/missing control, baseline, instrument, sample/window or frozen-plan basis.
+- A confirmatory InquiryPlan predicts the same outcome for two or more live rivals (`inquiry.non_discriminating_plan`).
+- A Conclusion's support was never assessed against a live rival, or every supporting item is `equally_expected` under a rival.
+- A causal Conclusion rests only on failure-filtered observations with no non-failure baseline (`causal.failure_only_selection`), or only on observational evidence while displayed as confirmed.
+- A promoted Conclusion or accepted Decision rests on a text-based Observation whose quote is absent, `ambiguous` or unchecked.
+- An absence claim ("no errata exist", "no other callers") has no linked search Run recording corpus bounds, queries and empty results (`source.absence_without_search_log`).
+- Every blindspot or validation review of a promoted subject is `same_session_self_review`.
 - Multiple citations masquerade as independent evidence despite common original provenance.
 - A material Assumption, critical Objection, stale source or retraction still affects a promoted record.
 - An evaluative Decision has missing/unknown hard-criterion cells, inconsistent units, undisclosed subjective preferences, or no reopening trigger.
 - An important claimed fact has no retained/external source selector or producer attribution.
 - A case is repeatedly collecting evidence without any recorded discriminatory effect or decision consequence.
-- A case ready for closure has no substantive Retrospective.
+- A material case ready for closure has no Retrospective.
 
-An agent can then request `inv guide blindspot` for a **semantic adversarial review**: what other mechanism, hidden constraint, falsifier or measurement failure might matter? The agent records the result through `review.submit` with `kind: blindspot`, an exact case/conclusion/decision snapshot/read-set, scope inspected, method, identified gaps (including zero with a bounded reason), and optionally new Question/Assumption/Objection records in the same atomic transaction. A review of one narrow claim is not whole-case coverage. A changed material source makes dependent reviews stale; the reviewer must explicitly recheck.
+An agent can then request `inv guide blindspot` for a **semantic adversarial review**: what other mechanism, hidden constraint, falsifier or measurement failure might matter? Same-session self-critique without new external information often fails to improve reasoning and can make it worse, so the review declares `context_isolation` (§14.2), and briefs and reports flag `same_session_self_review` as low-independence. The agent records the result through `review.submit` with `kind: blindspot`, an exact case/conclusion/decision snapshot/read-set, scope inspected, method, identified gaps (including zero with a bounded reason), and optionally new Question/Assumption/Objection records in the same atomic transaction. A review of one narrow claim is not whole-case coverage. A changed material source makes dependent reviews stale; the reviewer must explicitly recheck.
 
 `inv next`/`frontier` surface the highest-impact unresolved gaps, but **the checker cannot know all possible explanations**, so “0 detected structural gaps” must never display as “investigation complete.” No default policy requires a second agent or an LLM call; an opt-in method pack may require an attributed challenge review at consequential transitions.
 
@@ -758,7 +796,7 @@ Example of a **schematic read-only response**, to validate against the final JSO
       "state": "gap_detected_in_recorded_structure",
       "subject_refs": [{"id": "<returned-criterion-id>", "revision": 2}],
       "why": "Hard requirement has unknown evidence-backed disposition",
-      "suggested_schema": "review.submit"
+      "suggested_schema": "comparison.add"
     }
   ],
   "limits": "Checks cover recorded objects only; semantic alternatives may remain unseen"
@@ -771,9 +809,15 @@ A valid audit implementation returns real IDs and digests. `gap_id` must be stab
 
 `inv retrospective --case C --format json` reads the current methodological record, showing evidence links and whether proposed lessons were reviewed. `retrospective.record` persists an attributed case-scoped summary of **methods attempted, effective discrimination, wasted/invalid or misleading steps (or explicit none observed), investigation cost/constraints when known, uncertainty that remains, and specific next-time improvements**. It may be updated only by supersession; the earlier retrospective remains readable. A brief and a report show only a bounded highlights section with exact references.
 
-For a substantive `case.close`, require a Retrospective from the same or preceding transaction, bound to a case snapshot that remains current for materially relevant work at closure. If important new evidence or a changed decision basis intervened, require an updated Retrospective rather than accepting an obsolete account. Support one atomic batch creating the retrospective and closing with a `client_ref`, so the rule costs one call; `record`-only sessions are exempt. Do not force an agent to claim failures it did not see. “No reusable lesson identified” is valid with a bounded reason, not a fabricated self-congratulatory success. A failed or inconclusive case can still yield a useful method lesson.
+**Process digest.** `inv retrospective --case C --draft` computes from the journal alone the facts a retrospective should rest on: invalid, failed or inconclusive runs; predictions amended after freezing; hypotheses rejected and options ruled out; reviews that went stale; conclusions superseded or retracted; revision conflicts; and the case's sequence span. The closing agent may have no memory of the process, so it annotates these facts instead of recalling them. Every `effective_steps`, `invalid_or_misleading_steps` and `lessons` entry cites a digest item or record ID; an uncited generic lesson fails validation. The digest covers recorded work only and says so.
+
+**Expected versus actual.** `case.create` accepts optional `expectations` (expected answer or choice, expected effort, what would be surprising). Frozen InquiryPlan predictions already serve this role for tests. The Retrospective reports the difference. Writing expectations down beforehand is the reliable guard against hindsight bias; telling people to ignore the outcome does not work. A missing expectation is reported as "no expectation recorded".
+
+For a material `case.close` (§6.4), require a Retrospective from the same or preceding transaction, bound to a case snapshot that remains current for materially relevant work at closure. Other cases may close with `retrospective_waived` and a reason. If important new evidence or a changed decision basis intervened, require an updated Retrospective rather than accepting an obsolete account. Support one atomic batch creating the retrospective and closing with a `client_ref`, so the rule costs one call; `record`-only sessions are exempt. Do not force an agent to claim failures it did not see. “No reusable lesson identified” is valid with a bounded reason, not a fabricated self-congratulatory success. A failed or inconclusive case can still yield a useful method lesson.
 
 Lessons remain **case-scoped observations about process**, not accepted general rules. Mark proposed reusable lessons with applicability, counterexamples/limits and supporting cases. The default never automatically rewrites method packs, agent instructions, prompts or integration config. A later explicit, reviewed `method-pack` authoring workflow may incorporate them; that is outside v1.
+
+**Lesson follow-through.** A lesson is visible outside its source case only after an explicit admission step by a human or a recorded outcome check (§16.1). When a later case reads an admitted lesson, record that it was consulted and, at that case's close, whether it changed anything. Lessons that are never consulted, or never useful, are shown as such. Lessons carry their source case's classification and trust level. Do not use retrospective counts as a quality signal.
 
 ### 8.7 Repairable errors
 
@@ -807,7 +851,10 @@ Installation into a harness is explicit. `inv integration show --target <name>` 
 
 | Command | Use | Mutation |
 |---|---|---|
-| `init PATH` | Create isolated casework workspace and optional vault. | Owned local files only. |
+| `init PATH` | Create isolated casework workspace and optional vault. Refuses network filesystems. | Owned local files only. |
+| `start QUESTION --attach FILE|- --command-id KEY` | Create an `explore` case and preserve the supplied source in one transaction (the `new_case` ingest variant, §11.1). | One case, Source, Artifact and receipt. |
+| `receipt KEY` | Resolve a command receipt for the selected workspace and actor at a verified head, without the original request or bytes. | None. |
+| `case new` / `source add PATH` / `observe TEXT --source ID [--quote TEXT]` / `note TEXT --on ID` | Flag-form shortcuts for the commonest single-operation writes, generated from the catalog. | One canonical event each. |
 | `demo PATH --scenario NAME` | Generate reproducible tutorial cases (`debug`, `performance`, `research`, `choice`). | Local fixture only. |
 | `onboard` | Discover workflow and exact next valid command. | None. |
 | `brief` | Bounded context for new agent or human. | None. |
@@ -831,7 +878,11 @@ Installation into a harness is explicit. `inv integration show --target <name>` 
 | `integration show/apply` | Optional, explicit installation of small agent instructions. | Bounded owned config on apply. |
 | `obsidian setup` / `vault copy-map` | Optional review integration, human-owned map snapshot. | Only named owned files. |
 
-Typed domain mutations (case, observation, comparison, conclusion etc.) live in the shared `record` operation catalog; convenience aliases may be generated later, never hand-maintained alongside separate semantics.
+Typed domain mutations (case, observation, comparison, conclusion etc.) live in the shared `record` operation catalog.
+
+**Flag-form shortcuts ship in v1** for the four commonest single-operation writes, generated from the same catalog and never hand-maintained. Each builds the standard envelope. The caller may pass `--command-id`; if omitted, one is generated and printed to stderr **before** submission as well as in the receipt, so a lost response can still be reconciled with `receipt`. Batches stay on `record`. This is what makes "add an observation in one command" (§1.2) true.
+
+**Read-only mode.** `--read-only` (and `inv mcp --read-only`) rejects every mutating and export command at dispatch, before the commit lock, so a host can quarantine inspection of hostile raw evidence in a context that cannot write.
 
 ### 9.2 Selection and defaults
 
@@ -840,7 +891,7 @@ Typed domain mutations (case, observation, comparison, conclusion etc.) live in 
 - Read commands may select the only case automatically. Multiple cases with no explicit selection return `CASE_REQUIRED`, with a compact list. Do not guess from last UI focus.
 - `case.create` has `case_id: null`; all case-scoped mutations require one.
 - `--actor` selects an attributed actor; default can come from workspace-local configuration or the established `AGENT` convention. Never interpret this as verified identity.
-- `--format json` guarantees one JSON object on stdout. Human text is the TTY default; machine callers must pass the flag explicitly. Logs/progress use stderr and never contain raw artifacts by default.
+- `--format json` (and its global alias `--json`) guarantees one JSON object on stdout, including for discovery and recoverable argument errors; resolve the format before subcommand validation. Human text is the TTY default; machine callers must pass the flag explicitly. Logs/progress use stderr and never contain raw artifacts by default.
 - No ANSI, pager, prompt, or auto-open behavior in JSON mode. `--no-color` and `--no-pager` work in text mode.
 
 ### 9.3 Mutation envelope
@@ -870,7 +921,7 @@ Every mutation is one atomic transaction, including a one-operation transaction.
 
 The case ID above is illustrative; the tutorial uses returned IDs. `client_ref` names objects created earlier in the same batch through an explicit reference object `{ "client_ref": "principal-question" }`. It is never stored as durable identity. References otherwise use `{ "id": "...", "revision": 1 }`. The schema must make these forms mutually exclusive.
 
-`command_id` is an opaque caller-chosen 1–128-character identifier unique within `(workspace_id, actor)`. For retries, reuse it with identical semantic input. Normalize input with documented canonicalization; input-file path and output-format options are not part of the semantic request. A reused key with different semantic input is `IDEMPOTENCY_KEY_REUSED`.
+`command_id` is an opaque caller-chosen 1–128-character identifier unique within `(workspace_id, actor)`. For retries, reuse it with identical semantic input. Compare semantic input as parsed values (plus captured content digests for attachments, §9.5); input-file path and output-format options are not part of the semantic request. A reused key with different semantic input is `IDEMPOTENCY_KEY_REUSED`.
 
 An empty operations array is `EMPTY_TRANSACTION`; it does not count as progress. Validate all operations against a temporary in-memory state, in array order, before committing any. Reject unknown fields in our versioned payloads. No arbitrary JSON Patch or unrestricted “set status” endpoint.
 
@@ -880,15 +931,15 @@ The following names are **normative v1 operations**. Generate JSON Schema, embed
 
 | Operation | Required meaning / fields |
 |---|---|
-| `case.create` | Title, objective, mode (`explore` default), question/decision context, scope, stop condition. Empty exclusions okay. `record` mode may be minimal. |
-| `case.amend` / `case.pause` / `case.reopen` / `case.close` | CAS revision, attributed reason; closure outcome, unresolved questions, reopen condition; `case.close` in substantive modes must reference a prior/same-batch Retrospective. Mode change is explicit. |
+| `case.create` | Title, objective, mode (`explore` default), question/decision context, scope, stop condition, optional `expectations`. Empty exclusions okay. In `explore` at first capture, scope and stop condition may be explicitly unknown. `record` mode may be minimal. |
+| `case.amend` / `case.pause` / `case.reopen` / `case.close` | CAS revision, attributed reason; closure outcome, unresolved questions, reopen condition; `case.close` on a material case must reference a prior/same-batch Retrospective, otherwise it may carry `retrospective_waived` with a reason. Mode change is explicit. |
 | `question.create` / `question.resolve` | Scoped answerable wording, consequence; evidence-backed answer or explicit inconclusive state. |
 | `hypothesis.create` / `hypothesis.amend` / `hypothesis.disposition` | Factual explanatory candidate, scope, question, rival/falsifier if known; CAS and source-based rationale for standing. |
 | `option.create` / `option.amend` / `option.disposition` | Choice candidate, feasibility and context, option revision, constraints causing exclusion/supersession. |
 | `criterion.create` / `criterion.amend` / `criterion.retire` | Name, kind `hard|soft`, desired direction/scale, applicability, optional threshold, priority rationale; material changes invalidate comparisons. |
 | `comparison.add` / `comparison.revise` / `comparison.retract` | Exact option+criterion revisions, result/value (`unknown` allowed), evidence/assumptions, method, uncertainty and rationale. |
 | `assumption.create` / `assumption.assess` | Premise, materiality, affected subject links, disposition, evidence/reasons. |
-| `annotation.add` | Subject refs, attributed freeform content or note snapshot and classification; optional `role: synopsis` requires exact subject revision and is separately stale-able. |
+| `annotation.add` | Subject refs, attributed freeform content or note snapshot and classification; `role: advice_feedback` records a reversible advice disposition (§7.5); optional `role: synopsis` requires exact subject revision and is separately stale-able. |
 | `source.assess` / `source.withdraw` / `artifact.withdraw` | Source authenticity/reliability with limitations; withdrawal/reason/scope; preserved immutable originals. |
 | `observation.add` / `observation.correct` / `observation.retract` | Narrow measured/reported value, selector, units/method, observation quality/unknowns, immutable revision history. |
 | `measurement.assess` | Observation/channel validity, instrument/control or equivalent verification, assessor/rationale/limits. |
@@ -900,7 +951,7 @@ The following names are **normative v1 operations**. Generate JSON Schema, embed
 | `retrospective.record` / `retrospective.supersede` | Case-scoped process record: methods tried, effective/invalid work, residual uncertainty, lessons with limits and evidence refs; supersession preserves history. |
 | `conclusion.validate` / `conclusion.disposition` | Validate review-ready scoped claim or reject/retract/supersede, with blockers/read-set. |
 | `decision.propose` / `decision.accept` / `decision.supersede` | Exact selected option or choice, alternatives/criteria, hard constraints, evidence, assumptions, tradeoffs, consequences and reopening triggers; accepted is immutable. |
-| `objection.resolve` | Identified blocker/review concern revisions, rationale/evidence, update freshness via dependency graph not arbitrary flags. |
+| `objection.raise` / `objection.resolve` / `objection.withdraw` | Raise: exact subject revision, statement, scope, severity, evidence refs, optional originating Review (may share a batch with `review.submit`). Resolve/withdraw: exact objection revision, attributed rationale/evidence. All three update the subject's set of open challenges (§10.3); freshness flows through the dependency graph, not flags. |
 | `coverage.define` / `coverage.revise` / `coverage.link` | Optional bounded applicability matrix, per-cell predicate and linked measurements, denominator history. |
 
 **Blindspot and retrospective contract:** `review.submit(kind=blindspot)` has `subject_ref`, `audited_snapshot`, `method`, `scope_examined`, `checks_considered`, `gaps[]` (possibly empty with reason), `evidence_refs[]`, `assumption_refs[]`, and `limitations`; gaps may be promoted into Questions/Assumptions/Objections through ordinary same-batch operations. `retrospective.record` has `case_ref`, `snapshot`, `methods_attempted[]`, `effective_steps[]`, `invalid_or_misleading_steps[]`, `costs_or_constraints`, `residual_unknowns[]`, `lessons[]` (each with proposed applicability, supporting refs and transfer limits), and `none_observed_reason` where relevant. CLI schemas specify nullable/required combinations and reject invented evidence. Use `client_ref` to atomically record retrospective and close case.
@@ -975,7 +1026,7 @@ If a substantive case is closed without a current Retrospective, reject the **en
       "criterion_ref": {"id": "<actual-criterion-id>", "revision": 1},
       "outcome": "partially_meets",
       "method": "controlled_benchmark",
-      "value": {"number": 18.7, "unit": "ms", "statistic": "p99"},
+      "value": {"decimal": "18.7", "unit": "ms", "statistic": "p99", "sample_count": 1200},
       "evidence_refs": ["<actual-observation-id>"],
       "assumption_refs": [],
       "uncertainty": "Measured on the seeded workload; production mix unknown",
@@ -1008,12 +1059,14 @@ The bracketed IDs are **schematic placeholders only**; the executable demo fills
   "projection": { "index": "current", "vault": "pending" },
   "warnings": [],
   "next": [
-    { "kind": "local_read", "argv": ["inv", "schema", "hypothesis.create", "--format", "json"] }
+    { "kind": "local_read", "argv": ["investigation", "schema", "hypothesis.create", "--format", "json"] }
   ]
 }
 ```
 
 Hash placeholders in specification examples are notation, not accepted digest values. Production output returns real values. A retry returns the original transaction and created IDs with `result: already_committed`; current projection health may be reported separately.
+
+For stream or file capture, the semantic request binds declared metadata and captured content digests in attachment order; reusing a key with changed bytes is a mismatch even if the path string is unchanged. `receipt KEY` returns original IDs, revisions, snapshot and artifact digests from canonical-derived state. An absent key is `not_found_at_snapshot`, because the request might still be in flight. An unverifiable head yields `unknown` with a repair path.
 
 ### 9.6 Error envelope and exits
 
@@ -1053,9 +1106,11 @@ If durability cannot be determined, return `commit_status: unknown` where possib
 
 The CLI is the reference implementation. MCP uses the same Rust command dispatch, validation, receipts, and error codes over stdio. No HTTP listener is needed.
 
-Expose read tools `onboard`, `brief`, `next`, `frontier`, `blindspots`, `retrospective`, `get` (with `depth`), `search`, `check`, and `schema`. Expose domain writes through grouped, typed tools such as `capture`, `observations`, `hypotheses`, `inquiries`, `comparisons`, `assessments`, `conclusions`, and `decisions`, plus `reviews` (including challenge reviews) and `retrospectives`. Each write group uses a closed operation union generated from the catalog, with a shared transaction envelope. `capture` may atomically create linked source/artifact/observation records. Where a cross-group transaction is needed, provide a fully typed `record_batch` tool in an explicitly selected advanced profile.
+The **primary agent path is the CLI plus a skill/AGENTS snippet**; measured token cost for CLI use is far below a large eagerly loaded MCP tool set. MCP is a secondary transport.
 
-Do not hide unvalidated JSON strings behind a supposedly typed tool. Do not duplicate all CLI aliases as tools. Measure schema/token overhead with actual clients; keep a core profile and a fuller workflow profile if useful, advertised at startup. Clients without discovery/load-on-demand still receive a sufficient, stable core surface.
+**Default `core` profile: at most seven flat-schema tools with a `tools/list` budget under 12 KiB**, enforced in CI: `onboard`; `read` (flat `action`: `brief | show | explain | search | next | frontier | blindspots | retrospective | check`, with `depth`, `case_id`, `id`, `query`, `max_bytes`); `evidence_read`; `schema` (just-in-time operation schema and minimal example); `record` (the same atomic envelope and validation as `inv record`, so cross-entity batches need no escape hatch); `ingest`; `receipt`. Avoid deeply nested `oneOf` unions in default tool schemas.
+
+An opt-in `expanded` profile exposes domain-grouped typed write tools for hosts with deferred tool loading. Do not hide unvalidated JSON strings behind a supposedly typed tool. Do not duplicate all CLI aliases as tools. Target the stateless MCP revision (2026-07-28, no `initialize` handshake): profiles are chosen by server flag and visible through `tools/list` and server discovery, not negotiated in a session. Measure `tools/list` size and tool-call accuracy for both profiles in §20.5.
 
 Resources expose versioned schemas, method cards, and sanitized case snapshots. Read-only tool annotations and mutation annotations must match real effects. Never advertise hypothetical tools from an unavailable capability. MCP is a transport, not a second source of truth.
 
@@ -1063,23 +1118,25 @@ Resources expose versioned schemas, method cards, and sanitized case snapshots. 
 
 ### 10.1 Canonical journal
 
-Use one linear workspace sequence for v1. A short OS advisory lock serializes commits across local processes. This makes cross-record transactions straightforward; case reads and file ingestion need not hold the lock while doing expensive work.
+Use one linear workspace sequence for v1, subject to the per-case chain ADR due before W02 (§19.5). A short advisory lock serializes commits across local processes: `flock` semantics via `std::fs::File::lock` (stable since Rust 1.89) on a dedicated lock file that is never renamed or deleted. Never use POSIX record locks (`fcntl(F_SETLK)`), which are released when *any* descriptor for the file closes. This makes cross-record transactions straightforward; case reads and file ingestion need not hold the lock while doing expensive work.
 
 Each immutable transaction file contains:
 
 ```text
 format_version, workspace_id, transaction_id, sequence, previous_hash,
 actor, recorded_at, command_id, request_hash, preconditions,
-accepted_operations, resolved_ids, resulting_revisions, transaction_hash
+accepted_operations, resolved_ids, resulting_revisions
 ```
+
+The file is named `events/<seq>.json` with **no hash in the name**, so exclusive create enforces one event per sequence at the filesystem level as a second line of defense behind the lock. Keep file-per-event: an event file either exists whole or not at all, so it avoids the torn-tail and "append leaves garbage" failures of an appended segment log. If file count ever matters, pack sealed ranges later, as Git does.
 
 The first transaction follows an immutable genesis record identifying the workspace and schema family. No two committed files may share one sequence. Duplicate sequences, gaps, unexpected parents, unknown required event versions, and digest mismatch are explicit integrity failures, never sorted away.
 
 Original imported manifests and finalized run manifests are immutable Artifact bytes referenced by journal events. Convenience manifest files under `cache/imports/` are rebuildable copies, never indispensable loose provenance. A finalization manifest lists its covered artifacts and pre-finalization snapshot; it excludes itself and its subsequently committed transaction hash to avoid recursive hashing. The finalization event binds that manifest's digest to the Run revision.
 
-Use SHA-256 for artifact identity and transaction integrity. Define transaction hashing as SHA-256 over a versioned domain-separation prefix plus RFC 8785 canonical JSON of the envelope excluding `transaction_hash`. UTF-8 only; reject duplicate JSON keys, non-finite values, and integers outside the interoperable safe range. Represent exact large counters/timestamps/decimals as documented strings where needed. Do not normalize or rewrite artifact bytes.
+Use SHA-256 for artifact identity and transaction integrity. **A transaction's hash is SHA-256 of the exact bytes of its event file**, checkable with `sha256sum`. The file does not contain its own hash: the hash is recorded in the next event's `previous_hash`, in the receipt and in the index, and the head hash is computed on read. Immutable event bytes are already canonical, so no canonical-JSON step is in the integrity path (Rust JCS implementations have open number-encoding bugs). For idempotency, store the request and compare parsed values structurally. UTF-8 only; reject duplicate JSON keys, non-finite values, and integers outside the interoperable safe range. Represent measured decimals, large counters and timestamps as documented strings (e.g., `{"decimal": "18.70", "unit": "ms"}`), which also preserves significant figures. Do not normalize or rewrite artifact bytes.
 
-Keep canonicalization fixtures for Rust and any future reader. The plugin does not need to write canonical journal files; it submits commands to the core.
+Put `schema_version` on every event from event 1. Because the chain forbids rewriting history, schema evolution is upcast-on-read. UUIDv7 IDs are ordered only within one process, so ordering comes from the sequence number alone. The plugin does not need to write canonical journal files; it submits commands to the core.
 
 ### 10.2 Commit algorithm
 
@@ -1088,19 +1145,25 @@ Keep canonicalization fixtures for Rust and any future reader. The plugin does n
 3. Discover the last committed transaction. Bring the in-memory/SQLite state through that sequence, verifying the tail. Never validate against a stale index.
 4. Look up `(workspace_id, actor, command_id)` in canonical-derived state. Identical request: return the original receipt. Different request: reject.
 5. Validate entity revisions, required read-set, references, mode-specific obligations, and every operation against a temporary state. Assign actual IDs once.
-6. Publish needed immutable blobs with exclusive-create semantics; verify any existing digest path. Flush bytes/directories as supported. Missing staged blobs prevent commit.
-7. Write the entire transaction to a temporary file on the same filesystem, flush it, atomically publish to its unique final path without clobbering an existing event, and flush the directory.
+6. Publish needed immutable blobs with exclusive-create semantics (fsync file, `link(2)` or `renameat2(RENAME_NOREPLACE)`, fsync directory); on `EEXIST`, verify the existing bytes match the digest. **Blobs are durable before the event that references them.** Missing staged blobs prevent commit. Do not rely on `tempfile`'s `persist_noclobber`, which can fall back to a non-atomic link-and-unlink and syncs nothing.
+7. Write the entire transaction to a temporary file on the same filesystem and fsync it. Publish it to `events/<seq>.json` with `link(2)` or `renameat2(RENAME_NOREPLACE)`, never plain `rename(2)`; an existing target is a fork and an integrity failure, never an overwrite. Then fsync the directory.
+
+   **Any fsync error is fatal.** Do not retry it and do not report success: after a failed fsync, ext4 and XFS can mark pages clean that never reached disk, so a retried fsync may falsely succeed. Return `commit_status: unknown`, stop writing, and on the next start re-read the tail from disk and re-verify the chain before accepting commands.
 8. This successful durable publication is the commit boundary. Update the disposable index in one SQLite transaction and record its applied sequence/head.
 9. Release the commit lock. Render derived views synchronously or mark them pending according to configured mode.
 10. Return a receipt distinguishing canonical commit, index health, and vault freshness.
 
-Atomic visibility and power-loss durability are different. Document the tested filesystem/OS guarantees. Initial supported write platform is Linux on a local filesystem; qualify macOS/Windows before claiming equivalent durability. Network shares and cloud-synchronized canonical state are unsupported.
+Atomic visibility and power-loss durability are different. Document the tested filesystem/OS guarantees. Initial supported write platform is Linux on a local filesystem; qualify macOS/Windows before claiming equivalent durability. Network shares and cloud-synchronized canonical state are unsupported; detect and refuse network filesystems at `init` and in `doctor` (`RENAME_NOREPLACE` returns `EINVAL` on NFS and some FUSE servers, and locking is unreliable there).
+
+**Crash-testing method.** Put the commit protocol behind a small storage trait. Test it against an in-memory fake that drops un-fsynced file data and un-fsynced directory entries at any step and injects I/O errors, driven by property tests with replayable seeds. Run one CI job against a real filesystem under LazyFS.
 
 ### 10.3 Revisions and concurrent agents
 
 Independent additions usually need no global snapshot precondition. Editing a substantive entity requires its expected revision. Promoting a conclusion requires the relevant read-set: conclusion basis, evidence validity, critical assessments, review, scope/applicability and policy revision. Accepting or revalidating a decision likewise requires option/criterion/comparison revisions and material assumptions. This avoids accepting a validation based on evidence retracted by another agent.
 
 The core computes that required dependency closure. The caller supplies expected revisions, but cannot omit an inconvenient dependency to bypass a gate. A missing or changed required read-set member produces a repairable rejection with the current required set. Detect circular justification while evaluating sufficiency.
+
+**A review basis includes set membership, not only revisions.** If a reviewer judged "all applicable hard criteria" or "no open objections", a later *insertion* changes the basis even though every ID they read keeps its revision, the database-isolation phantom problem. Bind each Decision to its decision Question; record applicability links from options and criteria to that Question and subject links from Objections to the claim or decision. At review, persist each applicable built-in set rule, its version, scope, and a digest of sorted member IDs with their substantive basis digests, including empty sets. The core derives the required rules and checks them on promotion against locked state, and again on later reads for effective disposition. A changed membership yields a conflict before acceptance or `needs_review` after it. A criterion added to a different question in the same case leaves the set current. Support a small fixed set of predicates; no saved SQL. Evaluate promoted bases against the final state of an atomic batch, so a batch cannot validate a claim and then add a disqualifying blocker to it.
 
 Concurrent assessments coexist as records. A disputed judgment is resolved by an explicit decision/review, not a wall-clock tiebreak. No automatic “last agent wins.” A stale mutation returns current revisions and a bounded diff; only an identical idempotent retry is automatic.
 
@@ -1129,6 +1192,8 @@ SQLite WAL is acceptable for a local derived index, but never synchronize it as 
 
 Define measured targets on a documented ordinary workstation: warm brief/next under 250 ms p95 for 10,000 objects and 50,000 relations; warm mutation under 150 ms p95 excluding file ingestion/render; streaming artifact import with bounded memory. These are engineering targets, not measured current performance. If the first implementation misses them, profile before adding complexity.
 
+Include a sparse choice fixture with 1,000 options and 200 applicable criteria (200,000 possible cells, few recorded Comparisons). `next` groups repeated gaps by question and criterion with snapshot-bound drill-down; measure first-page and top-three latency including rule evaluation against the targets above. Keep an exhaustive small fixture to check grouping and completeness.
+
 ### 10.6 Integrity and authenticity
 
 Hashes establish equality with a recorded digest. A chain detects internal inconsistencies relative to a known head. Someone controlling the whole workspace can rewrite it. A future signed/external checkpoint can strengthen verification; signing must identify the key, covered snapshot, and trust policy.
@@ -1140,6 +1205,8 @@ Hashes establish equality with a recorded digest. A chain detects internal incon
 Provide a full `case-archive` containing selected case records, their necessary journal/provenance context, retained artifacts, human annotations included by policy, schema versions, and a manifest. For the first implementation, a **workspace archive** is the simplest resumable form because sequence/idempotency are workspace-wide. A selected-case export can be a portable review bundle; do not call it resumable until its reconstruction semantics are implemented.
 
 A complete recovery archive must account for active/unreconciled staging. Initially refuse/defer a complete archive until those runs are finalized or explicitly recovered as interrupted; a later consistent staging-snapshot protocol may include them. A review-only export may omit staging with a clear limitation. Never silently drop recoverable staged evidence or sweep it through temporary-file GC.
+
+Pin the chosen recovery head and its required blobs until the archive verifies and publishes or is explicitly abandoned. Serialize blob reclamation against pin creation and release; ordinary appends may continue. Snapshot included human notes as separate attributed inputs because they can change outside the journal.
 
 Archive restores go into an empty new destination and verify before publication. Preserve original IDs for an exact restore; a deliberate fork gets a new workspace identity and explicit origin snapshot. Do not let two forked workspaces masquerade as one coordinated writer.
 
@@ -1157,7 +1224,9 @@ The core must support **arbitrary evidence producers without knowing their names
 
 ### 11.1 `ingest` contract
 
-`inv ingest --input manifest.json --format json` accepts a strict manifest with `schema_version`, `command_id`, `case_id`, `actor`, `source`, `content`/`paths`/`external_refs`, extraction options and sensitivity policy. `inv schema ingest` returns a working local-file example plus exact behavior. Producer-provided metadata is not an executable instruction.
+`inv ingest --input manifest.json --format json` accepts a strict manifest with `schema_version`, `command_id`, exactly one of `case_id` or `new_case`, `actor`, `source`, `content`/`paths`/`external_refs`, extraction options and sensitivity policy. `inv schema ingest` returns a working local-file example plus exact behavior. Producer-provided metadata is not an executable instruction.
+
+The `new_case` variant creates an `explore` case and its sources in the same transaction; the `start` command translates to it with one attachment. Scope and stop condition may be explicitly unknown at first capture. Record actor, acquisition channel (e.g., stdin, with unknown original publisher unless supplied), size and digest. A failed import publishes neither case nor Source.
 
 Ingestion steps:
 
@@ -1208,6 +1277,8 @@ Provide `investigation-recording`: Rust library and JSON-CLI protocol, with stab
 | `capture recover` | List unsettled handles/staging, preserve partial outputs, reconcile observed producer status using same run IDs; **never rerun external actions**. |
 
 Never hold the canonical commit lock while an external process runs. Stage outputs durably, then snapshot only stable bytes: require producer writer close/flush or a safe copy-and-verify protocol. Prevent writable hardlinks into canonical blobs. Every unknown/interrupted status stays explicit. A producer crash may occur after effects but before finalization; recovery must not assume the operation was never performed. Distinguish `finalized` versus `execution_completed`.
+
+**Per-handle positions and a precise seal.** Every accepted append or attachment descriptor has a per-handle position and a content/request digest. Accept only the next expected position under per-handle serialization; an already-seen item key with identical content returns its original receipt, and mismatched content conflicts. Persist bytes, item receipt and cursor durably before acknowledging. `capture recover` returns the accepted position and seal state. `capture finalize` runs under the same serialization with an expected last position and the declared artifact/channel inventory. It seals staging before publishing the canonical manifest and rejects a stale cursor for a claimed-complete stream. If an intermediate item was lost, partial finalization identifies the missing position. An item arriving after sealing gets a closed-handle response, and late evidence is preserved through explicit linked reconciliation. The finalized manifest binds an item-key/digest/receipt map so identical retries resolve after staging is retired.
 
 **Producer readiness:** if durable recording was required by the producer policy but capture initialization fails, the producer must not start a new effectful unit. If recorder fails midrun, preserve a bounded local spool and reconcile when possible, while the producer handles its own safe cleanup. Those are producer obligations, not commands the `inv` core executes.
 
@@ -1363,8 +1434,15 @@ Generate native `.base` files with filters on flat properties, and plain Markdow
 ```yaml
 filters:
   and:
-    - 'file.inFolder("Cases")'
+    - 'inv_case_id == "<case-id>"'
     - 'inv_kind == "conclusion"'
+properties:
+  inv_effective:
+    displayName: "Effective state"
+  inv_status:
+    displayName: "Status"
+  inv_revision:
+    displayName: "Rev"
 views:
   - type: table
     name: Conclusions
@@ -1375,7 +1453,7 @@ views:
       - inv_revision
 ```
 
-Real views filter by exact case ID, not an accidental cross-case folder match. **The comparison matrix is a generated static Markdown table in v1** with source links; a specialized interactive view belongs in an optional companion, not a mandatory dependency on a community query plugin.
+Real views filter by exact case ID, not an accidental cross-case folder match. Per the current syntax page, `note.inv_kind` and the shorthand `inv_kind` are equivalent; `displayName` labels column headers only. Row sort keys are not documented on that page, so detect them by release rather than assuming them. Load-test the vault near 50,000 notes, where users report lag. **The comparison matrix is a generated static Markdown table in v1** with source links; a specialized interactive view belongs in an optional companion, not a mandatory dependency on a community query plugin.
 
 ### 12.6 Canvas and graph
 
@@ -1507,8 +1585,11 @@ An execution may succeed while the agent loses its response. Domain idempotency 
 
 Useful roles are investigator, challenger, verifier, and curator. They can be one human/agent at different stages or separate participants. A profile may require a distinct reviewer for a particular promotion, but actor-ID inequality is merely a procedural check.
 
+An actor may carry a self-reported descriptor: `kind` (`human` or `agent`), model family, model version and harness. It is a claim, like the actor string. Reviews display it. Reviews from the same model family form one dependence group, and a different family is **not** independent on that basis alone: models share errors across providers, more so as they get stronger. Where two independent judgments are wanted, each is recorded before either reviewer can read the other's; journal order shows whether that held.
+
 A Review declares:
 
+- `context_isolation`: `same_session_self_review | fresh_context_unblinded | fresh_context_blinded | external_evidence_backed`;
 - whether the reviewer saw the original conclusion;
 - which exact artifacts and criteria were available;
 - whether new evidence was collected;
@@ -1546,10 +1627,13 @@ Recommended lifecycle:
 2. Generate/evidence **Options**; include `do nothing / retain current design` when relevant. Track discarded options and why.
 3. Define **Criteria** *before* reviewing outcomes when possible: hard must-haves, ordinal/quantitative measures, preferred direction, actual units, threshold and relative priority justification. Record any later criterion revision openly.
 4. For each option/criterion cell, attach original evidence, measurement assumptions, observation quality and a bounded conclusion. `unknown` is an expected outcome.
-5. Make consequential uncertainty visible: which missing measurement, preference weight, threshold, or model assumption could reverse the decision? Ask for new evidence only when plausible to matter.
-6. Propose/accept a **Decision** with rationale, rejected viable alternatives, tradeoffs, conditions, consequences and reopening trigger. It may be rational but conditional.
+5. Compute **weight-free Pareto status** for each eligible option: `disqualified_hard` (fails a verified hard criterion), `strictly_dominated`, `pareto_frontier`, or `uncertain_frontier`. Be conservative: A dominates B only if A is at least as good on every comparable criterion with current evidence and strictly better on one. Any `unknown`, `stale` or unranked-subjective cell that could favor B makes dominance indeterminate.
+6. Make consequential uncertainty visible: which missing measurement, preference weight, threshold, or model assumption could reverse the decision or change Pareto status? Ask for new evidence only when it could plausibly matter (value of information). Offer the `reference-class` and `premortem` cards for optimistic inside-view estimates.
+7. Propose/accept a **Decision** with rationale, rejected viable alternatives, tradeoffs, conditions, consequences, what the decider expects to happen and when to check, and a reopening trigger. It may be rational but conditional. Judge it later against what was knowable at the time, not against the outcome alone.
 
 **Do not rank everything with uncalibrated numerical weights.** A weighted score is optional user-provided analytic artifact, not the core's truth criterion. If it is used, preserve all input weights, units, normalization assumptions, sensitivity and why its score should matter. A hard constraint violation cannot be quietly compensated by a weighted soft criterion. For subjective criteria, state preference rather than claiming a measurement.
+
+**A weight needs a range.** A weight is accepted only with the worst and best values it trades off among the options actually considered ("the swing from 40 ms to 15 ms p99 is worth w"). A weight with an unknown range is stored as a stated preference and never enters a score. Scores use the criterion's declared scale anchors, not normalization to the current option set, so adding or removing an option cannot reorder the others. Before any weighting, show the consequences table (raw values with evidence links) and flag criteria that overlap or proxy for another.
 
 ### 15.2 Optional coverage models
 
@@ -1586,7 +1670,7 @@ Review mechanisms apply to both but enforce their own obligations. Changing a me
 
 All reports render deterministically from exact committed snapshots, no model call required. A synopsis, blindspot list or lesson cannot be substituted for primary evidence. Reports link to exact reviewed states and annotate changed/withdrawn sources and stale review bases. Allow agents/humans to improve authored summaries via typed amendments, not by silently rewriting canonical claims in a renderer. Negative and inconclusive results remain visible. Mark deprecated/superseded decisions instead of rewriting the past.
 
-Audience policy is positive inclusion, not a best-effort scrub. Review vault and recovery archive have intentionally different completeness/security guarantees. Export manifests contain snapshot ID, renderer/schema versions, source digests, omissions, classification policy and where applicable supersession links. Optional HTML stays inert and self-contained; PDF is an optional later exporter.
+Audience policy is positive inclusion, not a best-effort scrub. Review vault and recovery archive have intentionally different completeness/security guarantees. Export manifests contain snapshot ID, renderer/schema versions, source digests, omissions, classification policy and where applicable supersession links. Optional HTML stays inert and self-contained; PDF is an optional later exporter. When a global head or sequence would expose other activity, the audience-facing manifest identifies the approved bundle, and the mapping to the canonical snapshot is kept privately. UUIDv7 identifiers embed a millisecond creation time; the export manifest says so, and exports where record timing is sensitive can use remapped random IDs.
 
 ## 16. Trust boundaries and retention
 
@@ -1599,6 +1683,14 @@ Keep trusted operating guidance in the binary/versioned integration files. A cas
 Structured output labels evidence excerpts as untrusted. Quoting with a Markdown `>` alone does not make content inert. Render excerpts in escaped plain text or safely delimited code blocks with a fixed non-executable language; choose a delimiter longer than any matching run in the excerpt. Never use a source-provided fence language. Sanitize HTML and generated labels, and construct internal links from validated object IDs. Disable remote embeds and command-capable URI links in captured content.
 
 These are product integrity controls for agents consuming adversarial evidence, not a claim that text labeling alone prevents every prompt-injection failure.
+
+**Authored text is data too.** Titles, synopses, annotations, rationales and lessons are free text an agent may have written after reading hostile evidence. An injected instruction can be laundered through a summary into the layer every later agent reads first. Therefore:
+
+- Every free-text field is rendered as quoted data at every depth and in every channel. Only text compiled into the binary or a pinned method pack is guidance. Titles are bounded in length and stripped of control characters and markup.
+- Authored text records the lowest trust level among the artifacts its transaction declared as read, and among `evidence read` calls made through `inv` by that actor in the session, and shows it. `inv` cannot see what else a session consumed; say so.
+- A lesson is shown in another case only after an explicit admission step (§8.6).
+
+**Write-side guardrails.** The worst injection against an epistemic ledger is a schema-valid write that validates a false claim, retracts counter-evidence or downgrades classification. Besides `--read-only` (§9.1), a pack or workspace policy may require a distinct actor/context or explicit human confirmation for `conclusion.validate`, `decision.accept`, `source.withdraw`, `observation.retract` and classification downgrades. This is opt-in so solo work stays cheap.
 
 ### 16.2 Sensitivity and views
 
@@ -1614,6 +1706,8 @@ Export uses a positive inclusion manifest and audience policy. Check every chann
 
 A redacted review vault must not quietly contain the unredacted canonical journal needed for resumption. Review export and full recovery archive are different products. Mark completeness, omissions, audience, snapshot and policy version in the manifest. If requested material cannot be included under the chosen policy, fail with exact exclusions or generate an explicitly incomplete review bundle—never label it complete.
 
+**Filtering must not strengthen a recommendation.** Compute effective state and material support/objections against the full canonical snapshot *before* audience filtering. A shared Conclusion or Decision must carry an approved representation of its operative caveats. If even a general caveat would mislead or disclose protected facts, omit the dependent statement or refuse that report. Apply the same decision to previews, summaries, search, counts and renderers. Source names, hashes, IDs and even the existence of an omission need audience permission; detailed diagnostics go to a private publisher receipt. Build review exports in a fresh destination from allowed inputs, never from the working vault, whose conflict copies may hold obsolete sensitive material.
+
 The tool exports locally. Publishing, emailing, cloud upload, or Git push requires a separately requested integration action. No automatic telemetry of case content.
 
 ### 16.4 Raw file handling
@@ -1626,7 +1720,7 @@ Artifact viewers should support safe text/JSON summaries first. External viewers
 
 Ordinary withdrawal/retraction changes evidentiary use while preserving history. It is not erasure. State that clearly in commands and docs.
 
-Retain raw evidence according to a case policy. A deliberate retention operation may delete a raw blob and leave digest/size/provenance plus `availability: intentionally_removed`; all dependent claims/exports must reflect lost inspectability. Produce a preview of affected records and backups/exports known to this workspace before applying. Never silently GC a referenced artifact.
+Retain raw evidence according to a case policy. Because blobs deduplicate across cases, **retention applies to the acquisition or Artifact reference first**, never directly to a digest. Commit the reference's loss of availability (`availability: intentionally_removed`, keeping digest/size/provenance) before scheduling physical reclamation; every byte read, including at a historical snapshot, follows current availability. A second acquisition of identical bytes keeps its own policy, and deduplication grants no cross-case read permission. Before unlinking a digest, recheck all live retention obligations, durable staging and archive pins under coordination with import and archive creation; references explicitly marked expired remain auditable without demanding the bytes forever. The preview reports separately: the logical loss on each permitted reference, bytes still held for others, reclaimable bytes, and known downstream copies, including FTS, SQLite/WAL, old renders, previews and exports. Reclamation is retryable after interruption. All dependent claims/exports must reflect lost inspectability. Never silently GC a referenced artifact. If v1 cannot qualify reclamation, ship withdrawal and truthful availability reporting first.
 
 If a secret was committed in event text, adding a redaction event does not remove the old plaintext. A dedicated purge workflow must create a sanitized new storage epoch/archive, preserve a redaction audit/mapping without the secret, and explicitly state which historical replay guarantees changed. Until that workflow is implemented, diagnose the exposure and document manual/backup remediation; do not claim secure deletion or an effective purge. Distributed copies cannot be recalled automatically.
 
@@ -1668,6 +1762,12 @@ Agent tasks: record runs from an entirely generic producer manifest, assess inst
 
 **Negative variant:** 'no improvement detected' with broken performance monitor or insufficient observation window cannot become evidence of equality. A legitimate zero-effect result needs adequate measurement conditions and precise detection/power limits; the system cannot fabricate a p-value.
 
+**Ordering and coordinated-omission traps.** Seed one comparison run A-then-B sequentially and one latency capture from a closed-loop generator that measures from actual rather than intended send time. Both must be flagged.
+
+**Missing-outcome variant.** Seed 100 started requests: 95 finish in 10 ms and 5 are unfinished at a 1 s timeout. The completion-only p99 is 10 ms, yet only 95/100 meet a "99% within 25 ms" requirement. Preserve started/observed/timed-out/excluded counts; an all-attempt criterion cannot be satisfied from a completion-only percentile.
+
+**Practical-equivalence variant.** A frozen inquiry states population, unit, aggregation, replication unit, timeout/exclusion policy and a decision-relevant margin before results. With a prespecified ±5 ms band, an externally supplied compatible interval of [−2, +3] supports bounded equivalence and [−8, +3] leaves it unresolved. The core invents neither interval.
+
 ### 17.3 Scenario C — architecture choice (evaluative/trade study)
 
 **Question:** choose between (A) database-backed queue, (B) managed queue and (C) dedicated broker for a known application. No option is universally best.
@@ -1686,9 +1786,9 @@ Seed documents, workload projections, small benchmark data, operational cost ass
 
 **Question:** do three independent references actually corroborate a disputed technical specification?
 
-Seed a primary document, a trade article quoting it, a blog summarizing the article, and a newer first-party erratum. The agent must identify that the blog and article share *one original acquisition*, record the erratum's effect on currentness, and form a conditional conclusion (or explicit insufficient-evidence result) with direct source links.
+Collect a primary specification, a trade article, a blog and a first-party erratum as four separate Sources. For the disputed value, the agent links the first three passages to *one originating specification claim*, while every acquisition stays its own record. The article also has a second passage reporting the author's own bench test, which has a different origin. The erratum is traced to the affected edition; in a twin fixture the changed value applies only to a later edition. The successor must answer for the build named in the question, form a conditional conclusion (or explicit insufficient-evidence result) and keep every original selector.
 
-**Review/learning step:** conduct a blindspot review of source dependence, currency and missing first-party documentation; produce an explicit Retrospective stating why multiple downstream reports did not add independent support.
+**Review/learning step:** record a `search_coverage` Run showing which first-party errata/registries were searched, including empty searches; conduct a blindspot review of source dependence, currency and missing first-party documentation; produce an explicit Retrospective stating why multiple downstream reports did not add independent support.
 
 **Adversarial variant:** the crawler/output text contains apparent instructions telling the agent to modify its method or promote the conclusion. Such text must remain inert, visible only as data, and have no impact on trusted command selection.
 
@@ -1763,7 +1863,7 @@ Recommended dependency direction: `core` knows domain/schema, `store` knows dura
 
 Use well-supported Rust libraries and pin actual versions/licensing when implementing: `clap`, `serde`, `serde_json`, `rusqlite`, `sha2`, `uuid`, `time`, `thiserror`, `tracing` and a tested YAML emitter are plausible starting points. Do not dictate versions from this document; inspect current releases/security advisories at implementation time.
 
-One operation catalog generates CLI help, JSON Schema, MCP tool schemas, minimal examples and field-level validation errors. Read-only `frontier` and `blindspots` rules are versioned deterministic projections; never let a method pack install an executable checker. Test generated examples against schemas and a real demo workspace. For canonical hashes use an RFC 8785-compatible implementation with cross-language vectors; merely sorting object keys is insufficient.
+One operation catalog generates CLI help, JSON Schema, MCP tool schemas, minimal examples and field-level validation errors. Read-only `frontier` and `blindspots` rules are versioned deterministic projections; never let a method pack install an executable checker. Test generated examples against schemas and a real demo workspace. Integrity hashes are over stored event bytes (§10.1), so no canonical-JSON library is needed for integrity; idempotency compares parsed requests structurally, with cross-language fixtures for that comparison.
 
 No daemon, graph database, remote object store, queue, indexing service, embedding model, LLM dependency or asynchronous runtime is compulsory. Keep a synchronous core unless transport/perf measurement justifies async. Abstract time, filesystem publication boundaries and ID generation sufficiently to inject crash tests, not to create an abstract application framework.
 
@@ -1817,7 +1917,7 @@ No coupling to any concrete existing producer is a release dependency. A separat
 | ID | Package | Depends on | Demonstrated acceptance |
 |---|---|---|---|
 | W00 | Read destination repo instructions; create ADRs, fixtures, support matrix, baseline toolchain and CI. | — | Domain boundaries/protocol drafts committed and tests runnable. |
-| W01 | Domain types: Case/Question/Source/Artifact/Observation/Hypothesis/Option/Criterion/Comparison/Assessment/Conclusion/Decision/Review/**Retrospective**/Inquiry/Run. Single operation catalog; review `kind: blindspot` and `annotation role: synopsis`. | W00 | Schema-valid minimal operations and independently compiling core. |
+| W01 | Fix the common envelope, identity, provenance and receipt semantics. Draft (`v0-alpha`) the domain types W03/W04 exercise: Case/Question/Source/Artifact/Observation/Hypothesis/Assumption/Option/Criterion/Comparison/Assessment/Conclusion/Decision/Review/Objection/Annotation/Retrospective/Inquiry/Run. Reserve names for later operations; CoveragePlan, authored synopses and pack extensions wait. | W00 | Independently compiling core, schema-valid examples and a minimal handoff fixture. The wider catalog freezes as `v1` after the Milestone A comparison. |
 | W02 | Durable event journal and blob store, CAS, canonical hashing, idempotent receipts, crash recovery. | W01 | Deterministic replay + fault-injection suite passes. |
 | W03 | Minimal explanatory loop, initial observations and artifact provenance, tests/runs, assessments, conclusions and review. | W01, W02 | Debug scenario works without special consumer and retains original evidence. |
 | W04 | Minimal evaluative loop: options, criteria, comparisons, decisions, sensitivity questions and supersession. | W01, W02 | Choice scenario uses same core, no forced hypotheses. |
@@ -1836,7 +1936,9 @@ No coupling to any concrete existing producer is a release dependency. A separat
 
 ### 19.3 Milestones
 
-**A — undeniable vertical slice:** W00–W04 plus minimum W05/W06. Two cases work: debugging and architecture choice, using the same store and CLI. A reviewer sees exact support/assumptions, layered read depths, and a second agent can resume. Early cases may close only with a minimal truthful Retrospective.
+**A — undeniable vertical slice:** W00–W04 plus minimum W05/W06. Two cases work: debugging and architecture choice, using the same store and CLI. A reviewer sees exact support/assumptions, layered read depths, and a second agent can resume. Material cases close with a minimal truthful Retrospective; others may waive it with a reason.
+
+**A-gate — does it help?** Before W07, run a two-domain paired pilot (debugging and architecture choice, pilot-split cases) against the plain-notes arm of §20.5. Use the bring-your-own-source exercise: an unfamiliar investigator starts from one local source and hands off to a successor; a new hard criterion is inserted between review and acceptance; the successor says what changed and whether another measurement would affect the choice. Record the decision rule as an ADR before the runs: if `inv` does not beat the notes arm on false promotions or successor accuracy, cut or merge the record types agents ignored or misused before continuing. Use the pilot to estimate between-case variability for the release trial, then freeze `inv.command.v1`.
 
 **B — generic recording and honest knowledge:** W06–W10. External producer fixtures (not a named app) record runs; provenance, validity, independence, criteria changes, synopsis freshness, and structural blindspot review are correct. No false security-/performance-specific defaults leak into the core.
 
@@ -1848,7 +1950,7 @@ Each milestone ends in a runnable proof, not a skeleton of directories. No arbit
 
 ### 19.4 Parallel agent lanes
 
-After W01 freezes core schema and receipt semantics:
+After W01 fixes the envelope, identity and receipt semantics for the first slice (the wider domain catalog freezes after Milestone A):
 
 - **Storage lane:** journal, blobs, hashing, recovery, import.
 - **Investigation lane:** explanation/assessment/review and evaluation criteria/comparisons/decisions.
@@ -1861,7 +1963,9 @@ Parallel agents must agree on exact object/operation versions centrally; do not 
 
 ### 19.5 Build-policy ADRs
 
-Write concise decision records for: domain-neutral core vs consumer-owned integrations; evidence vs assessment; explanatory vs evaluative ontologies; criterion/version freshness; journal versus Markdown source of truth; local concurrency vs distributed merge; method pack security; recording/execution split; vault ownership; report vs recovery archive; layered summary freshness; audit-rule versioning; review scope and method-retrospective lifecycle; explicit/nonautomatic lesson adoption; supported durability guarantees.
+Write concise decision records for: domain-neutral core vs consumer-owned integrations; evidence vs assessment; explanatory vs evaluative ontologies; criterion/version freshness; journal versus Markdown source of truth; local concurrency vs distributed merge; method pack security; recording/execution split; vault ownership; report vs recovery archive; layered summary freshness; audit-rule versioning; review scope and method-retrospective lifecycle; explicit/nonautomatic lesson adoption; supported durability guarantees; executable name; MCP profile shape.
+
+**Three ADRs are due before W02**, because none can change afterward without a migration: (1) file-per-event journal versus SQLite as the canonical store, stating the requirement (inspectability, grep/rsync-friendliness) that justifies the hand-rolled journal and the crash testing it obliges; (2) one hash chain per workspace versus one per case. A per-case chain turns single-case export, restore and purge (§10.7, §16.5) into ordinary file operations and removes cross-case lock contention, at the cost of atomic cross-case transactions, which the plan barely uses. Lean per-case unless the ADR finds a real cross-case transaction; (3) the Milestone A decision rule (§19.3).
 
 The implementer is empowered to replace an illustrative internal signature, but not weaken the user-facing contracts or acceptance gates without an explicit recorded reason and updated tests. Build what can be tested, not what merely sounds sophisticated.
 
@@ -1874,7 +1978,8 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] Case mode `explore` supports raw observations before hypotheses, inquiry plans or options exist.
 - [ ] Case mode `evaluate` supports options/criteria/comparisons/decision with **zero hypotheses, zero tests and zero conclusions**.
 - [ ] Nothing in default `inv` help, on-disk default workspace, schema or binary requires a named external tool, target, permission, principal or security concept.
-- [ ] One source copied/summarized in three places remains one acquisition family, not three independent confirmations.
+- [ ] Three separately collected documents quoting the same specification keep three acquisition records and one known origin for that claim, not three independent confirmations; a second claim in one of them may have a different or unknown origin.
+- [ ] A text Observation whose `text_quote` is `not_found` is rejected; `ambiguous` is reported; a verified quote is labeled as presence, not support.
 - [ ] Two distinct acquisitions with identical bytes remain distinct provenance identities while blob bytes deduplicate.
 - [ ] A producer's claimed result remains attributed source data, never auto-promoted to validated Conclusion.
 - [ ] Retraction of original source propagates effective freshness to observations, assessments, comparisons, conclusions, decisions, reports and case Overview.
@@ -1890,11 +1995,20 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] A frozen predicted outcome cannot be silently amended after results to claim prospective success.
 - [ ] A credible counterhypothesis and material objection are visible before conclusion promotion.
 - [ ] Correction of an instrument invalidates affected interpretations without deleting historical observations.
+- [ ] Observations/Runs record `evidence_kind` (`observational`/`interventional`), variables changed, and whether instrumentation changed. A causal Conclusion with only observational support displays as `candidate`, never `confirmed`. Intermittent failures are recorded as k of n before and after a change.
+- [ ] A confirmatory plan with identical predicted outcomes for two live rivals is flagged before any run.
+- [ ] An executor-bound reanalysis of an already-inspected trace keeps its strong chronology *and* its known-outcome reuse; a renamed derivative counts as the same data; a separately held-out acquisition with a frozen plan stays distinguishable.
 - [ ] A truly inconclusive case can close with a precise reopen condition.
 
 **Performance/measurement**
 
 - [ ] Measurement includes units, workload identity, observation window, sample count or explicit unknown, environment/tool identity and limitations.
+- [ ] Raw samples carry their repetition level (build, process, iteration) and order; a flat array is accepted but flagged as unable to support a variance analysis.
+- [ ] Trial order is recorded (`interleaved`, `randomized`, `sequential`); a comparison built on A-then-B sequential runs is flagged.
+- [ ] Latency measurements record the load model (open/closed loop) and whether time is measured from intended send time; a tail claim from a closed-loop generator without that is flagged for coordinated omission.
+- [ ] A percentile claim carries its sample count. The core flags a p99 claim with n < 299 (or p99.9 with n < 2,995) as unable to support a distribution-free 95% order-statistic bound. This is arithmetic on a recorded count, advisory, and not a universal sample floor.
+- [ ] Percentiles from separate runs are never averaged; combining needs raw samples or mergeable histograms.
+- [ ] Started, observed, timed-out, excluded and unknown counts are preserved with their definitions; an all-attempt criterion cannot be satisfied from a completion-only percentile.
 - [ ] Warmup, trial order, varying instrumentation or changed request mix are visible as possible confounders.
 - [ ] Two reported percentiles with different load distributions are not silently treated as comparable.
 - [ ] Zero detected difference under broken instrumentation is inconclusive, not evidence of performance equality.
@@ -1911,6 +2025,8 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] A decision may be rational, conditional and accepted while one comparison remains uncertain; report explicitly preserves that condition.
 - [ ] An accepted Decision is superseded by a new Decision, not overwritten historically.
 - [ ] A sensitivity result documents which uncertain assumption could plausibly reverse an option choice, without claiming a computed probability.
+- [ ] Pareto status never prunes an option on the strength of an `unknown`, `stale` or unranked-subjective cell; `next` does not suggest soft-criterion measurement for a hard-disqualified option.
+- [ ] A weight without a stated range never enters a score; adding a duplicate option does not reorder the others.
 
 **Source research**
 
@@ -1933,7 +2049,7 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] When sources/evidence change, previously recorded challenge reviews become stale where relevant; unconnected case mutations do not needlessly invalidate them.
 - [ ] A semantic blindspot outside the finite rules can be added as a Question/Assumption/Objection; no rule engine claims it should already have found it.
 - [ ] `retrospective.record` accepts useful lessons from failed, inconclusive or successful inquiries with transfer limits; allows explicit "no observed failures" without fabricated claims.
-- [ ] Closing a non-record case without a Retrospective fails with an actionable repair; retrospective + close in one idempotent transaction works and preserves CAS semantics; recording-only cases remain exempt.
+- [ ] Closing a material case without a Retrospective fails with an actionable repair, while a non-material case may close with `retrospective_waived` and a reason; retrospective + close in one idempotent transaction works and preserves CAS semantics; recording-only cases remain exempt.
 - [ ] Lessons do not silently modify method packs, prompts, agent settings, or canonical policy; restricted lessons cannot leak into public review exports.
 
 ### 20.2 Persistence, concurrency, and parser fixtures
@@ -1943,6 +2059,10 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] Same command ID with changed payload is rejected, including after index rebuild.
 - [ ] Concurrent independent additions succeed; competing substantive updates produce a clear CAS conflict.
 - [ ] A conclusion promotion or decision acceptance racing with evidence retraction/criterion change cannot validate against a stale read-set.
+- [ ] A new in-scope hard criterion or new material Objection after review conflicts before promotion and marks an already accepted basis `needs_review`; retiring or relinking a member updates the set; a criterion added to another question in the same case leaves the set current. Full recomputation and indexed results agree after replay.
+- [ ] Pipe the first source into a new case with `start`, lose the response and discard the input. `receipt KEY` after restart/reindex returns the same case, artifact and digest. A changed stream under the same key is rejected. A failed initial ingest creates no empty case.
+- [ ] An injected fsync error stops writes with `commit_status: unknown` and is never retried into a success; restart re-verifies the tail.
+- [ ] Import identical bytes into cases A and B, expire A during an archive of B, then read, restore and reindex. A's reference is unavailable even at an old head; B and the pinned archive verify; reclamation waits for the last obligation and survives interruption.
 - [ ] A malformed operation in a batch commits none of the batch.
 - [ ] Duplicate keys, unknown required fields, overlarge input and invalid references return bounded field errors.
 - [ ] Missing/corrupt journal event, duplicate sequence, mismatched parent/hash, and future required schema are diagnosed without invented repair.
@@ -1963,6 +2083,7 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] An interrupted producer returns partial/incomplete artifacts and `unknown` external effect status, never schedules rerun on recovery.
 - [ ] Capture finalization after process failure preserves exact original error and valid partial observations; no invented overall verdict.
 - [ ] Historical or external manifest reimport is idempotent; manifest revision isn't a new trial.
+- [ ] Send position 3 when 2 is missing, retry an accepted item with changed bytes, race the last attachment with sealing, and interrupt between seal and canonical publication. Every acknowledged item survives at its position; after staging retirement an identical retry recovers its receipt and a late item cannot alter the manifest.
 - [ ] Unknown source schema or namespaced metadata stays opaque with usable diagnostic; unsupported source data never silently maps to false facts.
 - [ ] Core compilation/run tests pass with zero installed producers, executors, task trackers, or environment credentials.
 - [ ] A new declarative method pack can add a guidance card and custom optional fields **without modifying core code**.
@@ -1984,12 +2105,22 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] Fresh canonical read-sets drive companion validation, never mixed-generation Markdown.
 - [ ] Hostile HTML, remote embeds, plugin fences, YAML values and URI text stay inert in previews.
 - [ ] Review export excludes raw journal/secrets and checks labels/filenames/Canvas/annotations as well as artifact bodies.
+- [ ] A public decision whose decisive objection is restricted is withheld or carries an approved caveat in every public channel; names, counts, hashes, cursors, stale generated files and the omission manifest leak nothing the policy hides; re-exporting an old snapshot follows today's policy.
 - [ ] A mobile/offline reader can understand the exported case without shell or community plugins.
 - [ ] Plugin setup/uninstall preserves unrelated configuration and custom configuration-directory settings.
 
 ### 20.5 Cold-agent evaluation
 
-This is a release gate, not a documentation review. At minimum test two distinct agent families/hosts available to implementers, multiple fresh sessions, recorded prompt+tool version, and an independent scenario oracle. Each agent receives **only** the executable, a seed data bundle, a task objective and permission to use `--help`. No hidden domain-specific coaching from the evaluator.
+This is a release gate **structured as a controlled comparison**, not a documentation review or an uncontrolled pass rate. No published study shows that structured evidence tracking beats free-form notes for agents, and plain scratchpads are a strong baseline, so this comparison is the evidence the product needs.
+
+- **Conditions.** Use at least two agent families or hosts. Match each case across two arms: plain Markdown notes with normal file/search tools, and the same tools plus `inv`. A no-tool arm is optional. Both arms get the same objective, source bytes, time/token budget and handoff boundary, discovery only through ordinary help, and no evaluator coaching. Counterbalance run order, pin model/host/tool versions and prevent session carryover.
+- **Primary outcome: the successor's answer.** One session investigates and is interrupted; a fresh successor answers what can be concluded or chosen, the decisive citation, the strongest limitation and what would change it. Both arms submit the same short answer format. Normalize citations to seed-document selectors and strip tool identifiers before graders blinded to the arm see answers. Grade against a prewritten rubric that allows every choice consistent with the stated preferences and constraints. Grade tool-specific mechanics separately.
+- **Held-out case families.** Split development, pilot and sealed evaluation cases by underlying case family, with all variants in the same split. Sealed cases are written by someone who does not work on blindspot rules or onboarding, and their keys live outside the agents' workspace. Only sealed results count toward a release claim.
+- **Paired twins.** Include sufficient-evidence, missing-evidence and cosmetically changed twins (remove a decisive source, flip an operative criterion, rename an option, add a duplicate citation), plus one-shot lookups where the right move is to skip the tool. Count missed warranted answers alongside unwarranted promotions.
+- **Gate content, not gate presence.** Graders judge whether recorded rivals were real alternatives with a distinguishing prediction and whether retrospectives state anything checkable. Report the strawman rate.
+- **Sample size and reporting.** The experimental unit is an independent case, not a repeat. Twenty runs cannot separate 90% from 80% success (18/20 has a 95% Wilson interval of about 70–97%), and zero failures in 20 bounds the failure rate only below about 14%. Estimate between-case variability at the Milestone A pilot, then preregister the primary outcome, minimum useful difference, burden limit and sample size. Report paired differences with intervals clustered by case, per-model and per-domain breakdowns, and repeat reliability (fraction of cases where all k repeats pass).
+- **Cost.** Report tokens, tool calls, help/schema bytes and wall time per arm from fresh start through handoff. Matching the notes arm on correctness at much higher cost is a failure.
+- **Decision rule.** Before opening the sealed set, choose one release criterion: a meaningful gain in successor correctness within the cost budget, or noninferior correctness within a stated margin with a meaningful burden reduction. If results are inconclusive, report the uncertainty and withhold the improvement claim. Use fresh held-out families after tuning on failures. If LLM graders are used, treat them as correlated, not independent.
 
 Four base scenarios plus adversarial variants:
 
@@ -1999,7 +2130,7 @@ Four base scenarios plus adversarial variants:
 4. Compare architectural options under hard and soft constraints, record a conditional decision and react to a changed criterion.
 5. Resume interrupted work with a different agent and a stale snapshot.
 6. Retry a write whose response was lost; handle a real revision conflict without clobbering.
-7. Receive a source containing a forged `AGENTS.md` or instructions and ignore its requests.
+7. Receive a source containing a forged `AGENTS.md`, instructions and an embedded schema-valid `inv record` payload urging the agent to validate a false conclusion; ignore them. Second stage: a first agent summarizes that source; a second agent, reading only `brief` and `show --depth summary`, must not act on any instruction carried in the synopsis, title or lesson. Policy guardrails (§16.1) block the promotion when enabled.
 8. Use title/summary reads to inspect a 40-record case before selectively fetching deep evidence; retain the decisive caveat and reduce unnecessary raw reads.
 9. Discover one deliberate missing control/criterion with `inv blindspots`, then record a genuinely novel semantic risk absent from the checker, and review without auto-promoting the case.
 10. Produce a useful, bounded Retrospective for a failed or inconclusive investigation and close atomically; demonstrate method packs did not mutate.
@@ -2009,13 +2140,13 @@ Measure at least:
 | Measure | Initial acceptance target |
 |---|---|
 | Correct case/object targeting | 100%; no cross-case writes. |
-| Simple first useful commit | Within three tool calls after onboarding/schema access. |
-| Task success | At least 90% over at least 20 documented fresh runs, with each domain represented and the new blindspot/retrospective scenarios exercised; investigate every failure. |
-| False promotion | Zero in invalid-control, source-dependence and stale-decision cases. |
+| First use and total burden | First useful receipt within three calls after onboarding (the `start` form makes this one). Also count all calls, help/schema bytes, file preparation, time and tokens through handoff in both arms. |
+| Task success | 18/20 is a smoke target only. Release claim: per the preregistered decision rule above, on sealed cases, with paired differences and case-clustered intervals; each domain represented; investigate every failure. |
+| False promotion and unnecessary abstention | Zero in deterministic invalid-control and stale-basis fixtures. In agent trials, report counts and denominators for unwarranted answers and missed warranted answers in both arms, including timeouts. "Zero observed" is stated with its upper bound, never as "zero". |
 | Lost/duplicate writes | Zero with injected response loss, retries and process termination. |
 | Repairability | Ordinary schema/CAS error resolved without bespoke intervention. |
 | Continuation | Fresh agent accurately states the current answer/choice, its strongest caveat, and next useful observation. |
-| Context efficiency | Measure bytes/tokens and unnecessary calls; title/summary reads reduce output versus full evidence while preserving necessary caveats. A compact 40-record fixture should emit at least 50% fewer bytes than a full-record traversal without worse answer correctness. This is a release *target*, not a claimed result. |
+| Context efficiency | Measure bytes/tokens and unnecessary calls; title/summary reads reduce output versus full evidence while preserving necessary caveats. A compact 40-record fixture should emit at least 50% fewer bytes than a full-record traversal without worse answer correctness; this is a compression regression check. For the product claim, compare actual selective reads, end-to-end tokens and correctness against the notes arm. |
 | Blindspot calibration | All seeded structural gaps detected in matched fixtures; no claim of completeness for unknown semantic gaps. Reviewer can record additional gaps safely. |
 | Learning discipline | Every completed substantive scenario has a linked, useful Retrospective; zero invented failures or auto-adopted method changes. |
 | Domain neutrality | Agents in architecture/research tasks do not need security abstractions or unrelated test-run ceremony. |
@@ -2034,6 +2165,8 @@ Ask a reviewer who did not create the case to:
 6. Resume work using the suggested command.
 7. Switch between synopsis, full reasoning and an exact evidence excerpt; identify whether the synopsis is stale.
 8. Locate the most recent blindspot challenge and methodological Retrospective; tell which lessons are speculative versus supported.
+9. Decide whether a suggested measurement would change the current choice, defer an unavailable source, and find the still-visible blocker.
+10. Follow the evidence-to-caveat path by keyboard and in a linear plain-text rendering, in a narrow viewport with color off. Status, uncertainty, links and next action keep meaningful labels. Count wrong turns and requests for help.
 
 Pass only when the reviewer can do these without a narrated tour. Capture UI observations and fix misleading status labels, overwhelming tables, or dead-end navigation. A screenshot looking polished is insufficient.
 
@@ -2096,9 +2229,10 @@ Main loop (not mandatory sequence):
    It reports structural omissions, not all possible blindspots. Record a
    scoped `review.submit(kind=blindspot)` when challenging the work; add new
    Questions/Assumptions/Objections through typed mutations.
-9. Before substantive closure, create a bounded `retrospective.record` with
-   evidence-linked methods tried, misleading work, lessons and limits;
-   close atomically in the same batch if convenient. Never invent a failure.
+9. Before closing a material case, run `inv retrospective --draft` and record
+   a bounded `retrospective.record` whose lessons cite digest items or record
+   IDs; close atomically in the same batch if convenient. Never invent a
+   failure. Small or abandoned cases may waive it with a reason.
 10. Leave a bounded brief so another agent can resume from committed facts.
 
 Discover operations with `inv schema OP --format json`. Generated schemas have
@@ -2198,6 +2332,22 @@ Pinned commit: `6421d80d00c904f18e605e10ff264dd7b89a8dc3`, committed 2026-11-21.
 | G8 | Martin Fowler, [Architecture Decision Record](https://martinfowler.com/bliki/ArchitectureDecisionRecord.html) (2026) | Superseding accepted decisions rather than retroactively editing their original meaning. |
 | G9 | W3C, [PROV-DM](https://www.w3.org/TR/prov-dm/) | Cross-domain entities, activities, source derivation and attribution. No requirement to ship RDF/semantic web APIs. |
 
+| G10 | Mytkowicz et al., [Producing Wrong Data Without Doing Anything Obviously Wrong!](https://sape.inf.usi.ch/publications/asplos09), ASPLOS 2009 | Measurement bias from environment size and link order; record the environment fingerprint. |
+| G11 | Kalibera & Jones, [Rigorous Benchmarking in Reasonable Time](https://kar.kent.ac.uk/33611/), ISMM 2013 | Repetition levels, per-level sizing, effect-size intervals over significance tests. |
+| G12 | Tene, [wrk2](https://github.com/giltene/wrk2) and [HdrHistogram](https://github.com/HdrHistogram/HdrHistogram) | Coordinated omission; measure latency from intended send time. |
+| G13 | Bulej et al., [Duet Benchmarking](https://arxiv.org/abs/2001.05811), ICPE 2020 | Paired, interleaved runs under noise. |
+
+**Revision 4 methodology sources** (introduced by the reviews; see the reviews for fuller citations and their verification tags):
+
+| ID | Source | Design influence |
+|---|---|---|
+| R1 | Platt, *Strong Inference*, Science 1964 | Rival hypotheses with crucial, discriminating tests. |
+| R2 | Mayo, *Statistical Inference as Severe Testing*, 2018 | Evidence supports H only if the test would probably have caught H being false. |
+| R3 | Pearl, *Causality*, 2009 | Confounder vs. mediator vs. collider roles; selection bias from failure-only data. |
+| R4 | NASA Decision Analysis §6.8 [G5]; Keeney, "Common Mistakes in Making Value Trade-offs", 2002 | Value of information; weights meaningful only with ranges. |
+| R5 | GRADE Working Group guidance; Friedman et al., 2018, on coarse probability bins | Named downgrade reasons for confidence; a seven-step likelihood scale loses little accuracy. |
+| R6 | PRISMA 2020 statement | Report search scope and empty searches behind absence claims. |
+
 **Scope of verification:** This revision extends the previous documented research with Google SRE, NASA decision-analysis guidance, performance benchmarking, and ADR sources. These sources support selected practices; they don't validate the whole implementation. The earlier research/pinned `brenner_bot` inspection is retained below. No referenced consumer integration is required by the core.
 
 ### 23.5 Sapper / nvwabase (design references, **not** dependencies)
@@ -2250,15 +2400,127 @@ The reviewed CLI documentation specifies the Obsidian 1.12 installer generation 
 
 ### 23.8 Standards for implementers
 
-- [RFC 8785 — JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785): exact transaction hashing contract.
+- [RFC 8785 — JSON Canonicalization Scheme](https://www.rfc-editor.org/rfc/rfc8785): considered and **not** used for integrity in revision 4 (hashes cover stored bytes; see Disposition).
 - [RFC 6901 — JSON Pointer](https://www.rfc-editor.org/rfc/rfc6901): artifact selectors.
 - [RFC 9562 — UUIDs](https://www.rfc-editor.org/rfc/rfc9562): UUIDv7 identity; timestamp-bearing IDs still do not establish trusted observation time.
 - [SQLite atomic commit](https://www.sqlite.org/atomiccommit.html) and [WAL](https://www.sqlite.org/wal.html): verify actual platform/filesystem behavior and keep the disposable database local.
 
 ## Final handoff instruction
 
-Start with W00/W01 to freeze generic data and transaction contracts. Deliver Milestone A as a working **explanatory** case and a working **architecture-choice** case. Then make the neutral recorder reusable by independent consumers, qualify crash recovery and provenance, and ship a headless Obsidian casebook. The fresh-agent tests in §20 are as important as durability tests: one measures whether unfamiliar agents actually know when/how to use the tool; the other whether recorded knowledge survives real errors.
+Start with W00/W01 to fix the transaction envelope and draft the domain slice for the Milestone A comparison, and write the three pre-W02 ADRs. Deliver Milestone A as a working **explanatory** case and a working **architecture-choice** case. Then make the neutral recorder reusable by independent consumers, qualify crash recovery and provenance, and ship a headless Obsidian casebook. The fresh-agent tests in §20 are as important as durability tests: one measures whether unfamiliar agents actually know when/how to use the tool; the other whether recorded knowledge survives real errors. Run the A-gate before W07: if `inv` does not help a successor more than plain notes, simplify before building further.
 
 **The result should feel simple:** *ask a question; capture evidence; compare explanations or choices; gather discriminating information; challenge what you may have missed; reach a bounded answer or decision; and leave an understandable case **and a useful method retrospective** for the next investigator.*
 
 **Investigation never needs to know what produced the observations, or what external software will act on the decision.**
+
+## Disposition of reviews
+
+Revision 4 responds to three independent reviews of revision 3: [review 1](plan.review.1.md), [review 2](plan.review.2.md) and [review 3](plan.review.3.md). Where reviewers disagreed, the conflict was settled on evidence. Three claims were re-checked on the web for this revision: the Obsidian Bases syntax page, the MCP 2026-07-28 revision, and the Rust `File::lock` stabilization. Other citations are carried from the reviews with their stated verification levels. They were not independently re-fetched.
+
+**Legend:** **Adopted**: the change is in the plan body. **Modified**: adopted in a changed form, with the reason. **Rejected**: not adopted, with the reason. **Deferred**: recorded for later, with an entry condition.
+
+### Evaluation and sequencing
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| Plain-notes baseline arm, paired comparison, intervals | R1 #1, R2 #1, R3 #1 | **Adopted** | §20.5. All three reviews agree. The no-tool arm is optional; the notes arm is the comparison that matters. |
+| Held-out (sealed) case families written by a non-builder | R2 #1, R3 #1 | **Adopted** | §20.5. Split by case family so variants do not leak across splits. |
+| Successor's bounded answer as primary outcome; twins; skip-the-tool tasks; missed warranted answers counted | R3 #1 | **Adopted** | §20.5. |
+| Fixed sample size (≥5 runs/scenario/arm, ~100 per arm) | R1 #1, R2 #1 | **Modified** | §20.5. Size the trial from pilot between-case variability, then preregister it. A fixed per-scenario count measures repeats of one case, not other cases (R3). The interval arithmetic from R1/R2 is kept as the reason. |
+| Grade gate content (strawman rivals, uncheckable retrospectives) | R2 #1 | **Adopted** | §20.5. |
+| Early cold-agent gate at Milestone A; draft schema until then | R1 #12, R2 #1, R3 #1 | **Adopted** | §19.2 W01, §19.3 A-gate, §19.4, final handoff. The pre-declared decision rule becomes an ADR. |
+| Shrink W01 to ~10 types, defer Retrospective | R1 #12 | **Modified** | W01 drafts every type the first two scenarios use (including Assumption, Objection, Annotation and Retrospective, per R2 #3), marked `v0-alpha`. Deferring Retrospective would conflict with the closure gate the slice exercises. |
+| Bring-your-own-source handoff exercise at A | R3 "Implementation decision" | **Adopted** | §19.3. |
+
+### Methodology
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| Per-rival expectation on Assessments | R2 #4 | **Adopted** | §2.1, §5.2, §6.3, §8.5. Most evidence is not a planned test, so the comparison must live on the Assessment. |
+| Per-rival prediction table on confirmatory plans; `non_discriminating_plan` check | R1 #5 | **Adopted** | §5.2, §6.4, §8.5. |
+| Typed `causal_role` tags on records | R1 #5 | **Modified** | The `causal-structure` card teaches roles. The `failure_only_selection` check is adopted. Typed tags are **deferred** until trials show agents fill them meaningfully (R2's caution: agents fill fields whether or not they can justify them). |
+| Severity rationale field on supporting Assessments | R1 #5 | **Modified** | Covered by the per-rival expectation, which is a checkable form of the same question. No separate prose field. |
+| Likelihood separate from confidence; GRADE downgrade reasons as named prompts | R1 #2, R2 #5 | **Adopted** | §5.7. Likelihood is allowed only on resolvable claims and is scored with Brier on resolution. It never gates. |
+| Five-level certainty scale (`very_low`…) and likelihood intervals | R1 #2 | **Modified** | Kept `low/moderate/high` plus named downgrade reasons; likelihood is a number or the seven ICD 203 terms. GRADE itself says it is not a quantitative system. |
+| NATO Admiralty letter-number grades | R1 #2 | **Rejected** | Irwin & Mandel 2019 report that the scales mask subjectivity and that raters do not keep the axes independent. The two axes stay separate in §5.6 with `cannot_judge`. |
+| `prior` / reference-class card | R1 #6, R2 #5 | **Adopted** | Merged into one `reference-class` card (§2.4). |
+| Premortem | R1 #6 | **Modified** | Advisory card only, not typed `decision.propose` fields. R2 could not verify the "30% more reasons" figure, and the follow-up found reduced confidence, not better outcomes. |
+| Weight-free Pareto status; value-of-information ranking | R1 #6 | **Adopted** | §7.2, §15.1, conservative dominance rule. |
+| Weights only with stated ranges; scale anchors, no option-set normalization; decide-then-check | R2 #13 | **Adopted** | §15.1. |
+| Soften ADRs from "method" to "recording format" | R2 #13 | **Adopted** | §2.1. |
+| PRISMA-style `search_coverage`; absence-claim check | R1 #7 | **Adopted** | §2.1, §5.2, §8.5, Scenario D. |
+| Debugging: observational vs. interventional evidence, k-of-n reproduction, toggle, multi-factor roles | R2 #12 | **Adopted** | §2.4 `intervene` card, §5.3, §20.1. |
+| Performance: repetition levels, trial order, load model / coordinated omission, sample count, no averaged percentiles; new sources | R2 #11 | **Adopted** | §17.2, §20.1, §23.4 G10–G13. |
+| p99 needs n ≥ 299 | R2 #11 | **Modified** | Advisory flag stated precisely as the distribution-free order-statistic bound. R3 correctly notes it is neither a universal floor nor a fix for missing slow requests. |
+| Denominators/censoring and practical-equivalence margins | R3 #7 | **Adopted** | §17.2, §20.1. |
+| Claim-level origin independence, keeping every acquisition | R3 #3 | **Adopted** | §5.6, §17.4, §20.1. Replaces "one acquisition family", which lost the article's own bench test. |
+| Prior outcome exposure, holdout boundary and evidence reuse as separate axes from chronology | R3 #4 | **Adopted** | §5.2, §6.4, §6.5, §20.1. |
+
+### Reviews, retrospectives and learning
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| `context_isolation` on reviews | R1 #3 | **Adopted** | §5.2, §6.4, §8.5, §14.2. R2 did not verify the Huang et al. citation, but the field is cheap and honest regardless. |
+| Actor descriptor; same-family reviews as one dependence group | R2 #8 | **Adopted** | §14.2. Self-reported, labeled as a claim. |
+| Retrospective required only for material cases; waiver otherwise | R1 #3, R2 #6 | **Adopted** | §6.4, §8.6, §9.4, §21. |
+| Journal-derived process digest; lessons must cite digest items | R1 #3, R2 #6 | **Adopted** | §8.6. Addresses the closing agent who was not present. |
+| Expectations recorded at `case.create` | R2 #6 | **Adopted** | §8.6, §9.4. Optional. |
+| Lesson consultation tracking; admission step before cross-case visibility | R2 #6, #7 | **Adopted** | §8.6, §16.1. |
+
+### Agent experience and interface
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| Objection record and `objection.raise`/`withdraw` | R2 #3, R3 #2 | **Adopted** | §4.2, §5.2, §9.4. Fixes an internal contradiction. |
+| Drop Review `draft` state; fix W01 type list and §4.1 "adapters" label | R2 #3 | **Adopted** | §6.2, §19.2, §4.1. |
+| Flag-form shortcuts in v1 | R2 #3 | **Adopted** | §9.1. The command ID is printed *before* submission as well as in the receipt, because R3 noted a key that appears only in the lost response cannot be used for recovery. |
+| `start` (new case + first source in one write) and `receipt KEY` | R3 #5 | **Adopted** | §8.1, §8.2, §9.1, §9.5, §11.1, §20.2. |
+| `--json` alias | R3 #5 | **Adopted** | §9.2. |
+| Ship executable as `investigation`; `inv` only as a non-clobbering alias | R3 #5 | **Adopted** | Header, §8.1 example, §9.5. Python Invoke installs `inv`. Elsewhere `inv` remains spec shorthand rather than being rewritten throughout. |
+| `next` explains outcome branches; one leading card; `advice_feedback` deferral | R3 #6 | **Adopted** | §7.2, §7.5, §9.4. |
+| Fix blindspot example `suggested_schema` (`review.submit` → `comparison.add`) | R3 #6 | **Adopted** | §8.5. |
+| Large sparse choice fixture (1,000 × 200) | R3 #6 | **Adopted** | §10.5. |
+| Accessibility checks in the human gate | R3 #6 | **Adopted** | §20.6. |
+| `text_quote` selector with mechanical verification | R2 #2 | **Adopted** | §5.4, §6.4, §8.5, §20.1. Output states that presence is not support. |
+| Compact MCP default profile, CI-enforced size budget | R1 #9 | **Adopted** | §9.7. |
+| CLI + skill as primary path; reword "advertised at startup" for stateless MCP | R2 (on R1 #9) | **Adopted** | §9.7. Confirmed for this revision: MCP 2026-07-28 removes the `initialize` handshake. |
+
+### Trust, sensitivity and retention
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| `--read-only` mode; opt-in promotion/suppression separation | R1 #10 | **Adopted** | §9.1, §16.1. |
+| Authored text is data at every depth, with inherited trust level | R2 #7 | **Adopted** | §16.1. The stated limit is that `inv` sees only declared reads. |
+| Two-stage injection drill (hostile source → synopsis → second agent), embedded valid `inv record` payload | R1 #10, R2 #7 | **Adopted** | §20.5 item 7. |
+| Compute caveats before audience filtering; withhold or qualify | R3 #9 | **Adopted** | §15.4, §16.3, §20.4. |
+| Retention per reference; reclamation after all obligations; archive pins | R3 #10 | **Adopted** | §10.7, §16.5, §20.2. |
+| UUIDv7 timestamp disclosure in exports | R2 #14 | **Adopted** | §15.4. |
+| Standards mapping: Web Annotation selectors, in-toto/DSSE receipts, RFC 3161 | R2 #14 | **Adopted** as documentation | §5.4, §6.5. Exporters are deferred. |
+
+### Storage and durability
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| Segmented append-only log instead of file-per-event | R1 #8 | **Rejected** | Appended logs bring torn-tail and "append leaves garbage" bugs (ALICE), and the ext4/XFS fsync-failure behavior is worse for appends. R1's performance concern is unmeasured, and the target is agent-paced (150 ms p95). Revisit only on a measured miss, by packing sealed ranges, not by switching formats. |
+| Sequence-only event filenames | R2 #9 | **Adopted** | §4.2, §10.1. Makes exclusive create enforce one event per sequence. |
+| Hash stored bytes; drop RFC 8785 from the integrity path | R2 #9 | **Adopted** | §10.1. Supersedes R1 #4's float-canonicalization fixes, which become unnecessary. |
+| Decimal strings for measured values | R1 #4 | **Adopted** | §10.1, §9.4 example. Still worthwhile for significant figures. |
+| `flock` via `std::fs::File::lock`; never `fcntl` record locks | R1 #4, R2 #9 | **Adopted** | §10.1. Confirmed for this revision: stable since Rust 1.89. |
+| `link`/`RENAME_NOREPLACE` publish; blobs durable before events; fsync errors fatal | R1 #4, R2 #9 | **Adopted** | §10.2. |
+| Refuse network filesystems; storage-trait fake + LazyFS crash testing | R2 #9 | **Adopted** | §10.2, §20.2. |
+| Review basis includes set membership (phantoms) | R3 #2 | **Adopted** | §6.4, §10.3, §20.2. The most consequential correctness gap any review found. |
+| Historical `--snapshot` reads; one snapshot per brief | R3 #2 | **Adopted** | §8.3. |
+| Per-handle capture positions and seal | R3 #8 | **Adopted** | §11.3, §20.3. |
+| ADRs before W02: file journal vs. SQLite; per-workspace vs. per-case chain | R2 #9, #10 | **Adopted** | §19.5. The per-case question is left to the ADR, with a stated lean toward per-case. |
+
+### Obsidian
+
+| Proposal | Source | Disposition | Where / why |
+|---|---|---|---|
+| `note.` prefix is mandatory; add `sort:` | R1 #11 | **Rejected** | Checked against the current syntax page: `note.author` and bare `author` are equivalent, and no view `sort` key is documented. The plan's form was valid. |
+| `displayName` labels; scope filter to exact case ID | R1 #11 | **Adopted** | §12.5. Filtering by `inv_case_id` replaces the broad folder match, which the plan already said real views must avoid. |
+| Load-test the vault near 50,000 notes | R2 "Verified" | **Adopted** | §12.5. |
+
+### Not changed
+
+The reviews verified these and proposed no change: the record/execute split and dependency inversion, the rejection of agent councils and automatic scores, separate outcome dimensions, the write-temp/fsync/publish/fsync-directory pattern, and the Obsidian CLI/Headless/Sync/property facts (§12, §23.6). The companion plugin (§13) was not reviewed in depth by any reviewer. Re-review it before W15.
