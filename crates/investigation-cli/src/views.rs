@@ -88,6 +88,15 @@ pub fn effective_state(replay: &CaseReplay, record: &Record) -> EffectiveStateIn
         Some("conditional") => Some(
             json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"Material conditions remain unresolved."}),
         ),
+        Some("proposed")
+            if record.body["hard_conditions"]
+                .as_array()
+                .is_some_and(|conditions| !conditions.is_empty()) =>
+        {
+            Some(
+                json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"The proposed choice depends on unresolved hard criteria."}),
+            )
+        }
         _ => record.body["caveats"]
             .as_array()
             .and_then(|items| items.first())

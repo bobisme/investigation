@@ -1,6 +1,8 @@
 //! Local command-line frontend.
 
 mod evidence;
+mod next;
+mod onboard;
 mod schema;
 mod selection;
 mod views;
@@ -19,6 +21,7 @@ use investigation_core::{
     PROGRAM_NAME,
     command::Command as RecordCommand,
     command::RevisionRef,
+    gap_rules::{enumerate_gaps, rank_next},
     header::Actor,
     identity::{ResolveError, resolve_prefix},
     input::MAX_REQUEST_BYTES,
@@ -37,8 +40,10 @@ const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
 The workspace preserves evidence and attributed revisions. Writes return a durable receipt.
 
-  investigation init ./casework --format json
+  investigation onboard --format json
+  investigation init ./casework --no-vault --format json
   investigation schema case.create --format json
+  investigation --workspace ./casework next --format json
   investigation --workspace ./casework record --input case.json --format json
   investigation --workspace ./casework receipt KEY --actor ACTOR --format json
 
@@ -141,6 +146,13 @@ enum Commands {
         after_help = "Examples:\n  investigation schema --list --format json\n  investigation schema case.create --format json\n  investigation schema record --schema-only --format json"
     )]
     Schema(schema::Args),
+    /// Learn the model and inspect the next valid local action.
+    Onboard,
+    /// Rank up to three snapshot-bound investigative gaps.
+    Next {
+        #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=3))]
+        limit: u8,
+    },
     /// Look up a command without resubmitting its original input.
     #[command(
         after_help = "Use the original command ID and actor.\nExample: investigation receipt create-case-1 --actor agent:investigator --format json"
@@ -274,6 +286,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
     match cli.command {
         Commands::Schema(args) => schema::describe(args, &global),
         Commands::Init { path, no_vault } => init(&path, !no_vault, global.workspace.as_deref()),
+        Commands::Onboard => onboard::run(&global),
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
@@ -290,6 +303,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Brief { level, max_bytes } => {
                     brief(&mut store, &global, level, max_bytes)
                 }
+                Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
@@ -300,7 +314,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                         text,
                     ))
                 }
-                Commands::Schema(_) | Commands::Init { .. } => {
+                Commands::Schema(_) | Commands::Init { .. } | Commands::Onboard => {
                     unreachable!("workspace-independent command")
                 }
             }
@@ -403,25 +417,57 @@ fn brief(
         "--format".into(),
         "json".into(),
     ]);
+    let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case)?;
+    let next = rank_next(&inventory, 3);
+    let mut effective = replay
+        .state
+        .current(case)
+        .map(|record| views::effective_state(&replay, record))
+        .unwrap_or_default();
+    let outcomes: Vec<_> = replay
+        .state
+        .records()
+        .filter(|record| {
+            matches!(
+                record.header.id.kind(),
+                investigation_core::identity::Kind::Conclusion
+                    | investigation_core::identity::Kind::Decision
+            )
+        })
+        .collect();
+    let record_effective: std::collections::BTreeMap<_, _> = outcomes
+        .iter()
+        .map(|record| (record.header.id, views::effective_state(&replay, record)))
+        .collect();
+    if let Some(primary) = outcomes
+        .iter()
+        .filter(|record| {
+            record.body["lifecycle"] != "superseded" && record.body["status"] != "superseded"
+        })
+        .max_by_key(|record| (record.header.acceptance_sequence, record.header.id))
+    {
+        let overlay = &record_effective[&primary.header.id];
+        effective.material_caveat = overlay.material_caveat.clone();
+        effective.contradiction = overlay.contradiction.clone();
+    }
+    effective.gaps.push(json!({
+        "snapshot":next.snapshot,
+        "rule_version":next.rule_version,
+        "counts":next.counts,
+        "recommendations":next.recommendations.iter().map(|item| json!({
+            "action_id":item.action_id,"gap_id":item.gap_id,"rule_id":item.rule_id,
+            "subject_refs":item.subject_refs,"purpose":item.purpose,
+            "status_prerequisites":item.prerequisites,"unresolved_fields":item.unresolved_fields,
+            "schema_operation":item.schema_operation,"external_effects":item.external_effects,
+            "outcome_branches":item.outcome_branches,"deferral_alternative":item.deferral_alternative
+        })).collect::<Vec<_>>(),
+        "remaining_recommendations":next.remaining_recommendations,
+        "limits":next.limits
+    }));
     let inputs = BriefInputs {
+        effective,
         next_actions: vec![json!({"kind":"local_read","argv":argv})],
-        effective: replay
-            .state
-            .current(case)
-            .map(|record| views::effective_state(&replay, record))
-            .unwrap_or_default(),
-        record_effective: replay
-            .state
-            .records()
-            .filter(|record| {
-                matches!(
-                    record.header.id.kind(),
-                    investigation_core::identity::Kind::Conclusion
-                        | investigation_core::identity::Kind::Decision
-                )
-            })
-            .map(|record| (record.header.id, views::effective_state(&replay, record)))
-            .collect(),
+        record_effective,
         ..BriefInputs::default()
     };
     let view =
@@ -652,7 +698,7 @@ fn scope_argv(workspace: &Workspace, argv: &mut Vec<String>) {
     }
 }
 
-fn display_argv(argv: &[String]) -> String {
+pub(crate) fn display_argv(argv: &[String]) -> String {
     argv.iter()
         .map(|part| {
             if !part.is_empty()
