@@ -194,6 +194,13 @@ impl<F: DurableFs> Store<F> {
                 )
             },
         )
+        .map_err(|failure| {
+            if failure.error.code == ErrorCode::DurabilityUnknown {
+                failure.with_argv(receipt_argv(&command.actor, &command.command_id))
+            } else {
+                failure
+            }
+        })
     }
 
     fn commit_plan(
@@ -258,6 +265,7 @@ impl<F: DurableFs> Store<F> {
         // Exercise the same replay checks before touching canonical bytes.
         let mut projected = original.clone();
         projected.apply(&accepted)?;
+        self.verify_promotion_artifacts(&projected, &accepted)?;
         let case_id = accepted.case_id;
         let transaction_id = ids
             .next_id(Kind::Transaction)
@@ -725,7 +733,7 @@ fn io_failure(error: io::Error) -> Failure {
             error.kind()
         ),
     )
-    .with_argv(read_argv("doctor"))
+    .with_argv(read_argv("check"))
 }
 
 fn lock_failure(error: LockError) -> Failure {

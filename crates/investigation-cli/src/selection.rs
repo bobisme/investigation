@@ -48,7 +48,16 @@ pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {
         }
         _ => "",
     };
-    Failure::new(code, format!("{error}{advice}"))
+    let failure = Failure::new(code, format!("{error}{advice}"));
+    if code == ErrorCode::WorkspaceRequired {
+        failure.with_argv(
+            [PROGRAM_NAME, "onboard", "--format", "json"]
+                .map(str::to_owned)
+                .to_vec(),
+        )
+    } else {
+        failure
+    }
 }
 
 pub(crate) fn select_actor(
@@ -116,7 +125,9 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
     failure.error.actual = Some(json!(
         heads.iter().map(|head| head.case_id).collect::<Vec<_>>()
     ));
-    Err(failure)
+    let mut argv = workspace_argv(store.workspace());
+    argv.extend(["onboard", "--format", "json"].map(str::to_owned));
+    Err(failure.with_argv(argv))
 }
 
 fn resolve_case_prefix(selector: &str, ids: impl Iterator<Item = Id>) -> Result<Id, Failure> {

@@ -7,13 +7,13 @@ use investigation_core::{
     basis::basis_digest,
     command::RevisionRef,
     decision_ops::{self, EffectiveDecision},
-    header::display_title,
+    header::{ClassificationLevel, display_title},
     identity::{Id, Kind},
     review::EffectiveDisposition,
     review_ops,
     state::Record,
 };
-use investigation_store::journal::CaseReplay;
+use investigation_store::{Store, journal::CaseReplay};
 use serde_json::{Map, Value, json};
 
 /// Summary synopses are bounded independently from the surrounding JSON.
@@ -47,7 +47,7 @@ pub struct EffectiveStateInput {
     pub gaps: Vec<Value>,
 }
 
-pub fn effective_state(replay: &CaseReplay, record: &Record) -> EffectiveStateInput {
+pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> EffectiveStateInput {
     let kind = record.header.id.kind();
     let recorded = record.body["status"]
         .as_str()
@@ -58,7 +58,7 @@ pub fn effective_state(replay: &CaseReplay, record: &Record) -> EffectiveStateIn
         Kind::Conclusion | Kind::Decision | Kind::Assessment | Kind::Comparison | Kind::Review
     );
     let disposition = review_ops::effective_disposition(&replay.state, record);
-    let state = match (kind, disposition) {
+    let mut state = match (kind, disposition) {
         (_, EffectiveDisposition::Disputed) => json!("disputed"),
         (Kind::Decision, _) => json!(
             decision_ops::effective_decision(&replay.state, record)
@@ -73,34 +73,62 @@ pub fn effective_state(replay: &CaseReplay, record: &Record) -> EffectiveStateIn
         ),
         _ => json!(recorded.unwrap_or("recorded")),
     };
+    let references = match kind {
+        Kind::Observation => serde_json::from_value(record.body["basis"]["artifact_ref"].clone())
+            .ok()
+            .into_iter()
+            .collect(),
+        Kind::Review => serde_json::from_value(record.body["read_set"].clone()).unwrap_or_default(),
+        Kind::Comparison | Kind::Assessment | Kind::Decision | Kind::Conclusion => {
+            review_ops::required_read_set(&replay.state, record).unwrap_or_default()
+        }
+        Kind::Artifact => vec![record.reference()],
+        _ => Vec::new(),
+    };
+    let unavailable = store.unavailable_artifacts(&replay.state, &references);
+    if !unavailable.is_empty() && state != "superseded" && state != "retracted" {
+        state = json!(if reviewed {
+            "needs_review"
+        } else {
+            "evidence_unavailable"
+        });
+    }
     let current = replay.state.current(record.header.id);
     let freshness = if current.is_some_and(|current| current.reference() != record.reference()) {
         json!("historical_revision")
+    } else if !unavailable.is_empty() {
+        json!("evidence_unavailable")
     } else if state == "needs_review" {
         json!("stale")
     } else {
         json!("current")
     };
-    let caveat = match state.as_str() {
-        Some("needs_review") => Some(
-            json!({"state":"known","reason":"The exact review or evidence basis has changed."}),
-        ),
-        Some("conditional") => Some(
-            json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"Material conditions remain unresolved."}),
-        ),
-        Some("proposed")
-            if record.body["hard_conditions"]
+    let caveat = if !unavailable.is_empty() {
+        Some(
+            json!({"state":"known","reason":"Expected retained bytes are missing or fail integrity verification.","unavailable_artifacts":unavailable}),
+        )
+    } else {
+        match state.as_str() {
+            Some("needs_review") => Some(
+                json!({"state":"known","reason":"The exact review or evidence basis has changed."}),
+            ),
+            Some("conditional") => Some(
+                json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"Material conditions remain unresolved."}),
+            ),
+            Some("proposed")
+                if record.body["hard_conditions"]
+                    .as_array()
+                    .is_some_and(|conditions| !conditions.is_empty()) =>
+            {
+                Some(
+                    json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"The proposed choice depends on unresolved hard criteria."}),
+                )
+            }
+            _ => record.body["caveats"]
                 .as_array()
-                .is_some_and(|conditions| !conditions.is_empty()) =>
-        {
-            Some(
-                json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"The proposed choice depends on unresolved hard criteria."}),
-            )
+                .and_then(|items| items.first())
+                .map(|first| json!({"state":"known","value":first})),
         }
-        _ => record.body["caveats"]
-            .as_array()
-            .and_then(|items| items.first())
-            .map(|first| json!({"state":"known","value":first})),
     };
     let contradiction = if state == "disputed" {
         Some(
@@ -193,6 +221,28 @@ fn project_record(
     depth: ViewDepth,
     effective: &EffectiveStateInput,
 ) -> Value {
+    let restricted =
+        |record: &Record| record.header.classification.level == ClassificationLevel::Restricted;
+    let artifact =
+        serde_json::from_value::<RevisionRef>(record.body["basis"]["artifact_ref"].clone()).ok();
+    if restricted(record)
+        || replay
+            .state
+            .current(record.header.id)
+            .is_some_and(restricted)
+        || artifact
+            .and_then(|reference| replay.state.current(reference.id))
+            .is_some_and(restricted)
+    {
+        return json!({
+            "id":record.header.id, "type":record.header.id.kind().to_string(),
+            "title":"Restricted record", "summary_available":false,
+            "snapshot":replay.snapshot,"basis_revision":record.header.revision.0,
+            "depth":depth.as_str(),"content_state":"restricted",
+            "freshness":effective.freshness,
+            "effective_status":effective.status,
+        });
+    }
     let selected = record.body["choice"]["option_ref"].clone();
     let selected_option = if record.header.id.kind() == Kind::Decision {
         serde_json::from_value::<RevisionRef>(selected)
@@ -270,6 +320,30 @@ fn project_record(
         );
         if record.header.id.kind() == Kind::Observation {
             out.insert("summary_untrusted_data".into(), json!(true));
+            if let Ok(reference) =
+                serde_json::from_value::<RevisionRef>(record.body["basis"]["artifact_ref"].clone())
+                && let Some(artifact) = replay.state.revision(reference)
+            {
+                out.insert("artifact_ref".into(), json!(reference));
+                out.insert("source_ref".into(), artifact.body["source"].clone());
+                if let Ok(reference) =
+                    serde_json::from_value::<RevisionRef>(artifact.body["source"].clone())
+                    && let Some(source) = replay.state.revision(reference)
+                {
+                    out.insert("source_title".into(), json!(record_title(source)));
+                }
+            }
+        }
+        if record.header.id.kind() == Kind::Case {
+            out.insert("mode".into(), record.body["mode"].clone());
+            out.insert("scope".into(), record.body["scope"].clone());
+            out.insert(
+                "closure_outcome".into(),
+                record.body["closure_outcome"].clone(),
+            );
+            if let Some(closure) = record.body.get("closure") {
+                out.insert("closure".into(), closure.clone());
+            }
         }
         if record.header.id.kind() == Kind::Decision {
             out.insert("choice".into(), record.body["choice"].clone());
@@ -524,6 +598,13 @@ pub fn brief(
             )
         })
         .collect();
+    let inquiries: Vec<_> = records
+        .iter()
+        .copied()
+        .filter(|record| {
+            record.header.id.kind() == Kind::Inquiry && record.body["lifecycle"] != "retired"
+        })
+        .collect();
     let unresolved = records
         .iter()
         .filter(|record| {
@@ -576,12 +657,14 @@ pub fn brief(
             "deeper_read_commands":inputs.next_actions.len(),
             "full_outcomes":deep_outcomes,
             "evidence":evidence.len(),
+            "inquiries":inquiries.len(),
         },
         "deeper_read_commands":[],
         "outcomes":summary_outcomes,
         "unresolved_questions":unresolved,
         "full_outcomes":[],
-        "evidence":[]
+        "evidence":[],
+        "inquiries":[]
     });
     let minimum_bytes = encoded_len(&output);
     if max_bytes < minimum_bytes {
@@ -626,6 +709,20 @@ pub fn brief(
                 break;
             }
         }
+        for inquiry in inquiries {
+            let mut item = project_record(
+                inquiry,
+                replay,
+                ViewDepth::Summary,
+                &EffectiveStateInput::default(),
+            );
+            if item["content_state"] != "restricted" {
+                item["desired_observations"] = inquiry.body["desired_observations"].clone();
+            }
+            if !append_bounded(&mut output, "inquiries", item, max_bytes) {
+                break;
+            }
+        }
     }
     Ok(output)
 }
@@ -651,7 +748,7 @@ fn append_bounded(output: &mut Value, section: &str, item: Value, max_bytes: usi
 }
 
 impl BriefLevel {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Compact => "compact",
             Self::Standard => "standard",

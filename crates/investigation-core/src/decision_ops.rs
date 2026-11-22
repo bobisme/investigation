@@ -520,7 +520,7 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
                 "/comparison_refs",
                 "Resolve competing comparisons explicitly.",
             )
-            .with_schema("comparison.set"));
+            .with_schema("comparison.add"));
         }
     }
     for member in criteria.members {
@@ -1183,6 +1183,209 @@ mod tests {
                 update_body(&mut s, criterion_id, k);
                 let after = membership(&s, MembershipRule::ActiveHardCriteria, scope).unwrap();
                 assert_ne!(before.digest, after.digest, "seed {seed}");
+            }
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    enum Cell {
+        Measured(u64),
+        Unknown,
+        Stale(u64),
+        Preference,
+    }
+
+    fn as_measurement(cell: Cell) -> Option<u64> {
+        match cell {
+            Cell::Measured(value) => Some(value),
+            _ => None,
+        }
+    }
+
+    fn generated_table(rows: &[[Cell; 3]], order: &[usize]) -> (State, Id, Id) {
+        let case = id("case", 900);
+        let question = id("q", 901);
+        let source = id("src", 902);
+        let artifact = id("art", 903);
+        let digest = format!("sha256:{}", "a".repeat(64));
+        let reference = |id| json!({"id":id,"revision":1});
+        let mut state = State::default();
+        for (id, body) in [
+            (case, json!({})),
+            (question, json!({})),
+            (source, json!({})),
+            (
+                artifact,
+                json!({"source":reference(source),"digest":digest,"size_bytes":12,"format":"application/json","transforms":[],"availability":"retained","integrity":"verified","sensitivity":"internal"}),
+            ),
+        ] {
+            let next = state.sequence() + 1;
+            add(&mut state, rec(id, case, next, body));
+        }
+        for column in 0..3 {
+            let mut body = criterion(question);
+            if column != 0 {
+                body["kind"] = json!("soft");
+                body["threshold"] = Value::Null;
+            }
+            let next = state.sequence() + 1;
+            add(&mut state, rec(id("crit", 1000 + column), case, next, body));
+        }
+        for &row in order {
+            let option_id = id("opt", 1100 + row as u64);
+            let next = state.sequence() + 1;
+            add(&mut state, rec(option_id, case, next, option(question)));
+            for (column, cell) in rows[row].iter().enumerate() {
+                let ordinal = (row * 3 + column) as u64;
+                let observation_id = id("obs", 1200 + ordinal);
+                let criterion_id = id("crit", 1000 + column as u64);
+                let comparison_id = id("cmp", 1300 + ordinal);
+                let (value, outcome, evidence, basis, method) = match cell {
+                    Cell::Measured(value) | Cell::Stale(value) => {
+                        let number = value.to_string();
+                        let observation = json!({
+                            "value":{"kind":"measurement","value":number,"unit":"ms"},
+                            "basis":{"kind":"source","artifact_ref":reference(artifact),"selector":{"schema_version":"inv.selector.v1","artifact_digest":digest,"selector":{"type":"whole"},"validation":"verified"},"text_quote":{"exact":null,"prefix":null,"suffix":null,"state":"not_applicable"}},
+                            "validity":"valid","quality":[],"limitations":[],"variables_changed":[],
+                        });
+                        let next = state.sequence() + 1;
+                        add(
+                            &mut state,
+                            rec(observation_id, case, next, observation.clone()),
+                        );
+                        if matches!(cell, Cell::Stale(_)) {
+                            update_body(&mut state, observation_id, observation);
+                        }
+                        (
+                            json!({"decimal":number,"unit":"ms"}),
+                            if column == 0 && *value > 25 {
+                                "fails"
+                            } else {
+                                "meets"
+                            },
+                            json!([reference(observation_id)]),
+                            Value::Null,
+                            "measured",
+                        )
+                    }
+                    Cell::Unknown => (
+                        Value::Null,
+                        "unknown",
+                        json!([]),
+                        json!({"kind":"unknown","reason":"No observation"}),
+                        "unknown",
+                    ),
+                    Cell::Preference => (
+                        Value::Null,
+                        "unknown",
+                        json!([]),
+                        json!({"kind":"preference","statement":"Operator preference"}),
+                        "preference",
+                    ),
+                };
+                let body = json!({"option_ref":reference(option_id),"criterion_ref":reference(criterion_id),"outcome":outcome,"method":method,"value":value,"basis":basis,"evidence_refs":evidence,"assumption_refs":[],"limitations":null,"uncertainty":"Synthetic test table","rationale":"Generated case","retracted":false,"change_reason":null});
+                let next = state.sequence() + 1;
+                add(&mut state, rec(comparison_id, case, next, body));
+            }
+        }
+        (state, case, question)
+    }
+
+    #[test]
+    fn generated_pareto_proofs_require_current_ranked_cells() {
+        let measure = |value| Cell::Measured(value);
+        let witness = [
+            [measure(10), measure(5), measure(10)],
+            [measure(20), measure(20), measure(20)],
+            [measure(20), Cell::Unknown, measure(20)],
+            [measure(40), Cell::Preference, measure(1)],
+        ];
+        let complete = |row: &[Cell; 3]| -> Option<Vec<u64>> {
+            row.iter().copied().map(as_measurement).collect()
+        };
+        for seed in 0..48u64 {
+            let mut rows = witness;
+            if seed != 0 {
+                let mut random = seed;
+                for row in &mut rows {
+                    for cell in row {
+                        random = random
+                            .wrapping_mul(6_364_136_223_846_793_005)
+                            .wrapping_add(1);
+                        let value = (random >> 32) % 50;
+                        *cell = match (random >> 54) % 8 {
+                            0 => Cell::Unknown,
+                            1 => Cell::Stale(value),
+                            2 => Cell::Preference,
+                            _ => measure(value),
+                        };
+                    }
+                }
+            }
+            let run = |rows, order| {
+                let (state, case, question) = generated_table(rows, order);
+                pareto(&state, case, question)
+                    .unwrap()
+                    .into_iter()
+                    .map(|option| option.status)
+                    .collect::<Vec<_>>()
+            };
+            let results = run(&rows, &[0, 1, 2, 3]);
+            assert_eq!(results, run(&rows, &[3, 1, 0, 2]), "seed {seed}");
+            let expanded = [rows[0], rows[1], rows[2], rows[3], rows[1]];
+            assert_eq!(
+                &results,
+                &run(&expanded, &[4, 1, 3, 0, 2])[..4],
+                "seed {seed}"
+            );
+            for (row, result) in rows.iter().zip(results) {
+                let disqualified = as_measurement(row[0]).is_some_and(|hard| hard > 25);
+                let dominated = !disqualified
+                    && complete(row).is_some_and(|values| {
+                        rows.iter().filter_map(complete).any(|comparison| {
+                            comparison.iter().zip(&values).all(|(a, b)| a <= b)
+                                && comparison.iter().zip(&values).any(|(a, b)| a < b)
+                        })
+                    });
+                assert_eq!(
+                    result == ParetoStatus::DisqualifiedHard,
+                    disqualified,
+                    "seed {seed}"
+                );
+                assert_eq!(
+                    result == ParetoStatus::StrictlyDominated,
+                    dominated,
+                    "seed {seed}"
+                );
+            }
+            let (mut state, _, _) = generated_table(&rows, &[0, 1, 2, 3]);
+            let changed = id("crit", 1000);
+            let comparisons_before: Vec<_> = state
+                .records()
+                .filter(|record| record.header.id.kind() == Kind::Comparison)
+                .map(|record| {
+                    (
+                        record.header.id,
+                        effective_comparison(&state, record).unwrap(),
+                    )
+                })
+                .collect();
+            let mut threshold = state.current(changed).unwrap().body.clone();
+            threshold["threshold"]["value"]["decimal"] = json!("13");
+            update_body(&mut state, changed, threshold);
+            for (comparison, before) in comparisons_before {
+                let record = state.current(comparison).unwrap();
+                let body: ComparisonBody = decode(&record.body).unwrap();
+                let expected = if body.criterion_ref.id == changed {
+                    EffectiveComparison::NeedsReview
+                } else {
+                    before
+                };
+                assert_eq!(
+                    effective_comparison(&state, record).unwrap(),
+                    expected,
+                    "seed {seed}"
+                );
             }
         }
     }

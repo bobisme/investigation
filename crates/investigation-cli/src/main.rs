@@ -361,7 +361,7 @@ fn show(
         None => replay.state.current(id),
     };
     let effective = record
-        .map(|record| views::effective_state(&replay, record))
+        .map(|record| views::effective_state(store, &replay, record))
         .unwrap_or_default();
     let projected = if at.is_some() {
         views::show_record_revision(&replay, id, at, depth, &effective)
@@ -374,7 +374,9 @@ fn show(
         && at.is_none()
         && let Some(record) = record
     {
-        if let Some(basis) = views::review_basis(&replay, record) {
+        if view["content_state"] != "restricted"
+            && let Some(basis) = views::review_basis(&replay, record)
+        {
             view["review_basis"] = basis;
         }
         if id.kind() == investigation_core::identity::Kind::Question {
@@ -422,7 +424,7 @@ fn brief(
     let mut effective = replay
         .state
         .current(case)
-        .map(|record| views::effective_state(&replay, record))
+        .map(|record| views::effective_state(store, &replay, record))
         .unwrap_or_default();
     let outcomes: Vec<_> = replay
         .state
@@ -437,7 +439,12 @@ fn brief(
         .collect();
     let record_effective: std::collections::BTreeMap<_, _> = outcomes
         .iter()
-        .map(|record| (record.header.id, views::effective_state(&replay, record)))
+        .map(|record| {
+            (
+                record.header.id,
+                views::effective_state(store, &replay, record),
+            )
+        })
         .collect();
     if let Some(primary) = outcomes
         .iter()
@@ -466,7 +473,7 @@ fn brief(
     }));
     let inputs = BriefInputs {
         effective,
-        next_actions: vec![json!({"kind":"local_read","argv":argv})],
+        next_actions: vec![json!({"kind":"local_read","argv":argv,"snapshot":replay.snapshot})],
         record_effective,
         ..BriefInputs::default()
     };
@@ -474,9 +481,22 @@ fn brief(
         views::brief(&replay, level, max_bytes.saturating_sub(1), &inputs).map_err(|error| {
             let mut failure =
                 Failure::new(ErrorCode::BudgetTooSmall, error.to_string()).at("/max_bytes");
-            failure.error.expected = Some(json!({"minimum_bytes":error.minimum_bytes + 1}));
+            let minimum = error.minimum_bytes + 1;
+            failure.error.expected = Some(json!({"minimum_bytes":minimum}));
             failure.error.actual = Some(json!({"requested_bytes":max_bytes}));
-            failure
+            let mut argv = workspace_argv(store.workspace());
+            argv.extend([
+                "--case".into(),
+                case.to_string(),
+                "brief".into(),
+                "--level".into(),
+                level.as_str().into(),
+                "--max-bytes".into(),
+                minimum.to_string(),
+                "--format".into(),
+                "json".into(),
+            ]);
+            failure.with_argv(argv)
         })?;
     let text = serde_json::to_string_pretty(&view).expect("brief view serializes");
     Ok(Output::new(view, text))
@@ -573,7 +593,7 @@ fn record(store: &mut Store, global: &Global, input: &Path) -> Result<Output, Fa
     require_case_agreement(store, global.case.as_deref(), command.case_id)?;
     let mut receipt = store
         .record(&input)
-        .map_err(|failure| with_workspace_repair(store.workspace(), failure))?;
+        .map_err(|failure| record_repair(store, &command, failure))?;
     if receipt.next.is_empty()
         && let (Some(case), Some(change)) = (command.case_id, receipt.updated.first())
     {
@@ -592,6 +612,64 @@ fn record(store: &mut Store, global: &Global, input: &Path) -> Result<Output, Fa
         });
     }
     Ok(receipt_output(store.workspace(), receipt))
+}
+
+fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failure) -> Failure {
+    let operation = failure
+        .error
+        .path
+        .as_deref()
+        .and_then(|path| {
+            let operation = path
+                .strip_prefix("/operations/")?
+                .split('/')
+                .next()?
+                .parse::<usize>()
+                .ok()?;
+            command.operations.get(operation)
+        })
+        .or_else(|| command.operations.first());
+    if matches!(
+        failure.error.code,
+        ErrorCode::GateFailed | ErrorCode::UnknownReference
+    ) && let Some(operation) = operation
+    {
+        failure = failure.with_schema(&operation.op);
+    }
+    if failure.error.code == ErrorCode::UnknownReference
+        && let Some(case) = command.case_id
+        && let Ok(replay) = store.case(case)
+    {
+        let expected_kind = failure.error.path.as_deref().and_then(|path| {
+            let (_, pointer) = path.split_once("/payload")?;
+            let value = operation?.payload.pointer(pointer)?;
+            let id = value.as_str().or_else(|| value.get("id")?.as_str())?;
+            id.parse::<investigation_core::identity::Id>()
+                .ok()
+                .map(|id| id.kind())
+        });
+        let refs: Vec<_> = replay
+            .state
+            .records()
+            .filter(|record| expected_kind.is_none_or(|kind| record.header.id.kind() == kind))
+            .take(3)
+            .map(|record| record.reference())
+            .collect();
+        if let Some(first) = refs.first() {
+            failure = failure.with_argv(vec![
+                PROGRAM_NAME.into(),
+                "show".into(),
+                first.id.to_string(),
+                "--case".into(),
+                case.to_string(),
+                "--format".into(),
+                "json".into(),
+            ]);
+        }
+        failure.error.actual =
+            Some(json!({"case_local_references":refs,"snapshot":replay.snapshot}));
+    }
+    with_workspace_repair(store.workspace(), failure)
 }
 
 fn lookup_receipt(store: &mut Store, global: &Global, key: &str) -> Result<Output, Failure> {

@@ -69,6 +69,153 @@ fn create_case(cwd: &Path, key: &str) -> (Value, Value) {
 }
 
 #[test]
+fn w01_handoff_fixture_replays_into_a_public_bounded_brief() {
+    const COMMANDS: &str =
+        include_str!("../../../fixtures/development/w01-handoff/transactions.json");
+    const SOURCE: &str = include_str!("../../../fixtures/development/w01-handoff/source.txt");
+    const EXPECTED: &str = include_str!("../../../fixtures/development/w01-handoff/expected.json");
+    let expected: Value = serde_json::from_str(EXPECTED).unwrap();
+    let mut commands: Vec<Value> = serde_json::from_str(COMMANDS).unwrap();
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    let submit = |value: &Value| run(root, &["record", "--input", "-", "--json"], Some(value), 0);
+    let first = submit(&commands[0]);
+    let case = first["created"][0]["id"].clone();
+    commands[1]["case_id"] = case.clone();
+    submit(&commands[1]);
+    fs::write(root.join("source.txt"), SOURCE).unwrap();
+    let manifest = json!({"schema_version":"inv.ingest.v0-alpha","command_id":"handoff-ingest","actor":"agent:fixture","case_id":case,
+        "source":{"title":"source.txt","format":"text/plain"},"paths":["source.txt"],"extract_text":true});
+    fs::write(
+        root.join("manifest.json"),
+        serde_json::to_vec(&manifest).unwrap(),
+    )
+    .unwrap();
+    let ingest = run(
+        root,
+        &["ingest", "--input", "manifest.json", "--json"],
+        None,
+        0,
+    );
+    let artifact = &ingest["items"][0];
+    let command = |key: &str, operation: &str, payload: Value| json!({"schema_version":"inv.command.v0-alpha","command_id":key,"case_id":case,"actor":"agent:fixture","preconditions":[],"operations":[{"op":operation,"payload":payload}]});
+    let phrase = "900 ms";
+    let start = SOURCE.find(phrase).unwrap();
+    let observation = submit(&command(
+        "handoff-observation",
+        "observation.add",
+        json!({
+            "value":{"kind":"text","statement":expected["observation"]}, "validity":"valid","quality":[],"limitations":[],"variables_changed":[],
+            "basis":{"kind":"source","artifact_ref":{"id":artifact["derivative_id"],"revision":1},"selector":{
+                "schema_version":"inv.selector.v1","artifact_digest":artifact["digest"],"selector":{"type":"byte_range","start":start,"end":start+phrase.len()}},"text_quote":{"exact":phrase}}
+        }),
+    ));
+    submit(&command(
+        "handoff-conclusion",
+        "conclusion.create",
+        json!({
+            "statement":expected["candidate"],"scope":"One retained application trace.","significance":"Determine which resource was unavailable.",
+            "support_refs":[{"id":observation["created"][0]["id"],"revision":1}],"contradiction_refs":[],"caveats":[expected["limitation"]]
+        }),
+    ));
+    submit(&command(
+        "handoff-inquiry",
+        "inquiry.create",
+        json!({
+            "purpose":"Locate the reason for the wait.","method":expected["next_measurement"],"inquiry":{"mode":"exploratory"},
+            "desired_observations":[expected["next_measurement"]],"controls":[],"limits":["Use a comparable workload."]
+        }),
+    ));
+    let brief = run(root, &["brief", "--level", "standard", "--json"], None, 0);
+    assert_eq!(
+        brief,
+        run(root, &["brief", "--level", "standard", "--json"], None, 0)
+    );
+    assert_eq!(
+        brief["outcomes"][0]["effective_status"]["state"],
+        "candidate"
+    );
+    assert_eq!(brief["material_caveat"]["value"], expected["limitation"]);
+    assert_eq!(
+        brief["unresolved_questions"][0]["title"],
+        expected["question"]
+    );
+    assert!(
+        brief["evidence"][0]["source_title"]
+            .as_str()
+            .unwrap()
+            .contains(expected["source"].as_str().unwrap())
+    );
+    assert_eq!(
+        brief["evidence"][0]["source_ref"]["id"],
+        artifact["source_id"]
+    );
+    assert_eq!(
+        brief["inquiries"][0]["desired_observations"][0],
+        expected["next_measurement"]
+    );
+}
+
+#[test]
+fn onboarding_and_budget_repairs_follow_the_public_cli_contract() {
+    let directory = tempfile::tempdir().unwrap();
+    let cwd = directory.path();
+    let follow = |cwd: &Path, command: &Value| {
+        let argv: Vec<_> = command
+            .as_array()
+            .unwrap()
+            .iter()
+            .skip(1)
+            .map(|argument| argument.as_str().unwrap())
+            .collect();
+        run(cwd, &argv, None, 0)
+    };
+    let unavailable = run(cwd, &["next", "--json"], None, 3);
+    assert_eq!(unavailable["error"]["code"], "WORKSPACE_REQUIRED");
+    assert_eq!(unavailable["commit_status"], "not_committed");
+    let onboard = follow(cwd, &unavailable["error"]["repair"]["argv"]);
+    assert_eq!(onboard["state"], "no_workspace");
+    assert_eq!(
+        follow(cwd, &onboard["next"][0]["argv"])["result"],
+        "initialized"
+    );
+    let root = cwd.join("casework");
+    let missing = run(&root, &["next", "--json"], None, 3);
+    assert_eq!(missing["error"]["code"], "CASE_REQUIRED");
+    let onboard = follow(&root, &missing["error"]["repair"]["argv"]);
+    assert_eq!(onboard["state"], "empty_workspace");
+    assert_eq!(
+        follow(&root, &onboard["next"][0]["argv"])["name"],
+        "case.create"
+    );
+    let (_, receipt) = create_case(&root, "repair-and-budget");
+    let onboard = run(&root, &["onboard", "--json"], None, 0);
+    let next = follow(&root, &onboard["next"][0]["argv"]);
+    assert_eq!(next["snapshot"], receipt["snapshot"]);
+    assert_eq!(onboard["state"], "case_selected");
+    let too_small = run(&root, &["brief", "--max-bytes", "1", "--json"], None, 2);
+    assert_eq!(too_small["error"]["code"], "BUDGET_TOO_SMALL");
+    assert_eq!(too_small["commit_status"], "not_committed");
+    let bounded = follow(&root, &too_small["error"]["repair"]["argv"]);
+    let size = serde_json::to_vec(&bounded).unwrap().len() as u64 + 1;
+    assert!(
+        size <= too_small["error"]["expected"]["minimum_bytes"]
+            .as_u64()
+            .unwrap()
+    );
+    assert_eq!(bounded["snapshot"], receipt["snapshot"]);
+}
+
+#[test]
 fn start_receipt_survives_process_exit_and_reindex_without_the_original_input() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -221,6 +368,37 @@ fn ingest_and_read_verify_original_bytes_before_accepting_an_observation() {
         receipt["transaction_id"]
     );
     assert_eq!(accept(&command, 6)["error"]["code"], "INTEGRITY_FAILURE");
+
+    let mut candidate = original;
+    candidate["command_id"] = json!("candidate");
+    candidate["operations"] = json!([{"op":"conclusion.create","payload":{
+        "statement":"The trace reported a connection wait.", "scope":"This retained capture.",
+        "significance":"Inspect matched traces before generalizing.",
+        "support_refs":[{"id":observation,"revision":1}], "contradiction_refs":[],
+        "caveats":["Only one trace was retained."]
+    }}]);
+    let created = accept(&candidate, 0);
+    let claim = created["created"][0]["id"].as_str().unwrap();
+    let shown = run(root, &["show", claim, "--depth", "full", "--json"], None, 0);
+    assert_eq!(shown["effective_status"]["state"], "needs_review");
+    assert!(
+        shown["material_caveat"]["unavailable_artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["id"] == artifact)
+    );
+    let basis = &shown["review_basis"];
+    let mut preconditions = basis["read_set"].as_array().unwrap().clone();
+    preconditions.push(basis["subject_ref"].clone());
+    candidate["command_id"] = json!("try-missing-review");
+    candidate["preconditions"] = json!(preconditions);
+    candidate["operations"] = json!([{"op":"conclusion.request_review","payload":{"conclusion_ref":basis["subject_ref"]}}]);
+    let failure = accept(&candidate, 6);
+    assert_eq!(failure["commit_status"], "not_committed");
+    assert!(failure["error"]["actual"]["unavailable_artifacts"].is_array());
+    let after = run(root, &["show", claim, "--json"], None, 0);
+    assert_eq!(after["snapshot"], created["snapshot"]);
 }
 
 #[test]

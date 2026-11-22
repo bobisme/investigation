@@ -37,7 +37,7 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
                     "state":"no_workspace", "mental_model":MODEL,
                     "when_to_use":"Use for questions needing multiple observations, a meaningful comparison, or a handoff; use a shell or notebook for one-shot facts and ordinary implementation work.",
                     "next":[{"kind":"initialize_workspace","argv":argv}],
-                    "supported_flows":["init","schema","record","receipt","check"]
+                    "supported_flows":["init","schema","start","ingest","record","receipt","check"]
                 }),
                 format!(
                     "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\nNext: investigation init ./casework --no-vault --format json"
@@ -95,7 +95,7 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
         "state":state, "workspace_id":store.workspace().id(), "mental_model":MODEL,
         "when_to_use":"Use for multi-step evidence, explanations, option comparisons, and handoffs; use a shell or notebook for one-shot facts and ordinary implementation work.",
         "active_operations":active_ops, "next":next,
-        "limits":["No source-ingest or convenience observation command is currently advertised by this CLI; use only active catalog operations.","External work remains user-managed."]
+        "limits":["Use the active catalog and keep uncertain results explicit.","External work remains user-managed."]
     });
     let text = format!(
         "investigation — preserve evidence, test explanations, and evaluate options.\nState: {state}\n{MODEL}\nActive operations: {}\nNext: {}",

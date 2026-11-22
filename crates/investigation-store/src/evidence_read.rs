@@ -45,6 +45,77 @@ pub struct EvidenceRead {
 }
 
 impl<F: DurableFs> Store<F> {
+    /// Return exact references whose expected retained bytes cannot be verified.
+    pub fn unavailable_artifacts(
+        &self,
+        state: &State,
+        references: &[RevisionRef],
+    ) -> Vec<RevisionRef> {
+        references
+            .iter()
+            .copied()
+            .filter(|reference| {
+                reference.id.kind() == Kind::Artifact
+                    && state.revision(*reference).is_none_or(|record| {
+                        let Ok(body) = artifact_body(record) else {
+                            return true;
+                        };
+                        if body.availability != ArtifactAvailability::Retained {
+                            return true;
+                        }
+                        let (Some(digest), Some(size)) = (body.digest, body.size_bytes) else {
+                            return true;
+                        };
+                        let Some(hex) = digest.as_str().strip_prefix("sha256:") else {
+                            return true;
+                        };
+                        let path = Path::new(BLOBS).join(&hex[..2]).join(hex);
+                        crate::blob::verify_blob(&self.fs, &path, hex, size).is_err()
+                    })
+            })
+            .collect()
+    }
+
+    pub(super) fn verify_promotion_artifacts(
+        &self,
+        state: &State,
+        accepted: &AcceptedTransaction,
+    ) -> Result<(), Failure> {
+        for record in &accepted.records {
+            let targets = match record.header.id.kind() {
+                Kind::Conclusion
+                    if matches!(
+                        record.body["status"].as_str(),
+                        Some("review_ready" | "validated")
+                    ) =>
+                {
+                    investigation_core::review_ops::required_read_set(state, record)?
+                }
+                Kind::Decision if record.body["lifecycle"] == "accepted" => {
+                    investigation_core::review_ops::required_read_set(state, record)?
+                }
+                Kind::Review
+                    if record.body["kind"] == "validation"
+                        && record.body["verdict"] == "supports" =>
+                {
+                    input::decode::<Vec<RevisionRef>>(&record.body["read_set"])
+                        .map_err(|_| integrity("Invalid canonical validation read set."))?
+                }
+                _ => continue,
+            };
+            let missing = self.unavailable_artifacts(state, &targets);
+            if !missing.is_empty() {
+                let mut failure = integrity(
+                    "This promotion requires retained evidence that is missing or corrupt.",
+                )
+                .with_argv(read_argv("check"));
+                failure.error.actual = Some(json!({"unavailable_artifacts":missing}));
+                return Err(failure);
+            }
+        }
+        Ok(())
+    }
+
     pub fn evidence_read(
         &self,
         replay: &CaseReplay,

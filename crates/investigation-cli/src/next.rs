@@ -24,13 +24,18 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
         .into_iter()
         .flatten()
     {
-        if let Some(id) = item["subject_refs"][0]["id"].as_str() {
+        if let (Some(id), Some(revision)) = (
+            item["subject_refs"][0]["id"].as_str(),
+            item["subject_refs"][0]["revision"].as_u64(),
+        ) {
             let mut argv = workspace.clone();
             argv.extend([
                 "show".into(),
                 id.into(),
                 "--case".into(),
                 case_id.to_string(),
+                "--at".into(),
+                revision.to_string(),
                 "--depth".into(),
                 "full".into(),
                 "--format".into(),
