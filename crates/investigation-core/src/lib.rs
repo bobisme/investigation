@@ -3,6 +3,8 @@
 /// The name used by the standalone command.
 pub const PROGRAM_NAME: &str = "investigation";
 
+pub mod input;
+
 #[cfg(test)]
 mod tests {
     #[test]
