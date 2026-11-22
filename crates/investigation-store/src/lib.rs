@@ -3,6 +3,16 @@
 /// Directory containing a workspace's canonical journal.
 pub const JOURNAL_DIRECTORY: &str = "journal";
 
+pub mod blob;
+pub mod durable;
+pub mod journal;
+pub mod projection;
+pub mod store;
+pub mod workspace;
+
+pub use store::Store;
+pub use workspace::Workspace;
+
 #[cfg(test)]
 mod tests {
     #[test]

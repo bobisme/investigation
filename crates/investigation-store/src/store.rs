@@ -1,0 +1,669 @@
+//! Coordinates canonical verification, validation and durable publication.
+
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::{self, Write},
+    path::{Path, PathBuf},
+    time::Duration,
+};
+
+use investigation_core::{
+    PROGRAM_NAME,
+    catalog::{Catalog, standard_catalog},
+    command::{Command, RevisionRef, SemanticRequest},
+    header::{Actor, Clock, SystemClock},
+    identity::{Id, IdSource, Kind, SystemIdSource},
+    state::{Acceptance, State, validate_and_apply},
+    wire::{
+        CommitResult, ErrorCode, Failure, Guidance, GuidanceKind, Projection as ReceiptProjection,
+        ProjectionStatus, Receipt, ResponseVersion, Snapshot,
+    },
+};
+use serde::Serialize;
+use serde_json::{Value, json};
+
+use crate::{
+    blob::{BlobError, StagedBlob, publish_blob},
+    durable::{
+        DurableError, DurableFile, DurableFs, LocalFs, LockError, WriteGate, publish,
+        sync_directory, sync_file,
+    },
+    journal::{
+        CaseGenesis, CaseReplay, Event, VerifiedEvent, event_filename, hash_bytes, replay_case,
+    },
+    projection::{IndexEvent, Projection},
+    workspace::Workspace,
+};
+
+#[path = "check.rs"]
+mod check;
+pub use check::{CheckIssue, CheckReport, Severity};
+
+#[cfg(test)]
+#[path = "crash_tests.rs"]
+mod crash_tests;
+
+const CASES: &str = "state/cases";
+const TMP: &str = "state/tmp";
+const BLOBS: &str = "state/blobs/sha256";
+const COORDINATION_LOCK: &str = "state/locks/commit.lock";
+const CASE_LOCK: &str = "commit.lock";
+const RECOVERY_MARKER: &str = "local/writes-stopped";
+const WAIT_FOR_LOCK: Duration = Duration::from_secs(2);
+
+pub struct Store<F = LocalFs> {
+    workspace: Workspace,
+    fs: F,
+    gate: WriteGate,
+    catalog: Catalog,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CaseHead {
+    pub case_id: Id,
+    pub snapshot: Snapshot,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "result", rename_all = "snake_case")]
+pub enum ReceiptLookup {
+    Found { receipt: Box<Receipt> },
+    NotFoundAtSnapshot { cases: Vec<CaseHead> },
+}
+
+impl Store {
+    pub fn open(workspace: Workspace) -> Self {
+        let fs = LocalFs::new(workspace.root());
+        Self {
+            workspace,
+            fs,
+            gate: WriteGate::default(),
+            catalog: standard_catalog(),
+        }
+    }
+}
+
+impl<F: DurableFs> Store<F> {
+    pub fn workspace(&self) -> &Workspace {
+        &self.workspace
+    }
+
+    /// Parse and bound the request before acquiring the coordination lock.
+    pub fn record(&mut self, input: &[u8]) -> Result<Receipt, Failure> {
+        let (command, request) = Command::parse(input)?;
+        self.commit(
+            &command,
+            request,
+            &[],
+            &mut SystemClock,
+            &mut SystemIdSource,
+        )
+    }
+
+    pub fn list_cases(&mut self) -> Result<Vec<CaseHead>, Failure> {
+        let _lock = self.coordinate()?;
+        Ok(self.load_verified()?.heads())
+    }
+
+    /// Read a snapshot after the publisher has released the commit lock.
+    pub fn case(&mut self, case_id: Id) -> Result<CaseReplay, Failure> {
+        let _lock = self.coordinate()?;
+        self.load_verified()?
+            .cases
+            .remove(&case_id)
+            .ok_or_else(|| missing_case(case_id))
+    }
+
+    pub fn receipt(&mut self, actor: &Actor, command_id: &str) -> Result<ReceiptLookup, Failure> {
+        let _lock = self.coordinate()?;
+        let workspace = self.load_verified()?;
+        Ok(match workspace.find(actor, command_id) {
+            Some(event) => {
+                let mut receipt = receipt_for(event);
+                let expected: Vec<_> = workspace
+                    .heads()
+                    .into_iter()
+                    .map(|head| (head.case_id, head.snapshot))
+                    .collect();
+                receipt.projection.index =
+                    if Projection::inspect(&self.index_path(), self.workspace.id()).as_ref()
+                        == Ok(&expected)
+                    {
+                        ProjectionStatus::Current
+                    } else {
+                        ProjectionStatus::Degraded
+                    };
+                ReceiptLookup::Found {
+                    receipt: Box::new(receipt),
+                }
+            }
+            None => ReceiptLookup::NotFoundAtSnapshot {
+                cases: workspace.heads(),
+            },
+        })
+    }
+
+    pub fn repair_index(&mut self) -> Result<Vec<CaseHead>, Failure> {
+        let _lock = self.coordinate()?;
+        let workspace = self.load_verified()?;
+        self.rebuild_index(&workspace)?;
+        Ok(workspace.heads())
+    }
+
+    fn commit(
+        &mut self,
+        command: &Command,
+        request: SemanticRequest,
+        blobs: &[StagedBlob],
+        clock: &mut dyn Clock,
+        ids: &mut dyn IdSource,
+    ) -> Result<Receipt, Failure> {
+        self.gate.check().map_err(durability_failure)?;
+        let _coordination = self.coordinate()?;
+        self.gate.check().map_err(durability_failure)?;
+        let mut replay = self.load_verified()?;
+        if let Some(existing) = replay.find(&command.actor, &command.command_id) {
+            if existing.event.request != request {
+                return Err(Failure::new(
+                    ErrorCode::IdempotencyKeyReused,
+                    "This actor has committed a different request with the same command ID.",
+                )
+                .at("/command_id")
+                .with_argv(receipt_argv(&command.actor, &command.command_id)));
+            }
+            let mut receipt = receipt_for(existing).as_retry();
+            self.apply_projection_health(&replay, &mut receipt);
+            return Ok(receipt);
+        }
+
+        let case = command
+            .case_id
+            .map(|id| replay.cases.remove(&id).ok_or_else(|| missing_case(id)))
+            .transpose()?;
+        let _case_lock = command
+            .case_id
+            .map(|id| {
+                self.fs
+                    .lock(&case_directory(id).join(CASE_LOCK), WAIT_FOR_LOCK)
+                    .map_err(lock_failure)
+            })
+            .transpose()?;
+        let initial = State::default();
+        let original = case.as_ref().map_or(&initial, |case| &case.state);
+        let sequence = original
+            .sequence()
+            .checked_add(1)
+            .ok_or_else(|| integrity("Case sequence is exhausted."))?;
+        let accepted = validate_and_apply(
+            original,
+            command,
+            &self.catalog,
+            Acceptance {
+                sequence,
+                clock,
+                ids,
+            },
+        )
+        .map_err(|error| add_conflict_context(error, original, command.case_id))?;
+
+        // Exercise the same replay checks before touching canonical bytes.
+        let mut projected = original.clone();
+        projected.apply(&accepted)?;
+        let case_id = accepted.case_id;
+        let transaction_id = ids
+            .next_id(Kind::Transaction)
+            .map_err(|_| integrity("Could not allocate a transaction ID."))?;
+        if accepted
+            .created
+            .iter()
+            .any(|change| replay.records.contains(&change.id))
+            || replay.transactions.contains(&transaction_id)
+        {
+            return Err(integrity("ID generator returned an already recorded ID."));
+        }
+        let genesis = case
+            .is_none()
+            .then(|| CaseGenesis::new(self.workspace.id(), case_id)?.to_bytes())
+            .transpose()?;
+        let previous_hash = match (&case, &genesis) {
+            (Some(loaded), _) => loaded.snapshot.head_hash.clone(),
+            (_, Some(bytes)) => hash_bytes(bytes),
+            _ => return Err(integrity("Expected a case head or a new genesis.")),
+        };
+        let event = Event::new(
+            self.workspace.id(),
+            transaction_id,
+            previous_hash,
+            command,
+            request,
+            accepted,
+        )?;
+        let bytes = event.to_bytes()?;
+        let hash = hash_bytes(&bytes);
+        let name = event_filename(sequence)?;
+        self.persist(&event, &bytes, &name, genesis.as_deref(), blobs)
+            .inspect_err(|error| {
+                if error.error.code == ErrorCode::DurabilityUnknown {
+                    self.note_stopped();
+                }
+            })?;
+
+        let verified = VerifiedEvent { event, hash };
+        let mut receipt = receipt_for(&verified);
+        let snapshot = receipt.snapshot.clone();
+        let mut events = case.map_or_else(Vec::new, |case| case.events);
+        events.push(verified);
+        replay.cases.insert(
+            case_id,
+            CaseReplay {
+                state: projected,
+                snapshot,
+                events,
+            },
+        );
+
+        // Past durable publication, projection failures cannot uncommit.
+        self.apply_projection_health(&replay, &mut receipt);
+        Ok(receipt)
+    }
+
+    fn persist(
+        &mut self,
+        event: &Event,
+        bytes: &[u8],
+        name: &str,
+        genesis: Option<&[u8]>,
+        blobs: &[StagedBlob],
+    ) -> Result<(), Failure> {
+        let expected = &event.request.attachments;
+        if expected.len() != blobs.len()
+            || expected.iter().zip(blobs).any(|(digest, blob)| {
+                digest.as_str().strip_prefix("sha256:") != Some(blob.digest.as_str())
+            })
+        {
+            return Err(integrity(
+                "Staged blobs disagree with the attachment digests.",
+            ));
+        }
+        for blob in blobs {
+            publish_blob(&mut self.fs, &self.gate, Path::new(BLOBS), blob).map_err(blob_failure)?;
+        }
+
+        let directory = case_directory(event.accepted.case_id);
+        let Some(genesis) = genesis else {
+            let staged = Path::new(TMP).join(format!("event-{}.tmp", event.transaction_id));
+            write_private(&mut self.fs, &self.gate, &staged, bytes, true)?;
+            let result = publish(
+                &mut self.fs,
+                &staged,
+                &directory.join("events").join(name),
+                &self.gate,
+            );
+            if result.is_ok() {
+                let _ = self.fs.remove(&staged);
+            }
+            return result.map_err(exclusive_publication_failure);
+        };
+
+        // Publish the directory containing both genesis and the first event.
+        let staged = Path::new(TMP).join(format!("create-{}", event.transaction_id));
+        let events = staged.join("events");
+        self.fs.create_dir(&staged).map_err(io_failure)?;
+        self.fs.create_dir(&events).map_err(io_failure)?;
+        write_private(
+            &mut self.fs,
+            &self.gate,
+            &staged.join("genesis.json"),
+            genesis,
+            true,
+        )?;
+        write_private(
+            &mut self.fs,
+            &self.gate,
+            &staged.join(CASE_LOCK),
+            b"",
+            false,
+        )?;
+        write_private(&mut self.fs, &self.gate, &events.join(name), bytes, true)?;
+        sync_directory(&mut self.fs, &events, &self.gate).map_err(durability_failure)?;
+        sync_directory(&mut self.fs, &staged, &self.gate).map_err(durability_failure)?;
+        self.fs
+            .rename_no_replace(&staged, &directory)
+            .map_err(|error| exclusive_publication_failure(DurableError::Io(error)))?;
+        sync_directory(&mut self.fs, Path::new(CASES), &self.gate).map_err(durability_failure)
+    }
+
+    fn coordinate(&mut self) -> Result<F::Guard, Failure> {
+        self.gate.check().map_err(durability_failure)?;
+        self.fs
+            .lock(Path::new(COORDINATION_LOCK), WAIT_FOR_LOCK)
+            .map_err(lock_failure)
+    }
+
+    fn load_verified(&self) -> Result<WorkspaceReplay, Failure> {
+        let mut result = WorkspaceReplay::default();
+        for directory in self.fs.list(Path::new(CASES)).map_err(io_failure)? {
+            let case_id = directory
+                .file_name()
+                .and_then(|name| name.to_str())
+                .and_then(|name| name.parse::<Id>().ok())
+                .filter(|id| id.kind() == Kind::Case)
+                .ok_or_else(|| integrity("Canonical cases directory has an invalid entry."))?;
+            let replay = replay_case(&self.fs, &directory, self.workspace.id(), case_id)?;
+            if replay.events.is_empty() {
+                return Err(integrity("A published case has no first transaction."));
+            }
+            for (offset, event) in replay.events.iter().enumerate() {
+                if !result.transactions.insert(event.event.transaction_id) {
+                    return Err(integrity(
+                        "A transaction ID appears twice in the workspace.",
+                    ));
+                }
+                let key = (event.event.actor.clone(), event.event.command_id.clone());
+                if result.commands.insert(key, (case_id, offset)).is_some() {
+                    return Err(integrity(
+                        "An actor and command ID appear twice in the workspace.",
+                    ));
+                }
+                for change in &event.event.accepted.created {
+                    if !result.records.insert(change.id) {
+                        return Err(integrity("A record ID was created twice in the workspace."));
+                    }
+                }
+            }
+            result.cases.insert(case_id, replay);
+        }
+        Ok(result)
+    }
+
+    fn index_path(&self) -> PathBuf {
+        self.workspace.root().join("cache/index.sqlite")
+    }
+
+    fn rebuild_index(&self, workspace: &WorkspaceReplay) -> Result<(), Failure> {
+        let receipts = workspace.receipts();
+        Projection::rebuild(
+            &self.index_path(),
+            self.workspace.id(),
+            workspace.frames(&receipts),
+        )?;
+        Ok(())
+    }
+
+    fn refresh_index(&self, workspace: &WorkspaceReplay) -> Result<(), Failure> {
+        let mut index = match Projection::open(&self.index_path(), self.workspace.id()) {
+            Ok(index) => index,
+            Err(_) => return self.rebuild_index(workspace),
+        };
+        let heads: BTreeMap<_, _> = match index.heads() {
+            Ok(heads) => heads.into_iter().collect(),
+            Err(_) => {
+                drop(index);
+                return self.rebuild_index(workspace);
+            }
+        };
+        let valid_prefix = heads.iter().all(|(id, head)| {
+            head.sequence
+                .checked_sub(1)
+                .and_then(|offset| usize::try_from(offset).ok())
+                .and_then(|offset| workspace.cases.get(id)?.events.get(offset))
+                .is_some_and(|verified| verified.hash == head.head_hash)
+        });
+        if !valid_prefix {
+            drop(index);
+            return self.rebuild_index(workspace);
+        }
+        let receipts = workspace.receipts();
+        for frame in workspace.frames(&receipts) {
+            let applied = heads
+                .get(&frame.accepted.case_id)
+                .map_or(0, |head| head.sequence);
+            if frame.accepted.sequence > applied {
+                index.apply(frame)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn apply_projection_health(&self, replay: &WorkspaceReplay, receipt: &mut Receipt) {
+        if self.refresh_index(replay).is_err() {
+            receipt.projection.index = ProjectionStatus::Degraded;
+            receipt.warnings.push("The canonical transaction is committed. Run investigation repair index to rebuild the disposable index.".to_owned());
+        } else {
+            receipt.projection.index = ProjectionStatus::Current;
+        }
+    }
+
+    fn note_stopped(&mut self) {
+        // Best-effort diagnostic. Do not retry the failed filesystem sync.
+        if let Ok(mut marker) = self.fs.create_private(Path::new(RECOVERY_MARKER)) {
+            let _ = marker.write_all(b"A writer stopped after an uncertain sync. Verify the journal and retry with the same command ID.\n");
+        }
+    }
+}
+
+#[derive(Default)]
+struct WorkspaceReplay {
+    cases: BTreeMap<Id, CaseReplay>,
+    commands: BTreeMap<(Actor, String), (Id, usize)>,
+    transactions: BTreeSet<Id>,
+    records: BTreeSet<Id>,
+}
+
+impl WorkspaceReplay {
+    fn heads(&self) -> Vec<CaseHead> {
+        self.cases
+            .iter()
+            .map(|(&case_id, replay)| CaseHead {
+                case_id,
+                snapshot: replay.snapshot.clone(),
+            })
+            .collect()
+    }
+
+    fn find(&self, actor: &Actor, command: &str) -> Option<&VerifiedEvent> {
+        let (case, index) = self.commands.get(&(actor.clone(), command.to_owned()))?;
+        self.cases.get(case)?.events.get(*index)
+    }
+
+    fn receipts(&self) -> Vec<Receipt> {
+        self.cases
+            .values()
+            .flat_map(|case| case.events.iter().map(receipt_for))
+            .collect()
+    }
+
+    fn frames<'a>(&'a self, receipts: &'a [Receipt]) -> impl Iterator<Item = IndexEvent<'a>> + 'a {
+        self.cases
+            .values()
+            .flat_map(|case| case.events.iter())
+            .zip(receipts)
+            .map(|(verified, receipt)| {
+                let event = &verified.event;
+                IndexEvent {
+                    previous_hash: &event.previous_hash,
+                    actor: &event.actor,
+                    accepted: &event.accepted,
+                    receipt,
+                    relations: &[],
+                }
+            })
+    }
+}
+
+fn receipt_for(verified: &VerifiedEvent) -> Receipt {
+    let event = &verified.event;
+    Receipt {
+        schema_version: ResponseVersion::Alpha,
+        ok: true,
+        result: CommitResult::Committed,
+        command_id: event.command_id.clone(),
+        transaction_id: event.transaction_id,
+        snapshot: Snapshot {
+            sequence: event.sequence,
+            head_hash: verified.hash.clone(),
+        },
+        created: event.accepted.created.clone(),
+        updated: event.accepted.updated.clone(),
+        projection: ReceiptProjection {
+            index: ProjectionStatus::Pending,
+            vault: ProjectionStatus::Disabled,
+        },
+        warnings: Vec::new(),
+        next: event
+            .accepted
+            .created
+            .first()
+            .map(|record| Guidance {
+                kind: GuidanceKind::LocalRead,
+                argv: show_argv(record.id, event.accepted.case_id),
+            })
+            .into_iter()
+            .collect(),
+    }
+}
+
+fn write_private(
+    fs: &mut impl DurableFs,
+    gate: &WriteGate,
+    path: &Path,
+    bytes: &[u8],
+    immutable: bool,
+) -> Result<(), Failure> {
+    gate.check().map_err(durability_failure)?;
+    let mut file = fs.create_private(path).map_err(io_failure)?;
+    file.write_all(bytes).map_err(io_failure)?;
+    if immutable {
+        file.set_readonly().map_err(io_failure)?;
+    }
+    sync_file(&mut file, gate).map_err(durability_failure)
+}
+
+fn case_directory(case_id: Id) -> PathBuf {
+    Path::new(CASES).join(case_id.to_string())
+}
+
+fn add_conflict_context(mut failure: Failure, state: &State, case_id: Option<Id>) -> Failure {
+    if failure.error.code != ErrorCode::RevisionConflict {
+        return failure;
+    }
+    let parse = |value: Option<&Value>| serde_json::from_value::<RevisionRef>(value?.clone()).ok();
+    let Some(actual) = parse(failure.error.actual.as_ref()) else {
+        return failure;
+    };
+    let Some(case_id) = case_id else {
+        return failure;
+    };
+    let changed: Vec<_> = parse(failure.error.expected.as_ref())
+        .and_then(|reference| state.revision(reference))
+        .and_then(|old| {
+            Some((
+                old.body.as_object()?,
+                state.current(actual.id)?.body.as_object()?,
+            ))
+        })
+        .map_or_else(Vec::new, |(old, current)| {
+            let keys: BTreeSet<_> = old.keys().chain(current.keys()).collect();
+            keys.into_iter()
+                .filter(|key| old.get(*key) != current.get(*key))
+                .take(12)
+                .map(|key| key.chars().take(80).collect::<String>())
+                .collect()
+        });
+    failure.error.retry = Some("reassess".into());
+    failure.error.actual =
+        Some(json!({"id":actual.id, "revision":actual.revision, "changed_fields_sample":changed}));
+    failure.with_argv(show_argv(actual.id, case_id))
+}
+
+fn show_argv(id: Id, case_id: Id) -> Vec<String> {
+    vec![
+        PROGRAM_NAME.into(),
+        "show".into(),
+        id.to_string(),
+        "--case".into(),
+        case_id.to_string(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+fn receipt_argv(actor: &Actor, command_id: &str) -> Vec<String> {
+    vec![
+        PROGRAM_NAME.into(),
+        "receipt".into(),
+        command_id.into(),
+        "--actor".into(),
+        actor.to_string(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+fn read_argv(command: &str) -> Vec<String> {
+    [PROGRAM_NAME, command, "--format", "json"]
+        .into_iter()
+        .map(str::to_owned)
+        .collect()
+}
+
+fn missing_case(id: Id) -> Failure {
+    Failure::new(ErrorCode::CaseRequired, format!("Case {id} is absent."))
+        .at("/case_id")
+        .with_argv(read_argv("onboard"))
+}
+
+fn integrity(message: impl Into<String>) -> Failure {
+    Failure::new(ErrorCode::IntegrityFailure, message).with_argv(read_argv("check"))
+}
+
+fn io_failure(error: io::Error) -> Failure {
+    Failure::new(
+        ErrorCode::IoFailure,
+        format!(
+            "Workspace filesystem operation failed ({:?}).",
+            error.kind()
+        ),
+    )
+    .with_argv(read_argv("doctor"))
+}
+
+fn lock_failure(error: LockError) -> Failure {
+    match error {
+        LockError::Busy { waited } => Failure::new(
+            ErrorCode::WorkspaceBusy,
+            format!(
+                "Timed out after {} ms waiting for the workspace commit lock. Retry the identical request.",
+                waited.as_millis()
+            ),
+        ),
+        LockError::Io(error) => io_failure(error),
+    }
+}
+
+fn durability_failure(error: DurableError) -> Failure {
+    match error {
+        DurableError::Io(error) => io_failure(error),
+        DurableError::SyncUnknown(_) | DurableError::Stopped => Failure::new(
+            ErrorCode::DurabilityUnknown,
+            "A filesystem sync failed earlier in this process. Verify the journal in a fresh process and retry with the same actor and command ID.",
+        ).with_argv(read_argv("check")),
+    }
+}
+
+fn exclusive_publication_failure(error: DurableError) -> Failure {
+    match error {
+        DurableError::Io(error) if error.kind() == io::ErrorKind::AlreadyExists => integrity(
+            "The canonical publication destination already exists. Inspect the journal for a fork.",
+        ),
+        other => durability_failure(other),
+    }
+}
+
+fn blob_failure(error: BlobError) -> Failure {
+    match error {
+        BlobError::Io(error) => io_failure(error),
+        BlobError::Durable(error) => durability_failure(error),
+        BlobError::DigestMismatch => integrity("A stored blob does not match its recorded digest."),
+    }
+}
