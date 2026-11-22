@@ -29,6 +29,8 @@ The tree is a layout convention, not a claim that all scenario data is present. 
 - Keep positive/control, counterevidence, and invalid-result variants explicit and independently replayable. An invalid result must remain visible with its limitation and must not be promoted as valid evidence.
 - Keep development, pilot, and sealed evaluation families disjoint. A variant or source family cannot cross a split. Sealed materials do not live in this repository's agent-visible tree.
 
+Register every family and twin in [family-registry.json](family-registry.json). Run `python3 scripts/check-fixture-families.py` to verify the split and explicit participant source allowlists. Register later sealed cases by identifier and key locator with their bytes in a separate evaluator directory.
+
 ## Expected-outcome shape
 
 An `expected.json` should state outcome properties rather than prescribe a single narrative or generated identifier. At minimum it names the questions/hypotheses/options in scope, source properties and selectors that matter, expected limitation/counterevidence visibility, acceptable bounded outcomes, and prohibited promotions. For a choice fixture, encode constraints and evidence-cell status so every choice consistent with the declared preferences can pass; do not bake in a universal winner.

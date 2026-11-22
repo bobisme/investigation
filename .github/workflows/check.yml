@@ -15,6 +15,7 @@ jobs:
       - run: cargo install --locked just --version 1.57.0
       - run: cargo install --locked cargo-deny --version 0.20.2
       - run: just check
+      - run: python3 scripts/check-fixture-families.py
       - name: Exercise the README and worked cases against the public binary
         run: |
           cargo build --locked -p investigation-cli

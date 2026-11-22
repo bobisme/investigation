@@ -1,0 +1,31 @@
+{
+  "families": [
+    {
+      "id": "scenario-a-timeout",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {"id": "baseline", "split": "development", "directory": "development/scenario-a-timeout/baseline"},
+        {"id": "broken-clock", "split": "development", "directory": "development/scenario-a-timeout/broken-clock"},
+        {"id": "different-build-trap", "split": "development", "directory": "development/scenario-a-timeout/different-build-trap"}
+      ]
+    },
+    {
+      "id": "scenario-c-architecture-choice",
+      "split": "development",
+      "domain": "architecture",
+      "variants": [
+        {"id": "baseline", "split": "development", "directory": "development/scenario-c-architecture-choice/baseline"},
+        {"id": "strict-threshold", "split": "development", "directory": "development/scenario-c-architecture-choice/strict-threshold"}
+      ]
+    },
+    {
+      "id": "w01-handoff",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {"id": "default", "split": "development", "directory": "development/w01-handoff"}
+      ]
+    }
+  ]
+}
