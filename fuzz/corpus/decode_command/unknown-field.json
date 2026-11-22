@@ -1,0 +1,1 @@
+{"schema_version":"inv.command.v0-alpha","command_id":"unknown","case_id":null,"actor":"agent:fixture","preconditions":[],"operations":[{"op":"case.create","payload":{"title":"Request notes","mode":"record"}}],"unrecognized":true}

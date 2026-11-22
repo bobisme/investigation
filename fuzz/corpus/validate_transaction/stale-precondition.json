@@ -1,0 +1,1 @@
+{"schema_version":"inv.command.v0-alpha","command_id":"stale","case_id":"case_018d87fc-5234-7000-8000-000000000001","actor":"agent:fixture","preconditions":[{"id":"case_018d87fc-5234-7000-8000-000000000001","revision":2}],"operations":[{"op":"question.create","payload":{"wording":"Where did latency increase?","importance":"normal"}}]}
