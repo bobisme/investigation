@@ -1,5 +1,7 @@
 # investigation
 
+![Investigation — Trace conclusions back to their sources. A hooded investigator aligns a carved stone fragment with its matching broken edge above a gorge.](docs/investigation.webp)
+
 **Status: design stage.** This repository holds an implementation plan and its reviews. There is no code yet, and nothing described here works today.
 
 `investigation` will be an offline, agent-native workbench for questions that need more than one look: why a request intermittently hangs, which change caused a p99 regression, whether three "independent" sources really agree, or which of several designs to choose. It records evidence, competing explanations or options, and the reasoning that links them. A fresh agent or person can then resume the case without the original chat, and can trust that nothing important silently vanished.
