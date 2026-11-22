@@ -1,0 +1,16 @@
+# ADR 0004: Product and policy boundaries
+
+Status: accepted for Milestone A design; 2026-11-22. These are contracts, not claims that later capabilities are implemented.
+
+- **Core and integrations:** the core is domain-neutral. Consumer integrations own permissions, execution and domain policy; inputs remain attributed.
+- **Evidence and assessment:** preserve sources, observations and provenance separately from interpretations and judgments. A producer claim is attributed source data, never automatically a validated conclusion. A quote match proves presence, not support.
+- **Ontology:** exploration permits observations before hypotheses and overlapping alternatives. Evaluation permits options, criteria, comparisons and decisions without hypotheses or tests.
+- **Freshness:** acceptance and revalidation use current revisions and core-derived dependency closure, including applicable set membership and policy versions. Changed criteria, evidence, assumptions or review basis can invalidate disposition. Layered summaries identify their snapshot and freshness; stale material is not authoritative.
+- **Concurrency:** local advisory locking and revision/read-set preconditions serialize local commits; they are neither authorization nor distributed merge. Conflicts require explicit resolution, not last-writer-wins.
+- **Method packs:** declarative, versioned data may advise or impose schema-bound policy where allowed. Packs cannot execute code, grant permissions, rewrite historical policy or bypass core provenance. Unknown packs do not prevent generic recording or export.
+- **Recording and execution:** recording describes runs and attributed results; it does not run external tools or decide their permissions. Execution remains consumer-owned.
+- **Vault:** canonical state belongs to the journal. Generated vault files are owned projections with drift detection; human notes and boards remain human-owned. Render failure is reported and cannot corrupt canonical state.
+- **Exports:** a sanitized review report is not a recovery archive. A recovery archive preserves canonical state and retained evidence for verified restore, with explicit handling of sensitive data and retention.
+- **Audit and review:** record rule and policy versions, review scope and basis; recompute effective status when dependencies change. Retrospectives record checkable process observations; material cases require one, and non-material cases may record an attributed waiver with a reason. Lessons are proposals, never automatically adopted as policy.
+- **Durability:** only configurations with recorded passing relevant crash, concurrency and restore evidence may be called qualified; see the support matrix. Atomic visibility alone is not power-loss durability.
+- **Interfaces:** executable name is `investigation`. An optional `inv` alias must avoid conflicts with existing commands. The CLI is the reference interface. MCP is a secondary stdio transport over the same dispatch, validation and receipts. Default `core` profile has at most seven flat-schema tools and a tools/list budget under 12 KiB; an opt-in expanded profile may expose grouped typed writes. Do not claim transport capabilities until implemented and tested.

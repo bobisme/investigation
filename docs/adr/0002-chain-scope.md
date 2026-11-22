@@ -1,0 +1,9 @@
+# ADR 0002: Per-case chains and transaction scope
+
+Status: accepted before W02; 2026-11-22.
+
+Use a separate genesis, sequence, hash chain and persistent advisory commit lock per case. An atomic command affects one case, including its records and referenced blobs. Reject cross-case batches. Case export, restore and purge can operate on one chain and its referenced blobs, subject to retention and shared-blob rules. Atomic cross-case transactions are unavailable. No concrete cross-case atomic transaction has been identified in the planned slice; cross-record operations within a case do not require one. This overrides the provisional workspace-wide sequence in plan §10.1. Changing chain scope requires migration.
+
+Retain workspace-wide idempotency identity `(workspace_id, actor, command_id)`: serialize command-ID lookup and publication through a persistent workspace coordination lock and the case lock, in that order. Lookup derives from verified canonical case journals, not solely a disposable index. An identical request returns its original receipt; reuse for a different request, including a different case, is rejected. The workspace lock briefly serializes commits, so per-case chains alone do not eliminate commit contention. Prepare expensive ingestion outside locks; validate against locked current state. Never delete or rename lock files. Removing coordination later requires an equally durable workspace-wide reservation protocol and migration analysis.
+
+Sequences order events only within a case; there is no global event order or cross-case snapshot. Workspace metadata and case creation need an explicitly durable recovery protocol before this contract can be claimed: no case may be invisible to canonical idempotency lookup after its first commit. Shared blob deletion must account for every retained case.
