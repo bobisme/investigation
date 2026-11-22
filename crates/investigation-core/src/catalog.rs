@@ -7,7 +7,7 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 
 use crate::{
-    case::{CaseCreate, CasePause, QuestionCreate},
+    case::{CaseCreate, QuestionCreate},
     command::{Command, input_failure},
     identity::Kind,
     input,
@@ -298,25 +298,12 @@ pub fn standard_catalog() -> Catalog {
                     Ok(())
                 },
             ),
-            OperationDescriptor::deferred(
-                OperationInfo {
-                    name: "case.pause",
-                    stage: "handoff",
-                    summary: "Pause an active case with an attributed reason.",
-                    when_to_use: "An active case is waiting on a known prerequisite.",
-                    lifecycle: "Active case.",
-                    effects: "Advance the case to paused.",
-                    returns: "Updated case revision.",
-                    revision_rule: "Supply a precondition for the current case revision.",
-                    idempotency: COMMAND_IDEMPOTENCY,
-                    repair: "Read the case revision and describe the reason for pausing.",
-                    related: &["case.reopen"],
-                },
-                json!({"reason": "Waiting for the comparison dataset."}),
-                |payload: &CasePause| validate_text(&payload.reason, 2048, "/reason"),
-            ),
         ]
         .into_iter()
+        .chain(crate::case_ops::operations())
+        .chain(crate::evaluate_ops::operations())
+        .chain(crate::explain_ops::operations())
+        .chain(crate::review_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")
@@ -325,55 +312,19 @@ pub fn standard_catalog() -> Catalog {
 const RESERVED_OPERATIONS: &[&str] = &[
     "annotation.add",
     "artifact.withdraw",
-    "assessment.add",
-    "assessment.retract",
-    "assessment.supersede",
-    "assumption.assess",
-    "assumption.create",
-    "case.amend",
     "case.close",
-    "case.reopen",
-    "comparison.add",
-    "comparison.retract",
-    "comparison.revise",
-    "conclusion.amend",
-    "conclusion.create",
-    "conclusion.disposition",
-    "conclusion.request_review",
-    "conclusion.validate",
     "coverage.define",
     "coverage.link",
     "coverage.revise",
-    "criterion.amend",
-    "criterion.create",
-    "criterion.retire",
     "decision.accept",
     "decision.propose",
     "decision.supersede",
-    "hypothesis.amend",
-    "hypothesis.create",
-    "hypothesis.disposition",
-    "inquiry.amend",
-    "inquiry.create",
-    "inquiry.freeze",
-    "inquiry.retire",
     "measurement.assess",
-    "objection.raise",
-    "objection.resolve",
-    "objection.withdraw",
     "observation.add",
     "observation.correct",
     "observation.retract",
-    "option.amend",
-    "option.create",
-    "option.disposition",
-    "question.resolve",
     "retrospective.record",
     "retrospective.supersede",
-    "review.submit",
-    "run.reconcile",
-    "run.record",
-    "run.start",
     "source.assess",
     "source.withdraw",
 ];
@@ -436,17 +387,17 @@ mod tests {
                 .is_some()
         );
         assert_eq!(
-            catalog.get("case.pause").unwrap().status(),
+            catalog.get("coverage.define").unwrap().status(),
             Status::Deferred
         );
         assert!(
             catalog
                 .available()
-                .all(|descriptor| descriptor.info().name != "case.pause")
+                .all(|descriptor| descriptor.info().name != "coverage.define")
         );
         assert!(
             catalog
-                .available_operation("case.pause")
+                .available_operation("coverage.define")
                 .err()
                 .unwrap()
                 .error
@@ -458,12 +409,18 @@ mod tests {
     #[test]
     fn malformed_examples_and_duplicate_names_are_detected() {
         let info = *standard_catalog().get("case.pause").unwrap().info();
-        let malformed =
-            OperationDescriptor::deferred(info, json!({"reason": 3}), |_: &CasePause| Ok(()));
+        let malformed = OperationDescriptor::deferred(
+            info,
+            json!({"reason": 3}),
+            |_: &crate::case::CasePause| Ok(()),
+        );
         assert!(malformed.validate_example().is_err());
 
-        let too_short =
-            OperationDescriptor::deferred(info, json!({"reason": ""}), |_: &CasePause| Ok(()));
+        let too_short = OperationDescriptor::deferred(
+            info,
+            json!({"reason": ""}),
+            |_: &crate::case::CasePause| Ok(()),
+        );
         assert!(too_short.validate_example().is_ok());
         let schema = serde_json::to_value(too_short.payload_schema().unwrap()).unwrap();
         assert!(!jsonschema::is_valid(&schema, too_short.example().unwrap()));

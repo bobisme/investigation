@@ -91,6 +91,8 @@ pub struct CaseBody {
     pub expectations: Option<CaseExpectations>,
     pub lifecycle: CaseLifecycle,
     pub closure_outcome: Option<CaseClosureOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition_reason: Option<String>,
 }
 
 /// Payload for `case.create`; the engine assigns a durable case ID.
@@ -136,6 +138,7 @@ impl CaseCreate {
             expectations: self.expectations,
             lifecycle: CaseLifecycle::Active,
             closure_outcome: None,
+            transition_reason: None,
         }
     }
 }
@@ -353,6 +356,12 @@ pub struct QuestionBody {
     /// Accepted body stores a fully resolved exact reference, not a client alias.
     pub parent: Option<RevisionRef>,
     pub disposition: QuestionDisposition,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub answer: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution_reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub evidence_refs: Vec<RevisionRef>,
 }
 
 /// Payload for `question.create`. A parent may refer to an earlier operation in
@@ -400,6 +409,9 @@ impl QuestionCreate {
             importance: self.importance,
             parent: resolved_parent,
             disposition: QuestionDisposition::Open,
+            answer: None,
+            resolution_reason: None,
+            evidence_refs: Vec::new(),
         })
     }
 }

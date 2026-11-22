@@ -38,6 +38,8 @@ pub struct AcceptedTransaction {
     pub records: Vec<Record>,
     pub created: Vec<RecordChange>,
     pub updated: Vec<RecordChange>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -213,6 +215,7 @@ pub fn validate_and_apply(
     let mut records = Vec::new();
     let mut created = Vec::new();
     let mut updated = Vec::new();
+    let mut warnings = Vec::new();
     let mut final_checks = Vec::new();
     let mut case_id = command.case_id;
     for (index, operation) in command.operations.iter().enumerate() {
@@ -240,6 +243,7 @@ pub fn validate_and_apply(
             images: Vec::new(),
             creation: None,
             final_checks: Vec::new(),
+            warnings: Vec::new(),
         };
         descriptor
             .execute(&operation.payload, &mut context)
@@ -248,6 +252,7 @@ pub fn validate_and_apply(
             images,
             creation,
             final_checks: checks,
+            warnings: operation_warnings,
             ..
         } = context;
         if images.is_empty() {
@@ -277,6 +282,7 @@ pub fn validate_and_apply(
             records.push(image);
         }
         final_checks.extend(checks.into_iter().map(|check| (index, check)));
+        warnings.extend(operation_warnings);
     }
     scratch.sequence = acceptance.sequence;
     for (index, check) in final_checks {
@@ -294,6 +300,7 @@ pub fn validate_and_apply(
         records,
         created,
         updated,
+        warnings,
     })
 }
 
@@ -311,11 +318,20 @@ pub struct OperationContext<'a> {
     images: Vec<Record>,
     creation: Option<RevisionRef>,
     final_checks: Vec<FinalCheck>,
+    warnings: Vec<String>,
 }
 
 impl OperationContext<'_> {
     pub fn case_id(&self) -> Option<Id> {
         *self.case_id
+    }
+
+    pub fn acceptance_sequence(&self) -> u64 {
+        self.acceptance_sequence
+    }
+
+    pub fn state(&self) -> &State {
+        self.state
     }
 
     pub fn preconditions(&self) -> &BTreeMap<Id, u64> {
@@ -326,6 +342,17 @@ impl OperationContext<'_> {
         self.state
             .current(id)
             .filter(|record| Some(record.header.case_id) == *self.case_id)
+    }
+
+    pub fn records(&self) -> impl Iterator<Item = &Record> {
+        let case = *self.case_id;
+        self.state
+            .records()
+            .filter(move |record| Some(record.header.case_id) == case)
+    }
+
+    pub fn warn(&mut self, warning: String) {
+        self.warnings.push(warning);
     }
 
     pub fn exact(&self, reference: RevisionRef) -> Option<&Record> {
@@ -340,14 +367,7 @@ impl OperationContext<'_> {
         kind: Kind,
         path: &str,
     ) -> Result<RevisionRef, Failure> {
-        let resolved = match reference {
-            Reference::Existing(reference) => *reference,
-            Reference::Client(alias) => self
-                .aliases
-                .get(&alias.client_ref)
-                .copied()
-                .ok_or_else(|| unknown_reference().at(path))?,
-        };
+        let resolved = self.resolve_id(reference, path)?;
         if resolved.id.kind() != kind {
             return Err(Failure::new(
                 ErrorCode::InvalidInput,
@@ -360,6 +380,27 @@ impl OperationContext<'_> {
             .ok_or_else(|| unknown_reference().at(path))
     }
 
+    pub fn resolve_reference(
+        &self,
+        reference: &Reference,
+        path: &str,
+    ) -> Result<RevisionRef, Failure> {
+        let resolved = self.resolve_id(reference, path)?;
+        self.exact(resolved)
+            .map(|_| resolved)
+            .ok_or_else(|| unknown_reference().at(path))
+    }
+
+    fn resolve_id(&self, reference: &Reference, path: &str) -> Result<RevisionRef, Failure> {
+        match reference {
+            Reference::Existing(reference) => Ok(*reference),
+            Reference::Client(alias) => self
+                .aliases
+                .get(&alias.client_ref)
+                .copied()
+                .ok_or_else(|| unknown_reference().at(path)),
+        }
+    }
     pub fn create(&mut self, kind: Kind, body: Value) -> Result<RevisionRef, Failure> {
         let invalid = || {
             Failure::new(

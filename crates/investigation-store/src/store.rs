@@ -509,7 +509,7 @@ fn receipt_for(verified: &VerifiedEvent) -> Receipt {
             index: ProjectionStatus::Pending,
             vault: ProjectionStatus::Disabled,
         },
-        warnings: Vec::new(),
+        warnings: event.accepted.warnings.clone(),
         next: event
             .accepted
             .created

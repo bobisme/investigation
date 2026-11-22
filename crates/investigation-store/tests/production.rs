@@ -148,6 +148,46 @@ fn processes_serialize_additions_and_recover_the_original_receipt() {
 }
 
 #[test]
+fn competing_processes_return_the_winning_revision_and_bounded_diff() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("workspace");
+    let mut store = Store::open(Workspace::init(&root, false).unwrap());
+    let case = submit(&mut store, &create("initial", "Original scope"))
+        .unwrap()
+        .created[0]
+        .id;
+    let amend = |key: &str, title: &str| {
+        let mut request = command(
+            key,
+            Some(case),
+            json!({"op":"case.amend","payload":{"title":title,"reason":"New workload description"}}),
+        );
+        request["preconditions"] = json!([{"id":case,"revision":1}]);
+        request
+    };
+    let a = child(&root, "amend-a", &amend("amend-a", "Battery tests"));
+    let b = child(&root, "amend-b", &amend("amend-b", "Power supply tests"));
+    let [a, b] = [finish(a, &root, "amend-a"), finish(b, &root, "amend-b")];
+    let (winner, loser) = if a["ok"] == true { (a, b) } else { (b, a) };
+    assert_eq!(winner["updated"][0]["revision"], 2);
+    assert_eq!(loser["commit_status"], "not_committed");
+    let conflict = &loser["error"];
+    assert_eq!(conflict["code"], "REVISION_CONFLICT");
+    assert_eq!(conflict["expected"], json!({"id":case,"revision":1}));
+    assert_eq!(conflict["actual"]["id"], json!(case));
+    assert_eq!(conflict["actual"]["revision"], 2);
+    assert!(
+        conflict["actual"]["changed_fields_sample"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("title"))
+    );
+    assert_eq!(conflict["retry"], "reassess");
+    assert_eq!(conflict["repair"]["argv"][1], "show");
+    assert_eq!(store.case(case).unwrap().snapshot.sequence, 2);
+}
+
+#[test]
 fn index_failure_after_publication_preserves_the_commit() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("workspace");

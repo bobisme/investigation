@@ -3,17 +3,22 @@
 /// The name used by the standalone command.
 pub const PROGRAM_NAME: &str = "investigation";
 
+pub mod basis;
 pub mod case;
+mod case_ops;
 pub mod catalog;
 pub mod command;
 pub mod evaluate;
+pub mod evaluate_ops;
 pub mod evidence;
 pub mod explain;
+mod explain_ops;
 pub mod header;
 pub mod identity;
 pub mod input;
 pub mod retrospective;
 pub mod review;
+pub mod review_ops;
 pub mod state;
 pub mod wire;
 
