@@ -1,0 +1,147 @@
+{
+  "schema_version": "inv.fixture.digests.v1",
+  "scope": "scenario-c-architecture-choice",
+  "algorithm": "sha256",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "cd1c12e4280ee2d06682814e681d8683204ed126d9d710b85ed1503610b03982",
+      "bytes": 1251
+    },
+    {
+      "path": "baseline/expected.json",
+      "sha256": "3c662120ae7de80f656338701a2afa11a69a40dac5d59784d27871375302962a",
+      "bytes": 2421
+    },
+    {
+      "path": "baseline/manifest.json",
+      "sha256": "54f88943a6be70f4c8f64f981226a97ae7b9364a76b28d6837944733e00e2ef6",
+      "bytes": 6054
+    },
+    {
+      "path": "baseline/sources/accepted-decision.json",
+      "sha256": "9e01c3a90aec3b9a6dbcb9b92dd14f020f395a2244ad60bd67edeb0fe1e5649b",
+      "bytes": 991
+    },
+    {
+      "path": "baseline/sources/benchmark-samples.json",
+      "sha256": "5916e91e97deaf80ce5039f82f194ee77e2c861481e79f733fd1dba6826c98ca",
+      "bytes": 1265
+    },
+    {
+      "path": "baseline/sources/cost-and-traffic.json",
+      "sha256": "a630240bf62f4f2a99c868b944dc518ad17ecf762d6a85b681a8e5a0bd0e82bd",
+      "bytes": 820
+    },
+    {
+      "path": "baseline/sources/criteria.json",
+      "sha256": "46f6dc4e04767e258a3b809eb5fed124e8dd41d720b7292ca3f10caaae7f972b",
+      "bytes": 985
+    },
+    {
+      "path": "baseline/sources/option-a-database-queue.txt",
+      "sha256": "076c548231e3beec7817cc927912936ac2080d4c36f1dbde966bfac27ae65a77",
+      "bytes": 584
+    },
+    {
+      "path": "baseline/sources/option-b-managed-queue.txt",
+      "sha256": "25862f83616608551c57dd1ed47ccc4e6f0d536a87067c91d507c4b400073d1c",
+      "bytes": 514
+    },
+    {
+      "path": "baseline/sources/option-c-broker.txt",
+      "sha256": "bdc5a0e534b34522d3bc76ddb83bce735c89bde88edb0564545e13a5ea34414d",
+      "bytes": 452
+    },
+    {
+      "path": "baseline/sources/recovery-tests.json",
+      "sha256": "2776cd47aa5a62830f99384a831498edce56fbccff15c4839efd4f0fc4e8565c",
+      "bytes": 1281
+    },
+    {
+      "path": "baseline/sources/team-effort-and-preference.txt",
+      "sha256": "7deff9b51fbb4918f06d3bc5140b2e6a9853fa5dfcb9d1d203e94af00bbad5d7",
+      "bytes": 827
+    },
+    {
+      "path": "baseline/sources/workload-projection.json",
+      "sha256": "a50433bf76b0878c1851abda8298a5fe5043aa5fefa918d1786f75af4f3345f1",
+      "bytes": 828
+    },
+    {
+      "path": "roles/investigator.md",
+      "sha256": "2a7161529e37d1197c39c5ffab35d5b1ebb27e26573c575162ca896aac4bc490",
+      "bytes": 700
+    },
+    {
+      "path": "roles/reviewer.md",
+      "sha256": "32b4e789947efda58e772cbd84e118a589212b18a5b535914e9eaa5ed274f547",
+      "bytes": 676
+    },
+    {
+      "path": "strict-threshold/expected.json",
+      "sha256": "cea0fc82070d5626474e6edb2a093c351b715fc1f6f835c68fbce902205b4f68",
+      "bytes": 1395
+    },
+    {
+      "path": "strict-threshold/manifest.json",
+      "sha256": "40c5ad6058a639448dc9cdd06a031b61ce4762053cbc04bd26fd74243fc5e336",
+      "bytes": 6758
+    },
+    {
+      "path": "strict-threshold/sources/accepted-decision.json",
+      "sha256": "9e01c3a90aec3b9a6dbcb9b92dd14f020f395a2244ad60bd67edeb0fe1e5649b",
+      "bytes": 991
+    },
+    {
+      "path": "strict-threshold/sources/benchmark-samples.json",
+      "sha256": "5916e91e97deaf80ce5039f82f194ee77e2c861481e79f733fd1dba6826c98ca",
+      "bytes": 1265
+    },
+    {
+      "path": "strict-threshold/sources/cost-and-traffic.json",
+      "sha256": "a630240bf62f4f2a99c868b944dc518ad17ecf762d6a85b681a8e5a0bd0e82bd",
+      "bytes": 820
+    },
+    {
+      "path": "strict-threshold/sources/criteria.json",
+      "sha256": "46f6dc4e04767e258a3b809eb5fed124e8dd41d720b7292ca3f10caaae7f972b",
+      "bytes": 985
+    },
+    {
+      "path": "strict-threshold/sources/criterion-revision.json",
+      "sha256": "6e125f873fc98312139dabf2572b1fa7a644e9420aec598f7b0638ce749fee3c",
+      "bytes": 582
+    },
+    {
+      "path": "strict-threshold/sources/option-a-database-queue.txt",
+      "sha256": "076c548231e3beec7817cc927912936ac2080d4c36f1dbde966bfac27ae65a77",
+      "bytes": 584
+    },
+    {
+      "path": "strict-threshold/sources/option-b-managed-queue.txt",
+      "sha256": "25862f83616608551c57dd1ed47ccc4e6f0d536a87067c91d507c4b400073d1c",
+      "bytes": 514
+    },
+    {
+      "path": "strict-threshold/sources/option-c-broker.txt",
+      "sha256": "bdc5a0e534b34522d3bc76ddb83bce735c89bde88edb0564545e13a5ea34414d",
+      "bytes": 452
+    },
+    {
+      "path": "strict-threshold/sources/recovery-tests.json",
+      "sha256": "2776cd47aa5a62830f99384a831498edce56fbccff15c4839efd4f0fc4e8565c",
+      "bytes": 1281
+    },
+    {
+      "path": "strict-threshold/sources/team-effort-and-preference.txt",
+      "sha256": "7deff9b51fbb4918f06d3bc5140b2e6a9853fa5dfcb9d1d203e94af00bbad5d7",
+      "bytes": 827
+    },
+    {
+      "path": "strict-threshold/sources/workload-projection.json",
+      "sha256": "a50433bf76b0878c1851abda8298a5fe5043aa5fefa918d1786f75af4f3345f1",
+      "bytes": 828
+    }
+  ]
+}

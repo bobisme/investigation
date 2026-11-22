@@ -1,0 +1,15 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "C",
+  "variant": "strict-threshold",
+  "derived_from": "baseline",
+  "properties": [
+    {"id": "only_hard_threshold_changes", "assert": "equals", "source": "criterion-revision.json", "field": "max_recovery_time", "from": {"value": 300, "unit": "seconds"}, "to": {"value": 60, "unit": "seconds"}},
+    {"id": "database_result_no_longer_meets_threshold", "assert": "needs_review", "comparison": "database_queue.recoverable_jobs", "measured_recovery_p95": {"value": 110, "unit": "seconds"}},
+    {"id": "decision_becomes_stale", "assert": "needs_review", "decision": "baseline-choice-01"},
+    {"id": "other_unknowns_stay_unknown", "assert": "preserve_unknown_cells", "cells": ["managed_queue.recoverable_jobs", "dedicated_broker.recoverable_jobs"]},
+    {"id": "source_evidence_unchanged", "assert": "identical_sha256_to_parent", "source_files": ["option-a-database-queue.txt", "option-b-managed-queue.txt", "option-c-broker.txt", "benchmark-samples.json", "recovery-tests.json", "cost-and-traffic.json", "team-effort-and-preference.txt", "accepted-decision.json"]}
+  ],
+  "acceptable_outcomes": ["decision and affected comparison marked needs_review pending reassessment"],
+  "prohibited_promotions": ["silently retain accepted_and_current state", "rewrite or discard baseline source evidence", "turn unknown cells into passes"]
+}

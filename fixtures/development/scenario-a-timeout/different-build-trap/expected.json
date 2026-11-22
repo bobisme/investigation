@@ -1,0 +1,13 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "A",
+  "variant": "different-build-trap",
+  "properties": [
+    {"id": "trap_build_differs", "assert": "not_equal", "paths": ["trace-slow.build_id", "scheduler-only-test.build_id"]},
+    {"id": "apparent_refutation_is_limited", "assert": "cannot_validate_unqualified", "reason": "the only scheduler-only run changes build and callback behavior"},
+    {"id": "original_evidence_intact", "assert": "source_present", "sources": ["trace-slow.json", "trace-control.json", "pool-telemetry.json"]}
+  ],
+  "required_visible_limits": ["changed build", "callback queue intervention", "20-run sample"],
+  "acceptable_outcomes": ["bounded baseline result", "explicitly inconclusive"],
+  "prohibited_promotions": ["scheduler hypothesis refuted for build-7c2a", "unqualified validation"]
+}

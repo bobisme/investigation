@@ -1,0 +1,9 @@
+Synthetic architecture note B — managed queue
+
+The service acknowledges enqueue after its accepted-write response. In the
+sample exercise, all acknowledged messages were visible again after a host
+restart. The capture did not include a reliable start/end marker for recovery
+time, so the 300-second recovery requirement is not measured. The note does not
+state whether a correlated regional failure is covered.
+
+Quote opportunity: “The capture did not include a reliable start/end marker for recovery time.”

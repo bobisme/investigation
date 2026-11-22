@@ -1,0 +1,12 @@
+{
+  "record_kind": "synthetic_criterion_change.v1",
+  "criterion_id": "recoverable_jobs",
+  "previous_revision": "recoverable-job-v1",
+  "new_revision": "recoverable-job-v2",
+  "changed_field": "max_recovery_time",
+  "previous": {"value": 300, "unit": "seconds"},
+  "new": {"value": 60, "unit": "seconds"},
+  "change_reason": "Adversarial exercise changes the accepted hard threshold after the decision.",
+  "decision_reference": "baseline-choice-01",
+  "selector_quotes": ["max_recovery_time changed from 300 seconds to 60 seconds", "accepted hard threshold after the decision"]
+}

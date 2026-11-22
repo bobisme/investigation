@@ -1,0 +1,17 @@
+{
+  "record_kind": "synthetic_method_run.v1",
+  "run_id": "run-toggle-fix-on",
+  "build_id": "build-7c2a-fix1",
+  "parent_build_id": "build-7c2a",
+  "workload_id": "burst-3-40-concurrent",
+  "route": "/items/lookup",
+  "dataset_revision": "dataset-sim-2",
+  "environment": "offline simulator, 12-connection pool, fixed callback delay 28000 ms",
+  "toggle": {"release_before_await": true},
+  "sample_count": 30,
+  "timeouts": 0,
+  "max_connection_hold_ms": 102,
+  "median_response_ms": 189,
+  "result": "control_and_changed_transaction_behavior_completed",
+  "selector_quotes": ["release_before_await=true", "0 timeouts in 30 requests"]
+}

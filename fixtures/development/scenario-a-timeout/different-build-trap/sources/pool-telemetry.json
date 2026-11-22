@@ -1,0 +1,17 @@
+{
+  "record_kind": "synthetic_pool_telemetry.v1",
+  "pool_id": "pool-sim-main",
+  "build_id": "build-7c2a",
+  "workload_id": "burst-3-40-concurrent",
+  "sample_interval_ms": 1000,
+  "capacity_connections": 12,
+  "clock_domain": "mono-sim-a",
+  "samples": [
+    {"mono_ms": 100000, "in_use": 12, "idle": 0, "waiters": 7},
+    {"mono_ms": 110000, "in_use": 12, "idle": 0, "waiters": 9},
+    {"mono_ms": 120000, "in_use": 12, "idle": 0, "waiters": 8},
+    {"mono_ms": 128000, "in_use": 11, "idle": 1, "waiters": 4},
+    {"mono_ms": 200000, "in_use": 4, "idle": 8, "waiters": 0}
+  ],
+  "selector_quotes": ["capacity 12; all 12 checked out at mono_ms 110000", "8 requests waiting at mono_ms 120000"]
+}

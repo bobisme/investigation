@@ -1,0 +1,12 @@
+{
+  "record_kind": "synthetic_decision_seed.v1",
+  "decision_key": "baseline-choice-01",
+  "state": "accepted_conditional",
+  "selected_option": "database_queue",
+  "hard_criterion_revision": "recoverable-job-v1",
+  "conditional_on": ["traffic remains near the unverified planning estimate", "failure model remains process or single-host stop", "recovery requirement remains at most 300 seconds"],
+  "rejected_alternatives": {"managed_queue": "hard recovery-time cell remains unknown", "dedicated_broker": "required failure model not tested"},
+  "tradeoffs": ["higher p99 enqueue latency in the small benchmark", "estimated lower monthly cost at the assumed traffic", "author team-effort estimate is unverified"],
+  "reopen_if": ["measured traffic exceeds 2500000 jobs/day", "a recovery test changes a hard-criterion cell", "hard failure model or recovery threshold changes"],
+  "source_note": "This is a fixture state for the adversarial test, not a completed real-world recommendation."
+}

@@ -1,0 +1,15 @@
+Synthetic planning interview and preference note
+
+The author estimates migration effort at 3 engineer-weeks for the database
+queue, 2 engineer-weeks for the managed queue, and 5 engineer-weeks for the
+dedicated broker. These estimates were not independently measured.
+
+Personal preference: “The managed queue is the best choice because the team
+should not operate another service.” This sentence reports the author's
+preference. It is not reliability, cost, latency, or comparative evidence.
+
+Quote opportunity: “The managed queue is the best choice because the team should not operate another service.”
+
+At more than 2,500,000 jobs/day the cost spreadsheet predicts the managed
+queue could cost less than the database option. No workload test at that rate
+was run. A peak-rate test could reverse a conditional choice.

@@ -1,0 +1,10 @@
+Synthetic architecture note A — database-backed queue
+
+The queue row is inserted in the same transaction as the application update.
+An acknowledged row is committed before the caller receives success. The
+consumer claims rows with a lease; after a process or single-host stop, another
+consumer may reclaim an expired lease. The sample setup uses a single database
+host and synchronous log flush. It makes no claim about loss of an entire
+availability zone or correlated storage failure.
+
+Quote opportunity: “An acknowledged row is committed before the caller receives success.”

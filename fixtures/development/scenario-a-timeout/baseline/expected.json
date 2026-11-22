@@ -1,0 +1,24 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "A",
+  "variant": "baseline",
+  "hypotheses": [
+    {"id": "connection-held-across-async-boundary", "claim": "a checked-out connection remains held while the callback is awaited"},
+    {"id": "scheduler-or-network-contribution", "claim": "scheduler or network delay contributes to the apparent request hang"}
+  ],
+  "assumptions": [
+    {"id": "clock-alignment", "requirement": "event ordering and overlap claims require a compatible clock mapping with stated uncertainty"}
+  ],
+  "properties": [
+    {"id": "paired_build_and_workload", "assert": "equal", "paths": ["trace-slow.build_id", "trace-control.build_id", "trace-slow.workload_id", "trace-control.workload_id"]},
+    {"id": "slow_connection_hold", "assert": "duration_ms_at_least", "source": "trace-slow.json", "start_event": "db_connection_acquired", "end_event": "db_connection_released", "minimum": 28000},
+    {"id": "control_is_fast", "assert": "duration_ms_at_most", "source": "trace-control.json", "start_event": "db_connection_acquired", "end_event": "db_connection_released", "maximum": 200},
+    {"id": "pool_overlap", "assert": "telemetry_interval_overlaps_hold", "pool_capacity": 12, "minimum_waiters": 1},
+    {"id": "fix_toggle_reduces_holds", "assert": "comparison", "fixed_source": "reproduction.json", "reverted_source": "revert-run.json", "field": "max_connection_hold_ms", "relation": "fixed_less_than_reverted"},
+    {"id": "bounded_causal_result", "assert": "scope_within", "dimensions": ["build", "route", "workload", "dataset_revision", "simulated_callback_delay"]},
+    {"id": "rival_account_remains", "assert": "visible_hypothesis", "hypothesis": "scheduler_or_network_contribution"}
+  ],
+  "required_visible_limits": ["synthetic simulation", "one tested build family", "one route and workload", "small sample counts", "scheduler and network contribution not excluded"],
+  "acceptable_outcomes": ["bounded conclusion", "explicitly inconclusive"],
+  "prohibited_promotions": ["general production root cause", "claim that scheduler and network are excluded", "unqualified causal conclusion"]
+}

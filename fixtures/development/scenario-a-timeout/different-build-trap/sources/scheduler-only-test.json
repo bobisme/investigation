@@ -1,0 +1,15 @@
+{
+  "record_kind": "synthetic_method_run.v1",
+  "run_id": "run-scheduler-only-other-build",
+  "build_id": "build-7c2b",
+  "parent_build_id": "build-7c2a",
+  "workload_id": "burst-3-40-concurrent",
+  "route": "/items/lookup",
+  "dataset_revision": "dataset-sim-2",
+  "environment": "offline simulator with scheduled callback disabled",
+  "sample_count": 20,
+  "timeouts": 0,
+  "scheduler_intervention": "callback queue bypassed",
+  "result": "no_timeout_observed_on_changed_build",
+  "selector_quotes": ["no timeout observed on changed build", "callback queue bypassed"]
+}

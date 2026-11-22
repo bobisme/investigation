@@ -1,0 +1,8 @@
+Synthetic architecture note C — dedicated broker
+
+The exercise used one broker process with a local journal. It recorded a
+successful consumer restart but did not exercise an abrupt host stop after an
+acknowledged enqueue. Its replication design has not been tested in this
+fixture. Do not infer the specified failure model from the word “replicated”.
+
+Quote opportunity: “did not exercise an abrupt host stop after an acknowledged enqueue.”

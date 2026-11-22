@@ -1,0 +1,13 @@
+{
+  "record_kind": "synthetic_cost_projection.v1",
+  "currency": "USD",
+  "period": "month",
+  "traffic_projection": {"value": 1200000, "unit": "jobs/day", "verification": "unverified author estimate", "basis": "planning note; no retained traffic export"},
+  "estimated_monthly_cost": {
+    "database_queue": {"value": 420, "unit": "USD/month", "status": "estimate"},
+    "managed_queue": {"value": 780, "unit": "USD/month", "status": "estimate"},
+    "dedicated_broker": {"value": 1250, "unit": "USD/month", "status": "estimate"}
+  },
+  "sensitivity": {"break_even_managed_vs_database": {"value": 2500000, "unit": "jobs/day"}, "verification_needed": "measure actual monthly traffic and burst distribution"},
+  "selector_quotes": ["no retained traffic export", "measure actual monthly traffic and burst distribution"]
+}

@@ -1,0 +1,12 @@
+{
+  "record_kind": "synthetic_criteria.v1",
+  "criterion_revision": "recoverable-job-v1",
+  "criteria": [
+    {"id": "recoverable_jobs", "kind": "hard", "failure_model": "abrupt process or single-host stop five seconds after acknowledged enqueue", "max_acknowledged_jobs_lost": 0, "max_recovery_time": {"value": 300, "unit": "seconds"}},
+    {"id": "operational_cost", "kind": "soft", "unit": "USD/month", "measurement": "monthly operating estimate at stated traffic"},
+    {"id": "p99_enqueue_latency", "kind": "soft", "unit": "milliseconds", "measurement": "nearest-rank p99 from retained accepted-job samples"},
+    {"id": "team_complexity", "kind": "soft", "unit": "engineer-weeks", "measurement": "unverified effort estimate; disclose subjectivity"}
+  ],
+  "preference_context": "Avoid operating an additional service when hard requirements and measured workload permit.",
+  "selector_quotes": ["max_acknowledged_jobs_lost: 0", "nearest-rank p99", "unverified effort estimate"]
+}

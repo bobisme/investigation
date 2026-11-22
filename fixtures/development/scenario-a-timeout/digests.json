@@ -1,0 +1,142 @@
+{
+  "schema_version": "inv.fixture.digests.v1",
+  "scope": "scenario-a-timeout",
+  "algorithm": "sha256",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "9442c80cf6934ad72fba91895473560803d40e623361b76ae46a8e6367ee8faf",
+      "bytes": 1123
+    },
+    {
+      "path": "baseline/expected.json",
+      "sha256": "3228aa4f29b3fe9f9f36c7513d365570c5f580076030ab7571eae284b1551da9",
+      "bytes": 2139
+    },
+    {
+      "path": "baseline/manifest.json",
+      "sha256": "7bb908a9d33857525c74e521e0f3a6a196d0ba85dde5dd59781c454f11f4f707",
+      "bytes": 3676
+    },
+    {
+      "path": "baseline/sources/pool-telemetry.json",
+      "sha256": "f210772491dd52b981d7907dd053fc8029d4a31ccb4ffbcf29e204f6f025d877",
+      "bytes": 697
+    },
+    {
+      "path": "baseline/sources/reproduction.json",
+      "sha256": "fb71a19df9cda2d55aa90b753b33bd3318a01c3353ce49b9d95e258e6d36c6a8",
+      "bytes": 638
+    },
+    {
+      "path": "baseline/sources/revert-run.json",
+      "sha256": "616d54b29a67bbcdabef1f4f24e2657d3f90068f5e3c7e30bf04a0795bee4bc6",
+      "bytes": 648
+    },
+    {
+      "path": "baseline/sources/source-commit.txt",
+      "sha256": "c272ea388233159829233760a6b776173b2918fde41cee1bc757a5313789e4e7",
+      "bytes": 627
+    },
+    {
+      "path": "baseline/sources/trace-control.json",
+      "sha256": "7987b07f6aea1114d8adfcd791eb68615f6954d1dc663e8d42ff5d28b78c854e",
+      "bytes": 850
+    },
+    {
+      "path": "baseline/sources/trace-slow.json",
+      "sha256": "0328c40efc8eb80b187da20c6bed3c961787d4ad98ffa248515e5ef9fe113022",
+      "bytes": 1128
+    },
+    {
+      "path": "broken-clock/expected.json",
+      "sha256": "93e447161fba2d77fa4ec21e3c41f27d9ff86ca759870ba7a3aa3f1aa14ddee4",
+      "bytes": 914
+    },
+    {
+      "path": "broken-clock/manifest.json",
+      "sha256": "25e9af13780c687a798bbebbc77d83e80142fa57afc13b8183444b62d89d2c65",
+      "bytes": 4321
+    },
+    {
+      "path": "broken-clock/sources/pool-telemetry.json",
+      "sha256": "f210772491dd52b981d7907dd053fc8029d4a31ccb4ffbcf29e204f6f025d877",
+      "bytes": 697
+    },
+    {
+      "path": "broken-clock/sources/reproduction.json",
+      "sha256": "fb71a19df9cda2d55aa90b753b33bd3318a01c3353ce49b9d95e258e6d36c6a8",
+      "bytes": 638
+    },
+    {
+      "path": "broken-clock/sources/revert-run.json",
+      "sha256": "616d54b29a67bbcdabef1f4f24e2657d3f90068f5e3c7e30bf04a0795bee4bc6",
+      "bytes": 648
+    },
+    {
+      "path": "broken-clock/sources/source-commit.txt",
+      "sha256": "c272ea388233159829233760a6b776173b2918fde41cee1bc757a5313789e4e7",
+      "bytes": 627
+    },
+    {
+      "path": "broken-clock/sources/trace-control.json",
+      "sha256": "7987b07f6aea1114d8adfcd791eb68615f6954d1dc663e8d42ff5d28b78c854e",
+      "bytes": 850
+    },
+    {
+      "path": "broken-clock/sources/trace-slow.json",
+      "sha256": "0328c40efc8eb80b187da20c6bed3c961787d4ad98ffa248515e5ef9fe113022",
+      "bytes": 1128
+    },
+    {
+      "path": "broken-clock/sources/trace-unmapped-clock.json",
+      "sha256": "9c52a06de1a9c72c8e4ec944a4fc27011efc17eef7afc6eabd0b7a805d0a07ff",
+      "bytes": 945
+    },
+    {
+      "path": "different-build-trap/expected.json",
+      "sha256": "3a43bd4468c14081cf775b361e6338b4947c82b8a42f22b737a3741cd980422b",
+      "bytes": 839
+    },
+    {
+      "path": "different-build-trap/manifest.json",
+      "sha256": "a8d1da0b2ebe673c90d8db9b83f935518e5fe759e24300361f7aef02a25f0345",
+      "bytes": 3256
+    },
+    {
+      "path": "different-build-trap/sources/pool-telemetry.json",
+      "sha256": "f210772491dd52b981d7907dd053fc8029d4a31ccb4ffbcf29e204f6f025d877",
+      "bytes": 697
+    },
+    {
+      "path": "different-build-trap/sources/scheduler-only-test.json",
+      "sha256": "e523358b8dfa565518a5fa3f050a51c85dbbcb611600cb3b83ae0376b771c1d5",
+      "bytes": 572
+    },
+    {
+      "path": "different-build-trap/sources/source-commit.txt",
+      "sha256": "c272ea388233159829233760a6b776173b2918fde41cee1bc757a5313789e4e7",
+      "bytes": 627
+    },
+    {
+      "path": "different-build-trap/sources/trace-control.json",
+      "sha256": "7987b07f6aea1114d8adfcd791eb68615f6954d1dc663e8d42ff5d28b78c854e",
+      "bytes": 850
+    },
+    {
+      "path": "different-build-trap/sources/trace-slow.json",
+      "sha256": "0328c40efc8eb80b187da20c6bed3c961787d4ad98ffa248515e5ef9fe113022",
+      "bytes": 1128
+    },
+    {
+      "path": "roles/investigator.md",
+      "sha256": "786f7866e9926b018ca28fc3d9b7bd9a3a631e55ddfac33460db374cdc0cb686",
+      "bytes": 694
+    },
+    {
+      "path": "roles/reviewer.md",
+      "sha256": "528c5f5b8a45a403c49aeab12514491bf38131f7a9a7565393ef29c59523d3c1",
+      "bytes": 625
+    }
+  ]
+}

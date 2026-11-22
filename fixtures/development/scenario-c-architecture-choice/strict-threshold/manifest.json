@@ -1,0 +1,162 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "C",
+  "variant": "strict-threshold",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "derived_from": "baseline",
+  "source_files": [
+    {
+      "path": "sources/accepted-decision.json",
+      "role": "conditional_decision_seed",
+      "sha256": "9e01c3a90aec3b9a6dbcb9b92dd14f020f395a2244ad60bd67edeb0fe1e5649b",
+      "bytes": 991,
+      "origin_revision": "strict-threshold:accepted-decision.json:v1",
+      "provenance_group": "synthetic-baseline-decision-state",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true
+    },
+    {
+      "path": "sources/benchmark-samples.json",
+      "role": "raw_small_benchmark_samples",
+      "sha256": "5916e91e97deaf80ce5039f82f194ee77e2c861481e79f733fd1dba6826c98ca",
+      "bytes": 1265,
+      "origin_revision": "strict-threshold:benchmark-samples.json:v1",
+      "provenance_group": "synthetic-benchmark-lab-run",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "sample_count_per_option: 12",
+        "latency_unit: milliseconds",
+        "offered_rate: 1500 jobs/minute"
+      ]
+    },
+    {
+      "path": "sources/cost-and-traffic.json",
+      "role": "cost_projection_and_unverified_traffic",
+      "sha256": "a630240bf62f4f2a99c868b944dc518ad17ecf762d6a85b681a8e5a0bd0e82bd",
+      "bytes": 820,
+      "origin_revision": "strict-threshold:cost-and-traffic.json:v1",
+      "provenance_group": "synthetic-planning-notes-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "no retained traffic export",
+        "measure actual monthly traffic and burst distribution"
+      ]
+    },
+    {
+      "path": "sources/criteria.json",
+      "role": "hard_and_soft_criteria",
+      "sha256": "46f6dc4e04767e258a3b809eb5fed124e8dd41d720b7292ca3f10caaae7f972b",
+      "bytes": 985,
+      "origin_revision": "strict-threshold:criteria.json:v1",
+      "provenance_group": "synthetic-case-criteria",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "max_acknowledged_jobs_lost: 0",
+        "nearest-rank p99",
+        "unverified effort estimate"
+      ]
+    },
+    {
+      "path": "sources/criterion-revision.json",
+      "role": "adversarial_hard_criterion_revision",
+      "sha256": "6e125f873fc98312139dabf2572b1fa7a644e9420aec598f7b0638ce749fee3c",
+      "bytes": 582,
+      "origin_revision": "strict-threshold:criterion-revision.json:v1",
+      "provenance_group": "synthetic-criterion-change",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "max_recovery_time changed from 300 seconds to 60 seconds",
+        "accepted hard threshold after the decision"
+      ]
+    },
+    {
+      "path": "sources/option-a-database-queue.txt",
+      "role": "option_design_source_database_queue",
+      "sha256": "076c548231e3beec7817cc927912936ac2080d4c36f1dbde966bfac27ae65a77",
+      "bytes": 584,
+      "origin_revision": "strict-threshold:option-a-database-queue.txt:v1",
+      "provenance_group": "synthetic-option-design-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "An acknowledged row is committed before the caller receives success."
+      ]
+    },
+    {
+      "path": "sources/option-b-managed-queue.txt",
+      "role": "option_design_source_managed_queue",
+      "sha256": "25862f83616608551c57dd1ed47ccc4e6f0d536a87067c91d507c4b400073d1c",
+      "bytes": 514,
+      "origin_revision": "strict-threshold:option-b-managed-queue.txt:v1",
+      "provenance_group": "synthetic-option-design-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "The capture did not include a reliable start/end marker for recovery time."
+      ]
+    },
+    {
+      "path": "sources/option-c-broker.txt",
+      "role": "option_design_source_dedicated_broker",
+      "sha256": "bdc5a0e534b34522d3bc76ddb83bce735c89bde88edb0564545e13a5ea34414d",
+      "bytes": 452,
+      "origin_revision": "strict-threshold:option-c-broker.txt:v1",
+      "provenance_group": "synthetic-option-design-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "did not exercise an abrupt host stop after an acknowledged enqueue."
+      ]
+    },
+    {
+      "path": "sources/recovery-tests.json",
+      "role": "failure_model_and_recovery_tests",
+      "sha256": "2776cd47aa5a62830f99384a831498edce56fbccff15c4839efd4f0fc4e8565c",
+      "bytes": 1281,
+      "origin_revision": "strict-threshold:recovery-tests.json:v1",
+      "provenance_group": "synthetic-recovery-lab-run",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "managed_queue recovery_p95 was not captured",
+        "dedicated_broker tested consumer restart only"
+      ]
+    },
+    {
+      "path": "sources/team-effort-and-preference.txt",
+      "role": "author_effort_estimate_and_preference",
+      "sha256": "7deff9b51fbb4918f06d3bc5140b2e6a9853fa5dfcb9d1d203e94af00bbad5d7",
+      "bytes": 827,
+      "origin_revision": "strict-threshold:team-effort-and-preference.txt:v1",
+      "provenance_group": "synthetic-planning-notes-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "The managed queue is the best choice because the team should not operate another service."
+      ]
+    },
+    {
+      "path": "sources/workload-projection.json",
+      "role": "workload_projection_and_testable_performance_assumption",
+      "sha256": "a50433bf76b0878c1851abda8298a5fe5043aa5fefa918d1786f75af4f3345f1",
+      "bytes": 828,
+      "origin_revision": "strict-threshold:workload-projection.json:v1",
+      "provenance_group": "synthetic-planning-notes-pack",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "remains at or below 20 milliseconds at projected peak",
+        "repeat comparable benchmark at 3500 jobs/minute"
+      ]
+    }
+  ]
+}

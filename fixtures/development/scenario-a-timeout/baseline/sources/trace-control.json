@@ -1,0 +1,19 @@
+{
+  "record_kind": "synthetic_request_trace.v1",
+  "trace_id": "trace-control-018",
+  "request_id": "REQ-018",
+  "build_id": "build-7c2a",
+  "deployment_id": "deploy-sim-04",
+  "workload_id": "burst-3-40-concurrent",
+  "route": "/items/lookup",
+  "dataset_revision": "dataset-sim-2",
+  "clock_domain": "mono-sim-a",
+  "wall_clock_mapping": {"offset_ms": 1700, "uncertainty_ms": 3, "status": "aligned_for_this_trace"},
+  "events": [
+    {"mono_ms": 200000, "event": "request_received", "text": "request REQ-018 received"},
+    {"mono_ms": 200011, "event": "db_connection_acquired", "connection_id": "conn-2"},
+    {"mono_ms": 200104, "event": "db_connection_released", "connection_id": "conn-2"},
+    {"mono_ms": 200182, "event": "response_sent", "status": 200}
+  ],
+  "selector_quotes": ["connection held for 93 ms", "control completed in 182 ms"]
+}

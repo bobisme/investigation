@@ -1,0 +1,83 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "A",
+  "variant": "different-build-trap",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "derived_from": "baseline",
+  "source_files": [
+    {
+      "path": "sources/pool-telemetry.json",
+      "role": "connection_pool_telemetry",
+      "sha256": "f210772491dd52b981d7907dd053fc8029d4a31ccb4ffbcf29e204f6f025d877",
+      "bytes": 697,
+      "origin_revision": "different-build-trap:pool-telemetry.json:v1",
+      "provenance_group": "synthetic-simulator-capture-family",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "capacity 12; all 12 checked out at mono_ms 110000",
+        "8 requests waiting at mono_ms 120000"
+      ]
+    },
+    {
+      "path": "sources/scheduler-only-test.json",
+      "role": "different_build_adversarial_run",
+      "sha256": "e523358b8dfa565518a5fa3f050a51c85dbbcb611600cb3b83ae0376b771c1d5",
+      "bytes": 572,
+      "origin_revision": "different-build-trap:scheduler-only-test.json:v1",
+      "provenance_group": "synthetic-other-build-scheduler-run",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "no timeout observed on changed build",
+        "callback queue bypassed"
+      ]
+    },
+    {
+      "path": "sources/source-commit.txt",
+      "role": "synthetic_source_commit_reference",
+      "sha256": "c272ea388233159829233760a6b776173b2918fde41cee1bc757a5313789e4e7",
+      "bytes": 627,
+      "origin_revision": "different-build-trap:source-commit.txt:v1",
+      "provenance_group": "synthetic-source-reference",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "connection.begin().await?; then callback.fetch(request).await?;"
+      ]
+    },
+    {
+      "path": "sources/trace-control.json",
+      "role": "fast_control_trace",
+      "sha256": "7987b07f6aea1114d8adfcd791eb68615f6954d1dc663e8d42ff5d28b78c854e",
+      "bytes": 850,
+      "origin_revision": "different-build-trap:trace-control.json:v1",
+      "provenance_group": "synthetic-simulator-capture-family",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "connection held for 93 ms",
+        "control completed in 182 ms"
+      ]
+    },
+    {
+      "path": "sources/trace-slow.json",
+      "role": "primary_request_trace",
+      "sha256": "0328c40efc8eb80b187da20c6bed3c961787d4ad98ffa248515e5ef9fe113022",
+      "bytes": 1128,
+      "origin_revision": "different-build-trap:trace-slow.json:v1",
+      "provenance_group": "synthetic-simulator-capture-family",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "await callback began while conn-4 remained checked out",
+        "callback returned after 28 seconds"
+      ]
+    }
+  ]
+}

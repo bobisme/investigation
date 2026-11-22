@@ -1,0 +1,17 @@
+Synthetic source reference. This is not copied from a real repository.
+
+commit: build-7c2a
+file: src/request_flow.sim
+workload: burst-3-40-concurrent
+
+Relevant excerpt:
+    let connection = pool.acquire().await?;
+    connection.begin().await?;
+    let response = callback.fetch(request).await?;
+    connection.finish(response).await?;
+
+Quote opportunity: “connection.begin().await?; then callback.fetch(request).await?;”
+
+The synthetic call order leaves the acquired connection live while the callback
+is awaited. This reference alone does not establish production frequency or
+exclude scheduler and network contributions.

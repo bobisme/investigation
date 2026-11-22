@@ -1,0 +1,12 @@
+{
+  "record_kind": "synthetic_recovery_test.v1",
+  "failure_model": "abrupt process or single-host stop five seconds after acknowledged enqueue; consumer resumes after stop",
+  "baseline_requirement": {"max_acknowledged_jobs_lost": 0, "max_recovery_time": {"value": 300, "unit": "seconds"}},
+  "environment": "offline simulator; one declared topology per option; 30 trials unless otherwise stated",
+  "results": {
+    "database_queue": {"trials": 30, "acknowledged_jobs": 30, "recovered_jobs": 30, "lost_acknowledged_jobs": 0, "recovery_p95": {"value": 110, "unit": "seconds"}, "failure_model_coverage": ["process_stop", "single_host_stop"], "result": "measured_within_baseline_requirement"},
+    "managed_queue": {"trials": 20, "acknowledged_jobs": 20, "recovered_jobs": 20, "lost_acknowledged_jobs": 0, "recovery_p95": null, "failure_model_coverage": ["single_host_stop"], "result": "unknown_recovery_time"},
+    "dedicated_broker": {"trials": 30, "acknowledged_jobs": null, "recovered_jobs": null, "lost_acknowledged_jobs": null, "recovery_p95": null, "failure_model_coverage": ["consumer_restart_only"], "result": "unknown_for_required_failure_model"}
+  },
+  "selector_quotes": ["managed_queue recovery_p95 was not captured", "dedicated_broker tested consumer restart only"]
+}

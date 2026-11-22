@@ -1,0 +1,14 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "A",
+  "variant": "broken-clock",
+  "assumptions": [{"id": "clock-alignment", "state": "unmet", "requirement": "compatible clock mapping with stated uncertainty"}],
+  "properties": [
+    {"id": "trace_retained", "assert": "source_present", "source": "trace-unmapped-clock.json"},
+    {"id": "clock_gap_visible", "assert": "limitation_present", "value": "incompatible_clock_domain"},
+    {"id": "no_cross_source_ordering", "assert": "prohibited_inference", "sources": ["trace-unmapped-clock.json", "pool-telemetry.json"]},
+    {"id": "not_negative_evidence", "assert": "excluded_from_rival_update", "source": "trace-unmapped-clock.json"}
+  ],
+  "acceptable_outcomes": ["retain as an unusable-for-ordering gap"],
+  "prohibited_promotions": ["aligned duration", "temporal overlap with pool metrics", "evidence against scheduler or network hypothesis"]
+}

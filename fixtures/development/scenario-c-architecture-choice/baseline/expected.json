@@ -1,0 +1,23 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "C",
+  "variant": "baseline",
+  "hard_criterion": {"id": "recoverable_jobs", "failure_model": "abrupt process or single-host stop five seconds after acknowledged enqueue", "max_acknowledged_jobs_lost": 0, "max_recovery_time": {"value": 300, "unit": "seconds"}},
+  "soft_criteria": ["operational_cost", "p99_enqueue_latency", "team_complexity"],
+  "unknown_cells": [
+    {"option": "managed_queue", "criterion": "recoverable_jobs", "reason": "recovery time is not measured"},
+    {"option": "dedicated_broker", "criterion": "recoverable_jobs", "reason": "required failure model is not tested"},
+    {"option": "dedicated_broker", "criterion": "team_complexity", "reason": "only an unverified effort estimate exists"}
+  ],
+  "properties": [
+    {"id": "measurement_denominators_retained", "assert": "sample_count_and_unit_present", "source": "benchmark-samples.json", "expected_sample_count_per_option": 12, "expected_unit": "milliseconds", "expected_p99": {"database_queue": 42, "managed_queue": 35, "dedicated_broker": 31}},
+    {"id": "peak_performance_assumption_can_reverse_choice", "assert": "untested_assumption_has_reversal_test", "source": "workload-projection.json", "rate": {"value": 3500, "unit": "jobs/minute"}, "threshold": {"value": 20, "unit": "milliseconds"}},
+    {"id": "criteria_have_explicit_units", "assert": "all_criteria_have_kind_and_units", "source": "criteria.json"},
+    {"id": "cost_traffic_uncertain", "assert": "estimate_basis_unverified", "source": "cost-and-traffic.json", "field": "traffic_projection"},
+    {"id": "preference_is_not_evidence", "assert": "preference_distinguished", "source": "team-effort-and-preference.txt", "quote": "The managed queue is the best choice"},
+    {"id": "decision_conditional", "assert": "accepted_choice_has_rejected_alternatives_and_reopen_conditions", "source": "accepted-decision.json"},
+    {"id": "sensitivity_can_reverse_choice", "assert": "reopen_trigger_present", "value": "traffic above 2500000 jobs/day requires a peak-rate test"}
+  ],
+  "acceptable_outcomes": ["conditional choice consistent with evidence and declared preferences", "explicitly defer choice pending hard-criterion measurement"],
+  "prohibited_promotions": ["unknown cell treated as pass", "unverified traffic cost estimate treated as measured", "author preference treated as evidence", "universal best option"]
+}

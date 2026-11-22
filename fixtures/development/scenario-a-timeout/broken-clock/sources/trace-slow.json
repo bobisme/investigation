@@ -1,0 +1,24 @@
+{
+  "record_kind": "synthetic_request_trace.v1",
+  "trace_id": "trace-slow-017",
+  "request_id": "REQ-017",
+  "build_id": "build-7c2a",
+  "deployment_id": "deploy-sim-04",
+  "workload_id": "burst-3-40-concurrent",
+  "route": "/items/lookup",
+  "dataset_revision": "dataset-sim-2",
+  "clock_domain": "mono-sim-a",
+  "wall_clock_mapping": {"offset_ms": 1700, "uncertainty_ms": 3, "status": "aligned_for_this_trace"},
+  "events": [
+    {"mono_ms": 100000, "event": "request_received", "text": "request REQ-017 received"},
+    {"mono_ms": 100012, "event": "db_connection_acquired", "connection_id": "conn-4"},
+    {"mono_ms": 100014, "event": "async_callback_started", "text": "await callback began while conn-4 remained checked out"},
+    {"mono_ms": 128014, "event": "async_callback_finished", "text": "callback returned after 28 seconds"},
+    {"mono_ms": 128019, "event": "db_connection_released", "connection_id": "conn-4"},
+    {"mono_ms": 131200, "event": "response_sent", "status": 200}
+  ],
+  "selector_quotes": [
+    "await callback began while conn-4 remained checked out",
+    "callback returned after 28 seconds"
+  ]
+}

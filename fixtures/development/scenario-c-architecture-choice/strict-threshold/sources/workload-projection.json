@@ -1,0 +1,9 @@
+{
+  "record_kind": "synthetic_workload_projection.v1",
+  "observed_baseline": {"value": 1200000, "unit": "jobs/day", "verification": "unverified author estimate"},
+  "projected_peak": {"value": 3500, "unit": "jobs/minute", "verification": "unverified planning scenario"},
+  "benchmark_rate": {"value": 1500, "unit": "jobs/minute"},
+  "performance_assumption": {"option": "managed_queue", "field": "p99_enqueue_latency", "claim": "remains at or below 20 milliseconds at projected peak", "status": "untested"},
+  "reversal_test": "repeat comparable benchmark at 3500 jobs/minute with the same payload and environment; if latency exceeds 20 ms or recovery changes, reassess the conditional choice",
+  "selector_quotes": ["remains at or below 20 milliseconds at projected peak", "repeat comparable benchmark at 3500 jobs/minute"]
+}
