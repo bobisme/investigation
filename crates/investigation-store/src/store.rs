@@ -213,6 +213,7 @@ impl<F: DurableFs> Store<F> {
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
         let mut replay = self.load_verified()?;
+        self.fs.reclaim_publication_temporaries();
         if let Some(existing) = replay.find(meta.actor, meta.command_id) {
             if existing.event.request != request {
                 return Err(Failure::new(

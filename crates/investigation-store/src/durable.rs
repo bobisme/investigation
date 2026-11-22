@@ -28,6 +28,8 @@ pub trait DurableFs {
     fn sync_dir(&mut self, path: &Path) -> io::Result<()>;
     fn remove(&mut self, path: &Path) -> io::Result<()>;
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError>;
+    /// Called after journal verification while the workspace commit lock is held.
+    fn reclaim_publication_temporaries(&mut self) {}
 }
 impl DurableFile for File {
     fn sync_all(&mut self) -> io::Result<()> {
@@ -109,6 +111,86 @@ impl DurableFs for LocalFs {
     fn lock(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
         CommitLock::acquire(&self.path(p).map_err(LockError::Io)?, timeout)
     }
+
+    fn reclaim_publication_temporaries(&mut self) {
+        reclaim_publication_temporaries(&self.root.join("state/tmp"), std::time::SystemTime::now());
+    }
+}
+
+const PUBLICATION_TEMP_GRACE: Duration = Duration::from_secs(24 * 60 * 60);
+
+fn reclaim_publication_temporaries(directory: &Path, now: std::time::SystemTime) {
+    use investigation_core::identity::{Id, Kind};
+
+    if !fs::symlink_metadata(directory).is_ok_and(|metadata| metadata.is_dir()) {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    let transaction_id = |name: &str| {
+        name.parse::<Id>()
+            .is_ok_and(|id| id.kind() == Kind::Transaction)
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(metadata) = fs::symlink_metadata(&path) else {
+            continue;
+        };
+        let expired = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= PUBLICATION_TEMP_GRACE);
+        if !expired {
+            continue;
+        }
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if metadata.is_file()
+            && name
+                .strip_prefix("event-")
+                .and_then(|name| name.strip_suffix(".tmp"))
+                .is_some_and(transaction_id)
+        {
+            let _ = fs::remove_file(path);
+        } else if metadata.is_dir() && name.strip_prefix("create-").is_some_and(transaction_id) {
+            let _ = remove_unpublished_case(&path);
+        }
+    }
+}
+
+fn remove_unpublished_case(path: &Path) -> io::Result<()> {
+    let mut files = Vec::new();
+    let mut events = None;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let kind = entry.file_type()?;
+        if kind.is_file() && matches!(name.to_str(), Some("genesis.json" | "commit.lock")) {
+            files.push(entry.path());
+        } else if kind.is_dir() && name == "events" {
+            for event in fs::read_dir(entry.path())? {
+                let event = event?;
+                if !event.file_type()?.is_file() || event.file_name() != "000000000001.json" {
+                    return Ok(());
+                }
+                files.push(event.path());
+            }
+            events = Some(entry.path());
+        } else {
+            return Ok(());
+        }
+    }
+    for file in files {
+        fs::remove_file(file)?;
+    }
+    if let Some(events) = events {
+        fs::remove_dir(events)?;
+    }
+    fs::remove_dir(path)
 }
 
 #[derive(Clone)]

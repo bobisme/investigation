@@ -167,6 +167,16 @@ fn competing_processes_return_the_winning_revision_and_bounded_diff() {
     };
     let a = child(&root, "amend-a", &amend("amend-a", "Battery tests"));
     let b = child(&root, "amend-b", &amend("amend-b", "Power supply tests"));
+    let during = store.case(case).unwrap();
+    assert_eq!(during.events.len() as u64, during.snapshot.sequence);
+    assert_eq!(
+        during.state.current(case).unwrap().header.revision.0,
+        during.snapshot.sequence
+    );
+    assert_eq!(
+        during.events.last().unwrap().hash,
+        during.snapshot.head_hash
+    );
     let [a, b] = [finish(a, &root, "amend-a"), finish(b, &root, "amend-b")];
     let (winner, loser) = if a["ok"] == true { (a, b) } else { (b, a) };
     assert_eq!(winner["updated"][0]["revision"], 2);

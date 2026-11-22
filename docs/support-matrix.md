@@ -24,6 +24,6 @@ Append publication syncs the private file before linking it into the journal and
 
 On restart, Store reads verify canonical journal events before resolving receipts. A writer that reports uncertain durability may leave a warning for `investigation check`. Recover with the same actor and command ID. SQLite is a disposable index rebuilt from the verified journal, for example with `investigation repair index`.
 
-Crash recovery preserves capture staging and unreferenced blobs. Interrupted private writes can leave files under `state/tmp/`. Current recovery retains those orphans. A grace period and safe reclaim of expired temporary entries are still pending.
+Crash recovery preserves capture staging and unreferenced blobs. Under the commit lock, a writer first verifies the journal and then reclaims recognizable publication temporaries at least 24 hours old. The sweep preserves unrecognized entries and import preparations, which may be open outside that lock. A production recovery test covers each of these boundaries.
 
 Restrictive permissions limit other OS users where the platform enforces them. They do not protect against arbitrary code running as the same OS user. Digests verify equality with recorded bytes and link journal entries. Independent anchoring is separate from local integrity checking.
