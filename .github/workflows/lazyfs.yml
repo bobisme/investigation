@@ -1,0 +1,43 @@
+name: LazyFS qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/lazyfs.yml'
+      - 'scripts/qualify-lazyfs.sh'
+      - 'crates/investigation-store/**'
+
+permissions:
+  contents: read
+
+jobs:
+  lazyfs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: dsrhaslab/lazyfs
+          ref: 045a0b3a1126725e693934e29d3ba15e08cc39ec # LazyFS 0.3.1
+          path: .lazyfs-upstream
+          persist-credentials: false
+      - name: Install build and FUSE dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes build-essential cmake pkg-config fuse3 libfuse3-dev
+          test -c /dev/fuse
+      - name: Build the pinned LazyFS release
+        run: |
+          pcache="$PWD/.lazyfs-upstream/libs/libpcache"
+          lazyfs="$PWD/.lazyfs-upstream/lazyfs"
+          cmake -S "$pcache" -B "$pcache/build" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build "$pcache/build" --parallel 2
+          cmake -S "$lazyfs" -B "$lazyfs/build" -DLAZYFS_BUILD_TESTS=OFF \
+            -DCMAKE_CXX_FLAGS="-I$pcache/build/_deps/spdlog-src/include"
+          cmake --build "$lazyfs/build" --parallel 2
+      - name: Qualify real storage publication under cache loss
+        run: bash scripts/qualify-lazyfs.sh .lazyfs-upstream/lazyfs/build/lazyfs

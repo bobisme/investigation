@@ -268,13 +268,39 @@ impl Workspace {
 
     /// Open and verify the immutable marker, strict config and required layout.
     pub fn open(root: &Path) -> Result<Self, WorkspaceError> {
+        Self::open_checked(root, |root| Self::check_filesystem(root).map(|_| ()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn open_lazyfs_fixture(root: &Path) -> Result<Self, WorkspaceError> {
+        Self::open_checked(root, |root| {
+            let info = NativeFilesystemDetector.detect(root).map_err(|source| {
+                WorkspaceError::FilesystemDetection {
+                    path: root.to_owned(),
+                    source,
+                }
+            })?;
+            if info.kind != FilesystemKind::Fuse {
+                return Err(WorkspaceError::UnsupportedFilesystem {
+                    name: info.name,
+                    kind: info.kind,
+                });
+            }
+            Ok(())
+        })
+    }
+
+    fn open_checked(
+        root: &Path,
+        filesystem: impl FnOnce(&Path) -> Result<(), WorkspaceError>,
+    ) -> Result<Self, WorkspaceError> {
         let root = absolute_lexical(root)?;
         reject_symlink(&root)?;
         let root = fs::canonicalize(&root).map_err(|source| io_at(&root, source))?;
         if !root.is_dir() {
             return Err(WorkspaceError::InvalidRoot(root));
         }
-        Self::check_filesystem(&root)?;
+        filesystem(&root)?;
 
         let config_path = root.join(CONFIG_FILE);
         ensure_regular_file(&config_path)?;

@@ -43,6 +43,7 @@ No published controlled study shows that structured evidence tracking helps agen
 | [`notes/plan.review.3.md`](notes/plan.review.3.md) | Review 3: handoff-centered evaluation, review-basis phantoms, disclosure and retention. |
 | [`fixtures/README.md`](fixtures/README.md) | Deterministic fixture layout, seed and ID rules, and split isolation. |
 | [`docs/deferred.md`](docs/deferred.md) | Deliberately deferred features and their revisit conditions. |
+| [`docs/support-matrix.md`](docs/support-matrix.md) | Filesystem support, durability tests, and recovery limits. |
 
 ## Where to start reading
 

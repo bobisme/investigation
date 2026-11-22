@@ -50,6 +50,9 @@ pub mod evidence_read;
 #[cfg(test)]
 #[path = "crash_tests.rs"]
 mod crash_tests;
+#[cfg(test)]
+#[path = "real_crash_tests.rs"]
+mod real_crash_tests;
 
 const CASES: &str = "state/cases";
 const TMP: &str = "state/tmp";
