@@ -2,3 +2,5 @@
 /.maw/
 /.manifold/
 /repo.git/
+
+/target/

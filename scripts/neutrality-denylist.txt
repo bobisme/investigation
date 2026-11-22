@@ -1,0 +1,11 @@
+# Named reference projects belong in design docs or opt-in packs.
+sapper
+nvwabase
+# The default workspace is independent of trackers and access-control models.
+task tracker
+permission grant
+security principal
+# Security-specific terminology belongs in opt-in packs.
+exploit
+attack surface
+vulnerability
