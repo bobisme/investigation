@@ -37,6 +37,202 @@ pub struct OperationInfo {
     pub related: &'static [&'static str],
 }
 
+/// Catalog-owned flag shortcut metadata. Field paths refer to the target
+/// operation's payload schema; the CLI builds its clap arguments from these
+/// mappings so shortcut flags are not duplicated in a second command schema.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShortcutTarget {
+    Operation(&'static str),
+    Ingest,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShortcutArgument {
+    pub id: &'static str,
+    pub long: Option<&'static str>,
+    pub positional: bool,
+    pub value_name: &'static str,
+    pub help: &'static str,
+    /// Payload property paths affected by this argument. For ingest shortcuts
+    /// paths refer to the manifest shape.
+    pub payload_paths: &'static [&'static str],
+    pub required: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShortcutDescriptor {
+    pub path: &'static [&'static str],
+    pub target: ShortcutTarget,
+    pub summary: &'static str,
+    pub arguments: &'static [ShortcutArgument],
+}
+
+const CASE_NEW_ARGS: &[ShortcutArgument] = &[
+    ShortcutArgument {
+        id: "title",
+        long: None,
+        positional: true,
+        value_name: "TITLE",
+        help: "Short bounded case title.",
+        payload_paths: &["title"],
+        required: true,
+    },
+    ShortcutArgument {
+        id: "mode",
+        long: Some("mode"),
+        positional: false,
+        value_name: "MODE",
+        help: "Case mode; defaults to explore.",
+        payload_paths: &["mode"],
+        required: false,
+    },
+];
+const SOURCE_ADD_ARGS: &[ShortcutArgument] = &[
+    ShortcutArgument {
+        id: "path",
+        long: None,
+        positional: true,
+        value_name: "PATH",
+        help: "Local source path to retain through ingest.",
+        payload_paths: &["paths"],
+        required: true,
+    },
+    ShortcutArgument {
+        id: "title",
+        long: Some("title"),
+        positional: false,
+        value_name: "TITLE",
+        help: "Source title; defaults to the file name.",
+        payload_paths: &["source.title"],
+        required: false,
+    },
+    ShortcutArgument {
+        id: "producer",
+        long: Some("producer"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Source producer attribution.",
+        payload_paths: &["source.producer"],
+        required: false,
+    },
+    ShortcutArgument {
+        id: "publisher",
+        long: Some("publisher"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Source publisher attribution.",
+        payload_paths: &["source.publisher"],
+        required: false,
+    },
+    ShortcutArgument {
+        id: "identity",
+        long: Some("identity"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Source identity as supplied by the investigator.",
+        payload_paths: &["source.identity"],
+        required: false,
+    },
+    ShortcutArgument {
+        id: "source_format",
+        long: Some("source-format"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Declared source format.",
+        payload_paths: &["source.format"],
+        required: false,
+    },
+    ShortcutArgument {
+        id: "context",
+        long: Some("context"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Acquisition context.",
+        payload_paths: &["source.context"],
+        required: false,
+    },
+];
+const OBSERVE_ARGS: &[ShortcutArgument] = &[
+    ShortcutArgument {
+        id: "text",
+        long: None,
+        positional: true,
+        value_name: "TEXT",
+        help: "Observation statement and default exact quote; text remains attributed data.",
+        payload_paths: &["value.statement"],
+        required: true,
+    },
+    ShortcutArgument {
+        id: "source",
+        long: Some("source"),
+        positional: false,
+        value_name: "SOURCE_OR_ARTIFACT_ID",
+        help: "Source ID or Artifact ID; a Source must resolve to one decoded UTF-8 derivative.",
+        payload_paths: &["basis.artifact_ref", "basis.selector"],
+        required: true,
+    },
+    ShortcutArgument {
+        id: "quote",
+        long: Some("quote"),
+        positional: false,
+        value_name: "TEXT",
+        help: "Exact source quote to verify and record.",
+        payload_paths: &["basis.text_quote", "basis.selector"],
+        required: false,
+    },
+];
+const NOTE_ARGS: &[ShortcutArgument] = &[
+    ShortcutArgument {
+        id: "text",
+        long: None,
+        positional: true,
+        value_name: "TEXT",
+        help: "Narrative note; it has no evidentiary standing.",
+        payload_paths: &["content.text"],
+        required: true,
+    },
+    ShortcutArgument {
+        id: "on",
+        long: Some("on"),
+        positional: false,
+        value_name: "RECORD_ID",
+        help: "Exact subject record ID or unique prefix.",
+        payload_paths: &["subject_refs"],
+        required: true,
+    },
+];
+
+const SHORTCUTS: &[ShortcutDescriptor] = &[
+    ShortcutDescriptor {
+        path: &["case", "new"],
+        target: ShortcutTarget::Operation("case.create"),
+        summary: "Create one case using case.create.",
+        arguments: CASE_NEW_ARGS,
+    },
+    ShortcutDescriptor {
+        path: &["source", "add"],
+        target: ShortcutTarget::Ingest,
+        summary: "Retain one source through the standard ingest path.",
+        arguments: SOURCE_ADD_ARGS,
+    },
+    ShortcutDescriptor {
+        path: &["observe"],
+        target: ShortcutTarget::Operation("observation.add"),
+        summary: "Record one source-bound text observation.",
+        arguments: OBSERVE_ARGS,
+    },
+    ShortcutDescriptor {
+        path: &["note"],
+        target: ShortcutTarget::Operation("annotation.add"),
+        summary: "Attach one narrative note without evidentiary standing.",
+        arguments: NOTE_ARGS,
+    },
+];
+
+pub fn shortcuts() -> &'static [ShortcutDescriptor] {
+    SHORTCUTS
+}
+
 type PayloadValidator = Box<dyn Fn(&Value) -> Result<(), Failure>>;
 type Handler = Box<dyn Fn(&Value, &mut OperationContext<'_>) -> Result<(), Failure>>;
 

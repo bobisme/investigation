@@ -5,6 +5,7 @@ mod next;
 mod onboard;
 mod schema;
 mod selection;
+mod shortcuts;
 mod views;
 
 use std::{
@@ -16,7 +17,9 @@ use std::{
     process::ExitCode,
 };
 
-use clap::{ColorChoice, Parser, Subcommand, ValueEnum, error::ErrorKind};
+use clap::{
+    ColorChoice, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum, error::ErrorKind,
+};
 use investigation_core::{
     PROGRAM_NAME,
     command::Command as RecordCommand,
@@ -44,10 +47,16 @@ The workspace preserves evidence and attributed revisions. Writes return a durab
   investigation init ./casework --no-vault --format json
   investigation schema case.create --format json
   investigation --workspace ./casework next --format json
+  investigation case new 'Request latency' --format json
+  investigation source add ./results.log --case <ID> --format json
+  investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json
+  investigation note 'Check the clock source' --on <RECORD_ID> --format json
   investigation --workspace ./casework record --input case.json --format json
   investigation --workspace ./casework receipt KEY --actor ACTOR --format json
 
-Use schema record for the transaction envelope and schema --list for operations.";
+Use schema record for the transaction envelope and schema --list for operations.
+Generated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.
+Use --print-envelope to inspect a shortcut request without writing.";
 
 #[derive(Parser)]
 #[command(
@@ -825,26 +834,20 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().collect();
     let format = requested_format(&args);
-    let output = match Cli::try_parse_from(args) {
-        Ok(cli) => dispatch(cli).unwrap_or_else(Output::failure),
-        Err(error) => match error.kind() {
-            ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
-                let text = error.to_string();
-                Output::success("help", json!({ "help": text }), text)
+    let parser = shortcuts::augment(Cli::command());
+    let parsed = parser.try_get_matches_from(args);
+    let output = match parsed {
+        Ok(mut matches) => {
+            if let Some(shortcut) = shortcuts::from_matches(&mut matches) {
+                dispatch_shortcut(shortcut).unwrap_or_else(Output::failure)
+            } else {
+                match Cli::from_arg_matches_mut(&mut matches) {
+                    Ok(cli) => dispatch(cli).unwrap_or_else(Output::failure),
+                    Err(error) => parse_error(error),
+                }
             }
-            ErrorKind::DisplayVersion => Output::success(
-                "version",
-                json!({ "program": PROGRAM_NAME, "version": env!("CARGO_PKG_VERSION") }),
-                error.to_string(),
-            ),
-            _ => Output::failure(
-                Failure::new(ErrorCode::InvalidInput, error.to_string()).with_argv(
-                    [PROGRAM_NAME, "--help", "--format", "json"]
-                        .map(str::to_owned)
-                        .to_vec(),
-                ),
-            ),
-        },
+        }
+        Err(error) => parse_error(error),
     };
 
     let text = output.text.trim_end();
@@ -860,4 +863,38 @@ fn main() -> ExitCode {
         Err(error) if error.kind() == io::ErrorKind::BrokenPipe => ExitCode::from(output.exit),
         Err(_) => ExitCode::from(ErrorCode::IoFailure.exit_code()),
     }
+}
+
+fn parse_error(error: clap::Error) -> Output {
+    match error.kind() {
+        ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
+            let text = error.to_string();
+            Output::success("help", json!({ "help": text }), text)
+        }
+        ErrorKind::DisplayVersion => Output::success(
+            "version",
+            json!({ "program": PROGRAM_NAME, "version": env!("CARGO_PKG_VERSION") }),
+            error.to_string(),
+        ),
+        _ => Output::failure(
+            Failure::new(ErrorCode::InvalidInput, error.to_string()).with_argv(
+                [PROGRAM_NAME, "--help", "--format", "json"]
+                    .map(str::to_owned)
+                    .to_vec(),
+            ),
+        ),
+    }
+}
+
+fn dispatch_shortcut(shortcut: shortcuts::ParsedShortcut) -> Result<Output, Failure> {
+    if shortcut.global.read_only && !shortcut.print_envelope {
+        return Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "This command requires write access. Remove --read-only to run it.",
+        )
+        .at("--read-only"));
+    }
+    let workspace = open_workspace(shortcut.global.workspace.as_deref())?;
+    let mut store = Store::open(workspace);
+    shortcuts::run(&mut store, shortcut)
 }

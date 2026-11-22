@@ -69,6 +69,133 @@ fn create_case(cwd: &Path, key: &str) -> (Value, Value) {
 }
 
 #[test]
+fn catalog_shortcuts_use_the_same_validated_envelopes_and_receipts() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let case_args = [
+        "case",
+        "new",
+        "Inspect callback timing",
+        "--actor",
+        ACTOR,
+        "--command-id",
+        "shortcut-case",
+        "--json",
+    ];
+    let mut preview = case_args.to_vec();
+    preview.extend(["--print-envelope", "--read-only"]);
+    let case_envelope = run(root, &preview, None, 0);
+    assert_eq!(case_envelope["operations"][0]["op"], "case.create");
+    let receipt_before = run(
+        root,
+        &["receipt", "shortcut-case", "--actor", ACTOR, "--json"],
+        None,
+        0,
+    );
+    assert_eq!(receipt_before["result"], "not_found_at_snapshot");
+    let case = run(root, &case_args, None, 0);
+    let replay = run(
+        root,
+        &["record", "--input", "-", "--json"],
+        Some(&case_envelope),
+        0,
+    );
+    assert_eq!(replay["result"], "already_committed");
+    assert_eq!(replay["transaction_id"], case["transaction_id"]);
+
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    fs::write(
+        root.join("callback.txt"),
+        "The callback waited with the connection.\n",
+    )
+    .unwrap();
+    let source_args = [
+        "source",
+        "add",
+        "callback.txt",
+        "--actor",
+        ACTOR,
+        "--command-id",
+        "shortcut-source",
+        "--json",
+    ];
+    let mut preview = source_args.to_vec();
+    preview.extend(["--print-envelope", "--read-only"]);
+    let manifest = run(root, &preview, None, 0);
+    let ingest = run(root, &source_args, None, 0);
+    let again = run(
+        root,
+        &["ingest", "--input", "-", "--json"],
+        Some(&manifest),
+        0,
+    );
+    assert_eq!(again["snapshot"], ingest["snapshot"]);
+    assert_eq!(again["artifacts"], ingest["artifacts"]);
+
+    let source = ingest["items"][0]["source_id"].as_str().unwrap();
+    let observe = [
+        "observe",
+        "The callback waited.",
+        "--source",
+        source,
+        "--quote",
+        "waited with the connection",
+        "--actor",
+        ACTOR,
+        "--command-id",
+        "shortcut-observation",
+        "--json",
+    ];
+    let mut readonly = observe.to_vec();
+    readonly.push("--read-only");
+    assert_eq!(
+        run(root, &readonly, None, 2)["commit_status"],
+        "not_committed"
+    );
+    let observed = run(root, &observe, None, 0);
+    assert_eq!(observed["observation_checks"][0]["quote_state"], "verified");
+    assert_eq!(
+        observed["observation_checks"][0]["selector_validation"],
+        "verified"
+    );
+
+    let subject = observed["created"][0]["id"].as_str().unwrap();
+    let command = invocation(root)
+        .args([
+            "note",
+            "Inspect the matching control.",
+            "--on",
+            subject,
+            "--actor",
+            ACTOR,
+            "--json",
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        command.status.success(),
+        "{}",
+        String::from_utf8_lossy(&command.stdout)
+    );
+    let receipt: Value = serde_json::from_slice(&command.stdout).unwrap();
+    let key = receipt["command_id"].as_str().unwrap();
+    assert_eq!(
+        String::from_utf8(command.stderr).unwrap(),
+        format!("command_id: {key}\n")
+    );
+    let recovered = run(root, &["receipt", key, "--actor", ACTOR, "--json"], None, 0);
+    assert_eq!(receipt["transaction_id"], recovered["transaction_id"]);
+}
+
+#[test]
 fn w01_handoff_fixture_replays_into_a_public_bounded_brief() {
     const COMMANDS: &str =
         include_str!("../../../fixtures/development/w01-handoff/transactions.json");

@@ -104,6 +104,10 @@ fn submit(
     Ok(out)
 }
 
+pub(crate) fn submit_shortcut_manifest(store: &mut Store, bytes: &[u8]) -> Result<Output, Failure> {
+    submit(store, bytes, None)
+}
+
 pub(crate) fn read(
     store: &mut Store,
     global: &Global,
