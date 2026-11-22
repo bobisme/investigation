@@ -348,6 +348,25 @@ fn links(record: &Record) -> Result<Vec<RevisionRef>, Failure> {
         ],
         Kind::Decision => {
             add_field_refs(&body["choice"], &["option_ref"], &mut linked)?;
+            if let Some(conditions) = body["hard_conditions"].as_array() {
+                for condition in conditions {
+                    add_field_refs(condition, &["criterion_ref"], &mut linked)?;
+                }
+            }
+            if let Some(conditions) = body["reversal_conditions"].as_array() {
+                for condition in conditions {
+                    add_field_refs(
+                        condition,
+                        &[
+                            "assumption_ref",
+                            "criterion_ref",
+                            "comparison_ref",
+                            "option_ref",
+                        ],
+                        &mut linked,
+                    )?;
+                }
+            }
             &[
                 "question_ref",
                 "compared_alternatives",
@@ -1283,7 +1302,19 @@ pub fn validation_review_current(
         return Err(gate(
             "/review_ref",
             "Obtain a current review against this claim and its scoped membership.",
-        ));
+        )
+        .with_argv(vec![
+            PROGRAM_NAME.into(),
+            "show".into(),
+            target.header.id.to_string(),
+            "--case".into(),
+            case.to_string(),
+            "--depth".into(),
+            "full".into(),
+            "--format".into(),
+            "json".into(),
+        ])
+        .with_schema("review.submit"));
     }
     let required = required_read_set(state, target)?;
     if required

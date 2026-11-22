@@ -4,9 +4,13 @@
 //! instructions. Raw artifact bytes are intentionally unavailable here.
 
 use investigation_core::{
+    basis::basis_digest,
     command::RevisionRef,
+    decision_ops::{self, EffectiveDecision},
     header::display_title,
     identity::{Id, Kind},
+    review::EffectiveDisposition,
+    review_ops,
     state::Record,
 };
 use investigation_store::journal::CaseReplay;
@@ -41,6 +45,86 @@ pub struct EffectiveStateInput {
     pub material_caveat: Option<Value>,
     pub contradiction: Option<Value>,
     pub gaps: Vec<Value>,
+}
+
+pub fn effective_state(replay: &CaseReplay, record: &Record) -> EffectiveStateInput {
+    let kind = record.header.id.kind();
+    let recorded = record.body["status"]
+        .as_str()
+        .or_else(|| record.body["lifecycle"].as_str())
+        .or_else(|| record.body["disposition"].as_str());
+    let reviewed = matches!(
+        kind,
+        Kind::Conclusion | Kind::Decision | Kind::Assessment | Kind::Comparison | Kind::Review
+    );
+    let disposition = review_ops::effective_disposition(&replay.state, record);
+    let state = match (kind, disposition) {
+        (_, EffectiveDisposition::Disputed) => json!("disputed"),
+        (Kind::Decision, _) => json!(
+            decision_ops::effective_decision(&replay.state, record)
+                .unwrap_or(EffectiveDecision::NeedsReview)
+        ),
+        (_, EffectiveDisposition::NeedsReview | EffectiveDisposition::Conditional) if reviewed => {
+            json!(disposition)
+        }
+        (Kind::Comparison, _) => json!(
+            decision_ops::effective_comparison(&replay.state, record)
+                .unwrap_or(decision_ops::EffectiveComparison::NeedsReview)
+        ),
+        _ => json!(recorded.unwrap_or("recorded")),
+    };
+    let current = replay.state.current(record.header.id);
+    let freshness = if current.is_some_and(|current| current.reference() != record.reference()) {
+        json!("historical_revision")
+    } else if state == "needs_review" {
+        json!("stale")
+    } else {
+        json!("current")
+    };
+    let caveat = match state.as_str() {
+        Some("needs_review") => Some(
+            json!({"state":"known","reason":"The exact review or evidence basis has changed."}),
+        ),
+        Some("conditional") => Some(
+            json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"Material conditions remain unresolved."}),
+        ),
+        _ => record.body["caveats"]
+            .as_array()
+            .and_then(|items| items.first())
+            .map(|first| json!({"state":"known","value":first})),
+    };
+    let contradiction = if state == "disputed" {
+        Some(
+            json!({"state":"known","reason":"An open critical objection applies to the record or its basis."}),
+        )
+    } else {
+        record.body["contradiction_refs"]
+            .as_array()
+            .filter(|items| !items.is_empty())
+            .map(|items| json!({"state":"known","references":items}))
+    };
+    EffectiveStateInput {
+        status: Some(json!({"state":state,"recorded":recorded})),
+        freshness: Some(json!({"state":freshness})),
+        material_caveat: caveat,
+        contradiction,
+        gaps: Vec::new(),
+    }
+}
+
+pub fn review_basis(replay: &CaseReplay, record: &Record) -> Option<Value> {
+    if !matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision) {
+        return None;
+    }
+    let basis = || -> Result<Value, investigation_core::wire::Failure> {
+        Ok(json!({
+            "subject_ref":record.reference(),
+            "basis_digest":basis_digest(record)?,
+            "read_set":review_ops::required_read_set(&replay.state, record)?,
+            "memberships":review_ops::promotion_memberships(&replay.state, record)?,
+        }))
+    };
+    Some(basis().unwrap_or_else(|failure| json!({"unavailable":failure.error})))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -100,7 +184,17 @@ fn project_record(
     depth: ViewDepth,
     effective: &EffectiveStateInput,
 ) -> Value {
-    let title = record_title(record);
+    let selected = record.body["choice"]["option_ref"].clone();
+    let selected_option = if record.header.id.kind() == Kind::Decision {
+        serde_json::from_value::<RevisionRef>(selected)
+            .ok()
+            .and_then(|reference| replay.state.revision(reference))
+    } else {
+        None
+    };
+    let title = selected_option
+        .map(record_title)
+        .unwrap_or_else(|| record_title(record));
     let summary = record_summary(record);
     let mut out = Map::new();
     out.insert("id".into(), json!(record.header.id));
@@ -168,6 +262,39 @@ fn project_record(
         if record.header.id.kind() == Kind::Observation {
             out.insert("summary_untrusted_data".into(), json!(true));
         }
+        if record.header.id.kind() == Kind::Decision {
+            out.insert("choice".into(), record.body["choice"].clone());
+            out.insert(
+                "reopen_trigger".into(),
+                record.body["reopen_trigger"].clone(),
+            );
+            out.insert(
+                "reversal_conditions".into(),
+                record.body["reversal_conditions"].clone(),
+            );
+        }
+        if matches!(record.header.id.kind(), Kind::Decision | Kind::Conclusion)
+            && let Ok(read_set) = review_ops::required_read_set(&replay.state, record)
+        {
+            let evidence: Vec<_> = read_set
+                .iter()
+                .filter(|reference| {
+                    matches!(
+                        reference.id.kind(),
+                        Kind::Observation | Kind::Assessment | Kind::Comparison | Kind::Artifact
+                    )
+                })
+                .collect();
+            let maximum = 16;
+            out.insert(
+                "evidence_refs".into(),
+                json!(evidence.iter().take(maximum).collect::<Vec<_>>()),
+            );
+            out.insert(
+                "omitted_evidence_refs".into(),
+                json!(evidence.len().saturating_sub(maximum)),
+            );
+        }
     }
     if depth == ViewDepth::Full {
         out.insert(
@@ -201,6 +328,8 @@ fn record_title(record: &Record) -> String {
         Kind::Assessment => &["summary", "reason", "disposition"],
         Kind::Conclusion => &["statement", "claim", "title"],
         Kind::Decision => &[
+            "choice.reason",
+            "reopen_trigger",
             "statement",
             "choice",
             "content.statement",

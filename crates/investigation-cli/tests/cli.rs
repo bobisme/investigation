@@ -69,6 +69,108 @@ fn create_case(cwd: &Path, key: &str) -> (Value, Value) {
 }
 
 #[test]
+fn ingest_and_read_verify_original_bytes_before_accepting_an_observation() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    let source = "Trace from José\r\nWaiting for connection\r\n";
+    fs::write(root.join("trace.txt"), source).unwrap();
+    let start = run(
+        root,
+        &[
+            "start",
+            "What held the connection?",
+            "--attach",
+            "trace.txt",
+            "--command-id",
+            "trace-case",
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let case = start["created"][0]["id"].as_str().unwrap();
+    let artifact = start["items"][0]["derivative_id"].as_str().unwrap();
+    let digest = &start["items"][0]["digest"];
+    let selector = json!({"schema_version":"inv.selector.v1","artifact_digest":digest,"selector":{"type":"text_lines","start_line":2,"end_line":2,"encoding":"utf-8","parser_version":"inv.text.utf8.v1"}});
+    fs::write(
+        root.join("selector.json"),
+        serde_json::to_vec(&selector).unwrap(),
+    )
+    .unwrap();
+    let read = run(
+        root,
+        &[
+            "evidence",
+            "read",
+            artifact,
+            "--selector-file",
+            "selector.json",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(read["content_trust"], "untrusted_evidence");
+    assert_eq!(read["excerpt"]["text"], "Waiting for connection\r\n");
+
+    let mut command = json!({
+        "schema_version":"inv.command.v0-alpha", "command_id":"add-observation",
+        "case_id":case, "actor":ACTOR, "preconditions":[],
+        "operations":[{"op":"observation.add","payload":{
+            "value":{"kind":"text","statement":"The request waited for a connection."},
+            "basis":{"kind":"source","artifact_ref":{"id":artifact,"revision":1},"selector":selector,
+                "text_quote":{"exact":"Waiting for connection"}},
+            "validity":"valid","quality":[],"limitations":[],"evidence_kind":"observational","variables_changed":[]
+        }}]
+    });
+    let accept = |request: &Value, exit| {
+        run(
+            root,
+            &["record", "--input", "-", "--json"],
+            Some(request),
+            exit,
+        )
+    };
+    let receipt = accept(&command, 0);
+    let observation = receipt["created"][0]["id"].as_str().unwrap();
+    let shown = run(
+        root,
+        &["show", observation, "--depth", "full", "--json"],
+        None,
+        0,
+    );
+    let basis = &shown["record"]["body"]["basis"];
+    assert_eq!(basis["selector"]["validation"], "verified");
+    assert_eq!(basis["text_quote"]["state"], "verified");
+
+    let original = command.clone();
+    command["command_id"] = json!("wrong-excerpt");
+    command["operations"][0]["payload"]["basis"]["text_quote"]["exact"] = json!("Trace from José");
+    assert_eq!(
+        accept(&command, 2)["error"]["message"],
+        "OBSERVATION_TEXT_QUOTE_NOT_FOUND"
+    );
+    let sha = digest.as_str().unwrap().strip_prefix("sha256:").unwrap();
+    fs::remove_file(root.join("state/blobs/sha256").join(&sha[..2]).join(sha)).unwrap();
+    assert_eq!(
+        accept(&original, 0)["transaction_id"],
+        receipt["transaction_id"]
+    );
+    assert_eq!(accept(&command, 6)["error"]["code"], "INTEGRITY_FAILURE");
+}
+
+#[test]
 fn json_discovery_and_usage_are_single_objects() {
     let dir = tempfile::tempdir().unwrap();
     let cwd = dir.path();

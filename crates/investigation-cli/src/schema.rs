@@ -16,12 +16,12 @@ use crate::{
     selection::{open_workspace, select_actor, select_case, workspace_argv},
 };
 
-const WIRE_SCHEMAS: &[&str] = &["record", "receipt", "error"];
+const WIRE_SCHEMAS: &[&str] = &["record", "receipt", "error", "ingest", "evidence-selector"];
 
 #[derive(clap::Args)]
 #[command(group(ArgGroup::new("selection").required(true).args(["operation", "list"])))]
 pub(crate) struct Args {
-    /// Operation name or wire schema name (record, receipt, error).
+    /// Operation name or wire schema name (record, receipt, error, ingest, evidence-selector).
     operation: Option<String>,
     /// List available operations by workflow stage.
     #[arg(long)]
@@ -40,7 +40,11 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         .operation
         .as_deref()
         .expect("clap requires an operation or --list");
-    if let Some(schema) = wire_schema(name) {
+    let wire = match name {
+        "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
+        _ => wire_schema(name),
+    };
+    if let Some(schema) = wire {
         let schema = serde_json::to_value(schema).expect("wire schema serializes");
         return Ok(if args.schema_only {
             raw(schema)
@@ -48,6 +52,10 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
             let purpose = match name {
                 "record" => "Submit a transaction with investigation record --input FILE.",
                 "receipt" => "Inspect the result of an accepted transaction.",
+                "ingest" => "Retain original source bytes with investigation ingest --input FILE.",
+                "evidence-selector" => {
+                    "Choose a digest-bound selection for investigation evidence read."
+                }
                 _ => "Inspect the shape of an error and its repair guidance.",
             };
             let text = format!("{name}  {purpose}\n{}", pretty(&schema));

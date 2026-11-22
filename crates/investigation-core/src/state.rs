@@ -8,9 +8,10 @@ use serde_json::{Value, json};
 use crate::{
     catalog::Catalog,
     command::{Command, Reference, RevisionRef},
-    header::{Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
+    header::{Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
     identity::{Id, IdSource, Kind},
-    wire::{ErrorCode, Failure, RecordChange},
+    observation_ops::ObservationProof,
+    wire::{Digest, ErrorCode, Failure, RecordChange, Snapshot},
 };
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,11 +47,44 @@ pub struct AcceptedTransaction {
 pub struct State {
     sequence: u64,
     history: BTreeMap<Id, Vec<Record>>,
+    verified_snapshots: BTreeMap<u64, Digest>,
 }
 
 impl State {
     pub fn sequence(&self) -> u64 {
         self.sequence
+    }
+
+    /// Associate the current replay sequence with a hash verified by its journal reader.
+    /// Accepted after-images alone cannot authenticate a snapshot.
+    pub fn note_verified_snapshot(&mut self, snapshot: Snapshot) -> Result<(), Failure> {
+        if snapshot.sequence != self.sequence
+            || self
+                .verified_snapshot(snapshot.sequence)
+                .is_some_and(|known| known != &snapshot.head_hash)
+        {
+            return Err(Failure::new(
+                ErrorCode::IntegrityFailure,
+                "Verified snapshot does not match the replayed case sequence or hash.",
+            ));
+        }
+        self.verified_snapshots
+            .insert(snapshot.sequence, snapshot.head_hash);
+        Ok(())
+    }
+
+    pub fn verified_snapshot(&self, sequence: u64) -> Option<&Digest> {
+        self.verified_snapshots.get(&sequence)
+    }
+
+    pub fn record_at(&self, id: Id, sequence: u64) -> Option<&Record> {
+        let records = self.history.get(&id)?;
+        let end = records.partition_point(|record| record.header.acceptance_sequence <= sequence);
+        records.get(end.checked_sub(1)?)
+    }
+
+    pub fn history(&self, id: Id) -> impl Iterator<Item = &Record> {
+        self.history.get(&id).into_iter().flatten()
     }
 
     pub fn current(&self, id: Id) -> Option<&Record> {
@@ -177,6 +211,17 @@ pub fn validate_and_apply(
     catalog: &Catalog,
     acceptance: Acceptance<'_>,
 ) -> Result<AcceptedTransaction, Failure> {
+    validate_and_apply_with_observations(state, command, catalog, acceptance, &BTreeMap::new())
+}
+
+/// Attach trusted verification results per operation, computed from retained bytes.
+pub fn validate_and_apply_with_observations(
+    state: &State,
+    command: &Command,
+    catalog: &Catalog,
+    acceptance: Acceptance<'_>,
+    observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
+) -> Result<AcceptedTransaction, Failure> {
     command.validate_shape()?;
     if acceptance.sequence <= state.sequence {
         return Err(Failure::new(
@@ -240,6 +285,7 @@ pub fn validate_and_apply(
             ids: acceptance.ids,
             aliases: &aliases,
             preconditions: &preconditions,
+            observation_proof: observations.get(&index),
             images: Vec::new(),
             creation: None,
             final_checks: Vec::new(),
@@ -315,6 +361,7 @@ pub struct OperationContext<'a> {
     ids: &'a mut dyn IdSource,
     aliases: &'a BTreeMap<String, RevisionRef>,
     preconditions: &'a BTreeMap<Id, u64>,
+    observation_proof: Option<&'a Result<ObservationProof, Failure>>,
     images: Vec<Record>,
     creation: Option<RevisionRef>,
     final_checks: Vec<FinalCheck>,
@@ -332,6 +379,12 @@ impl OperationContext<'_> {
 
     pub fn state(&self) -> &State {
         self.state
+    }
+
+    pub fn observation_proof(&self) -> Result<Option<&ObservationProof>, Failure> {
+        self.observation_proof
+            .map(|proof| proof.as_ref().map_err(Clone::clone))
+            .transpose()
     }
 
     pub fn preconditions(&self) -> &BTreeMap<Id, u64> {
@@ -402,6 +455,15 @@ impl OperationContext<'_> {
         }
     }
     pub fn create(&mut self, kind: Kind, body: Value) -> Result<RevisionRef, Failure> {
+        self.create_classified(kind, body, Classification::default())
+    }
+
+    pub fn create_classified(
+        &mut self,
+        kind: Kind,
+        body: Value,
+        classification: Classification,
+    ) -> Result<RevisionRef, Failure> {
         let invalid = || {
             Failure::new(
                 ErrorCode::IntegrityFailure,
@@ -434,7 +496,7 @@ impl OperationContext<'_> {
                 acceptance_sequence: self.acceptance_sequence,
                 revision: Revision(1),
                 history: Vec::new(),
-                classification: Default::default(),
+                classification,
                 provenance: Default::default(),
                 extensions: BTreeMap::new(),
             },

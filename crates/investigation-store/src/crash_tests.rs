@@ -260,3 +260,92 @@ fn committed_attachment_is_durable_before_its_event() {
     }
     assert!(saw_fault && saw_commit);
 }
+
+#[test]
+fn closure_with_retrospective_is_atomic_over_the_commit_crash_window() {
+    let mut saw_failed = false;
+    let mut saw_committed = false;
+    let mut saw_unknown = false;
+    for fault in 1..=80 {
+        let (mut store, root) = setup(500 + fault);
+        let (command, semantic) = request(None, "case");
+        let case = apply(&mut store, &command, &semantic, 0).unwrap().created[0].id;
+        let parse = |key: &str, ops: Value, preconditions: Value| {
+            Command::parse(&serde_json::to_vec(&json!({
+                "schema_version":"inv.command.v0-alpha","command_id":key,"case_id":case,"actor":"agent:crash-test",
+                "preconditions":preconditions,"operations":ops,
+            })).unwrap()).unwrap()
+        };
+        let (command, semantic) = parse(
+            "failed-run",
+            json!([{"op":"run.record","payload":{
+                "intent":{"kind":"exploration","intent":"Record one attempt"},
+                "producer":"agent:fixture","execution_status":"failed","evidence_completeness":"complete",
+                "evidence_kind":"observational","variables_changed":[],"artifact_refs":[],
+            }}]),
+            json!([]),
+        );
+        let run = apply(&mut store, &command, &semantic, 100).unwrap().created[0].id;
+        let snapshot = store.case(case).unwrap().snapshot;
+        let case_ref = json!({"id":case,"revision":1});
+        let (command, semantic) = parse(
+            "close-batch",
+            json!([
+                {"op":"retrospective.record","client_ref":"method","payload":{
+                    "case_ref":case_ref,"snapshot":snapshot,"methods_attempted":[{"name":"Capture synthetic attempt"}],
+                    "effective_steps":[],"invalid_or_misleading_steps":[{"description":"The attempt failed before measurements completed.","support_refs":[run]}],
+                    "costs_or_constraints":"One run.","residual_unknowns":["Whether a second run will succeed."],"lessons":[],
+                }},
+                {"op":"case.close","payload":{
+                    "outcome":"inconclusive","reason":"The attempt failed.","unresolved_questions":[],
+                    "reopen_condition":"A repeatable observation becomes available.","retrospective_ref":{"client_ref":"method"},
+                }}
+            ]),
+            json!([case_ref]),
+        );
+        store.fs.fail_at(fault as usize);
+        let first = apply(&mut store, &command, &semantic, 1_000);
+        if let Err(failure) = &first {
+            saw_failed = true;
+            saw_unknown |= failure.error.code == ErrorCode::DurabilityUnknown;
+        } else {
+            saw_committed = true;
+        }
+        restart(&mut store);
+        let replay = store.case(case).unwrap();
+        let closure = replay.state.current(case).unwrap();
+        let found: Vec<_> = replay
+            .state
+            .records()
+            .filter(|record| record.header.id.kind() == Kind::Retrospective)
+            .collect();
+        assert_eq!(
+            closure.body["lifecycle"] == "closed",
+            found.len() == 1,
+            "fault {fault}"
+        );
+        let existing = match store.receipt(&command.actor, "close-batch").unwrap() {
+            ReceiptLookup::Found { receipt } => Some(receipt),
+            ReceiptLookup::NotFoundAtSnapshot { .. } => None,
+        };
+        if let Ok(first) = first {
+            assert_eq!(
+                existing.as_ref().unwrap().transaction_id,
+                first.transaction_id
+            );
+        }
+        let retry = apply(&mut store, &command, &semantic, 2_000).unwrap();
+        if let Some(existing) = existing {
+            assert_eq!(existing.transaction_id, retry.transaction_id);
+        }
+        let replay = store.case(case).unwrap();
+        assert_eq!(replay.events.len(), 3);
+        assert_eq!(
+            replay.state.current(case).unwrap().body["closure"]["retrospective_ref"]["id"],
+            json!(retry.created[0].id)
+        );
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
+    assert!(saw_failed && saw_committed && saw_unknown);
+}

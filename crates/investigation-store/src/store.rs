@@ -13,7 +13,7 @@ use investigation_core::{
     command::{Command, RevisionRef, SemanticRequest},
     header::{Actor, Clock, SystemClock},
     identity::{Id, IdSource, Kind, SystemIdSource},
-    state::{Acceptance, State, validate_and_apply},
+    state::{Acceptance, AcceptedTransaction, State, validate_and_apply_with_observations},
     wire::{
         CommitResult, ErrorCode, Failure, Guidance, GuidanceKind, Projection as ReceiptProjection,
         ProjectionStatus, Receipt, ResponseVersion, Snapshot,
@@ -29,7 +29,8 @@ use crate::{
         sync_directory, sync_file,
     },
     journal::{
-        CaseGenesis, CaseReplay, Event, VerifiedEvent, event_filename, hash_bytes, replay_case,
+        CaseGenesis, CaseReplay, Event, EventInput, VerifiedEvent, event_filename, hash_bytes,
+        replay_case,
     },
     projection::{IndexEvent, Projection},
     workspace::Workspace,
@@ -38,6 +39,12 @@ use crate::{
 #[path = "check.rs"]
 mod check;
 pub use check::{CheckIssue, CheckReport, Severity};
+
+#[path = "ingest.rs"]
+pub mod ingest;
+
+#[path = "evidence_read.rs"]
+pub mod evidence_read;
 
 #[cfg(test)]
 #[path = "crash_tests.rs"]
@@ -158,30 +165,68 @@ impl<F: DurableFs> Store<F> {
         clock: &mut dyn Clock,
         ids: &mut dyn IdSource,
     ) -> Result<Receipt, Failure> {
+        let observations = self.prepare_observations(command);
+        self.commit_plan(
+            CommitPlan {
+                case_id: command.case_id,
+                event: EventInput {
+                    actor: &command.actor,
+                    command_id: &command.command_id,
+                    preconditions: &command.preconditions,
+                    manifest_digest: None,
+                },
+                request,
+                blobs,
+            },
+            clock,
+            ids,
+            |state, catalog, acceptance| {
+                validate_and_apply_with_observations(
+                    state,
+                    command,
+                    catalog,
+                    acceptance,
+                    &observations,
+                )
+            },
+        )
+    }
+
+    fn commit_plan(
+        &mut self,
+        plan: CommitPlan<'_>,
+        clock: &mut dyn Clock,
+        ids: &mut dyn IdSource,
+        prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>) -> Result<AcceptedTransaction, Failure>,
+    ) -> Result<Receipt, Failure> {
+        let CommitPlan {
+            case_id,
+            event: meta,
+            request,
+            blobs,
+        } = plan;
         self.gate.check().map_err(durability_failure)?;
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
         let mut replay = self.load_verified()?;
-        if let Some(existing) = replay.find(&command.actor, &command.command_id) {
+        if let Some(existing) = replay.find(meta.actor, meta.command_id) {
             if existing.event.request != request {
                 return Err(Failure::new(
                     ErrorCode::IdempotencyKeyReused,
                     "This actor has committed a different request with the same command ID.",
                 )
                 .at("/command_id")
-                .with_argv(receipt_argv(&command.actor, &command.command_id)));
+                .with_argv(receipt_argv(meta.actor, meta.command_id)));
             }
             let mut receipt = receipt_for(existing).as_retry();
             self.apply_projection_health(&replay, &mut receipt);
             return Ok(receipt);
         }
 
-        let case = command
-            .case_id
+        let case = case_id
             .map(|id| replay.cases.remove(&id).ok_or_else(|| missing_case(id)))
             .transpose()?;
-        let _case_lock = command
-            .case_id
+        let _case_lock = case_id
             .map(|id| {
                 self.fs
                     .lock(&case_directory(id).join(CASE_LOCK), WAIT_FOR_LOCK)
@@ -194,9 +239,8 @@ impl<F: DurableFs> Store<F> {
             .sequence()
             .checked_add(1)
             .ok_or_else(|| integrity("Case sequence is exhausted."))?;
-        let accepted = validate_and_apply(
+        let accepted = prepare(
             original,
-            command,
             &self.catalog,
             Acceptance {
                 sequence,
@@ -204,7 +248,7 @@ impl<F: DurableFs> Store<F> {
                 ids,
             },
         )
-        .map_err(|error| add_conflict_context(error, original, command.case_id))?;
+        .map_err(|error| add_conflict_context(error, original, case_id))?;
 
         // Exercise the same replay checks before touching canonical bytes.
         let mut projected = original.clone();
@@ -234,7 +278,7 @@ impl<F: DurableFs> Store<F> {
             self.workspace.id(),
             transaction_id,
             previous_hash,
-            command,
+            meta,
             request,
             accepted,
         )?;
@@ -275,9 +319,14 @@ impl<F: DurableFs> Store<F> {
         genesis: Option<&[u8]>,
         blobs: &[StagedBlob],
     ) -> Result<(), Failure> {
-        let expected = &event.request.attachments;
-        if expected.len() != blobs.len()
-            || expected.iter().zip(blobs).any(|(digest, blob)| {
+        let expected = event
+            .request
+            .attachments
+            .iter()
+            .chain(event.manifest_digest.iter());
+        if event.request.attachments.len() + usize::from(event.manifest_digest.is_some())
+            != blobs.len()
+            || expected.zip(blobs).any(|(digest, blob)| {
                 digest.as_str().strip_prefix("sha256:") != Some(blob.digest.as_str())
             })
         {
@@ -440,6 +489,13 @@ impl<F: DurableFs> Store<F> {
             let _ = marker.write_all(b"A writer stopped after an uncertain sync. Verify the journal and retry with the same command ID.\n");
         }
     }
+}
+
+struct CommitPlan<'a> {
+    case_id: Option<Id>,
+    event: EventInput<'a>,
+    request: SemanticRequest,
+    blobs: &'a [StagedBlob],
 }
 
 #[derive(Default)]

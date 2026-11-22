@@ -92,7 +92,18 @@ pub struct CaseBody {
     pub lifecycle: CaseLifecycle,
     pub closure_outcome: Option<CaseClosureOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closure: Option<CaseClosureDetails>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transition_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct CaseClosureDetails {
+    pub unresolved_questions: Vec<RevisionRef>,
+    pub reopen_condition: Option<String>,
+    pub retrospective_ref: Option<RevisionRef>,
+    pub retrospective_waived: Option<String>,
 }
 
 /// Payload for `case.create`; the engine assigns a durable case ID.
@@ -138,6 +149,7 @@ impl CaseCreate {
             expectations: self.expectations,
             lifecycle: CaseLifecycle::Active,
             closure_outcome: None,
+            closure: None,
             transition_reason: None,
         }
     }

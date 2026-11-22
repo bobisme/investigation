@@ -1,5 +1,6 @@
 //! Local command-line frontend.
 
+mod evidence;
 mod schema;
 mod selection;
 mod views;
@@ -17,6 +18,7 @@ use clap::{ColorChoice, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use investigation_core::{
     PROGRAM_NAME,
     command::Command as RecordCommand,
+    command::RevisionRef,
     header::Actor,
     identity::{ResolveError, resolve_prefix},
     input::MAX_REQUEST_BYTES,
@@ -29,7 +31,7 @@ use serde_json::{Value, json};
 use selection::{
     open_workspace, require_case_agreement, select_actor, workspace_argv, workspace_failure,
 };
-use views::{BriefInputs, BriefLevel, EffectiveStateInput, ViewDepth};
+use views::{BriefInputs, BriefLevel, ViewDepth};
 
 const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
@@ -117,6 +119,23 @@ enum Commands {
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
     },
+    /// Preserve original local bytes and return their acquisition IDs.
+    Ingest {
+        /// Read the manifest from FILE, or - for a path-only manifest on stdin.
+        #[arg(long, value_name = "FILE|-")]
+        input: PathBuf,
+    },
+    /// Open an exploratory case and retain one attachment atomically.
+    Start {
+        question: String,
+        #[arg(long, value_name = "FILE|-")]
+        attach: PathBuf,
+        #[arg(long, value_name = "KEY")]
+        command_id: String,
+    },
+    /// Inspect retained source material explicitly.
+    #[command(subcommand)]
+    Evidence(evidence::EvidenceCommand),
     /// Discover operation schemas, examples, and repairs.
     #[command(
         after_help = "Examples:\n  investigation schema --list --format json\n  investigation schema case.create --format json\n  investigation schema record --schema-only --format json"
@@ -239,7 +258,11 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
     if global.read_only
         && matches!(
             cli.command,
-            Commands::Init { .. } | Commands::Record { .. } | Commands::Repair(_)
+            Commands::Init { .. }
+                | Commands::Record { .. }
+                | Commands::Ingest { .. }
+                | Commands::Start { .. }
+                | Commands::Repair(_)
         )
     {
         return Err(Failure::new(
@@ -255,6 +278,13 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
                 Commands::Record { input } => record(&mut store, &global, &input),
+                Commands::Ingest { input } => evidence::ingest(&mut store, &global, &input),
+                Commands::Start {
+                    question,
+                    attach,
+                    command_id,
+                } => evidence::start(&mut store, &global, &question, &attach, &command_id),
+                Commands::Evidence(command) => evidence::read(&mut store, &global, command),
                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),
                 Commands::Show { id, depth, at } => show(&mut store, &global, &id, depth, at),
                 Commands::Brief { level, max_bytes } => {
@@ -312,14 +342,39 @@ fn show(
             failure
         }
     })?;
-    let effective = EffectiveStateInput::default();
+    let record = match at {
+        Some(revision) => replay.state.revision(RevisionRef { id, revision }),
+        None => replay.state.current(id),
+    };
+    let effective = record
+        .map(|record| views::effective_state(&replay, record))
+        .unwrap_or_default();
     let projected = if at.is_some() {
         views::show_record_revision(&replay, id, at, depth, &effective)
     } else {
         views::show_record(&replay, id, depth, &effective)
     };
-    let view =
+    let mut view =
         projected.map_err(|error| Failure::new(ErrorCode::UnknownReference, error.to_string()))?;
+    if depth == ViewDepth::Full
+        && at.is_none()
+        && let Some(record) = record
+    {
+        if let Some(basis) = views::review_basis(&replay, record) {
+            view["review_basis"] = basis;
+        }
+        if id.kind() == investigation_core::identity::Kind::Question {
+            view["pareto"] = json!(investigation_core::decision_ops::pareto(
+                &replay.state,
+                case,
+                id
+            )?);
+        }
+    }
+    if depth == ViewDepth::Full {
+        let text = serde_json::to_string_pretty(&view).expect("full view serializes");
+        return Ok(Output::success("record_shown", view, text));
+    }
     let text = format!(
         "{}  {}\n{}",
         id,
@@ -350,6 +405,23 @@ fn brief(
     ]);
     let inputs = BriefInputs {
         next_actions: vec![json!({"kind":"local_read","argv":argv})],
+        effective: replay
+            .state
+            .current(case)
+            .map(|record| views::effective_state(&replay, record))
+            .unwrap_or_default(),
+        record_effective: replay
+            .state
+            .records()
+            .filter(|record| {
+                matches!(
+                    record.header.id.kind(),
+                    investigation_core::identity::Kind::Conclusion
+                        | investigation_core::identity::Kind::Decision
+                )
+            })
+            .map(|record| (record.header.id, views::effective_state(&replay, record)))
+            .collect(),
         ..BriefInputs::default()
     };
     let view =

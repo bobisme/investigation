@@ -241,6 +241,7 @@ pub fn wire_schema(name: &str) -> Option<Schema> {
         "record" => Some(schema_for!(Command)),
         "receipt" => Some(schema_for!(Receipt)),
         "error" => Some(schema_for!(Failure)),
+        "evidence-selector" => Some(schema_for!(crate::evidence::SelectorRequest)),
         _ => None,
     }
 }
@@ -304,27 +305,20 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::evaluate_ops::operations())
         .chain(crate::explain_ops::operations())
         .chain(crate::review_ops::operations())
+        .chain(crate::decision_ops::operations())
+        .chain(crate::retrospective_ops::operations())
+        .chain(crate::observation_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")
 }
 
 const RESERVED_OPERATIONS: &[&str] = &[
-    "annotation.add",
     "artifact.withdraw",
-    "case.close",
     "coverage.define",
     "coverage.link",
     "coverage.revise",
-    "decision.accept",
-    "decision.propose",
-    "decision.supersede",
     "measurement.assess",
-    "observation.add",
-    "observation.correct",
-    "observation.retract",
-    "retrospective.record",
-    "retrospective.supersede",
     "source.assess",
     "source.withdraw",
 ];

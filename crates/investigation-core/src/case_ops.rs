@@ -1,21 +1,55 @@
+use std::collections::BTreeSet;
+
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
     case::{
-        CaseAmend, CaseBody, CaseLifecycle, CasePause, CaseReopen, CaseTransition, Knowledge,
-        QuestionBody, QuestionResolve,
+        CaseAmend, CaseBlocker, CaseBody, CaseClose, CaseClosureDetails, CaseLifecycle, CasePause,
+        CaseReopen, CaseTransition, Knowledge, QuestionBody, QuestionDisposition, QuestionResolve,
     },
     catalog::{OperationDescriptor, OperationInfo},
     command::RevisionRef,
-    identity::Kind,
+    identity::{Id, Kind},
     input,
-    state::OperationContext,
+    retrospective_ops::{check_retrospective, material_revisions, retrospective_failure},
+    state::{OperationContext, State},
     wire::{ErrorCode, Failure},
 };
 
-pub(crate) fn operations() -> [OperationDescriptor; 4] {
+pub(crate) fn operations() -> [OperationDescriptor; 5] {
     [
+        OperationDescriptor::active(
+            info(
+                "case.close",
+                "Close a case with an attributed outcome and a method account when required.",
+            ),
+            json!({
+                "outcome":"inconclusive",
+                "reason":"The recorded observations do not resolve the question.",
+                "unresolved_questions":[],
+                "reopen_condition":"A comparable controlled observation becomes available.",
+                "retrospective_waived":"The only prerequisite was unavailable, and no material work occurred."
+            }),
+            |payload: &CaseClose| {
+                valid_reason(&payload.reason)?;
+                if let Some(waiver) = &payload.retrospective_waived
+                    && valid_reason(waiver).is_err()
+                {
+                    return Err(invalid("Supply a bounded retrospective waiver reason.")
+                        .at("/retrospective_waived"));
+                }
+                if let Some(reopen) = &payload.reopen_condition
+                    && valid_reason(reopen).is_err()
+                {
+                    return Err(
+                        invalid("Supply a bounded reopening condition.").at("/reopen_condition")
+                    );
+                }
+                Ok(())
+            },
+            close,
+        ),
         OperationDescriptor::active(
             info("case.amend", "Revise a case's attributed framing."),
             json!({"reason":"The workload includes background requests","title":"Request latency with background traffic"}),
@@ -142,8 +176,112 @@ fn transition(
     body.transition_reason = Some(reason);
     if body.lifecycle == CaseLifecycle::Active {
         body.closure_outcome = None;
+        body.closure = None;
     }
     context.update(reference, encode(body)?)?;
+    Ok(())
+}
+
+fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), Failure> {
+    let (expected, mut body) = case_for_update(context)?;
+    let case = expected.id;
+    let triggers = material_revisions(context.state(), case);
+    if let Err(blocker) = payload.validate_materiality(body.mode, !triggers.is_empty()) {
+        if blocker == CaseBlocker::RetrospectiveRequired {
+            let mut failure = retrospective_failure(
+                ErrorCode::RetrospectiveRequired,
+                "A material case needs a current Retrospective.",
+            )
+            .at("/retrospective_ref");
+            failure.error.actual = Some(json!(triggers));
+            return Err(failure);
+        }
+        return Err(gate(blocker.code()));
+    }
+    body.lifecycle = body
+        .lifecycle
+        .transition(CaseTransition::Close)
+        .map_err(|blocker| gate(blocker.code()))?;
+    let retrospective = payload
+        .retrospective_ref
+        .as_ref()
+        .map(|reference| context.resolve(reference, Kind::Retrospective, "/retrospective_ref"))
+        .transpose()?;
+    if let Some(retrospective) = retrospective {
+        check_retrospective(context.state(), case, retrospective)
+            .map_err(|failure| failure.at("/retrospective_ref"))?;
+    }
+    let mut unresolved = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (index, reference) in payload.unresolved_questions.iter().enumerate() {
+        let path = format!("/unresolved_questions/{index}");
+        let reference = context.resolve(reference, Kind::Question, &path)?;
+        unresolved_question(context.state(), case, reference, &path)?;
+        if !seen.insert(reference.id) {
+            return Err(invalid("List each unresolved question once.").at(&path));
+        }
+        unresolved.push(reference);
+    }
+    body.closure_outcome = Some(payload.outcome);
+    body.transition_reason = Some(payload.reason);
+    body.closure = Some(CaseClosureDetails {
+        unresolved_questions: unresolved.clone(),
+        reopen_condition: payload.reopen_condition,
+        retrospective_ref: retrospective,
+        retrospective_waived: payload.retrospective_waived,
+    });
+    context.update(expected, encode(body)?)?;
+    context.check_final(move |state| {
+        for (index, reference) in unresolved.into_iter().enumerate() {
+            unresolved_question(state, case, reference, &format!("/unresolved_questions/{index}"))?;
+        }
+        if let Some(retrospective) = retrospective {
+            return check_retrospective(state, case, retrospective).map_err(|failure| failure.at("/retrospective_ref"));
+        }
+        let triggers = material_revisions(state, case);
+        if !triggers.is_empty() {
+            let mut failure = retrospective_failure(ErrorCode::RetrospectiveRequired, "The final transaction state includes material work that needs a current Retrospective.")
+                .at("/retrospective_ref");
+            failure.error.actual = Some(json!(triggers));
+            return Err(failure);
+        }
+        Ok(())
+    });
+    Ok(())
+}
+
+fn unresolved_question(
+    state: &State,
+    case: Id,
+    reference: RevisionRef,
+    path: &str,
+) -> Result<(), Failure> {
+    let record = state
+        .current(reference.id)
+        .filter(|record| record.header.case_id == case)
+        .ok_or_else(|| invalid("The unresolved question is unavailable.").at(path))?;
+    let current = record.reference();
+    if current != reference {
+        let mut conflict = Failure::new(
+            ErrorCode::RevisionConflict,
+            "Use the current revision of the unresolved question.",
+        )
+        .at(path);
+        conflict.error.actual = Some(json!(current));
+        return Err(conflict);
+    }
+    let question: QuestionBody = input::decode(&record.body).map_err(|_| {
+        Failure::new(
+            ErrorCode::IntegrityFailure,
+            "Stored question body has an invalid shape.",
+        )
+    })?;
+    if matches!(
+        question.disposition,
+        QuestionDisposition::Answered | QuestionDisposition::Superseded
+    ) {
+        return Err(gate("List only questions that remain unresolved.").at(path));
+    }
     Ok(())
 }
 

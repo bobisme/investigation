@@ -575,6 +575,7 @@ dependencies = [
  "investigation-core",
  "rusqlite",
  "rustix",
+ "schemars",
  "serde",
  "serde_json",
  "sha2",

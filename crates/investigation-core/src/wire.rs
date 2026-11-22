@@ -270,18 +270,24 @@ impl Failure {
     }
 
     pub fn with_schema(mut self, schema: impl Into<String>) -> Self {
-        self.error.repair = Some(Repair {
-            argv: None,
-            schema: Some(schema.into()),
-        });
+        self.error
+            .repair
+            .get_or_insert(Repair {
+                argv: None,
+                schema: None,
+            })
+            .schema = Some(schema.into());
         self
     }
 
     pub fn with_argv(mut self, argv: Vec<String>) -> Self {
-        self.error.repair = Some(Repair {
-            argv: Some(argv),
-            schema: None,
-        });
+        self.error
+            .repair
+            .get_or_insert(Repair {
+                argv: None,
+                schema: None,
+            })
+            .argv = Some(argv);
         self
     }
 

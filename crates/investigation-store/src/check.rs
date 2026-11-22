@@ -130,7 +130,13 @@ impl<F: DurableFs> Store<F> {
         let mut blobs = BTreeMap::<Digest, BlobClaims>::new();
         for case in workspace.cases.values() {
             for verified in &case.events {
-                for digest in &verified.event.request.attachments {
+                for digest in verified
+                    .event
+                    .request
+                    .attachments
+                    .iter()
+                    .chain(verified.event.manifest_digest.iter())
+                {
                     blobs
                         .entry(digest.clone())
                         .or_default()

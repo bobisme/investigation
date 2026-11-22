@@ -28,8 +28,10 @@ const MAX_GENESIS_BYTES: usize = 4096;
 const MAX_EVENT_DEPTH: usize = 64;
 const MAX_SEQUENCE: u64 = 999_999_999_999;
 const GENESIS_VERSION: &str = "inv.case-genesis.v0-alpha";
-const EVENT_VERSION: &str = "inv.event.v0-alpha";
+const LEGACY_EVENT_VERSION: &str = "inv.event.v0-alpha";
+const EVENT_VERSION: &str = "inv.event.v0-alpha.2";
 const COMMAND_VERSION: &str = "inv.command.v0-alpha";
+pub(crate) const INGEST_VERSION: &str = "inv.ingest.v0-alpha";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalErrorKind {
@@ -187,16 +189,25 @@ pub struct Event {
     pub request_hash: Digest,
     pub preconditions: Vec<RevisionRef>,
     pub request: SemanticRequest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_digest: Option<Digest>,
     #[serde(rename = "accepted_operations")]
     pub accepted: AcceptedTransaction,
 }
 
+pub(crate) struct EventInput<'a> {
+    pub actor: &'a Actor,
+    pub command_id: &'a str,
+    pub preconditions: &'a [RevisionRef],
+    pub manifest_digest: Option<Digest>,
+}
+
 impl Event {
-    pub fn new(
+    pub(crate) fn new(
         workspace_id: Id,
         transaction_id: Id,
         previous_hash: Digest,
-        command: &Command,
+        input: EventInput<'_>,
         request: SemanticRequest,
         accepted: AcceptedTransaction,
     ) -> Result<Self, JournalError> {
@@ -215,12 +226,13 @@ impl Event {
             transaction_id,
             sequence: accepted.sequence,
             previous_hash,
-            actor: command.actor.clone(),
+            actor: input.actor.clone(),
             recorded_at: first.header.recorded_at.clone(),
-            command_id: command.command_id.clone(),
+            command_id: input.command_id.to_owned(),
             request_hash: request_digest(&request, path)?,
-            preconditions: command.preconditions.clone(),
+            preconditions: input.preconditions.to_vec(),
             request,
+            manifest_digest: input.manifest_digest,
             accepted,
         };
         event.validate_metadata(path)?;
@@ -263,13 +275,12 @@ impl Event {
                 "Stored request digest disagrees with the stored semantic request.",
             ));
         }
-        if self
+        let request_version = self
             .request
             .input
             .get("schema_version")
-            .and_then(Value::as_str)
-            == Some(COMMAND_VERSION)
-        {
+            .and_then(Value::as_str);
+        if request_version == Some(COMMAND_VERSION) {
             let command: Command = decode(
                 &self.request.input,
                 path,
@@ -287,6 +298,28 @@ impl Event {
                     "Command envelope disagrees with event metadata or case scope.",
                 ));
             }
+            if self.manifest_digest.is_some() {
+                return Err(invalid("Record events cannot carry an import manifest."));
+            }
+        } else if request_version == Some(INGEST_VERSION) {
+            let request = &self.request.input;
+            let target = (self.sequence != 1).then_some(self.accepted.case_id);
+            let actual_target = request.get("case_id").cloned().unwrap_or(Value::Null);
+            if request.get("actor") != Some(&serde_json::json!(self.actor))
+                || request.get("command_id").and_then(Value::as_str)
+                    != Some(self.command_id.as_str())
+                || actual_target != serde_json::json!(target)
+                || self.manifest_digest.is_none()
+                || !self.preconditions.is_empty()
+            {
+                return Err(invalid(
+                    "Ingest request disagrees with event metadata or case scope.",
+                ));
+            }
+        } else {
+            return Err(invalid(
+                "Event has an unsupported semantic request version.",
+            ));
         }
         for record in &self.accepted.records {
             if record.header.recorded_at != self.recorded_at
@@ -338,10 +371,20 @@ pub fn decode_event(
     bytes: &[u8],
 ) -> Result<VerifiedEvent, JournalError> {
     let value = parse(bytes, path, MAX_EVENT_BYTES, JournalErrorKind::CorruptEvent)?;
-    // Each recognized version decodes to its own wire type. When the next version
-    // ships, an explicit pure conversion from this type can preserve old bytes.
     let event: Event = match version(&value) {
         Some(EVENT_VERSION) => decode(&value, path, JournalErrorKind::CorruptEvent)?,
+        Some(LEGACY_EVENT_VERSION) => {
+            if value.get("manifest_digest").is_some() {
+                return Err(JournalError::new(
+                    JournalErrorKind::CorruptEvent,
+                    path,
+                    "Legacy events cannot carry import manifests.",
+                ));
+            }
+            let mut compatible: Event = decode(&value, path, JournalErrorKind::CorruptEvent)?;
+            compatible.schema_version = EVENT_VERSION.into();
+            compatible
+        }
         Some(other) => {
             return Err(unsupported(
                 JournalErrorKind::UnsupportedEventVersion,
@@ -421,6 +464,16 @@ pub fn replay_case(
         },
         events: Vec::new(),
     };
+    result
+        .state
+        .note_verified_snapshot(result.snapshot.clone())
+        .map_err(|error| {
+            JournalError::new(
+                JournalErrorKind::CorruptGenesis,
+                &genesis_path,
+                error.to_string(),
+            )
+        })?;
     let mut transactions = BTreeSet::new();
     let mut command_keys = BTreeSet::new();
     let events_dir = case_dir.join(EVENTS_DIRECTORY);
@@ -486,6 +539,16 @@ pub fn replay_case(
             sequence,
             head_hash: verified.hash.clone(),
         };
+        result
+            .state
+            .note_verified_snapshot(result.snapshot.clone())
+            .map_err(|error| {
+                JournalError::new(
+                    JournalErrorKind::InvalidAfterImage,
+                    &path,
+                    error.to_string(),
+                )
+            })?;
         result.events.push(verified);
     }
     Ok(result)

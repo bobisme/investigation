@@ -5,8 +5,10 @@ pub const JOURNAL_DIRECTORY: &str = "journal";
 
 pub mod blob;
 pub mod durable;
+pub mod import_paths;
 pub mod journal;
 pub mod projection;
+pub mod selectors;
 pub mod store;
 pub mod workspace;
 
