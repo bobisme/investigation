@@ -1,0 +1,1 @@
+{"schema_version":"inv.selector.v1","artifact_digest":"sha256:5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03","selector":{"type":"text_lines","start_line":1,"end_line":9007199254740991,"encoding":"utf-8","parser_version":"v1"}}

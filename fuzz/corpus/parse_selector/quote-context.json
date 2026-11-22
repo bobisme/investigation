@@ -1,0 +1,1 @@
+{"schema_version":"inv.selector.v1","artifact_digest":"sha256:ae0bfc295f646e217283f2f6c783286f0d3012df8e0e9d86e061be30be6fda01","selector":{"type":"text_quote","exact":"aaa","prefix":"é","suffix":"b"}}

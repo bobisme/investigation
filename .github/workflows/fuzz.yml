@@ -15,7 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [decode_command, validate_transaction]
+        target:
+          - decode_command
+          - validate_transaction
+          - decode_event
+          - replay_journal
+          - parse_selector
+          - resolve_selector
     env:
       FUZZ_BUDGET: ${{ github.event_name == 'schedule' && 'scheduled' || 'quick' }}
       FUZZ_TARGET: ${{ matrix.target }}
