@@ -1,0 +1,458 @@
+{
+  "evidence_selector": {
+    "$defs": {
+      "DecimalString": {
+        "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+        "type": "string"
+      },
+      "Digest": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "SelectorKind": {
+        "description": "The actual discriminated union. `EvidenceSelector` binds this to a digest\nand a core-computed validation result.",
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "const": "whole",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "end": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "start": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": {
+                "const": "byte_range",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "encoding": {
+                "type": "string"
+              },
+              "end_line": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "parser_version": {
+                "type": "string"
+              },
+              "start_line": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": {
+                "const": "text_lines",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "start_line",
+              "end_line",
+              "encoding",
+              "parser_version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "exact": {
+                "type": "string"
+              },
+              "prefix": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "suffix": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "const": "text_quote",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "exact"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "parser": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "pointer": {
+                "type": "string"
+              },
+              "type": {
+                "const": "json_pointer",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "pointer"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "column": {
+                "type": "string"
+              },
+              "extraction_version": {
+                "type": "string"
+              },
+              "row_identity": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "row_index": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "table": {
+                "type": "string"
+              },
+              "type": {
+                "const": "table_cell",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "table",
+              "column",
+              "extraction_version"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "channel": {
+                "type": "string"
+              },
+              "coordinate_origin": {
+                "type": "string"
+              },
+              "end": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "start": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "type": {
+                "const": "time_window",
+                "type": "string"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "start",
+              "end",
+              "unit",
+              "coordinate_origin",
+              "channel"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "blob_digest": {
+                "$ref": "#/$defs/Digest"
+              },
+              "commit": {
+                "type": "string"
+              },
+              "end_line": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "repository": {
+                "type": "string"
+              },
+              "start_line": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "type": {
+                "const": "code_span",
+                "type": "string"
+              }
+            },
+            "required": [
+              "type",
+              "repository",
+              "commit",
+              "blob_digest",
+              "path",
+              "start_line",
+              "end_line"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "namespace": {
+                "type": "string"
+              },
+              "schema_uri": {
+                "type": "string"
+              },
+              "schema_version": {
+                "type": "string"
+              },
+              "type": {
+                "const": "external_selector",
+                "type": "string"
+              },
+              "validator": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "value": true
+            },
+            "required": [
+              "type",
+              "namespace",
+              "schema_uri",
+              "schema_version",
+              "value"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "SelectorVersion": {
+        "description": "The selector schema is versioned independently from record and command schemas.",
+        "enum": [
+          "inv.selector.v1"
+        ],
+        "type": "string"
+      }
+    },
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "description": "Request form deliberately lacks a validation field.",
+    "properties": {
+      "artifact_digest": {
+        "$ref": "#/$defs/Digest"
+      },
+      "schema_version": {
+        "$ref": "#/$defs/SelectorVersion"
+      },
+      "selector": {
+        "$ref": "#/$defs/SelectorKind"
+      }
+    },
+    "required": [
+      "schema_version",
+      "artifact_digest",
+      "selector"
+    ],
+    "title": "SelectorRequest",
+    "type": "object"
+  },
+  "help": {
+    "help": "Preserve evidence, test explanations, and evaluate options.\n\nUsage: investigation [OPTIONS] <COMMAND>\n\nCommands:\n  init      Create a local workspace and an optional Obsidian vault\n  record    Submit one atomic transaction using the operation catalog\n  ingest    Preserve original local bytes and return their acquisition IDs\n  start     Open an exploratory case and retain one attachment atomically\n  evidence  Inspect retained source material explicitly\n  schema    Discover operation schemas, examples, and repairs\n  onboard   Learn the model and inspect the next valid local action\n  next      Rank up to three snapshot-bound investigative gaps\n  receipt   Look up a command without resubmitting its original input\n  show      Read a case record at title, summary, or full depth\n  brief     Read a bounded handoff from the verified case snapshot\n  check     Verify the journal, blobs, and index without repairing them\n  repair    Rebuild derived workspace data\n  observe   Record one source-bound text observation.\n  note      Attach one narrative note without evidentiary standing.\n  case      Create and inspect case-level items.\n  source    Add source material through verified ingest.\n  help      Print this message or the help of the given subcommand(s)\n\nOptions:\n      --workspace <PATH>  Open this workspace instead of discovering the nearest investigation.toml\n      --case <ID>         Select a case by full ID or unique case_ prefix\n      --actor <ACTOR>     Attribute actions to this actor, or use workspace settings or AGENT\n      --format <FORMAT>   Select text or a single machine-readable JSON object [possible values: text, json]\n      --read-only         Reject commands that write workspace data\n      --no-color          Suppress terminal colors\n      --no-pager          Write directly to stdout\n  -h, --help              Print help\n  -V, --version           Print version\n\nUse investigation when a question needs multiple observations, a comparison, or a handoff.\nThe workspace preserves evidence and attributed revisions. Writes return a durable receipt.\n\n  investigation onboard --format json\n  investigation init ./casework --no-vault --format json\n  investigation schema case.create --format json\n  investigation --workspace ./casework next --format json\n  investigation case new 'Request latency' --format json\n  investigation source add ./results.log --case <ID> --format json\n  investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json\n  investigation note 'Check the clock source' --on <RECORD_ID> --format json\n  investigation --workspace ./casework record --input case.json --format json\n  investigation --workspace ./casework receipt KEY --actor ACTOR --format json\n\nUse schema record for the transaction envelope and schema --list for operations.\nGenerated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.\nUse --print-envelope to inspect a shortcut request without writing.\n",
+    "ok": true,
+    "result": "help",
+    "schema_version": "inv.response.v0-alpha"
+  },
+  "missing_workspace": {
+    "commit_status": "not_committed",
+    "error": {
+      "code": "WORKSPACE_REQUIRED",
+      "message": "no investigation.toml found from <WORKING_DIRECTORY> up to the filesystem root Run investigation init PATH or pass --workspace PATH.",
+      "repair": {
+        "argv": [
+          "investigation",
+          "onboard",
+          "--format",
+          "json"
+        ]
+      }
+    },
+    "ok": false,
+    "result": "rejected",
+    "schema_version": "inv.response.v0-alpha"
+  },
+  "schema_list": {
+    "ok": true,
+    "result": "schema_list",
+    "schema_version": "inv.response.v0-alpha",
+    "stages": [
+      {
+        "operations": [
+          "assessment.add",
+          "assessment.retract",
+          "assessment.supersede",
+          "assumption.assess"
+        ],
+        "stage": "assess"
+      },
+      {
+        "operations": [
+          "retrospective.record",
+          "retrospective.supersede"
+        ],
+        "stage": "close"
+      },
+      {
+        "operations": [
+          "inquiry.amend",
+          "inquiry.create",
+          "inquiry.freeze",
+          "inquiry.retire",
+          "run.reconcile",
+          "run.record",
+          "run.start"
+        ],
+        "stage": "collect"
+      },
+      {
+        "operations": [
+          "decision.accept",
+          "decision.propose",
+          "decision.supersede"
+        ],
+        "stage": "decide"
+      },
+      {
+        "operations": [
+          "comparison.add",
+          "comparison.retract",
+          "comparison.revise",
+          "criterion.amend",
+          "criterion.create",
+          "criterion.retire",
+          "option.amend",
+          "option.create",
+          "option.disposition"
+        ],
+        "stage": "evaluate"
+      },
+      {
+        "operations": [
+          "hypothesis.amend",
+          "hypothesis.create",
+          "hypothesis.disposition"
+        ],
+        "stage": "explain"
+      },
+      {
+        "operations": [
+          "assumption.create",
+          "case.amend",
+          "case.close",
+          "case.pause",
+          "case.reopen",
+          "question.create",
+          "question.resolve"
+        ],
+        "stage": "frame"
+      },
+      {
+        "operations": [
+          "observation.add",
+          "observation.correct",
+          "observation.retract"
+        ],
+        "stage": "observe"
+      },
+      {
+        "operations": [
+          "annotation.add"
+        ],
+        "stage": "record"
+      },
+      {
+        "operations": [
+          "conclusion.amend",
+          "conclusion.create",
+          "conclusion.disposition",
+          "conclusion.request_review",
+          "conclusion.validate",
+          "objection.raise",
+          "objection.resolve",
+          "objection.withdraw",
+          "review.submit"
+        ],
+        "stage": "review"
+      },
+      {
+        "operations": [
+          "case.create"
+        ],
+        "stage": "start"
+      }
+    ],
+    "wire_schemas": [
+      "record",
+      "receipt",
+      "error",
+      "ingest",
+      "evidence-selector"
+    ]
+  }
+}

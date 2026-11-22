@@ -1,0 +1,9 @@
+# Architecture decisions
+
+| ID | Decision |
+| --- | --- |
+| [0001](0001-canonical-journal.md) | Canonical event encoding, hashes, and durable publication |
+| [0002](0002-chain-scope.md) | Per-case chains and workspace command identity |
+| [0003](0003-a-gate.md) | Paired pilot and iteration threshold |
+| [0004](0004-product-boundaries.md) | Executable name, material closure, and supported durability claims |
+| [0005](0005-milestone-a-qualification.md) | Alpha evidence, import, recovery, and qualification boundaries |

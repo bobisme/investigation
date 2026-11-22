@@ -15,6 +15,12 @@ jobs:
       - run: cargo install --locked just --version 1.57.0
       - run: cargo install --locked cargo-deny --version 0.20.2
       - run: just check
+      - name: Exercise the README and worked cases against the public binary
+        run: |
+          cargo build --locked -p investigation-cli
+          python3 scripts/check-cli-goldens.py target/debug/investigation
+          python3 scripts/check-readme-quickstart.py target/debug/investigation
+          python3 scripts/prove_milestone_a.py target/debug/investigation
       - name: Check the minimum supported Rust version
         run: |
           rustup toolchain install 1.89.0 --profile minimal

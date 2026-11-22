@@ -26,5 +26,8 @@ This register mirrors plan §22 (revision 4, 2026-11-21) and records the later r
 | Formal receipt signature verification | Hashes are integrity checks, not authentication. Revisit only with a concrete trust-anchor and verification requirement. |
 | PDF export | Optional later exporter; revisit when a demonstrated audience or workflow requires it and accessibility/layout can be qualified. |
 | Semantic embeddings | Exact provenance and FTS are the baseline. Revisit only when a measured retrieval gap remains and embedding provenance, privacy and offline behavior are specified. |
+| Large and archived captures | The alpha retains bounded snapshots. Revisit with the streaming and archive suites. |
+| Automatic qualification of named statistics and sampled measurements | Require typed observation evidence for the chosen statistic and denominator. Comparisons can already record these as attributed claims. |
+| Reclaim abandoned import preparation | Capture preparation runs outside the commit lock. Revisit with an explicit ownership and expiration protocol. |
 
 The baseline tool must report unsupported/deferred operations honestly. It must not accept a command as successful when the requested feature is absent.

@@ -356,16 +356,25 @@ fn project_record(
                 record.body["reversal_conditions"].clone(),
             );
         }
-        if matches!(record.header.id.kind(), Kind::Decision | Kind::Conclusion)
-            && let Ok(read_set) = review_ops::required_read_set(&replay.state, record)
-        {
-            let evidence: Vec<_> = read_set
-                .iter()
+        if matches!(record.header.id.kind(), Kind::Decision | Kind::Conclusion) {
+            let field = match record.header.id.kind() {
+                Kind::Decision => "evidence_refs",
+                _ => "support_refs",
+            };
+            // Current promotion can reject a stale basis. The exact links of the
+            // displayed revision still let a reviewer trace its historical evidence.
+            let recorded = record.body[field].as_array().into_iter().flatten();
+            let current = review_ops::required_read_set(&replay.state, record).unwrap_or_default();
+            let mut seen = std::collections::BTreeSet::new();
+            let evidence: Vec<_> = recorded
+                .filter_map(|value| serde_json::from_value::<RevisionRef>(value.clone()).ok())
+                .chain(current)
                 .filter(|reference| {
                     matches!(
                         reference.id.kind(),
                         Kind::Observation | Kind::Assessment | Kind::Comparison | Kind::Artifact
-                    )
+                    ) && replay.state.revision(*reference).is_some()
+                        && seen.insert((reference.id, reference.revision))
                 })
                 .collect();
             let maximum = 16;
@@ -472,6 +481,8 @@ fn record_summary(record: &Record) -> String {
         Kind::Assessment => &["summary", "reason", "disposition"],
         Kind::Conclusion => &["statement", "scope", "limitations"],
         Kind::Decision => &[
+            "reopen_trigger",
+            "expected_outcome",
             "content.choice",
             "content.tradeoffs",
             "content.consequences",
