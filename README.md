@@ -41,6 +41,8 @@ No published controlled study shows that structured evidence tracking helps agen
 | [`notes/plan.review.1.md`](notes/plan.review.1.md) | Review 1: decision science, LLM failure modes, storage, MCP overhead. |
 | [`notes/plan.review.2.md`](notes/plan.review.2.md) | Review 2: an independent second review that disputes several of review 1's proposals. |
 | [`notes/plan.review.3.md`](notes/plan.review.3.md) | Review 3: handoff-centered evaluation, review-basis phantoms, disclosure and retention. |
+| [`fixtures/README.md`](fixtures/README.md) | Deterministic fixture layout, seed and ID rules, and split isolation. |
+| [`docs/deferred.md`](docs/deferred.md) | Deliberately deferred features and their revisit conditions. |
 
 ## Where to start reading
 
