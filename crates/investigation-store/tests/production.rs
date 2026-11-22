@@ -281,3 +281,38 @@ fn replay_reports_duplicate_sequences_and_unknown_versions_in_place() {
     assert_eq!(fs::read(&original_path).unwrap(), advanced);
     assert!(!store.check().unwrap().integrity_ok());
 }
+
+#[test]
+fn legacy_event_upcasts_without_rewriting_exact_bytes_before_append() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("workspace");
+    let mut store = Store::open(Workspace::init(&root, false).unwrap());
+    let original = create("legacy", "Read a legacy envelope");
+    let receipt = submit(&mut store, &original).unwrap();
+    let id = receipt.created[0].id;
+    let events = root.join("state/cases").join(id.to_string()).join("events");
+    let first = events.join("000000000001.json");
+    let mut legacy: Value = serde_json::from_slice(&fs::read(&first).unwrap()).unwrap();
+    legacy["schema_version"] = json!("inv.event.v0-alpha");
+    legacy.as_object_mut().unwrap().remove("manifest_digest");
+    legacy["accepted_operations"]
+        .as_object_mut()
+        .unwrap()
+        .remove("warnings");
+    let mut canonical_legacy = serde_json::to_vec_pretty(&legacy).unwrap();
+    canonical_legacy.push(b'\n');
+    fs::remove_file(&first).unwrap();
+    fs::write(&first, &canonical_legacy).unwrap();
+    let expected_hash = investigation_store::journal::hash_bytes(&canonical_legacy);
+    assert_eq!(store.case(id).unwrap().snapshot.head_hash, expected_hash);
+    let retry = submit(&mut store, &original).unwrap();
+    assert_eq!(retry.transaction_id, receipt.transaction_id);
+    assert_eq!(retry.snapshot.head_hash, expected_hash);
+
+    submit(&mut store, &command("append", Some(id), json!({"op":"question.create","payload":{"wording":"Can the new event follow a legacy hash?","importance":"normal"}}))).unwrap();
+    let second: Value =
+        serde_json::from_slice(&fs::read(events.join("000000000002.json")).unwrap()).unwrap();
+    assert_eq!(second["previous_hash"], json!(expected_hash));
+    assert_eq!(fs::read(first).unwrap(), canonical_legacy);
+    assert!(store.check().unwrap().integrity_ok());
+}

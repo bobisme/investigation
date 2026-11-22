@@ -6,7 +6,11 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::identity::Id;
+use crate::{
+    command::RevisionRef,
+    evidence::{SelectorValidation, TextQuoteState},
+    identity::Id,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ResponseVersion {
@@ -125,6 +129,22 @@ pub struct Guidance {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
+pub struct ReceiptArtifact {
+    pub artifact: RevisionRef,
+    pub digest: Digest,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ReceiptObservation {
+    pub observation: RevisionRef,
+    pub selector_validation: SelectorValidation,
+    pub quote_state: TextQuoteState,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     pub schema_version: ResponseVersion,
     pub ok: bool,
@@ -134,6 +154,10 @@ pub struct Receipt {
     pub snapshot: Snapshot,
     pub created: Vec<RecordChange>,
     pub updated: Vec<RecordChange>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub artifacts: Vec<ReceiptArtifact>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub observation_checks: Vec<ReceiptObservation>,
     pub projection: Projection,
     pub warnings: Vec<String>,
     pub next: Vec<Guidance>,
@@ -333,6 +357,8 @@ mod tests {
                 revision: 1,
             }],
             updated: Vec::new(),
+            artifacts: Vec::new(),
+            observation_checks: Vec::new(),
             projection: Projection {
                 index: ProjectionStatus::Current,
                 vault: ProjectionStatus::Degraded,

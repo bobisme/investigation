@@ -69,6 +69,59 @@ fn create_case(cwd: &Path, key: &str) -> (Value, Value) {
 }
 
 #[test]
+fn start_receipt_survives_process_exit_and_reindex_without_the_original_input() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let start = [
+        "start",
+        "What did the producer retain?",
+        "--attach",
+        "-",
+        "--command-id",
+        "stream-first",
+        "--actor",
+        ACTOR,
+        "--json",
+    ];
+    let original = run(
+        root,
+        &start,
+        Some(&json!({"message":"One retained response"})),
+        0,
+    );
+    let first = &original["items"][0];
+    assert!(
+        original["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|artifact| {
+                artifact["artifact"]["id"] == first["artifact_id"]
+                    && artifact["digest"] == first["digest"]
+            })
+    );
+    fs::remove_file(root.join("cache/index.sqlite")).unwrap();
+    run(root, &["repair", "index", "--json"], None, 0);
+    let recovered = run(
+        root,
+        &["receipt", "stream-first", "--actor", ACTOR, "--json"],
+        None,
+        0,
+    );
+    for field in ["transaction_id", "created", "snapshot", "artifacts"] {
+        assert_eq!(original[field], recovered[field], "{field}");
+    }
+    let changed = run(
+        root,
+        &start,
+        Some(&json!({"message":"A different response"})),
+        4,
+    );
+    assert_eq!(changed["error"]["code"], "IDEMPOTENCY_KEY_REUSED");
+}
+
+#[test]
 fn ingest_and_read_verify_original_bytes_before_accepting_an_observation() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();

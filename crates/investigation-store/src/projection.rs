@@ -377,6 +377,8 @@ mod tests {
             },
             created: accepted.created.clone(),
             updated: accepted.updated.clone(),
+            artifacts: Vec::new(),
+            observation_checks: Vec::new(),
             projection: ReceiptProjection {
                 index: ProjectionStatus::Current,
                 vault: ProjectionStatus::Disabled,

@@ -11,12 +11,13 @@ use investigation_core::{
     PROGRAM_NAME,
     catalog::{Catalog, standard_catalog},
     command::{Command, RevisionRef, SemanticRequest},
+    evidence::{ArtifactBody, ObservationBasis},
     header::{Actor, Clock, SystemClock},
     identity::{Id, IdSource, Kind, SystemIdSource},
     state::{Acceptance, AcceptedTransaction, State, validate_and_apply_with_observations},
     wire::{
         CommitResult, ErrorCode, Failure, Guidance, GuidanceKind, Projection as ReceiptProjection,
-        ProjectionStatus, Receipt, ResponseVersion, Snapshot,
+        ProjectionStatus, Receipt, ReceiptArtifact, ReceiptObservation, ResponseVersion, Snapshot,
     },
 };
 use serde::Serialize;
@@ -549,6 +550,43 @@ impl WorkspaceReplay {
 
 fn receipt_for(verified: &VerifiedEvent) -> Receipt {
     let event = &verified.event;
+    let artifacts = event
+        .accepted
+        .records
+        .iter()
+        .filter(|record| record.header.id.kind() == Kind::Artifact)
+        .filter_map(|record| {
+            let artifact: ArtifactBody = investigation_core::input::decode(&record.body).ok()?;
+            Some(ReceiptArtifact {
+                artifact: record.reference(),
+                digest: artifact.digest?,
+                size_bytes: artifact.size_bytes?,
+            })
+        })
+        .collect();
+    let observation_checks = event
+        .accepted
+        .records
+        .iter()
+        .filter(|record| record.header.id.kind() == Kind::Observation)
+        .filter_map(|record| {
+            let basis: ObservationBasis =
+                investigation_core::input::decode(&record.body["basis"]).ok()?;
+            let ObservationBasis::Source {
+                selector,
+                text_quote,
+                ..
+            } = basis
+            else {
+                return None;
+            };
+            Some(ReceiptObservation {
+                observation: record.reference(),
+                selector_validation: selector.validation,
+                quote_state: text_quote.state,
+            })
+        })
+        .collect();
     Receipt {
         schema_version: ResponseVersion::Alpha,
         ok: true,
@@ -561,6 +599,8 @@ fn receipt_for(verified: &VerifiedEvent) -> Receipt {
         },
         created: event.accepted.created.clone(),
         updated: event.accepted.updated.clone(),
+        artifacts,
+        observation_checks,
         projection: ReceiptProjection {
             index: ProjectionStatus::Pending,
             vault: ProjectionStatus::Disabled,
