@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SPLITS = {"development", "pilot", "sealed"}
 DOMAINS = {"debugging", "architecture", "lookup", "source-research", "measurement"}
 KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
 EXPOSED_NAMES = {"source.txt", "update.txt"}
 
 
@@ -72,12 +73,22 @@ def validate(registry, fixture_root, sealed_root=None):
                 raise ValueError(f"Missing fixture directory: {directory}")
             if split == "development" and "initial" not in variant:
                 continue
-            if not variant["objective"].strip() or variant["initial"]["file"] != "source.txt":
+            if split == "sealed":
+                # A sealed objective is part of the held-out content: register its digest only.
+                if "objective" in variant or not SHA256.fullmatch(variant.get("objective_sha256", "")):
+                    raise ValueError(f"Sealed objective must be registered by digest only: {variant_id}")
+            elif not variant["objective"].strip():
+                raise ValueError(f"Invalid initial source contract: {variant_id}")
+            if variant["initial"]["file"] != "source.txt":
                 raise ValueError(f"Invalid initial source contract: {variant_id}")
             if variant.get("update") and variant["update"]["file"] != "update.txt":
                 raise ValueError(f"Invalid update source contract: {variant_id}")
             root = sealed_root if split == "sealed" else fixture_root
             if root is not None:
+                if split == "sealed":
+                    objective = within(within(root, variant["directory"]), "objective.txt")
+                    if sha256(objective) != variant["objective_sha256"]:
+                        raise ValueError(f"Objective checksum mismatch: {objective}")
                 source_path(root, variant, variant["initial"])
                 if variant.get("update"):
                     source_path(root, variant, variant["update"])
@@ -138,6 +149,15 @@ def self_test():
         leak = deepcopy(original)
         leak["families"][0]["variants"][0]["initial"]["file"] = "key.json"
         must_reject(leak, "Invalid initial source")
+        sealed = deepcopy(original)
+        sealed["families"][0].update(split="sealed", key="sealed/test-family.json")
+        sealed["families"][0]["variants"][0].update(split="sealed", directory="sealed/test-family/standard")
+        must_reject(sealed, "registered by digest only")
+        del sealed["families"][0]["variants"][0]["objective"]
+        sealed["families"][0]["variants"][0]["objective_sha256"] = hashlib.sha256(b"Find the source.\n").hexdigest()
+        validate(sealed, fixtures)
+        (fixtures / "sealed/test-family/standard").mkdir(parents=True)
+        must_reject(sealed, "Sealed source directory in checkout")
         initial.write_bytes(b"modified")
         must_reject(original, "checksum mismatch")
 

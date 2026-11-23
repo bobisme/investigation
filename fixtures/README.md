@@ -29,7 +29,7 @@ The tree is a layout convention, not a claim that all scenario data is present. 
 - Keep positive/control, counterevidence, and invalid-result variants explicit and independently replayable. An invalid result must remain visible with its limitation and must not be promoted as valid evidence.
 - Keep development, pilot, and sealed evaluation families disjoint. A variant or source family cannot cross a split. Sealed materials do not live in this repository's agent-visible tree.
 
-Register every family and twin in [family-registry.json](family-registry.json). Run `python3 scripts/check-fixture-families.py` to verify the split and explicit participant source allowlists. Register later sealed cases by identifier and key locator with their bytes in a separate evaluator directory.
+Register every family and twin in [family-registry.json](family-registry.json). Run `python3 scripts/check-fixture-families.py` to verify the split and explicit participant source allowlists. Sealed cases are registered by opaque identifier, key locator and digests only; their bytes, objectives and keys are in the encrypted bundle described in [training/release/families](../training/release/families/README.md).
 
 ## Expected-outcome shape
 
