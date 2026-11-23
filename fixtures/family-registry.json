@@ -788,6 +788,78 @@
     {"id": "release-source-research-21", "split": "sealed", "domain": "source-research", "key": "sealed/release-source-research-21.json", "variants": [
         {"id": "original", "split": "sealed", "directory": "sealed/release-source-research-21/original", "objective_sha256": "33b9b1e8e8ea132b2163142cb51a88aab834e6fd14c9649d0754f43b2b481024", "initial": {"file": "source.txt", "sha256": "73b1978b4dab87af36e5835a3f16e3c8e0a6bab3da7a86aae0ef9975a18a32e1"}, "update": {"file": "update.txt", "sha256": "ac331b6402618dfbb51c6a27dc91504393a34ab1a31054906a4f1bf7785d7487"}},
         {"id": "missing", "split": "sealed", "directory": "sealed/release-source-research-21/missing", "objective_sha256": "33b9b1e8e8ea132b2163142cb51a88aab834e6fd14c9649d0754f43b2b481024", "initial": {"file": "source.txt", "sha256": "73b1978b4dab87af36e5835a3f16e3c8e0a6bab3da7a86aae0ef9975a18a32e1"}, "update": {"file": "update.txt", "sha256": "9bb980ce00c1f0d9c424ae89ceb35bccd67b3a2b1507f55cf603f7838f2ec49a"}}
+    ]},
+    {"id": "release-lookup-01", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-01.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-01/lookup", "objective_sha256": "6c38037c7b85ca34b825359054d608b3c736c65e39059bdf5fcaddb6c5dd5aba", "initial": {"file": "source.txt", "sha256": "54e81abe26d0eefc9143ca5691f163de4275e096097ceec1ed8b1887a9e681f9"}}
+    ]},
+    {"id": "release-lookup-02", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-02.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-02/lookup", "objective_sha256": "896434c906a0c632365c9960c87dc5dd34f29cf08379e0c1e84e904d98d75e59", "initial": {"file": "source.txt", "sha256": "285d6b2ba6cd9a8ba56c083e8499315ab5af01700c40ffaf814484e6768d4d37"}}
+    ]},
+    {"id": "release-lookup-03", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-03.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-03/lookup", "objective_sha256": "1a9e9d646bf49fd2225d932e2d8eb6bb12d3bfa3c943ddf1632f1d18b8609357", "initial": {"file": "source.txt", "sha256": "0c8b706ee97c3be603d56ad41440d7242707e2e5fe3806ce397f8fb8118f8d6d"}}
+    ]},
+    {"id": "release-lookup-04", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-04.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-04/lookup", "objective_sha256": "88c5184580ba55431b0e5f433e106f92548cafe9020867a1b428ab8e55374171", "initial": {"file": "source.txt", "sha256": "d9bb9d400221938be6ec7d5ad45fee53a1487695918be8efaef130bfd60b0ee3"}}
+    ]},
+    {"id": "release-lookup-05", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-05.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-05/lookup", "objective_sha256": "66f5dd995d3a946d854a18e93ec2e23f7e2bace24742eaf6b48d9adf926ddfec", "initial": {"file": "source.txt", "sha256": "330cadae4ad684c196cd373edfd5a836d5c862377cc9558bd87bc5b58f21b6f1"}}
+    ]},
+    {"id": "release-lookup-06", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-06.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-06/lookup", "objective_sha256": "138747cc5957d625563a27b59ad72b0e68c149928e5a205101a3414477fa9c03", "initial": {"file": "source.txt", "sha256": "6399017003bcdfc7ef75ced0211e6f4ee495426b58bd466faa6dff6ce9145443"}}
+    ]},
+    {"id": "release-lookup-07", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-07.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-07/lookup", "objective_sha256": "c4f73f5364db241e737de88235db9997cdcd533c80e49d66235ee6bdd4fb86ff", "initial": {"file": "source.txt", "sha256": "560e68be1c8052b96d1aa7a575ca1a001978dd4d4553dbbdef0a00c2f63e03d3"}}
+    ]},
+    {"id": "release-lookup-08", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-08.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-08/lookup", "objective_sha256": "f13998cb8c8fa54b0dbde34550d19007c3faf30b2d8974695ba586864b0a384e", "initial": {"file": "source.txt", "sha256": "667baea426d099f7973143c1ceb4ef228ffa489dd00aa20e9590276e6f7bd896"}}
+    ]},
+    {"id": "release-lookup-09", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-09.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-09/lookup", "objective_sha256": "279f6a0d805cbe8043a293020f24b626b055aea1ba0129a7e7079e34dc3b6b45", "initial": {"file": "source.txt", "sha256": "0606e3d6ca73267f98030993280f42b4877b879bbdcafa8a09db349fe886cc97"}}
+    ]},
+    {"id": "release-lookup-10", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-10.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-10/lookup", "objective_sha256": "aee689ccdb7a9c6e033c92aaf8f4cae721395f7a65a7c8a001fcac1f616ca760", "initial": {"file": "source.txt", "sha256": "ed0c2faf99c3cdcd2073b5986fa95654a9a03d3f66be6d1630b90433453fe4ba"}}
+    ]},
+    {"id": "release-lookup-11", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-11.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-11/lookup", "objective_sha256": "b1c55ac39de9f2f9dcb17d100cec49eeb64b103a5254593a0280b6988eb9f1d6", "initial": {"file": "source.txt", "sha256": "a84f541d80c13d3dee0b3aa787f7788887d1802a75df5d9d329714e263a4d79b"}}
+    ]},
+    {"id": "release-lookup-12", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-12.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-12/lookup", "objective_sha256": "6d07804a5861a5f947e9ac65a8492c9e692bda02851e48776e5c0686fb715f20", "initial": {"file": "source.txt", "sha256": "746a69a881d3ccc08e42703b1c0b700f3e554c39173bcfea29eb5c82b02494b3"}}
+    ]},
+    {"id": "release-lookup-13", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-13.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-13/lookup", "objective_sha256": "6de0e74144dbfeb47379a2374da3f5d494601604262fefd235ee085f764acf39", "initial": {"file": "source.txt", "sha256": "14c937c9d7ee2a2005cb61563edd4f511d917d212980ae8d2b8afa3769e7a78c"}}
+    ]},
+    {"id": "release-lookup-14", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-14.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-14/lookup", "objective_sha256": "23aa28c8187cef51bb3a05ef251732d0ef1673eb449d93500977a44d8e2f1b7f", "initial": {"file": "source.txt", "sha256": "45a83266de9861539fcecab8211ef4e0d047c8d6a2f07bd0315c61e6b53a43f6"}}
+    ]},
+    {"id": "release-lookup-15", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-15.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-15/lookup", "objective_sha256": "0f813f8fe31bb928c4978e93386eda75d3867d014064ac36799cac006ab2a54c", "initial": {"file": "source.txt", "sha256": "dc1d9dc93494a7212d0bf23b2764ae4622330d1c7d94a2cca8416728232bab62"}}
+    ]},
+    {"id": "release-lookup-16", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-16.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-16/lookup", "objective_sha256": "a5f121fb1e4db1c6871ac22eb6f1b1e0cd823c829227ccb47d0a429b770047d9", "initial": {"file": "source.txt", "sha256": "34fcce83c46b3f8eee9e3dc8d8a0b09e3717235d64a1cf664c77391533efd1d5"}}
+    ]},
+    {"id": "release-lookup-17", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-17.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-17/lookup", "objective_sha256": "640b15cfdf8351faecb3a2585e87ad68843d8af6c4b7b25e596e3568f741efa5", "initial": {"file": "source.txt", "sha256": "3f4d8f399a56119093b9498a4392919a39d78474b912209daa8d31e508b51dde"}}
+    ]},
+    {"id": "release-lookup-18", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-18.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-18/lookup", "objective_sha256": "6978bca172e0b2a8020257e231df9f144a85c4ed22d233c20968ba89dc54d38e", "initial": {"file": "source.txt", "sha256": "0e3bcb95b0db99296746df8148a35858acd61fb01f238a3bf68178001c3af04c"}}
+    ]},
+    {"id": "release-lookup-19", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-19.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-19/lookup", "objective_sha256": "d1b150c40f247df613bf23125340d92afc8397cfa990bc9df25dc24aded5fb98", "initial": {"file": "source.txt", "sha256": "c7a8db5146b5b4f27ed4d6baa74e924e495d8758c10994b4af9ca699affd05ae"}}
+    ]},
+    {"id": "release-lookup-20", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-20.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-20/lookup", "objective_sha256": "0ee7fffaa7c1da3281d3d5223a2872fce38c7d78a0854ff34f3eca7dc93d404f", "initial": {"file": "source.txt", "sha256": "513408bf0792e8e2b9211e6e124bd3118fe1376120b9789e20e2e09df81e629a"}}
+    ]},
+    {"id": "release-lookup-21", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-21.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-21/lookup", "objective_sha256": "f8635aa87a2c1bf75f18c8d1fc7c00ac70f8353b459f0b13f3a65bc0d56b15df", "initial": {"file": "source.txt", "sha256": "04ee52ab595fa66bbb5aa973ad6adb12d96ee447c815080c1d9380408f195125"}}
+    ]},
+    {"id": "release-lookup-22", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-22.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-22/lookup", "objective_sha256": "cb7312298aaec5e7761b1bc0e8574a09702337d2aff5e1ce11bda6222fe9d3a3", "initial": {"file": "source.txt", "sha256": "195c4ab1bcbf869890051aa6f08992cafbf3adbd3c90e117e65092b553b80678"}}
+    ]},
+    {"id": "release-lookup-23", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-23.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-23/lookup", "objective_sha256": "e2ce14a37b2266d62bb0de9ba13848896bcc5765469e42a6a7d594c864869d40", "initial": {"file": "source.txt", "sha256": "f2d340b7dc186ea540495584520bcc7c1b2ae6452208ce07152a6935a507484b"}}
+    ]},
+    {"id": "release-lookup-24", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-24.json", "variants": [
+        {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-24/lookup", "objective_sha256": "83dcf64c8d6a2c0964e2418399840469340d327806ea3c567caceb8e495a1154", "initial": {"file": "source.txt", "sha256": "33d86903ad456dc0b900967e1da1a66c7893bf738fafaf249ea6103869045b25"}}
     ]}
 ]
 }

@@ -67,9 +67,9 @@
   },
   "bundle": {
     "file": "sealed.tar.gz.enc",
-    "ciphertext_sha256": "d825e00bdcb401b964f494b73bd035b67f93cb7258f6b6f2dcc6a804bef1a6c0",
-    "plaintext_sha256": "0b5183d3a203736b5d182b53cfa39942f76477e8fe93c17a0976322c46f609bf",
-    "plaintext_files": 672,
+    "ciphertext_sha256": "324f9d94b6f1bcc50397514f97ec265e7cf5779d84a2cb26c374310da93d66ea",
+    "plaintext_sha256": "5dcbff7a0178ce53a7e423b9741406f2f426ece93b117ab5ecc14110ac514482",
+    "plaintext_files": 768,
     "format": "deterministic PAX tar (mtime 0, uid 0, sorted paths), gzip mtime 0",
     "encryption": "openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -pass file:<passphrase>",
     "layout": {
@@ -77,9 +77,18 @@
       "sealed/<family>/<variant>/source.txt": "initial seed source",
       "sealed/<family>/<variant>/update.txt": "evidence staged after the review checkpoint",
       "evaluator/sealed/<family>.json": "grading key: rubric per variant, rivals, handoff, reference answers",
-      "authoring/<family>.json": "the author's specification the other files were generated from"
+      "authoring/<family>.json": "the author's specification the other files were generated from",
+      "sealed/<lookup>/lookup/objective.txt": "skip-the-tool task objective (given in the prompt, never as a file)",
+      "sealed/<lookup>/lookup/source.txt": "the task's only source; a lookup task has no update.txt"
     },
-    "passphrase": "outside the repository; default ~/.local/share/investigation-evaluator/release-families.key or $INVESTIGATION_SEALED_KEY"
+    "passphrase": "outside the repository; default ~/.local/share/investigation-evaluator/release-families.key or $INVESTIGATION_SEALED_KEY",
+    "previous": {
+      "ciphertext_sha256": "d825e00bdcb401b964f494b73bd035b67f93cb7258f6b6f2dcc6a804bef1a6c0",
+      "plaintext_sha256": "0b5183d3a203736b5d182b53cfa39942f76477e8fe93c17a0976322c46f609bf",
+      "plaintext_files": 672,
+      "tar_sha256": "f7088a24bcacefd1d6e2294fcf6682dc1757bf9aacc9fe54b714f71fa84161c6",
+      "note": "W14.01 bundle before the lookup tasks were added. Keyed verify rebuilds the uncompressed tar from the bundle's non-lookup files and checks it against tar_sha256, so no family file changed."
+    }
   },
   "families": [
     {
@@ -1678,5 +1687,392 @@
         }
       }
     }
-  ]
+  ],
+  "lookup_tasks": {
+    "study": "Skip-the-tool tasks for the sealed release trial (W14.02)",
+    "preregistration": {
+      "source": "docs/release-trial.md@214c45b",
+      "quote": "Separate lookup probes from this primary test.",
+      "count": "not preregistered; fixed by this manifest before any run"
+    },
+    "counts": {
+      "tasks": 24,
+      "by_kind": {
+        "fact": 12,
+        "implementation": 12
+      },
+      "by_theme": {
+        "architecture": 6,
+        "debugging": 6,
+        "measurement": 6,
+        "source-research": 6
+      }
+    },
+    "report": {
+      "separation": "Diagnostic, reported apart from the primary estimate and the release rule.",
+      "runs": "Both arms and both pinned models per task, same budgets and fresh sessions as the families.",
+      "outcomes": "Per arm: warranted items met, missed warranted items and false promotions, with denominators.",
+      "cost": "Per arm and paired CLI minus notes: metered tokens, shell calls, wall time, help/schema/onboarding bytes and CLI calls.",
+      "unnecessary_tool_use": "CLI arm: any committed journal event in the participant workspace; report the rate."
+    },
+    "authorship": {
+      "declaration": "No one who built blindspot rules or onboarding wrote a skip-the-tool task.",
+      "coordinator": "twins-opus: W14.02 worker session. Wrote the authoring brief, two worked examples outside the set (release-lookup-90 and -91, not sealed) and the check-lookups/seal-lookups tooling, and reviewed each task's objective and expected answer. Has no commits or bone assignments on blindspot rules (W10) or onboarding (W05a.12, W05b.17 and related).",
+      "authors": [
+        {
+          "session": "author-lookup-a",
+          "theme": "debugging",
+          "tasks": "release-lookup-01..06"
+        },
+        {
+          "session": "author-lookup-b",
+          "theme": "measurement",
+          "tasks": "release-lookup-07..12"
+        },
+        {
+          "session": "author-lookup-c",
+          "theme": "source-research",
+          "tasks": "release-lookup-13..18"
+        },
+        {
+          "session": "author-lookup-d",
+          "theme": "architecture",
+          "tasks": "release-lookup-19..24"
+        }
+      ],
+      "author_inputs": "Each author session was created for W14.02 and saw only the authoring brief, two worked examples outside the set, its theme and ID range, and a standalone copy of the checker outside the repository. Authors were told not to read any repository file, project help, docs, onboarding text or blindspot rules, nor other authors' files, and not to run project binaries.",
+      "blindspot_and_onboarding_builders_excluded": [
+        "srcblind-opus",
+        "bsdecide-opus",
+        "bscausal-opus",
+        "scenbgaps-opus",
+        "blind-opus",
+        "bsreview-opus",
+        "hardstale-opus",
+        "drills34-opus",
+        "firstuse-opus",
+        "docs-opus",
+        "prodonb-sonnet",
+        "actor-opus",
+        "flake-sonnet",
+        "rank-opus"
+      ],
+      "reviewer_access": "The tech lead (investigation-dev) reviews only the public commitments; the passphrase is not committed.",
+      "quality_rounds": "All 24 specifications pass check-lookups: every reference answer meets all four warranted items with no false promotion, also when labelled as an unverified direct lookup; every overclaim answer triggers a false promotion; every abstention answer misses current_disposition. Authors narrowed distractor rules so that a correct answer naming a nearby distractor in the same sentence is not flagged."
+    },
+    "tasks": [
+      {
+        "id": "release-lookup-01",
+        "kind": "fact",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-01.json",
+        "key_sha256": "a15fbf2d611a021ac1344a27991f39a66c5437fc63a10e0139562146e233e034",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "6c38037c7b85ca34b825359054d608b3c736c65e39059bdf5fcaddb6c5dd5aba",
+            "source_sha256": "54e81abe26d0eefc9143ca5691f163de4275e096097ceec1ed8b1887a9e681f9"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-02",
+        "kind": "fact",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-02.json",
+        "key_sha256": "9379b782020fe77a860fa7e93a40edecca3cac6d92aa2931e5572409cc8c3560",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "896434c906a0c632365c9960c87dc5dd34f29cf08379e0c1e84e904d98d75e59",
+            "source_sha256": "285d6b2ba6cd9a8ba56c083e8499315ab5af01700c40ffaf814484e6768d4d37"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-03",
+        "kind": "fact",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-03.json",
+        "key_sha256": "6b1328be1ec9f49f174e60c78ce442cf76f4e4995f92054c6bafa8b7182a5db8",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "1a9e9d646bf49fd2225d932e2d8eb6bb12d3bfa3c943ddf1632f1d18b8609357",
+            "source_sha256": "0c8b706ee97c3be603d56ad41440d7242707e2e5fe3806ce397f8fb8118f8d6d"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-04",
+        "kind": "implementation",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-04.json",
+        "key_sha256": "230b6eddbbfa5d27ffce5cee7d2313083765ba8886927888b5454a05c63b4aed",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "88c5184580ba55431b0e5f433e106f92548cafe9020867a1b428ab8e55374171",
+            "source_sha256": "d9bb9d400221938be6ec7d5ad45fee53a1487695918be8efaef130bfd60b0ee3"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-05",
+        "kind": "implementation",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-05.json",
+        "key_sha256": "15f7c988b787984703eb93184e3b457346b3722e01982c57b2a54636a434f5cb",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "66f5dd995d3a946d854a18e93ec2e23f7e2bace24742eaf6b48d9adf926ddfec",
+            "source_sha256": "330cadae4ad684c196cd373edfd5a836d5c862377cc9558bd87bc5b58f21b6f1"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-06",
+        "kind": "implementation",
+        "theme": "debugging",
+        "key": "sealed/release-lookup-06.json",
+        "key_sha256": "3fc33331fe689bd0b9447ff50b19a3ba554bdb645a5b8379b7d5fa4643dd93dd",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "138747cc5957d625563a27b59ad72b0e68c149928e5a205101a3414477fa9c03",
+            "source_sha256": "6399017003bcdfc7ef75ced0211e6f4ee495426b58bd466faa6dff6ce9145443"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-07",
+        "kind": "fact",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-07.json",
+        "key_sha256": "b62a24a7dcb8902d28fe9395ff477b2fd1300b3986aaa183a0907ae528951d62",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "c4f73f5364db241e737de88235db9997cdcd533c80e49d66235ee6bdd4fb86ff",
+            "source_sha256": "560e68be1c8052b96d1aa7a575ca1a001978dd4d4553dbbdef0a00c2f63e03d3"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-08",
+        "kind": "fact",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-08.json",
+        "key_sha256": "667679e1eb491aa924e7afddedf7b7a901442673d04c906e3139413b76c5131e",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "f13998cb8c8fa54b0dbde34550d19007c3faf30b2d8974695ba586864b0a384e",
+            "source_sha256": "667baea426d099f7973143c1ceb4ef228ffa489dd00aa20e9590276e6f7bd896"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-09",
+        "kind": "fact",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-09.json",
+        "key_sha256": "a54fb696769b22a62e14200b00e357cfea8c6f154238a2e48ce2d46badff1e1f",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "279f6a0d805cbe8043a293020f24b626b055aea1ba0129a7e7079e34dc3b6b45",
+            "source_sha256": "0606e3d6ca73267f98030993280f42b4877b879bbdcafa8a09db349fe886cc97"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-10",
+        "kind": "implementation",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-10.json",
+        "key_sha256": "d841be60b1190cc1c1ee397dd3fa9acc66fb9e86bad94ed68b58646ce0cb8c8f",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "aee689ccdb7a9c6e033c92aaf8f4cae721395f7a65a7c8a001fcac1f616ca760",
+            "source_sha256": "ed0c2faf99c3cdcd2073b5986fa95654a9a03d3f66be6d1630b90433453fe4ba"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-11",
+        "kind": "implementation",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-11.json",
+        "key_sha256": "6028b81b08deb779e68f84ef2231066d257ba6424cd06017b099ae04d28fe423",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "b1c55ac39de9f2f9dcb17d100cec49eeb64b103a5254593a0280b6988eb9f1d6",
+            "source_sha256": "a84f541d80c13d3dee0b3aa787f7788887d1802a75df5d9d329714e263a4d79b"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-12",
+        "kind": "implementation",
+        "theme": "measurement",
+        "key": "sealed/release-lookup-12.json",
+        "key_sha256": "169ed26338e604c3374117d8cd2b6da7bcae29edc010db30343a29cc5056e564",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "6d07804a5861a5f947e9ac65a8492c9e692bda02851e48776e5c0686fb715f20",
+            "source_sha256": "746a69a881d3ccc08e42703b1c0b700f3e554c39173bcfea29eb5c82b02494b3"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-13",
+        "kind": "fact",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-13.json",
+        "key_sha256": "ce2b02105ae04ba4d59f5013d1185d65051fb284935c960eb06a2383aa441b02",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "6de0e74144dbfeb47379a2374da3f5d494601604262fefd235ee085f764acf39",
+            "source_sha256": "14c937c9d7ee2a2005cb61563edd4f511d917d212980ae8d2b8afa3769e7a78c"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-14",
+        "kind": "fact",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-14.json",
+        "key_sha256": "c8a84e5bd9f89e2b922ce1f9a1626e05349323db790405bb3aa9cc2f377b1a67",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "23aa28c8187cef51bb3a05ef251732d0ef1673eb449d93500977a44d8e2f1b7f",
+            "source_sha256": "45a83266de9861539fcecab8211ef4e0d047c8d6a2f07bd0315c61e6b53a43f6"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-15",
+        "kind": "fact",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-15.json",
+        "key_sha256": "b65f4df4c7795ef70e9be75b34ea0895cdefeca48bd6af8a0f798c2d6481fa27",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "0f813f8fe31bb928c4978e93386eda75d3867d014064ac36799cac006ab2a54c",
+            "source_sha256": "dc1d9dc93494a7212d0bf23b2764ae4622330d1c7d94a2cca8416728232bab62"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-16",
+        "kind": "implementation",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-16.json",
+        "key_sha256": "505fb7779574ccee2740c07bb1da31c144fa8a29c8fbdbfd71d976b97caaf8f8",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "a5f121fb1e4db1c6871ac22eb6f1b1e0cd823c829227ccb47d0a429b770047d9",
+            "source_sha256": "34fcce83c46b3f8eee9e3dc8d8a0b09e3717235d64a1cf664c77391533efd1d5"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-17",
+        "kind": "implementation",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-17.json",
+        "key_sha256": "92e490f1e8bb36ec762f3452e7db3a24e46a100defa223b2c76a1bc2e0d83c3f",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "640b15cfdf8351faecb3a2585e87ad68843d8af6c4b7b25e596e3568f741efa5",
+            "source_sha256": "3f4d8f399a56119093b9498a4392919a39d78474b912209daa8d31e508b51dde"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-18",
+        "kind": "implementation",
+        "theme": "source-research",
+        "key": "sealed/release-lookup-18.json",
+        "key_sha256": "d7ec5c0326adf4015c7a58350a230e402835909e18750d20d66d6b7b943b2a30",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "6978bca172e0b2a8020257e231df9f144a85c4ed22d233c20968ba89dc54d38e",
+            "source_sha256": "0e3bcb95b0db99296746df8148a35858acd61fb01f238a3bf68178001c3af04c"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-19",
+        "kind": "fact",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-19.json",
+        "key_sha256": "3cf2234c76c21c823b4801819e236fa188a901a778d5620f92aa4e267d702cad",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "d1b150c40f247df613bf23125340d92afc8397cfa990bc9df25dc24aded5fb98",
+            "source_sha256": "c7a8db5146b5b4f27ed4d6baa74e924e495d8758c10994b4af9ca699affd05ae"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-20",
+        "kind": "fact",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-20.json",
+        "key_sha256": "d6220deeb604121b2681bd24c88be43dd3441185e3284cbe8217b6b83cd909f0",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "0ee7fffaa7c1da3281d3d5223a2872fce38c7d78a0854ff34f3eca7dc93d404f",
+            "source_sha256": "513408bf0792e8e2b9211e6e124bd3118fe1376120b9789e20e2e09df81e629a"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-21",
+        "kind": "fact",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-21.json",
+        "key_sha256": "77b348ab91ac1346c8c906b52bd2e6830ee9a3119f4eb5f06471c13f7f39270c",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "f8635aa87a2c1bf75f18c8d1fc7c00ac70f8353b459f0b13f3a65bc0d56b15df",
+            "source_sha256": "04ee52ab595fa66bbb5aa973ad6adb12d96ee447c815080c1d9380408f195125"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-22",
+        "kind": "implementation",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-22.json",
+        "key_sha256": "6fff6ada5a67b1d8cca31d194402b3055eb1fa1542848cb5bb40e5eb64a57f14",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "cb7312298aaec5e7761b1bc0e8574a09702337d2aff5e1ce11bda6222fe9d3a3",
+            "source_sha256": "195c4ab1bcbf869890051aa6f08992cafbf3adbd3c90e117e65092b553b80678"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-23",
+        "kind": "implementation",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-23.json",
+        "key_sha256": "57f3a214510c9b67bf16d5521a2ae47ac8615bc1f852526ea3af13c6812a93fb",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "e2ce14a37b2266d62bb0de9ba13848896bcc5765469e42a6a7d594c864869d40",
+            "source_sha256": "f2d340b7dc186ea540495584520bcc7c1b2ae6452208ce07152a6935a507484b"
+          }
+        }
+      },
+      {
+        "id": "release-lookup-24",
+        "kind": "implementation",
+        "theme": "architecture",
+        "key": "sealed/release-lookup-24.json",
+        "key_sha256": "e0979c0d0b76efc9c1bcac5ce0d6bf2865488d8afd537cc7479050bf86899333",
+        "variants": {
+          "lookup": {
+            "objective_sha256": "83dcf64c8d6a2c0964e2418399840469340d327806ea3c567caceb8e495a1154",
+            "source_sha256": "33d86903ad456dc0b900967e1da1a66c7893bf738fafaf249ea6103869045b25"
+          }
+        }
+      }
+    ]
+  }
 }

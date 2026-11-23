@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Check, seal, verify and open the sealed release-trial case families (W14.01).
+"""Check, seal, verify and open the sealed release-trial case families (W14.01)
+and the skip-the-tool lookup tasks sealed beside them (W14.02).
 
 The sealed families' source bytes, objectives and grading keys never appear in
 the checkout as plain text. The checkout holds only:
@@ -54,6 +55,14 @@ HEDGES = ("\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|u
 EARLIER_STATE = ("At review the leading candidate looked likely but was pending, and one input "
                  "was confounded and unverified.")
 FAMILY_ID = re.compile(r"^release-(debugging|measurement|source-research|architecture)-(\d{2})$")
+# Skip-the-tool probes (W14.02): one-shot lookups and ordinary implementation tasks,
+# registered in the sealed split under domain "lookup" with a single "lookup" variant.
+LOOKUP_ID = re.compile(r"^release-lookup-(\d{2})$")
+LOOKUP_KINDS = ("fact", "implementation")
+LOOKUP_ITEMS = ("current_disposition", "decisive_citation", "material_limitation", "discriminating_followup")
+LOOKUP_VARIANT = "lookup"
+DIRECT_LOOKUP = "This is a direct lookup from the source and has not been independently verified."
+LOOKUP_PREREGISTRATION = "Separate lookup probes from this primary test."
 SHA = re.compile(r"^[a-f0-9]{64}$")
 OPENSSL = ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-iter", "600000", "-md", "sha256"]
 ALLOWED_RELEASE_FILES = {"README.md", "manifest.json", "sealed.tar.gz.enc"}
@@ -298,6 +307,219 @@ def check_authoring(directory, names=None):
     return specs, failures
 
 
+# --- Skip-the-tool lookup tasks (W14.02) -------------------------------------------
+
+def lookup_rubric(spec):
+    return {"warranted": expand(spec["warranted"]), "false_promotions": expand(spec["false_promotions"])}
+
+
+def lookup_documents(spec):
+    return {"source.txt": text_bytes(spec["source"])}
+
+
+def check_lookup_spec(spec, name=None):
+    """Validate one authored skip-the-tool task: a direct answer is warranted from source.txt alone."""
+    task = spec.get("family", "")
+    if not LOOKUP_ID.fullmatch(task) or (name and name != f"{task}.json"):
+        raise ValueError(f"{name}: family must be release-lookup-NN and match the file name")
+    if spec.get("domain") != "lookup":
+        raise ValueError(f"{task}: domain must be lookup")
+    if spec.get("kind") not in LOOKUP_KINDS:
+        raise ValueError(f"{task}: kind must be one of {LOOKUP_KINDS}")
+    if spec.get("theme") not in DOMAINS:
+        raise ValueError(f"{task}: theme must be one of {DOMAINS}")
+    for field in ("title", "objective", "expected", "why_direct"):
+        if not isinstance(spec.get(field), str) or not spec[field].strip() or "\n" in spec[field]:
+            raise ValueError(f"{task}: {field} must be a one-line string")
+    if len(spec["objective"]) > 400:
+        raise ValueError(f"{task}: objective is too long")
+    check_lines(spec["source"], f"{task}/source", 4, 14)
+    ids = [item.get("id") for item in spec.get("warranted", [])]
+    if tuple(ids) != LOOKUP_ITEMS:
+        raise ValueError(f"{task}: warranted items must be exactly {LOOKUP_ITEMS} in that order")
+    fp_ids = [item.get("id") for item in spec.get("false_promotions", [])]
+    if len(fp_ids) < 2 or len(set(fp_ids)) != len(fp_ids) or not all(isinstance(i, str) and i for i in fp_ids):
+        raise ValueError(f"{task}: false_promotions needs at least two unique ids")
+    docs = lookup_documents(spec)
+    lines = docs["source.txt"].decode().splitlines()
+    for item in spec["warranted"] + spec["false_promotions"]:
+        if "citation" in item:
+            citation = item["citation"]
+            if citation.get("document") != "source.txt" or not citation.get("any_lines") or not all(
+                    isinstance(i, int) and 1 <= i <= len(lines) for i in citation["any_lines"]):
+                raise ValueError(f"{task}/{item['id']}: a citation names source.txt lines in range")
+            continue
+        if item.get("field") not in ("answer", "limitation", "next") or not item.get("all"):
+            raise ValueError(f"{task}/{item.get('id')}: needs a field and non-empty all clauses")
+        unless = item.get("unless", [])
+        for clause in item["all"] + ([] if unless == "hedges" else unless):
+            re.compile(clause)
+    if [i["id"] for i in spec["warranted"] if "citation" in i] != ["decisive_citation"]:
+        raise ValueError(f"{task}: only decisive_citation is a citation item")
+    if not all(fp.get("unless") for fp in spec["false_promotions"]):
+        raise ValueError(f"{task}: every false promotion needs unless clauses (use \"hedges\")")
+    rub = lookup_rubric(spec)
+    references = spec.get("reference_answers")
+    if not isinstance(references, list) or len(references) < 2:
+        raise ValueError(f"{task}: give at least two differently phrased reference answers")
+    for index, answer in enumerate(references):
+        check_answer(answer, f"{task}/reference_answers[{index}]")
+        result = grade(answer, rub, docs)
+        missed = [k for k, v in result["correct"].items() if not v]
+        promoted = [k for k, v in result["unwarranted"].items() if v]
+        if missed or promoted:
+            raise ValueError(f"{task}/reference_answers[{index}]: missed {missed}, false promotions {promoted}")
+        # Labelling the answer as an unverified direct lookup is honest, not an abstention.
+        labelled = dict(answer, answer=f"{DIRECT_LOOKUP} {answer['answer']}")
+        if not grade(labelled, rub, docs)["correct"]["current_disposition"]:
+            raise ValueError(f"{task}/reference_answers[{index}]: labelling it a direct, unverified lookup "
+                             "loses current_disposition; narrow the abstention filter")
+    check_answer(spec.get("overclaim_answer"), f"{task}/overclaim_answer")
+    if not any(grade(spec["overclaim_answer"], rub, docs)["unwarranted"].values()):
+        raise ValueError(f"{task}/overclaim_answer: triggers no false promotion")
+    check_answer(spec.get("abstention_answer"), f"{task}/abstention_answer")
+    if grade(spec["abstention_answer"], rub, docs)["correct"]["current_disposition"]:
+        raise ValueError(f"{task}/abstention_answer: an unnecessary abstention still scores current_disposition")
+    return spec
+
+
+def check_lookups(directory, names=None):
+    directory = Path(directory)
+    files = [directory / n for n in names] if names else sorted(directory.glob("release-lookup-*.json"))
+    specs = []
+    failures = 0
+    for file in files:
+        try:
+            specs.append(check_lookup_spec(load(file), file.name))
+            print(f"ok   {file.name}")
+        except (ValueError, KeyError, TypeError, AttributeError, re.error, json.JSONDecodeError) as error:
+            failures += 1
+            print(f"FAIL {file.name}: {error!r}")
+    sources = Counter(sha256(text_bytes(s["source"])) for s in specs)
+    for spec in specs:
+        if sources[sha256(text_bytes(spec["source"]))] > 1:
+            failures += 1
+            print(f"FAIL {spec['family']}: source bytes shared with another task")
+    return specs, failures
+
+
+def lookup_bundle_files(spec):
+    task = spec["family"]
+    base = f"sealed/{task}/{LOOKUP_VARIANT}"
+    variant = {k: spec[k] for k in ("expected", "reference_answers", "overclaim_answer", "abstention_answer")}
+    variant.update(lookup_rubric(spec))
+    key = {k: spec[k] for k in ("family", "domain", "kind", "theme", "title", "why_direct")}
+    key["variants"] = {LOOKUP_VARIANT: variant}
+    return {
+        f"{base}/objective.txt": (spec["objective"].strip() + "\n").encode("utf-8"),
+        f"{base}/source.txt": text_bytes(spec["source"]),
+        f"evaluator/sealed/{task}.json": dump(key).encode("utf-8"),
+        f"authoring/{task}.json": dump(spec).encode("utf-8"),
+    }
+
+
+def lookup_registration(spec, files):
+    task = spec["family"]
+    base = f"sealed/{task}/{LOOKUP_VARIANT}"
+    return {"id": task, "split": "sealed", "domain": "lookup", "key": f"sealed/{task}.json",
+            "variants": [{
+                "id": LOOKUP_VARIANT, "split": "sealed", "directory": base,
+                "objective_sha256": sha256(files[f"{base}/objective.txt"]),
+                "initial": {"file": "source.txt", "sha256": sha256(files[f"{base}/source.txt"])},
+            }]}
+
+
+def lookup_preregistration():
+    """The preregistration separates lookup probes from the primary test; it sets no count for them."""
+    try:
+        text = subprocess.run(["git", "-C", str(ROOT), "show", f"{PREREGISTRATION_COMMIT}:{PREREGISTRATION}"],
+                              check=True, capture_output=True, text=True).stdout
+    except (OSError, subprocess.CalledProcessError):
+        text = (ROOT / PREREGISTRATION).read_text(encoding="utf-8")
+    if LOOKUP_PREREGISTRATION not in text:
+        raise ValueError("The preregistration no longer separates lookup probes from the primary test")
+    return LOOKUP_PREREGISTRATION
+
+
+def seal_lookups(authoring, key, authors):
+    """Add the skip-the-tool tasks to the sealed bundle without changing any family's bytes."""
+    specs, failures = check_lookups(authoring)
+    if failures or not specs:
+        raise SystemExit(f"{failures} authoring failures ({len(specs)} valid); nothing sealed")
+    registry = load(REGISTRY)
+    manifest = load(MANIFEST)
+    if any(f["split"] == "sealed" and f["domain"] == "lookup" for f in registry["families"]) or "lookup_tasks" in manifest:
+        raise SystemExit("Sealed lookup tasks are already registered; new tasks need new IDs and a new manifest")
+    verify_public()
+    previous = dict(manifest["bundle"])
+    old_plaintext = openssl("-d", key, CIPHERTEXT.read_bytes())
+    if sha256(old_plaintext) != previous["plaintext_sha256"]:
+        raise SystemExit("Decrypted bundle digest does not match the manifest")
+    files = {}
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(old_plaintext)), mode="r:") as archive:
+        for member in archive.getmembers():
+            if not member.isfile():
+                raise SystemExit(f"Unexpected bundle member: {member.name}")
+            files[member.name] = archive.extractfile(member).read()
+    if len(files) != previous["plaintext_files"]:
+        raise SystemExit("Bundle file count differs from the manifest")
+    taken = non_sealed_source_digests(registry) | {sha256(data) for path, data in files.items()
+                                                   if path.startswith("sealed/") and not path.endswith("objective.txt")}
+    added = {}
+    for spec in specs:
+        for path, data in lookup_bundle_files(spec).items():
+            if path in files or path in added:
+                raise SystemExit(f"{path} is already in the bundle")
+            if path.startswith("sealed/") and not path.endswith("objective.txt") and sha256(data) in taken:
+                raise SystemExit(f"{path} reuses registered source bytes")
+            added[path] = data
+    files.update(added)
+    plaintext = deterministic_tar(files)
+    ciphertext = openssl("-e", key, plaintext)
+    if openssl("-d", key, ciphertext) != plaintext:
+        raise SystemExit("Round trip through openssl failed")
+    entries = [lookup_registration(spec, added) for spec in specs]
+    registry["families"].extend(entries)
+    REGISTRY_CHECK["validate"](registry, FIXTURES)
+    manifest["bundle"].update(
+        ciphertext_sha256=sha256(ciphertext), plaintext_sha256=sha256(plaintext), plaintext_files=len(files),
+        previous={k: previous[k] for k in ("ciphertext_sha256", "plaintext_sha256", "plaintext_files")}
+        | {"tar_sha256": sha256(gzip.decompress(old_plaintext)),
+           "note": "W14.01 bundle before the lookup tasks were added. Keyed verify rebuilds the uncompressed "
+                   "tar from the bundle's non-lookup files and checks it against tar_sha256, so no family "
+                   "file changed."})
+    manifest["bundle"]["layout"].update({
+        "sealed/<lookup>/lookup/objective.txt": "skip-the-tool task objective (given in the prompt, never as a file)",
+        "sealed/<lookup>/lookup/source.txt": "the task's only source; a lookup task has no update.txt",
+    })
+    manifest["lookup_tasks"] = {
+        "study": "Skip-the-tool tasks for the sealed release trial (W14.02)",
+        "preregistration": {"source": f"{PREREGISTRATION}@{PREREGISTRATION_COMMIT}", "quote": lookup_preregistration(),
+                            "count": "not preregistered; fixed by this manifest before any run"},
+        "counts": {"tasks": len(specs),
+                   "by_kind": dict(sorted(Counter(s["kind"] for s in specs).items())),
+                   "by_theme": dict(sorted(Counter(s["theme"] for s in specs).items()))},
+        "report": {
+            "separation": "Diagnostic, reported apart from the primary estimate and the release rule.",
+            "runs": "Both arms and both pinned models per task, same budgets and fresh sessions as the families.",
+            "outcomes": "Per arm: warranted items met, missed warranted items and false promotions, with denominators.",
+            "cost": "Per arm and paired CLI minus notes: metered tokens, shell calls, wall time, "
+                    "help/schema/onboarding bytes and CLI calls.",
+            "unnecessary_tool_use": "CLI arm: any committed journal event in the participant workspace; report the rate.",
+        },
+        "authorship": authors,
+        "tasks": [{"id": spec["family"], "kind": spec["kind"], "theme": spec["theme"], "key": entry["key"],
+                   "key_sha256": sha256(added[f"evaluator/sealed/{spec['family']}.json"]),
+                   "variants": {LOOKUP_VARIANT: {"objective_sha256": entry["variants"][0]["objective_sha256"],
+                                                 "source_sha256": entry["variants"][0]["initial"]["sha256"]}}}
+                  for spec, entry in zip(specs, entries)],
+    }
+    CIPHERTEXT.write_bytes(ciphertext)
+    MANIFEST.write_text(dump(manifest), encoding="utf-8")
+    append_registrations(entries)
+    print(f"Sealed {len(specs)} lookup tasks; bundle now holds {len(files)} files")
+
+
 # --- Bundle --------------------------------------------------------------------
 
 def bundle_files(spec):
@@ -320,6 +542,10 @@ def bundle_files(spec):
 
 
 def deterministic_tar(files):
+    return gzip.compress(deterministic_raw_tar(files), compresslevel=9, mtime=0)
+
+
+def deterministic_raw_tar(files):
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as archive:
         for path in sorted(files):
@@ -330,7 +556,7 @@ def deterministic_tar(files):
             info.uid = info.gid = 0
             info.uname = info.gname = ""
             archive.addfile(info, io.BytesIO(files[path]))
-    return gzip.compress(buffer.getvalue(), compresslevel=9, mtime=0)
+    return buffer.getvalue()
 
 
 def key_path(argument):
@@ -469,7 +695,9 @@ def verify_public():
     registry = load(REGISTRY)
     manifest = load(MANIFEST)
     REGISTRY_CHECK["validate"](registry, FIXTURES)
-    sealed = [f for f in registry["families"] if f["split"] == "sealed"]
+    sealed_all = [f for f in registry["families"] if f["split"] == "sealed"]
+    sealed = [f for f in sealed_all if f["domain"] != "lookup"]
+    verify_lookups_public([f for f in sealed_all if f["domain"] == "lookup"], manifest)
     by_id = {f["id"]: f for f in manifest["families"]}
     if {f["id"] for f in sealed} != set(by_id) or len(by_id) != len(manifest["families"]):
         raise ValueError("Registry and manifest list different sealed families")
@@ -496,9 +724,9 @@ def verify_public():
     counts = check_counts(rows)
     if manifest["preregistration"]["families"] != counts["families"]:
         raise ValueError("Manifest counts differ from the preregistration")
-    initial = Counter(f["variants"][0]["initial"]["sha256"] for f in sealed)
+    initial = Counter(f["variants"][0]["initial"]["sha256"] for f in sealed_all)
     if max(initial.values()) > 1:
-        raise ValueError("Two sealed families share source bytes")
+        raise ValueError("Two sealed families or tasks share source bytes")
     if sha256(CIPHERTEXT.read_bytes()) != manifest["bundle"]["ciphertext_sha256"]:
         raise ValueError("Ciphertext digest does not match the manifest")
     stray = {p.name for p in RELEASE.iterdir()} - ALLOWED_RELEASE_FILES
@@ -507,6 +735,39 @@ def verify_public():
     if (FIXTURES / "sealed").exists() or (ROOT / "training/a-gate/evaluator/sealed").exists():
         raise ValueError("Sealed material is present in plain text in the checkout")
     return registry, manifest, Counter((d, t) for _, d, t in rows)
+
+
+def verify_lookups_public(sealed, manifest):
+    """Registry and manifest agree on the skip-the-tool tasks; returns their (kind, theme) counts."""
+    section = manifest.get("lookup_tasks")
+    if section is None:
+        if sealed:
+            raise ValueError("Sealed lookup tasks are registered but the manifest lists none")
+        return Counter()
+    if section["preregistration"]["quote"] != lookup_preregistration():
+        raise ValueError("Lookup tasks cite a different preregistration sentence")
+    by_id = {t["id"]: t for t in section["tasks"]}
+    if {f["id"] for f in sealed} != set(by_id) or len(by_id) != len(section["tasks"]):
+        raise ValueError("Registry and manifest list different sealed lookup tasks")
+    if section["counts"]["tasks"] != len(sealed):
+        raise ValueError("Lookup task count differs from the manifest")
+    for family in sealed:
+        entry = by_id[family["id"]]
+        if not LOOKUP_ID.fullmatch(family["id"]) or entry["kind"] not in LOOKUP_KINDS or entry["theme"] not in DOMAINS:
+            raise ValueError(f"{family['id']}: lookup ID, kind or theme")
+        if [v["id"] for v in family["variants"]] != [LOOKUP_VARIANT] or "update" in family["variants"][0]:
+            raise ValueError(f"{family['id']}: a lookup task has one variant and no update")
+        if family["key"] != entry["key"] or not SHA.fullmatch(entry["key_sha256"]):
+            raise ValueError(f"{family['id']}: key locator or digest")
+        variant, committed = family["variants"][0], entry["variants"][LOOKUP_VARIANT]
+        if (committed["objective_sha256"], committed["source_sha256"]) != (
+                variant["objective_sha256"], variant["initial"]["sha256"]):
+            raise ValueError(f"{family['id']}: registry and manifest digests differ")
+    counts = Counter((t["kind"], t["theme"]) for t in section["tasks"])
+    if dict(sorted(Counter(t["kind"] for t in section["tasks"]).items())) != section["counts"]["by_kind"] or \
+            dict(sorted(Counter(t["theme"] for t in section["tasks"]).items())) != section["counts"]["by_theme"]:
+        raise ValueError("Lookup task counts by kind or theme differ from the manifest")
+    return counts
 
 
 def unpack(key, destination):
@@ -546,11 +807,42 @@ def verify_sealed(key):
                     raise ValueError(f"{family}/{variant}: objective digest")
             grader_key = load(root / "evaluator" / entry["key"])
             assert set(grader_key["variants"]) == set(entry["variants"])
+        for entry in manifest.get("lookup_tasks", {}).get("tasks", []):
+            task = entry["id"]
+            key_bytes = (root / "evaluator" / entry["key"]).read_bytes()
+            if sha256(key_bytes) != entry["key_sha256"]:
+                raise ValueError(f"{task}: key differs from its committed digest")
+            spec = check_lookup_spec(load(root / "authoring" / f"{task}.json"), f"{task}.json")
+            if (spec["kind"], spec["theme"]) != (entry["kind"], entry["theme"]):
+                raise ValueError(f"{task}: kind or theme differs from the manifest")
+            if lookup_bundle_files(spec)[f"evaluator/sealed/{task}.json"] != key_bytes:
+                raise ValueError(f"{task}: key was not generated from the authored specification")
+            base = root / "sealed" / task / LOOKUP_VARIANT
+            if sha256((base / "objective.txt").read_bytes()) != entry["variants"][LOOKUP_VARIANT]["objective_sha256"]:
+                raise ValueError(f"{task}: objective digest")
+            if (base / "update.txt").exists():
+                raise ValueError(f"{task}: a lookup task has no update")
+        previous = manifest["bundle"].get("previous")
+        if previous:
+            lookups = {path for t in manifest["lookup_tasks"]["tasks"] for path in (
+                f"sealed/{t['id']}/{LOOKUP_VARIANT}/objective.txt", f"sealed/{t['id']}/{LOOKUP_VARIANT}/source.txt",
+                f"evaluator/{t['key']}", f"authoring/{t['id']}.json")}
+            earlier = {name: (root / name).read_bytes() for name in names if name not in lookups}
+            if len(earlier) != previous["plaintext_files"] or sha256(deterministic_raw_tar(earlier)) != previous["tar_sha256"]:
+                raise ValueError("The bundle's family files differ from the W14.01 bundle they were carried over from")
         taken = non_sealed_source_digests(registry)
         for name in names:
             if name.startswith("sealed/") and not name.endswith("objective.txt") and sha256((root / name).read_bytes()) in taken:
                 raise ValueError(f"{name} reuses development or pilot bytes")
     return manifest
+
+
+def lookup_summary(manifest):
+    section = manifest.get("lookup_tasks")
+    if not section:
+        return ""
+    kinds = ", ".join(f"{k} {n}" for k, n in section["counts"]["by_kind"].items())
+    return f"; {section['counts']['tasks']} skip-the-tool tasks ({kinds})"
 
 
 def main():
@@ -563,6 +855,13 @@ def main():
     sealing.add_argument("authoring", type=Path)
     sealing.add_argument("--key-file")
     sealing.add_argument("--authors", type=Path, required=True, help="JSON authorship declaration")
+    lookups = commands.add_parser("check-lookups", help="validate authored skip-the-tool task specifications")
+    lookups.add_argument("directory", type=Path)
+    lookups.add_argument("files", nargs="*")
+    sealing_lookups = commands.add_parser("seal-lookups", help="add authored skip-the-tool tasks to the sealed bundle")
+    sealing_lookups.add_argument("authoring", type=Path)
+    sealing_lookups.add_argument("--key-file")
+    sealing_lookups.add_argument("--authors", type=Path, required=True, help="JSON authorship declaration")
     verifying = commands.add_parser("verify", help="check counts and commitments; with a key, every digest and rubric")
     verifying.add_argument("--key-file")
     verifying.add_argument("--public", action="store_true", help="skip the keyed checks even if a key exists")
@@ -574,19 +873,27 @@ def main():
         specs, failures = check_authoring(args.directory, args.files or None)
         print(f"{len(specs)} valid, {failures} failing")
         sys.exit(1 if failures else 0)
+    if args.command == "check-lookups":
+        specs, failures = check_lookups(args.directory, args.files or None)
+        print(f"{len(specs)} valid, {failures} failing")
+        sys.exit(1 if failures else 0)
     if args.command == "seal":
         seal(args.authoring, key_path(args.key_file), load(args.authors))
+    elif args.command == "seal-lookups":
+        seal_lookups(args.authoring, key_path(args.key_file), load(args.authors))
     elif args.command == "verify":
         available = args.key_file or os.environ.get("INVESTIGATION_SEALED_KEY") or DEFAULT_KEY.expanduser().is_file()
         if args.public or not available:
             _, manifest, twins = verify_public()
             print(f"Verified {len(manifest['families'])} sealed family commitments against "
                   f"{manifest['preregistration']['source']} without opening the seal: "
-                  + ", ".join(f"{d} {t} {n}" for (d, t), n in sorted(twins.items())))
+                  + ", ".join(f"{d} {t} {n}" for (d, t), n in sorted(twins.items()))
+                  + lookup_summary(manifest))
         else:
             manifest = verify_sealed(key_path(args.key_file))
-            print(f"Opened the seal privately and verified {len(manifest['families'])} families, "
-                  f"{manifest['bundle']['plaintext_files']} files, every committed digest and rubric.")
+            print(f"Opened the seal privately and verified {len(manifest['families'])} families"
+                  f"{lookup_summary(manifest)}, {manifest['bundle']['plaintext_files']} files, "
+                  "every committed digest and rubric.")
     else:
         destination = args.destination.resolve()
         if destination.is_relative_to(ROOT.resolve()):

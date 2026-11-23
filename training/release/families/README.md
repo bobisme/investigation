@@ -14,7 +14,7 @@ The preregistration at `214c45b` says: "Enroll **84 independent families**, 21 e
 | `architecture` (4: hard and soft constraints, conditional choice, changed criterion) | 21 | 10 | 11 |
 | Total | 84 | 42 | 42 |
 
-That is 168 variants. With two arms and two pinned models per variant, it gives the preregistered 672 paired-arm assignments. `verify` reads the counts from the preregistration file at `214c45b` and fails if the registered set differs. The skip-the-tool lookup tasks belong to W14.02 and are not part of this count.
+That is 168 variants. With two arms and two pinned models per variant, it gives the preregistered 672 paired-arm assignments. `verify` reads the counts from the preregistration file at `214c45b` and fails if the registered set differs. The [skip-the-tool tasks](#skip-the-tool-tasks-w1402) from W14.02 are sealed in the same bundle but are not part of this count.
 
 ## What is in the checkout
 
@@ -58,6 +58,56 @@ Together these checks show that both error directions, unwarranted promotion and
 ### Known rubric limitations
 
 The rubrics are deterministic regular expressions, as in the A-gate pilot. They can miss unusual paraphrases. They can also mark a correct answer wrong if it uses a current-disposition abstention phrase for something else, for example "the earlier figure was not confirmed". The grader excuses a sentence from false-promotion matching when it contains a hedge word. That list includes `fail` and `fails`, so a flat overclaim phrased with those words is not counted. Report raw item counts and carry this uncertainty into the analysis. Review a sample of graded answers by hand before interpreting the result.
+
+## Twins beyond the preregistered one (W14.02)
+
+Plan §20.5 lists four kinds of twin edit: remove a decisive source, flip an operative criterion, rename an option, and add a duplicate citation. The preregistration fixes the design at one original and one twin per family. It counts 2 variants per family and 672 paired-arm assignments, and `verify` enforces both numbers. W14.02 therefore adds no extra twins to the sealed families. A third variant would change the preregistered assignment total. The §20.5 edits are already covered as follows:
+
+- **Missing evidence.** The 42 missing-evidence twins remove the decisive source.
+- **Cosmetic change.** The 42 cosmetic twins rename an option, reorder or reword lines, or add a duplicate citation.
+- **Operative-criterion flip.** Every `architecture` original stages a new hard criterion after the review checkpoint (base scenario 4, "react to a changed criterion"). The warranted choice, or its conditions, must change from the reviewed provisional choice. That change since review is the warranted item `change_since_review`.
+- **Expected direction.** Every twin key states `relative_to_original`. Keyed `verify` re-runs the cross-variant checks in [Authorship and independence](#authorship-and-independence). Those checks score both error directions for every family: unwarranted promotion and unnecessary abstention.
+- **Separate sessions.** Each assignment is one variant in a fresh session, so no session sees both variants of a family. The W14.05 schedule must keep it that way.
+
+## Skip-the-tool tasks (W14.02)
+
+The preregistration says: "Separate lookup probes from this primary test." The bundle therefore also holds **24 skip-the-tool tasks**, `release-lookup-01` to `release-lookup-24`. In each task the right move is to answer directly, without building up a case:
+
+| Kind | Tasks | What the participant does |
+| --- | ---: | --- |
+| `fact` | 12 | A one-shot factual lookup whose answer is stated in `source.txt`. |
+| `implementation` | 12 | An ordinary small change, such as a one- to three-line code or config edit, a computed value or a filled-in field, that `source.txt` fully specifies. |
+
+Each of the four themes (`debugging`, `measurement`, `source-research`, `architecture`) has three tasks of each kind. The theme sets what the source looks like, such as a log, a benchmark table, a catalogue entry or a decision record. That material can tempt an agent into a full investigation, but the answer is always fully determined by one read.
+
+**Layout.** Each task is registered in `fixtures/family-registry.json` with split `sealed`, domain `lookup` and one variant, `lookup`. The variant has an objective digest and `source.txt`. It has no `update.txt`, so there is no review checkpoint. The bundle holds `sealed/<task>/lookup/objective.txt`, `sealed/<task>/lookup/source.txt`, the key `evaluator/sealed/<task>.json` and the specification `authoring/<task>.json`. The key uses the A-gate rubric format, so `grade-a-gate.py grade` reads it unchanged. Domain `lookup` is the domain the A-gate runner and analysis already report separately from the substantive families.
+
+**Rubric.** The four warranted items are `current_disposition`, `decisive_citation`, `material_limitation` and `discriminating_followup`. A lookup has no change since review, so it has no `change_since_review` item. Each key has at least two `false_promotions` and at least two reference answers. It also has an `overclaim_answer`, which must trigger a false promotion, and an `abstention_answer`, which must miss `current_disposition`. Both error directions can therefore be scored on every task. `check-lookups` also prefixes every reference answer with "This is a direct lookup from the source and has not been independently verified." The answer must still keep `current_disposition`. This rule makes the abstention filter catch refusals but not honest labels. The [known rubric limitations](#known-rubric-limitations) apply here as well. False promotions are matched one sentence at a time. A correct answer can name a nearby distractor value, such as "the weekend sailing takes 65 minutes", in a sentence of its own with no hedge word. Some keys can then flag that answer. The authors narrowed these rules with lookaheads, but hand review of a sample should include the lookup grades.
+
+**Grading and cost.** The tasks run in both arms and with both pinned models, under the same budgets and fresh-session rules as the families. The protocol requires the following:
+
+- Grade the answer with the key.
+- Report per-arm accuracy, missed warranted items and false promotions, with denominators.
+- Report per-arm cost: metered tokens, shell calls, wall time, help, schema and onboarding bytes, and calls to the CLI. Give the paired difference from CLI to notes.
+- In the CLI arm, count any committed journal event as an unnecessary use of the tool, and report the rate.
+
+These are diagnostics, separate from the primary estimate and the release rule. If the CLI arm matches the notes arm on correctness but costs much more, that is reported as a failure (plan §20.5, Cost). The manifest's `lookup_tasks` section fixes the count, the kinds, the themes and every key digest before any run. The preregistration sets no count for these tasks.
+
+**Authorship.** Four fresh author sessions wrote the tasks, `author-lookup-a` to `author-lookup-d`, one per theme. The W14.02 worker `twins-opus` coordinated. None of them worked on blindspot rules or onboarding. Each author saw only a short authoring brief, two worked examples outside the set and a standalone copy of the checker. The authors were told not to read anything in the repository. The manifest records them under `lookup_tasks.authorship`.
+
+**How the seal was extended.** `seal` refuses to replace a registered sealed set, and it still does. `seal-lookups` adds tasks to the bundle once:
+
+1. It decrypts the current bundle and checks its digest.
+2. It checks every task specification and refuses any source bytes already used by a family, a development fixture or a pilot fixture.
+3. It writes a new deterministic tar with the new files and re-encrypts it.
+4. It appends the registrations and records the earlier bundle's digests under `bundle.previous`.
+
+Keyed `verify` rebuilds the uncompressed tar from the non-lookup files and compares it with `bundle.previous.tar_sha256`. This proves that no family byte changed. The family entries in the manifest and the registry are not changed.
+
+```sh
+python3 scripts/seal-release-families.py check-lookups /private/authoring/dir
+python3 scripts/seal-release-families.py seal-lookups /private/authoring/dir --authors authors.json
+```
 
 ## Verifying the seal
 
