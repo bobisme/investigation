@@ -135,6 +135,9 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     if comparisons.len() > MAX_LISTED {
         let _ = writeln!(f.out, "- and {} more", comparisons.len() - MAX_LISTED);
     }
+    if let Some(question) = refs(f.record.body.get("question_ref")).first() {
+        super::matrix::write(f, question.id)?;
+    }
     accepted_over(f)
 }
 

@@ -49,5 +49,5 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
             "No hypothesis, option, criterion, inquiry or decision addresses this question yet.\n",
         );
     }
-    Ok(())
+    super::matrix::write(f, f.record.header.id)
 }

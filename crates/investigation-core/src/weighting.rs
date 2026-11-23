@@ -583,6 +583,106 @@ fn weighted_criteria(criteria: &[(RevisionRef, CriterionBody)]) -> bool {
     criteria.iter().any(|(_, c)| c.weight.is_some())
 }
 
+/// The active criteria of `question`, in record order.
+fn active_criteria(
+    s: &State,
+    case: Id,
+    question: Id,
+) -> Result<Vec<(RevisionRef, CriterionBody)>, Failure> {
+    let mut criteria = Vec::new();
+    for record in s.records().filter(|r| r.header.case_id == case) {
+        if record.header.id.kind() == Kind::Criterion {
+            let body: CriterionBody = decode(record)?;
+            if body.question_ref.id == question && body.lifecycle == CriterionLifecycle::Active {
+                criteria.push((record.reference(), body));
+            }
+        }
+    }
+    Ok(criteria)
+}
+
+/// The consequences table of `question` alone: every eligible option against
+/// every active criterion, with no weights and no score, whether or not any
+/// criterion records a weight. Read-only and computed from one snapshot, and
+/// the table [`weighted_analysis`] leads with.
+pub fn consequences_table(s: &State, case: Id, question: Id) -> Result<ConsequencesTable, Failure> {
+    let criteria = active_criteria(s, case, question)?;
+    table_for(s, case, question, &criteria)
+}
+
+fn table_for(
+    s: &State,
+    case: Id,
+    question: Id,
+    criteria: &[(RevisionRef, CriterionBody)],
+) -> Result<ConsequencesTable, Failure> {
+    let scope = MembershipScope::Question {
+        case_id: case,
+        question_id: question,
+        option_id: None,
+    };
+    let members = membership(s, MembershipRule::EligibleOptions, scope)?.members;
+    let mut cells: BTreeMap<(Id, Id), Vec<(&Record, ComparisonBody)>> = BTreeMap::new();
+    for record in s.records().filter(|r| r.header.case_id == case) {
+        if record.header.id.kind() == Kind::Comparison {
+            let body: ComparisonBody = decode(record)?;
+            if !body.retracted {
+                cells
+                    .entry((body.option_ref.id, body.criterion_ref.id))
+                    .or_default()
+                    .push((record, body));
+            }
+        }
+    }
+    let index = FreshnessIndex::build(s, case);
+    let mut rows = Vec::new();
+    for member in &members {
+        let record = s
+            .current(member.id)
+            .ok_or_else(|| Failure::new(ErrorCode::IntegrityFailure, "Option disappeared."))?;
+        let option_body: OptionBody = decode(record)?;
+        let option = record.reference();
+        let mut row = Vec::new();
+        for criterion in criteria {
+            let found = cells
+                .get(&(option.id, criterion.0.id))
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let classified = classify(s, case, &index, option, criterion, found)?;
+            let cell = classified.body.as_ref();
+            row.push(TableCell {
+                criterion_ref: criterion.0,
+                state: classified.state,
+                comparison_refs: classified.refs,
+                outcome: cell.map(|b| b.outcome),
+                value: cell.and_then(|b| b.value.clone()),
+                basis: cell.and_then(|b| b.basis.clone()),
+                evidence_refs: cell.map(|b| b.evidence_refs.clone()).unwrap_or_default(),
+                assumption_refs: cell.map(|b| b.assumption_refs.clone()).unwrap_or_default(),
+            });
+        }
+        rows.push(TableRow {
+            option_ref: option,
+            description: option_body.description,
+            cells: row,
+        });
+    }
+    Ok(ConsequencesTable {
+        criteria: criteria
+            .iter()
+            .map(|(r, c)| TableCriterion {
+                criterion_ref: *r,
+                name: c.name.clone(),
+                kind: c.kind,
+                unit: c.scale.unit.clone(),
+                preferred_direction: c.preferred_direction,
+                weight: c.weight.as_ref().map(|w| w.status),
+            })
+            .collect(),
+        rows,
+    })
+}
+
 /// The weighted analysis of `question`, or `None` when no active criterion of
 /// it records a weight. Read-only and computed from one snapshot.
 pub fn weighted_analysis(
@@ -590,47 +690,11 @@ pub fn weighted_analysis(
     case: Id,
     question: Id,
 ) -> Result<Option<WeightedAnalysis>, Failure> {
-    let scope = MembershipScope::Question {
-        case_id: case,
-        question_id: question,
-        option_id: None,
-    };
-    let members = membership(s, MembershipRule::EligibleOptions, scope)?.members;
-    let mut criteria: Vec<(RevisionRef, CriterionBody)> = Vec::new();
-    let mut cells: BTreeMap<(Id, Id), Vec<(&Record, ComparisonBody)>> = BTreeMap::new();
-    for record in s.records().filter(|r| r.header.case_id == case) {
-        match record.header.id.kind() {
-            Kind::Criterion => {
-                let body: CriterionBody = decode(record)?;
-                if body.question_ref.id == question && body.lifecycle == CriterionLifecycle::Active
-                {
-                    criteria.push((record.reference(), body));
-                }
-            }
-            Kind::Comparison => {
-                let body: ComparisonBody = decode(record)?;
-                if !body.retracted {
-                    cells
-                        .entry((body.option_ref.id, body.criterion_ref.id))
-                        .or_default()
-                        .push((record, body));
-                }
-            }
-            _ => {}
-        }
-    }
+    let criteria = active_criteria(s, case, question)?;
     if !weighted_criteria(&criteria) {
         return Ok(None);
     }
-    let index = FreshnessIndex::build(s, case);
-    let mut options = Vec::new();
-    for member in &members {
-        let record = s
-            .current(member.id)
-            .ok_or_else(|| Failure::new(ErrorCode::IntegrityFailure, "Option disappeared."))?;
-        let body: OptionBody = decode(record)?;
-        options.push((record.reference(), body));
-    }
+    let table = table_for(s, case, question, &criteria)?;
 
     let ranged = |c: &CriterionBody| {
         c.kind == CriterionKind::Soft
@@ -638,40 +702,21 @@ pub fn weighted_analysis(
                 .as_ref()
                 .is_some_and(|w| w.status == WeightStatus::Ranged && w.range.is_some())
     };
-    let table_criteria = criteria
-        .iter()
-        .map(|(r, c)| TableCriterion {
-            criterion_ref: *r,
-            name: c.name.clone(),
-            kind: c.kind,
-            unit: c.scale.unit.clone(),
-            preferred_direction: c.preferred_direction,
-            weight: c.weight.as_ref().map(|w| w.status),
-        })
-        .collect();
-
-    let mut rows = Vec::new();
     let mut excluded = Vec::new();
     let mut scores = Vec::new();
     // Per scored option: one term per ranged criterion, in criterion order.
     let mut scored: Vec<(RevisionRef, Vec<Term>)> = Vec::new();
-    for (option, option_body) in &options {
-        let mut row = Vec::new();
+    for table_row in &table.rows {
+        let option = &table_row.option_ref;
         let mut failed = Vec::new();
         let mut unresolved = Vec::new();
         let mut contributions = Vec::new();
         let mut missing = Vec::new();
         let mut terms = Vec::new();
-        for criterion in &criteria {
+        for (criterion, cell) in criteria.iter().zip(&table_row.cells) {
             let (criterion_ref, c) = criterion;
-            let found = cells
-                .get(&(option.id, criterion_ref.id))
-                .map(Vec::as_slice)
-                .unwrap_or_default();
-            let classified = classify(s, case, &index, *option, criterion, found)?;
-            let cell = classified.body.as_ref();
-            if c.kind == CriterionKind::Hard && classified.state != CellState::OutOfScope {
-                match (classified.state, cell.map(|b| b.outcome)) {
+            if c.kind == CriterionKind::Hard && cell.state != CellState::OutOfScope {
+                match (cell.state, cell.outcome) {
                     (CellState::Measured, Some(ComparisonOutcome::Fails)) => {
                         failed.push(*criterion_ref);
                     }
@@ -682,13 +727,13 @@ pub fn weighted_analysis(
             if ranged(c) {
                 let weight = c.weight.as_ref().expect("ranged weight");
                 let range = weight.range.as_ref().expect("ranged weight has a range");
-                match (classified.state, cell) {
+                match (cell.state, cell.value.as_ref()) {
                     (CellState::OutOfScope, _) => missing.push(MissingCell {
                         criterion_ref: *criterion_ref,
                         reason: MissingReason::OutOfScope,
                     }),
-                    (CellState::Measured, Some(body)) => {
-                        let value = body.value.clone().expect("measured cell has a value");
+                    (CellState::Measured, Some(value)) => {
+                        let value = value.clone();
                         let (worst, best) = (number(&range.worst), number(&range.best));
                         let utility = (number(&value.decimal) - worst) / (best - worst);
                         if !(-EPSILON..=1.0 + EPSILON).contains(&utility)
@@ -712,7 +757,7 @@ pub fn weighted_analysis(
                             });
                             contributions.push(Contribution {
                                 criterion_ref: *criterion_ref,
-                                comparison_ref: classified.refs[0],
+                                comparison_ref: cell.comparison_refs[0],
                                 value,
                                 utility: rounded(utility),
                                 weight: weight.value.clone(),
@@ -726,22 +771,7 @@ pub fn weighted_analysis(
                     }),
                 }
             }
-            row.push(TableCell {
-                criterion_ref: *criterion_ref,
-                state: classified.state,
-                comparison_refs: classified.refs,
-                outcome: cell.map(|b| b.outcome),
-                value: cell.and_then(|b| b.value.clone()),
-                basis: cell.and_then(|b| b.basis.clone()),
-                evidence_refs: cell.map(|b| b.evidence_refs.clone()).unwrap_or_default(),
-                assumption_refs: cell.map(|b| b.assumption_refs.clone()).unwrap_or_default(),
-            });
         }
-        rows.push(TableRow {
-            option_ref: *option,
-            description: option_body.description.clone(),
-            cells: row,
-        });
         if !failed.is_empty() {
             excluded.push(ExcludedOption {
                 option_ref: *option,
@@ -843,10 +873,7 @@ pub fn weighted_analysis(
         .map(|(r, _)| *r)
         .collect();
     Ok(Some(WeightedAnalysis {
-        consequences: ConsequencesTable {
-            criteria: table_criteria,
-            rows,
-        },
+        consequences: table,
         excluded,
         normalization: NORMALIZATION,
         overlaps,

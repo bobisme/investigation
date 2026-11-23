@@ -468,6 +468,35 @@ fn scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision() {
     let state = case.state();
     let front = overview(&plan, case.case_id());
     assert_overview_agrees(front, &brief(&workspace, case.case_id()), state);
+    // The question and the decision show the same option-by-criterion matrix,
+    // consequences first, with unknowns labelled and no computed score.
+    for kind in [Kind::Question, Kind::Decision] {
+        let record = state
+            .records()
+            .find(|r| r.header.id.kind() == kind)
+            .unwrap();
+        let text = note(&plan, case.case_id(), record.header.id);
+        let at = text
+            .find("\n### Option-by-criterion comparison\n")
+            .unwrap_or_else(|| panic!("no matrix on {kind:?}"));
+        let matrix = &text[at..];
+        for expected in [
+            "| Option |",
+            "(hard) |",
+            "unknown",
+            "outcome `meets`",
+            "`110` `seconds`",
+            "no overall score and no ranking",
+            "Hard failures:",
+            "Pareto status",
+        ] {
+            assert!(
+                matrix.contains(expected),
+                "{expected} on {kind:?}\n{matrix}"
+            );
+        }
+        assert_eq!(matrix.matches("\n| [[").count(), 3, "{matrix}");
+    }
     // A comparison case shows its evaluation, never a failed-looking empty
     // conclusions block.
     assert_eq!(

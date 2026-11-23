@@ -63,6 +63,7 @@ mod criterion;
 mod decision;
 mod hypothesis;
 mod inquiry;
+mod matrix;
 mod objection;
 mod option;
 pub(crate) mod overview;
