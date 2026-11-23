@@ -118,6 +118,84 @@ fn blob_path(root: &Path, digest: &str) -> std::path::PathBuf {
 }
 
 #[test]
+fn structured_derivative_validates_snapshots_before_commit_and_keeps_bytes() {
+    let (_temporary, root, mut store) = workspace();
+    let first = original(&mut store, &root, "input", None);
+    let case = case_of(&first);
+    let input = first.items[0].artifact_id;
+    let digest = json!(first.items[0].digest);
+    let path = root.join("structured.out");
+    let mut manifest =
+        derive_manifest(&root, "structured", case, &[(input, &digest)], "test", "{}");
+    manifest["validate_as"] = json!("strict_json");
+    let before = store.case(case).unwrap().snapshot;
+    let blob_count = || -> usize {
+        fs::read_dir(root.join("state/blobs/sha256"))
+            .unwrap()
+            .map(|dir| fs::read_dir(dir.unwrap().path()).unwrap().count())
+            .sum()
+    };
+    let before_blobs = blob_count();
+    for bad in [
+        b"\xff".as_slice(),
+        br#"{"x":1,"x":2}"#,
+        br#"{"x":[{"a":1,"\u0061":2}]}"#,
+        br#"{"n":NaN}"#,
+        br#"{"n":1e999}"#,
+        br#"{"n":9007199254740992}"#,
+        br#"{"n":-9007199254740992}"#,
+        b"{",
+    ] {
+        fs::write(&path, bad).unwrap();
+        assert!(
+            store
+                .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+                .is_err(),
+            "{bad:?}"
+        );
+        assert_eq!(store.case(case).unwrap().snapshot, before);
+        assert_eq!(blob_count(), before_blobs);
+    }
+    let bytes = br#"{ "n": 1.0 }"#;
+    fs::write(&path, bytes).unwrap();
+    let accepted = ingest(&mut store, &manifest);
+    let item = &accepted.items[0];
+    assert_eq!(
+        fs::read(blob_path(&root, &item.digest.to_string())).unwrap(),
+        bytes
+    );
+    let artifact = body(&state(&mut store, case), item.artifact_id);
+    assert_eq!(artifact.transforms[0].input.id, input);
+    assert_eq!(item.outcome, Some(ItemOutcome::Derived));
+
+    let other = derive_manifest(
+        &root,
+        "other",
+        case,
+        &[(input, &digest)],
+        "test",
+        "{\"n\":1}",
+    );
+    let mut other = other;
+    other["validate_as"] = json!("strict_json");
+    let second = ingest(&mut store, &other);
+    assert_ne!(item.digest, second.items[0].digest);
+    assert_eq!(
+        fs::read(blob_path(&root, &second.items[0].digest.to_string())).unwrap(),
+        b"{\"n\":1}"
+    );
+
+    let mut raw = derive_manifest(&root, "raw", case, &[(input, &digest)], "test", "{}");
+    raw["source"]["format"] = json!("application/json");
+    fs::write(root.join("raw.out"), b"\xff not json").unwrap();
+    let raw = ingest(&mut store, &raw);
+    assert_eq!(
+        fs::read(blob_path(&root, &raw.items[0].digest.to_string())).unwrap(),
+        b"\xff not json"
+    );
+}
+
+#[test]
 fn a_derivative_of_a_derivative_traces_to_the_original_acquisition() {
     let (_temporary, root, mut store) = workspace();
     let first = original(&mut store, &root, "capture", None);

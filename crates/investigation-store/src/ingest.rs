@@ -84,6 +84,11 @@ pub struct Manifest {
     /// format.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<DerivedFromRequest>,
+    /// Validate each retained derivative as strict JSON before committing.
+    /// `strict_json` uses the JSON selector's byte and nesting limits. Omit
+    /// this field to retain arbitrary bytes without interpreting them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validate_as: Option<StructuredValidation>,
     /// Reference-only items: bytes held at an external location, named by an
     /// opaque locator with their expected digest and size. Nothing is read or
     /// copied; each Artifact is `external` and unverified until `reverify`.
@@ -103,6 +108,12 @@ pub struct Manifest {
     /// changes and records citing the Artifact need review.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reverify: Option<ReverifyRequest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredValidation {
+    StrictJson,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -271,6 +282,17 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
         derived_from.validate(&manifest)?;
     }
     reference::validate(&manifest)?;
+    if manifest.validate_as.is_some()
+        && (manifest.derived_from.is_none()
+            || reference::reference_mode(&manifest)
+            || external
+            || manifest.reverify.is_some())
+    {
+        return Err(invalid(
+            "Structured validation requires retained derivative bytes.",
+            "/validate_as",
+        ));
+    }
     Ok((manifest, raw))
 }
 
@@ -409,6 +431,35 @@ impl<F: DurableFs> Store<F> {
                     basis: investigation_core::external_ref::DigestBasis::Declared,
                 }),
             });
+        }
+        if manifest.validate_as == Some(StructuredValidation::StrictJson) {
+            for staged in stages.iter() {
+                if staged.size > crate::selectors::MAX_JSON_BYTES as u64 {
+                    return Err(invalid(
+                        "Strict JSON exceeds the selector byte limit.",
+                        "/validate_as",
+                    ));
+                }
+                let mut data = Vec::with_capacity(staged.size as usize);
+                self.fs
+                    .read(&staged.temp)
+                    .map_err(io_failure)?
+                    .take(staged.size + 1)
+                    .read_to_end(&mut data)
+                    .map_err(io_failure)?;
+                if data.len() as u64 != staged.size {
+                    return Err(invalid(
+                        "Staged JSON changed while validating.",
+                        "/validate_as",
+                    ));
+                }
+                input::parse_json(
+                    &data,
+                    crate::selectors::MAX_JSON_BYTES,
+                    crate::selectors::MAX_JSON_DEPTH,
+                )
+                .map_err(|error| invalid(error.message, &format!("/validate_as{}", error.path)))?;
+            }
         }
         // Only retained bytes are attachments; a reference has no blob.
         let attachments = prepared

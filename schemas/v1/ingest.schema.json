@@ -962,6 +962,12 @@
           "type": "object"
         }
       ]
+    },
+    "StructuredValidation": {
+      "enum": [
+        "strict_json"
+      ],
+      "type": "string"
     }
   },
   "$id": "urn:investigation:schema:v1:wire:ingest",
@@ -1075,6 +1081,17 @@
     },
     "source": {
       "$ref": "#/$defs/SourceManifest"
+    },
+    "validate_as": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/StructuredValidation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Validate each retained derivative as strict JSON before committing.\n`strict_json` uses the JSON selector's byte and nesting limits. Omit\nthis field to retain arbitrary bytes without interpreting them."
     }
   },
   "required": [
