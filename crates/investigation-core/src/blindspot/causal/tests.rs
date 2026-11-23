@@ -641,6 +641,72 @@ fn identity_differences_named_as_the_changed_variable_are_not_confounders() {
 }
 
 #[test]
+fn run_environment_entries_named_as_the_changed_variable_are_not_confounders() {
+    let mut case = Case::new();
+    let question = case.question();
+    let subject = case.hypothesis(question, "The upgrade slowed the allocator.");
+    let environment = |revision: &str, warmup: &str| {
+        json!({"machine": "bench-1", "revision": revision, "warmup_s": warmup}).to_string()
+    };
+    let control_run = case.run(Some(&environment("r1", "30")), Value::Null);
+    let treated_run = case.run(Some(&environment("r2", "30")), Value::Null);
+    let control = case.observation(Some(control_run), "observational", Value::Null, &[]);
+    let treated = case.observation(
+        Some(treated_run),
+        "interventional",
+        Value::Null,
+        &["revision"],
+    );
+    let matched = case.create(
+        "assessment.add",
+        json!({"subject_ref": subject, "evidence_refs": [control, treated], "relation": "supports",
+            "rationale": "Only the revision changed."}),
+    );
+    assert!(findings(&case.audit(), "comparability.environment_differs").is_empty());
+
+    // A second entry that differs and is not named is still a confounder.
+    let other_run = case.run(Some(&environment("r2", "5")), Value::Null);
+    let confounded = case.observation(
+        Some(other_run),
+        "interventional",
+        Value::Null,
+        &["revision"],
+    );
+    let mut body = case.body(matched);
+    body["evidence_refs"] = json!([control, confounded]);
+    let revised = case.image(Kind::Assessment, body, Some(matched));
+    let response = case.audit();
+    let finding = only(&response, "comparability.environment_differs");
+    assert_eq!(finding.subject_refs, [revised]);
+    assert_eq!(facts(finding), ["run_environment_differs"]);
+
+    // A key present in one environment only differs unless it is named.
+    let extra = json!({"machine": "bench-1", "revision": "r1", "warmup_s": "30", "tracing": "on"});
+    let traced_run = case.run(Some(&extra.to_string()), Value::Null);
+    let traced = case.observation(Some(traced_run), "observational", Value::Null, &[]);
+    let mut body = case.body(revised);
+    body["evidence_refs"] = json!([control, traced]);
+    let revised = case.image(Kind::Assessment, body, Some(revised));
+    let response = case.audit();
+    let finding = only(&response, "comparability.environment_differs");
+    assert_eq!(finding.subject_refs, [revised]);
+
+    // Free-text environments are still compared whole: naming a word of
+    // the text excuses nothing.
+    let free_a = case.run(Some("revision r1 on bench-1"), Value::Null);
+    let free_b = case.run(Some("revision r2 on bench-1"), Value::Null);
+    let left = case.observation(Some(free_a), "observational", Value::Null, &[]);
+    let right = case.observation(Some(free_b), "interventional", Value::Null, &["revision"]);
+    let mut body = case.body(revised);
+    body["evidence_refs"] = json!([left, right]);
+    let revised = case.image(Kind::Assessment, body, Some(revised));
+    let response = case.audit();
+    let finding = only(&response, "comparability.environment_differs");
+    assert_eq!(finding.subject_refs, [revised]);
+    assert_eq!(facts(finding), ["run_environment_differs"]);
+}
+
+#[test]
 fn a_control_recorded_under_another_build_is_reported_on_the_measurement() {
     let mut case = Case::new();
     let treated_run = case.run(Some("build-7c2a"), Value::Null);

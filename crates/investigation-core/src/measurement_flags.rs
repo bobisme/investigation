@@ -349,6 +349,14 @@ fn completion_only(measured: &Measured<'_>) -> Option<(Vec<FlagField>, String)> 
     ))
 }
 
+/// Whether an Observation's recorded statistic covers completed attempts only,
+/// or may, while its recorded counts show attempts outside it: the condition of
+/// [`flag_id::COMPLETION_ONLY_STATISTIC`]. The flag stays advisory; decision
+/// gates read this to keep such a value from settling a comparison cell.
+pub(crate) fn completion_only_statistic(state: &State, observation: &Record) -> bool {
+    completion_only(&Measured::new(state, observation)).is_some()
+}
+
 /// Flags from one Observation's own fields and those of its exact Run.
 fn single_flags(measured: &Measured<'_>) -> Vec<MeasurementFlag> {
     let subject = measured.reference();

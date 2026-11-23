@@ -382,6 +382,10 @@ def evaluate(ctx, variant, prop):
         assert {key for key in environments[0] if environments[0][key] != environments[1][key]} == {"revision"}, where
         view = assessment_view(ctx, variant, prop["runs"])
         assert pair_flags(view) == [], (where, view["measurement_flags"])
+        # The varied keys are named in variables_changed, so the audit does not
+        # report the matched pair as recorded under different conditions.
+        subject = ctx[ctx["assessments"][(variant, *prop["runs"])]]
+        assert not findings(ctx["audit"], "comparability.environment_differs", subject), where
     elif kind == "p99_greater":
         greater, lesser = (obs_view(ctx, variant, name)["record"]["body"]["value"]["value"] for name in (prop["greater"], prop["lesser"]))
         assert t10(greater) - t10(lesser) >= t10(prop["min_difference_ms"]), where
@@ -667,15 +671,17 @@ def proof(binary, workspace):
     band_ref = ref(band, band_frozen["updated"][0]["revision"])
 
     # ---- Collect: every run is a producer-run envelope; nothing is computed by the core.
+    # variables_changed names the environment identity components and the
+    # Run environment keys ("revision") that the 1.9 build varies.
     kinds = {  # evidence_kind and variables_changed the investigator declares per run
         ("baseline", "control"): ("observational", []),
-        ("baseline", "treatment"): ("interventional", ["runtime", "allocator"]),
-        ("baseline", "treatment-debug-logging"): ("interventional", ["runtime", "allocator", "debug_logging"]),
+        ("baseline", "treatment"): ("interventional", ["runtime", "allocator", "revision"]),
+        ("baseline", "treatment-debug-logging"): ("interventional", ["runtime", "allocator", "revision", "debug_logging"]),
         ("baseline", "optimization-a"): ("interventional", ["allocator"]),
         ("negative-short-window", "control-short"): ("observational", []),
         ("negative-short-window", "optimization-a-short"): ("interventional", ["allocator"]),
         ("sequential-order", "a-first-control"): ("observational", []),
-        ("sequential-order", "b-second-treatment"): ("interventional", ["runtime", "allocator"]),
+        ("sequential-order", "b-second-treatment"): ("interventional", ["runtime", "allocator", "revision"]),
         ("closed-loop-omission", "closed-loop-capture"): ("observational", []),
         ("missing-outcome", "timeout-capture"): ("observational", []),
     }
@@ -816,18 +822,20 @@ def proof(binary, workspace):
         "preferred_direction": "lower",
         "threshold": {"kind": "measured", "operator": "at_most", "value": {"decimal": "25", "unit": "ms"}},
         "weighting_rationale": None})
-    (sample_count,) = [timeout.measurement["sample_count"]["value"]]
+    # The Comparison restates only the value and unit. Whether the value can
+    # settle the cell is read from the cited Observation's measurement fields.
     mistaken = cli.record(case, op("comparison.add", {
         "option_ref": keep_ref, "criterion_ref": ref(criterion), "outcome": "meets",
         "method": "Producer-reported p99 against the 25 ms requirement",
-        "value": {"decimal": timeout.envelope["assertions"][0]["value"], "unit": "ms", "statistic": "p99", "sample_count": sample_count},
+        "value": {"decimal": timeout.envelope["assertions"][0]["value"], "unit": "ms"},
         "evidence_refs": [obs["missing-outcome/timeout-capture"]], "assumption_refs": [],
         "uncertainty": "One capture", "rationale": "The reported p99 is below 25 ms."}))
     comparison = mistaken["created"][0]["id"]
     assert any("measurement.outcome_from_completion_only_statistic" in warning for warning in mistaken["warnings"]), mistaken
 
     # A decision cannot rest on the completion-only p99: acceptance reads the
-    # percentile cell as unresolved and requires the hard criterion to be
+    # cited Observation's statistic population and attempt counts, so the
+    # percentile cell is unresolved and the hard criterion must be
     # acknowledged, never satisfied.
     decision_payload = {
         "question_ref": ref(question), "choice": {"kind": "select", "option_ref": keep_ref},
@@ -984,9 +992,9 @@ def proof(binary, workspace):
     # whose recorded environments differ, and on a differing warm-up.
     comparability = {entry["subject_refs"][0]["id"]: entry for entry in findings(before_review, "comparability.environment_differs")}
     assert {fact["fact"] for fact in comparability[naive]["facts"]} == {"run_environment_differs"}, comparability
-    # For the matched pair only the varied runtime differs; the identity
-    # components that differ are named in variables_changed.
-    assert "environment_identity_differs" not in {fact["fact"] for fact in comparability[pair]["facts"]}
+    # The matched pair is not flagged: its Run environments differ only in the
+    # revision key and its identities only in components, all named in variables_changed.
+    assert pair not in comparability, comparability[pair]
     rival = findings(before_review, "conclusion.support_not_assessed_against_rival", causal)
     assert rival and {fact["fact"] for fact in rival[0]["facts"]} == {"support_equally_expected_under_rival"}, rival
 
@@ -997,7 +1005,6 @@ def proof(binary, workspace):
     assessed = {name: cli.show(case, identifier) for name, identifier in (("pair", pair), ("naive", naive), ("ordered", ordered))}
     naive_gap = gap("comparability.environment_differs", naive)
     warmup_gap = gap("measurement.advisory_flags", naive, "measurement.compared_warmup_differs")
-    pair_gap = gap("comparability.environment_differs", pair)
     debug_gap = gap("measurement.advisory_flags", debug.observation, "measurement.instrumentation_changed")
     rival_gap = gap("conclusion.support_not_assessed_against_rival", causal)
     case_ref = cli.current(case, case)
@@ -1020,10 +1027,6 @@ def proof(binary, workspace):
              "related_refs": [current[naive]]},
             {"gap_id": warmup_gap["gap_id"], "disposition": "accepted",
              "reason": "The warm-up differs, so the comparison is not of optimization A alone.", "related_refs": [current[naive]]},
-            {"gap_id": pair_gap["gap_id"], "disposition": "not_applicable",
-             "reason": "The Run environments differ only in the runtime revision, which is the variable under test.",
-             "uncertainty": "The audit compares whole Run environments and cannot tell the varied key from the others.",
-             "related_refs": [current[pair]]},
             {"gap_id": debug_gap["gap_id"], "disposition": "addressed",
              "reason": "The debug-logging capture is judged invalid and is never pooled.", "related_refs": [current[debug.observation]],
              "record_refs": [current[debug.observation]]},
@@ -1104,6 +1107,12 @@ def proof(binary, workspace):
     digest_items = {item["id"] for item in digest["items"]}
     assert f"assessment.inconclusive/{negative}" in digest_items, digest_items
     assert f"review.stale/{blindspot_review}" in digest_items, "the blindspot review read the superseded comparison"
+    # Measurement judgments reach the digest: invalid captures and the
+    # partially valid closed-loop capture are listed, valid ones are not.
+    judged_items = {f"observation.invalid/{run.observation}" for run in (debug, *neg.values())}
+    judged_items.add(f"observation.partial/{closed.observation}")
+    assert judged_items <= digest_items, judged_items - digest_items
+    assert not any(item.endswith(f"/{timeout.observation}") for item in digest_items), digest_items
 
     context = {
         "cli": cli, "case": case, "runs": runs, "manifests": manifests, "obs": obs, "bounds": bounds,

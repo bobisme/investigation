@@ -481,6 +481,13 @@ pub(crate) fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
         if crate::measurement_ops::effective_validity(s, rec) != MeasurementValidity::Valid {
             return false;
         }
+        // The cited Observation's own measurement fields decide whether its
+        // value can settle the cell: a statistic over completed attempts only,
+        // while recorded attempts fall outside it, cannot, whatever the
+        // Comparison itself declares.
+        if crate::measurement_flags::completion_only_statistic(s, rec) {
+            return false;
+        }
         let (Some(measurement), ObservationValue::Measurement { value, unit }) =
             (&cell.value, &o.value)
         else {
@@ -1489,6 +1496,44 @@ mod tests {
             cell["evidence_refs"] = json!([{"id":observation_id,"revision":revision}]);
             let cell: ComparisonBody = decode(&cell).unwrap();
             assert_eq!(verified(&state, case, &cell), expected, "{validity}");
+        }
+    }
+
+    #[test]
+    fn completion_only_statistic_on_the_cited_observation_leaves_the_cell_unverified() {
+        let rows = [[Cell::Measured(10); 3]];
+        let (mut state, case, _) = generated_table(&rows, &[0]);
+        let observation_id = id("obs", 1200);
+        let comparison_id = id("cmp", 1300);
+        let artifact_revision = state.current(id("art", 903)).unwrap().header.revision.0;
+        let observation = state.current(observation_id).unwrap().body.clone();
+        let count = |value: u64| {
+            json!({"count": {"state": "known", "value": value},
+                "definition": {"state": "known", "value": "requests"}})
+        };
+        let statistic = json!({"state": "known", "value": {"kind": "quantile", "quantile": "0.99",
+            "population": {"state": "known", "value": "completed_attempts"}}});
+        // Completed attempts only with five timed out: the value cannot settle
+        // the cell, though the Comparison declares no statistic or sample count.
+        // With every started attempt observed, the same statistic can.
+        for (observed, timed_out, expected) in [(95, 5, false), (100, 0, true)] {
+            let mut stored = observation.clone();
+            stored["validity"] = json!("valid");
+            stored["run_ref"] = Value::Null;
+            stored["basis"]["artifact_ref"]["revision"] = json!(artifact_revision);
+            stored["measurement"] = json!({
+                "statistic": statistic,
+                "attempts": {"started": count(100), "observed": count(observed),
+                    "timed_out": count(timed_out)},
+            });
+            update_body(&mut state, observation_id, stored);
+            let mut cell = state.current(comparison_id).unwrap().body.clone();
+            let revision = state.current(observation_id).unwrap().header.revision.0;
+            cell["evidence_refs"] = json!([{"id":observation_id,"revision":revision}]);
+            let cell: ComparisonBody = decode(&cell).unwrap();
+            assert!(cell.value.as_ref().unwrap().statistic.is_none());
+            assert!(cell.value.as_ref().unwrap().sample_count.is_none());
+            assert_eq!(verified(&state, case, &cell), expected, "{observed}");
         }
     }
 

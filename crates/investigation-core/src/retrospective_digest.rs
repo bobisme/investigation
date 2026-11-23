@@ -13,9 +13,11 @@ use crate::{
     PROGRAM_NAME,
     classification::{AudiencePolicy, Classifier, Field},
     command::RevisionRef,
+    evidence::MeasurementValidity,
     freshness::{Freshness, FreshnessIndex},
     header::UtcTimestamp,
     identity::{Id, Kind},
+    measurement_ops::validity_view,
     state::{Record, State},
     wire::{ErrorCode, Failure, Snapshot},
 };
@@ -166,8 +168,10 @@ fn item(category: &'static str, record: &Record, fact: &'static str, detail: Val
 }
 
 /// Runs and Observations whose recorded outcome is invalid, failed, unfinished
-/// or incomplete. Used by the digest and by `retrospective.record` warnings.
-fn work_items(record: &Record) -> Vec<DigestItem> {
+/// or incomplete, including Observations whose measurement judgments make them
+/// effectively invalid or partially valid. Used by the digest and by
+/// `retrospective.record` warnings.
+fn work_items(state: &State, record: &Record) -> Vec<DigestItem> {
     let body = &record.body;
     let mut items = Vec::new();
     match record.header.id.kind() {
@@ -222,12 +226,32 @@ fn work_items(record: &Record) -> Vec<DigestItem> {
             }
         }
         Kind::Observation => {
-            if text(body, "validity") == Some("invalid") {
+            // Recorded validity and `measurement.assess` judgments both count:
+            // the effective validity is the one evidence gates read.
+            let view = validity_view(state, record).ok();
+            let effective = view.as_ref().map(|view| view.state);
+            let detail = view.as_ref().map_or(Value::Null, |view| {
+                json!({
+                    "recorded_validity": view.recorded,
+                    "effective_validity": view.state,
+                    "validity_basis": view.basis,
+                })
+            });
+            if text(body, "validity") == Some("invalid")
+                || effective == Some(MeasurementValidity::Invalid)
+            {
                 items.push(item(
                     "observation.invalid",
                     record,
                     "The Observation is recorded or assessed as invalid.",
-                    Value::Null,
+                    detail,
+                ));
+            } else if effective == Some(MeasurementValidity::Partial) {
+                items.push(item(
+                    "observation.partial",
+                    record,
+                    "The Observation's measurement is recorded or assessed as only partially valid.",
+                    detail,
                 ));
             }
             match text(body, "status") {
@@ -257,7 +281,7 @@ pub(crate) fn unsuccessful_work(state: &State, case: Id, sequence: u64) -> Vec<R
     records_at(state, case, sequence)
         .into_iter()
         .filter(|record| {
-            work_items(record).iter().any(|item| {
+            work_items(state, record).iter().any(|item| {
                 matches!(
                     item.category,
                     "run.invalid" | "run.failed" | "observation.invalid"
@@ -397,6 +421,7 @@ const ORDER: &[&str] = &[
     "run.incomplete",
     "run.plan_after_run",
     "observation.invalid",
+    "observation.partial",
     "observation.retracted",
     "observation.corrected",
     "inquiry.amended_after_freeze",
@@ -776,7 +801,7 @@ pub fn process_digest(
     let freshness = FreshnessIndex::build(state, case);
     let mut items = Vec::new();
     for record in &records {
-        items.extend(work_items(record));
+        items.extend(work_items(state, record));
         if record.header.id.kind() == Kind::Inquiry
             && let Some(found) = amended_plan(state, record)
         {
@@ -1190,5 +1215,64 @@ mod tests {
             .unwrap();
         assert_eq!(accepted.warnings.len(), 1);
         assert!(accepted.warnings[0].contains(&failed.id.to_string()));
+    }
+
+    #[test]
+    fn digest_lists_observations_judged_invalid_or_partial() {
+        let mut case = Case::new(json!({"title":"Judged captures","mode":"explain"}));
+        let observe = |case: &mut Case| {
+            case.submit(
+                "observation.add",
+                json!({
+                    "value":{"kind":"measurement","value":"41.0","unit":"ms"},
+                    "basis":{"kind":"assertion","assertion":"The producer reported 41.0 ms.","context":null},
+                    "extraction_method":null,"validity":"unknown","quality":[],"limitations":[],
+                    "evidence_kind":"observational","variables_changed":[],"observed_at":null,
+                }),
+            )
+        };
+        let judge = |case: &mut Case, observation: RevisionRef, validity: &str| {
+            case.submit(
+                "measurement.assess",
+                json!({
+                    "observation_ref":observation,"channel":null,"validity":validity,
+                    "verification":[{"kind":"equivalent","justification":"The producer states its own controls.","evidence_refs":[]}],
+                    "rationale":"Judged from the recorded conditions.","limits":["Synthetic judgment."],
+                }),
+            )
+        };
+        let invalid = observe(&mut case);
+        let partial = observe(&mut case);
+        let valid = observe(&mut case);
+        let invalid = judge(&mut case, invalid, "invalid");
+        let partial = judge(&mut case, partial, "partial");
+        let valid = judge(&mut case, valid, "valid");
+
+        let digest = case.digest();
+        let items: BTreeMap<_, _> = digest
+            .items
+            .iter()
+            .map(|item| (item.id.as_str(), item))
+            .collect();
+        let judged_invalid = items[format!("observation.invalid/{}", invalid.id).as_str()];
+        assert_eq!(judged_invalid.record_ref, invalid);
+        assert_eq!(judged_invalid.detail["recorded_validity"], "unknown");
+        assert_eq!(judged_invalid.detail["effective_validity"], "invalid");
+        assert_eq!(judged_invalid.detail["validity_basis"], "assessed");
+        let judged_partial = items[format!("observation.partial/{}", partial.id).as_str()];
+        assert_eq!(judged_partial.record_ref, partial);
+        assert_eq!(judged_partial.detail["effective_validity"], "partial");
+        assert!(
+            !items.contains_key(format!("observation.invalid/{}", partial.id).as_str()),
+            "a partial judgment is not reported as invalid"
+        );
+        assert!(
+            digest.items.iter().all(|item| item.cite != valid.id),
+            "a valid judgment is not unsuccessful work"
+        );
+        // Judged-invalid work counts as unsuccessful for retrospective warnings;
+        // partially valid work does not.
+        let unsuccessful = unsuccessful_work(&case.state, case.id(), case.state.sequence());
+        assert_eq!(unsuccessful, [invalid]);
     }
 }

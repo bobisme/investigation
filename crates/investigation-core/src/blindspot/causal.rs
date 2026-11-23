@@ -123,7 +123,7 @@ pub(super) const CHECKS: &[CheckSpec] = &[
             "environment of the Run each Observation cites",
             "measurement.environment_identity and variables_changed of each Observation and its Run",
         ],
-        condition: "Two Observations used together were recorded under different conditions: an Observation and a control its measurement judgment cites, or two Observations an active Assessment or live Conclusion relies on. They differ when both cited Runs record an environment and the two differ, or both record a known environment identity component with different known values that neither names in variables_changed.",
+        condition: "Two Observations used together were recorded under different conditions: an Observation and a control its measurement judgment cites, or two Observations an active Assessment or live Conclusion relies on. They differ when both cited Runs record an environment and the two differ, or both record a known environment identity component with different known values that neither names in variables_changed. When both Run environments are recorded as string-keyed entries (as a producer-run envelope reports them), they are compared entry by entry and an entry whose key either Observation or its Run names in variables_changed is not a difference.",
         why: "Evidence used together was recorded under a different build or environment.",
         severity: Severity::Material,
         severity_reason: "A difference in build or environment is a possible confounder, so the compared results may not bear on the condition under test.",
@@ -648,12 +648,33 @@ fn conditions(context: &AuditContext<'_>, observation: &Record) -> Conditions {
     }
 }
 
+/// A Run environment recorded as string-keyed entries, as ingest records a
+/// producer-run envelope's reported environment. Free text is `None`.
+fn environment_entries(environment: &str) -> Option<BTreeMap<String, String>> {
+    serde_json::from_str(environment).ok()
+}
+
+/// Whether two recorded Run environments differ in anything not named as a
+/// changed variable. Entries are compared key by key when both environments
+/// are structured; free-text environments are compared whole.
+fn environments_differ(left: &Conditions, right: &Conditions, a: &str, b: &str) -> bool {
+    if a == b {
+        return false;
+    }
+    let (Some(a), Some(b)) = (environment_entries(a), environment_entries(b)) else {
+        return true;
+    };
+    a.keys().chain(b.keys()).any(|key| {
+        a.get(key) != b.get(key) && !left.variables.contains(key) && !right.variables.contains(key)
+    })
+}
+
 /// Fact names for how two Observations' recorded conditions differ.
 fn differences(left: &Conditions, right: &Conditions, prefix: &str) -> Vec<FindingFact> {
     let pair = vec![left.reference, right.reference];
     let mut facts = Vec::new();
     if let (Some(a), Some(b)) = (&left.environment, &right.environment)
-        && a != b
+        && environments_differ(left, right, a, b)
     {
         facts.push(fact(
             format!("{prefix}run_environment_differs"),
