@@ -1011,6 +1011,9 @@ impl std::error::Error for WorkspaceError {
     }
 }
 
+mod local_actor;
+pub use local_actor::LOCAL_ACTOR_FILE;
+
 #[cfg(test)]
 mod tests {
     use super::*;

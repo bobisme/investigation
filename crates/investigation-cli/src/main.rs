@@ -79,8 +79,9 @@ The workspace preserves evidence and attributed revisions. Writes return a durab
 
 Examples:
 Start a case from a local file in the working directory:
-  investigation init ./casework --no-vault --import-root . --format json
+  investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json
   investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json
+On this machine, later writes that omit --actor are attributed to the actor init --actor recorded.
 
 Continue, record and hand off:
   investigation onboard --format json
@@ -173,12 +174,12 @@ enum Format {
 enum Commands {
     /// Create a local workspace and an optional Markdown vault.
     #[command(
-        after_help = "Example: investigation init ./casework --no-vault --import-root . --format json"
+        after_help = "Example: investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json\n--actor records ACTOR in local/actor.toml as this machine's actor for writes in the workspace that name no actor. --actor on a write and AGENT take precedence."
     )]
     Init {
-        /// New or empty directory for the workspace, or an existing workspace.
+        /// New or empty directory for the workspace, or an existing workspace; --workspace PATH also works.
         #[arg(value_name = "PATH")]
-        path: PathBuf,
+        path: Option<PathBuf>,
         /// Skip creation of the optional Markdown vault.
         #[arg(long)]
         no_vault: bool,
@@ -204,7 +205,7 @@ enum Commands {
     },
     /// Open an exploratory case and retain one attachment atomically.
     #[command(
-        after_help = "Example: investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin."
+        after_help = "Example: investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin.\nWithout --actor or AGENT, the case is attributed to the actor init --actor recorded on this machine."
     )]
     Start {
         /// The question the case investigates.
@@ -414,7 +415,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
             path,
             no_vault,
             import_roots,
-        } => init(&path, !no_vault, &import_roots, global.workspace.as_deref()),
+        } => init(path.as_deref(), !no_vault, &import_roots, &global),
         Commands::Onboard => onboard::run(&global),
         Commands::Docs(args) => docs::run(args),
         Commands::Guide(args) => guide::show(args, &global),
@@ -747,18 +748,12 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
 }
 
 fn init(
-    path: &Path,
+    path: Option<&Path>,
     vault: bool,
     import_roots: &[PathBuf],
-    override_path: Option<&Path>,
+    global: &Global,
 ) -> Result<Output, Failure> {
-    if override_path.is_some() {
-        return Err(Failure::new(
-            ErrorCode::InvalidInput,
-            "Pass the init destination as PATH.",
-        )
-        .at("--workspace"));
-    }
+    let (path, flag) = first_use::init_destination(path, global.workspace.as_deref())?;
     let import_roots = import_roots
         .iter()
         .map(|root| {
@@ -799,7 +794,12 @@ fn init(
                 };
                 (workspace, result)
             } else {
-                return Err(workspace_failure(error));
+                return Err(first_use::nonempty_init_repair(
+                    workspace_failure(error),
+                    path,
+                    flag,
+                    import_roots.is_empty(),
+                ));
             }
         }
         Err(error @ WorkspaceError::InvalidImportRoot(_)) => {
@@ -807,10 +807,23 @@ fn init(
         }
         Err(error) => return Err(workspace_failure(error)),
     };
+    let actor_setting = match &global.actor {
+        Some(actor) => {
+            let previous = workspace
+                .set_local_actor(actor)
+                .map_err(|error| workspace_failure(error).at("--actor"))?;
+            Some((actor.clone(), previous))
+        }
+        None => None,
+    };
+    let local_actor = match &actor_setting {
+        Some((actor, _)) => Some(actor.clone()),
+        None => workspace.local_actor().map_err(workspace_failure)?,
+    };
     let vault = workspace.config().vault_policy.enabled;
     let path = workspace.root().to_string_lossy();
     let configured_roots = &workspace.config().import_roots;
-    let start = first_use::start_step(&path);
+    let start = first_use::start_step(&path, local_actor.as_ref());
     let mut text = format!(
         "{}  {result}  {path}\nstate/  canonical\ncache/  disposable\nlocal/  machine-local\n{}",
         workspace.id(),
@@ -824,31 +837,34 @@ fn init(
         let state = if added.contains(root) { "  added" } else { "" };
         text.push_str(&format!("import root  {}{state}\n", root.display()));
     }
-    text.push_str(&first_use::start_text(&path, false));
+    if let Some((actor, previous)) = &actor_setting {
+        text.push_str(&first_use::actor_setting_text(actor, previous.as_ref()));
+    }
+    text.push_str(&first_use::start_text(&path, false, local_actor.as_ref()));
     if configured_roots.is_empty() {
         text.push_str(&format!(
             "\nNo import roots are configured, so FILE paths are refused. {}",
             first_use::import_root_advice(&workspace)
         ));
     }
-    Ok(Output::success(
-        result,
-        json!({
-            "workspace": path,
-            "workspace_id": workspace.id(),
-            "genesis_sequence": workspace.sequence(),
-            "layout": {
-                "canonical": "state/",
-                "disposable": "cache/",
-                "machine_local": "local/",
-                "projection": vault.then_some("vault/"),
-            },
-            "import_roots": configured_roots,
-            "added_import_roots": added,
-            "next": [start]
-        }),
-        text,
-    ))
+    let mut value = json!({
+        "workspace": path,
+        "workspace_id": workspace.id(),
+        "genesis_sequence": workspace.sequence(),
+        "layout": {
+            "canonical": "state/",
+            "disposable": "cache/",
+            "machine_local": "local/",
+            "projection": vault.then_some("vault/"),
+        },
+        "import_roots": configured_roots,
+        "added_import_roots": added,
+        "next": [start]
+    });
+    if let Some((actor, previous)) = &actor_setting {
+        value["actor_setting"] = first_use::actor_setting_value(actor, previous.as_ref());
+    }
+    Ok(Output::success(result, value, text))
 }
 
 pub(crate) fn read_input(path: &Path) -> Result<Vec<u8>, Failure> {
@@ -1040,6 +1056,9 @@ fn receipt_read_failure(workspace: &Workspace, mut failure: Failure) -> Failure 
 }
 
 pub(crate) fn receipt_output(workspace: &Workspace, mut receipt: Receipt) -> Output {
+    if let Some(warning) = selection::local_actor_warning() {
+        receipt.warnings.push(warning);
+    }
     if receipt.next.is_empty() {
         receipt.next.push(Guidance {
             kind: GuidanceKind::LocalRead,

@@ -84,6 +84,28 @@ pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {
     }
 }
 
+thread_local! {
+    /// The actor this invocation took from the machine-local actor setting,
+    /// so receipts can say where their attribution came from.
+    static LOCAL_ACTOR_USED: std::cell::RefCell<Option<Actor>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// A receipt warning when this invocation attributed a write to the actor in
+/// `local/actor.toml`, because no flag, request, workspace setting or AGENT
+/// named one.
+pub(crate) fn local_actor_warning() -> Option<String> {
+    LOCAL_ACTOR_USED.with(|used| {
+        used.borrow().as_ref().map(|actor| {
+            format!(
+                "Attributed to {actor}, the actor that init --actor recorded for this machine \
+                 ({}). Pass --actor to attribute work to someone else.",
+                investigation_store::workspace::LOCAL_ACTOR_FILE
+            )
+        })
+    })
+}
+
 pub(crate) fn select_actor(
     workspace: &Workspace,
     flag: Option<&Actor>,
@@ -109,7 +131,29 @@ pub(crate) fn select_actor(
         None
     };
 
-    resolve_actor(flag, envelope, config, environment.as_ref()).map_err(|error| match error {
+    // The machine-local setting is the last resort: it applies only where
+    // the call would otherwise be refused for a missing actor.
+    let local = if flag
+        .or(envelope)
+        .or(config)
+        .or(environment.as_ref())
+        .is_none()
+    {
+        workspace.local_actor().map_err(workspace_failure)?
+    } else {
+        None
+    };
+    if let Some(actor) = &local {
+        LOCAL_ACTOR_USED.with(|used| *used.borrow_mut() = Some(actor.clone()));
+    }
+
+    resolve_actor(
+        flag,
+        envelope,
+        config,
+        environment.as_ref().or(local.as_ref()),
+    )
+    .map_err(|error| match error {
         ActorResolutionError::Conflict => {
             let mut failure = Failure::new(
                 ErrorCode::InvalidInput,
@@ -123,7 +167,7 @@ pub(crate) fn select_actor(
         ActorResolutionError::Missing => {
             let failure = Failure::new(
                 ErrorCode::InvalidInput,
-                "Specify an attributed actor with --actor, the workspace actor setting, or AGENT, for example --actor agent:investigator.",
+                "Specify an attributed actor with --actor or AGENT, for example --actor agent:investigator. To name it once for this machine, run investigation init DIR --actor ACTOR.",
             )
             .at("/actor");
             match crate::first_use::with_example_actor(env::args_os()) {

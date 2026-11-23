@@ -631,7 +631,10 @@ fn consult(
     if generated {
         announce_generated_id(&command_id)?;
     }
-    let receipt = store.record(&bytes)?;
+    let mut receipt = store.record(&bytes)?;
+    if let Some(warning) = crate::selection::local_actor_warning() {
+        receipt.warnings.push(warning);
+    }
     Ok(serde_json::to_value(receipt).expect("receipt serializes"))
 }
 

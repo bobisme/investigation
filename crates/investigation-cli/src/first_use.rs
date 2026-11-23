@@ -10,6 +10,7 @@ use std::{
 
 use investigation_core::{
     PROGRAM_NAME,
+    header::Actor,
     wire::{ErrorCode, Failure},
 };
 use investigation_store::Workspace;
@@ -23,38 +24,164 @@ fn argv(parts: &[&str]) -> Vec<String> {
 }
 
 /// `init` for a workspace beside the files in the working directory, with
-/// that directory as the only read-only import root.
+/// that directory as the only read-only import root and the example actor
+/// recorded as this machine's actor for the workspace.
 pub(crate) fn init_step() -> Value {
     json!({
         "kind":"initialize_workspace",
-        "argv":argv(&[PROGRAM_NAME, "init", "./casework", "--no-vault", "--import-root", ".", "--format", "json"]),
-        "effect":"Creates ./casework and lets it retain copies of files beneath the working directory. Nothing else is read."
+        "argv":argv(&[PROGRAM_NAME, "init", "./casework", "--actor", EXAMPLE_ACTOR, "--no-vault", "--import-root", ".", "--format", "json"]),
+        "effect":"Creates ./casework, lets it retain copies of files beneath the working directory and records the actor for later writes on this machine. Nothing else is read."
     })
 }
 
-/// `start` with the question and file left for the caller to supply.
-pub(crate) fn start_step(workspace: &str) -> Value {
+/// `start` with the question and file left for the caller to supply. The
+/// argv names the actor explicitly: the workspace's machine-local actor when
+/// one is recorded, else the example actor.
+pub(crate) fn start_step(workspace: &str, actor: Option<&Actor>) -> Value {
+    let actor = actor.map_or(EXAMPLE_ACTOR.to_owned(), ToString::to_string);
     json!({
         "kind":"start_case_with_source",
-        "argv":argv(&[PROGRAM_NAME, "--workspace", workspace, "--actor", EXAMPLE_ACTOR, "start", "QUESTION", "--attach", "FILE", "--format", "json"]),
+        "argv":argv(&[PROGRAM_NAME, "--workspace", workspace, "--actor", &actor, "start", "QUESTION", "--attach", "FILE", "--format", "json"]),
         "unresolved_fields":["QUESTION", "FILE"],
         "effect":"Opens an exploratory case and retains FILE as its first source in one transaction. The receipt names both."
     })
 }
 
 /// Text for the two-command start path.
-pub(crate) fn start_text(workspace: &str, init: bool) -> String {
+pub(crate) fn start_text(workspace: &str, init: bool, actor: Option<&Actor>) -> String {
+    let actor = actor.map_or(EXAMPLE_ACTOR.to_owned(), ToString::to_string);
     let mut text = String::from("Start a case from a local file:\n");
     if init {
         text.push_str(&format!(
-            "  {PROGRAM_NAME} init ./casework --no-vault --import-root . --format json\n"
+            "  {PROGRAM_NAME} init ./casework --actor {EXAMPLE_ACTOR} --no-vault --import-root . --format json\n"
         ));
     }
     text.push_str(&format!(
-        "  {PROGRAM_NAME} --workspace {workspace} --actor {EXAMPLE_ACTOR} start 'QUESTION' --attach FILE --format json\n\
+        "  {PROGRAM_NAME} --workspace {workspace} --actor {actor} start 'QUESTION' --attach FILE --format json\n\
          Replace QUESTION and FILE. Use your own actor name if you have one. The receipt names the case and the retained source."
     ));
     text
+}
+
+/// The `init` destination: PATH, or `--workspace PATH` when PATH is omitted
+/// or names the same directory. Also returns the flag that supplied it, so a
+/// repair can rewrite the right argument.
+pub(crate) fn init_destination<'a>(
+    path: Option<&'a Path>,
+    workspace: Option<&'a Path>,
+) -> Result<(&'a Path, Option<&'static str>), Failure> {
+    match (path, workspace) {
+        (Some(path), None) => Ok((path, None)),
+        (None, Some(workspace)) => Ok((workspace, Some("--workspace"))),
+        (Some(path), Some(workspace)) if lexical(path) == lexical(workspace) => Ok((path, None)),
+        (Some(_), Some(_)) => Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "Pass the init destination once, as PATH; --workspace names a different directory.",
+        )
+        .at("--workspace")),
+        (None, None) => {
+            let failure = Failure::new(
+                ErrorCode::InvalidInput,
+                "Name a new directory for the workspace as PATH, for example ./casework.",
+            )
+            .at("PATH");
+            match with_init_path(env::args_os(), Path::new("./casework"), Path::new(".")) {
+                Some(argv) => Err(failure.with_argv(argv)),
+                None => Err(failure),
+            }
+        }
+    }
+}
+
+/// The current `init` invocation with PATH appended, and `--import-root
+/// ROOT` when it names none.
+fn with_init_path(
+    args: impl Iterator<Item = OsString>,
+    path: &Path,
+    root: &Path,
+) -> Option<Vec<String>> {
+    let mut argv: Vec<String> = args
+        .skip(1)
+        .map(OsString::into_string)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    argv.push(path.to_str()?.to_owned());
+    if !argv
+        .iter()
+        .any(|arg| arg == "--import-root" || arg.starts_with("--import-root="))
+    {
+        argv.extend(["--import-root".to_owned(), root.to_str()?.to_owned()]);
+    }
+    argv.insert(0, PROGRAM_NAME.to_owned());
+    Some(argv)
+}
+
+/// Repair for `init` on a directory that holds files but no workspace: the
+/// same call on a new `casework` child, with the directory as an import root
+/// when the call names none.
+pub(crate) fn nonempty_init_repair(
+    failure: Failure,
+    path: &Path,
+    flag: Option<&str>,
+    no_import_roots: bool,
+) -> Failure {
+    let child = path.join("casework");
+    let mut message = format!(
+        "{}. Create the workspace in a new directory such as {}",
+        failure.error.message.trim_end_matches('.'),
+        child.display()
+    );
+    message.push_str(if no_import_roots {
+        ", with this directory as an import root."
+    } else {
+        "."
+    });
+    let mut repaired = Failure::new(failure.error.code, message).at("PATH");
+    repaired.commit_status = failure.commit_status;
+    let argv = with_replaced_path(env::args_os(), flag, path, &child).and_then(|mut argv| {
+        if no_import_roots {
+            argv.extend(["--import-root".to_owned(), path.to_str()?.to_owned()]);
+        }
+        Some(argv)
+    });
+    match argv {
+        Some(argv) => repaired.with_argv(argv),
+        None => repaired,
+    }
+}
+
+/// Text lines for the actor setting `init --actor` recorded.
+pub(crate) fn actor_setting_text(actor: &Actor, previous: Option<&Actor>) -> String {
+    let mut text = format!(
+        "actor  {actor}  {}  machine-local",
+        investigation_store::workspace::LOCAL_ACTOR_FILE
+    );
+    if let Some(previous) = previous.filter(|previous| *previous != actor) {
+        text.push_str(&format!("  replaces {previous}"));
+    }
+    text.push_str(&format!(
+        "\nWrites in this workspace on this machine that name no actor are attributed to {actor}; --actor and AGENT override it.\n"
+    ));
+    if let Some(agent) = env::var("AGENT")
+        .ok()
+        .filter(|agent| *agent != actor.to_string())
+    {
+        text.push_str(&format!(
+            "AGENT is set to {agent}, so writes from this environment are attributed to {agent}.\n"
+        ));
+    }
+    text
+}
+
+/// JSON for the actor setting `init --actor` recorded.
+pub(crate) fn actor_setting_value(actor: &Actor, previous: Option<&Actor>) -> Value {
+    json!({
+        "actor": actor,
+        "file": investigation_store::workspace::LOCAL_ACTOR_FILE,
+        "scope": "machine_local",
+        "replaced": previous.filter(|previous| *previous != actor),
+        "applies_when": "a write names no actor through --actor, its request, the investigation.toml actor or AGENT",
+    })
 }
 
 /// `init` on an existing workspace, which adds `directory` to its import roots.

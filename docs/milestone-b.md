@@ -219,7 +219,7 @@ Evidence is the strongest automated witness found for each item, checked against
 
    W08.19, which merged after the baseline, reduced the large brief to about 2.1 s and the large vault render from 205 s to about 4 s. The vault render has no target. Both are still above the read target, and the baseline has not been re-measured since.
 8. **First-use time target missed.** See above and the dispositions below.
-9. **`start` without `--actor` costs a refused call (bn-6vlm).** In the first-use re-run, this was the most common extra call before a receipt. The refusal gives the exact retry, but the call still counts against the three-call measure.
+9. **Resolved by bn-6vlm: `start` without `--actor` cost a refused call.** In the first-use re-run, this was the most common extra call before a receipt. `init DIR --actor ACTOR` now records a machine-local actor that a write without any other actor falls back to, and each receipt that uses it says so. The first `init` example in help and `onboard` carries `--actor`. A re-run with the same protocol reached a receipt within three calls in 8/12 assignments, against 2/12 here, with no actor refusals. See [first-use.md](first-use.md#actor-named-once-bn-6vlm).
 10. **The Overview lists one source at two revisions (bn-bn1m).** Since renderer v18, the Scenario D Overview Sources section lists some sources twice: at the revision read and at an older one.
 
 ## Reviewer dispositions

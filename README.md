@@ -32,7 +32,7 @@ investigation --workspace casework next --format json
 ```
 <!-- quickstart:end -->
 
-To retain a file that is already in the working directory, create the workspace with `investigation init ./casework --no-vault --import-root .` and pass `--attach FILE` to `start`. Import roots are read-only inputs; a fresh workspace has none unless `--import-root` names them. Running `init` again on an existing workspace with `--import-root DIR` adds DIR.
+To retain a file that is already in the working directory, create the workspace with `investigation init ./casework --no-vault --import-root .` and pass `--attach FILE` to `start`. Import roots are read-only inputs; a fresh workspace has none unless `--import-root` names them. Running `init` again on an existing workspace with `--import-root DIR` adds DIR. `init DIR --actor ACTOR` records ACTOR in `DIR/local/actor.toml` as this machine's actor for writes that name none; `--actor`, a request's actor, the `investigation.toml` actor and `AGENT` take precedence, and each receipt that used the setting says so.
 
 Run `investigation onboard` from an existing workspace, the directory that contains it, or an empty directory. `investigation schema --list` lists active operations. `investigation schema observation.add --format json` describes the payload and its repair guidance. Supply an exact revision for changes to an existing record and reuse the original command ID after a lost response.
 

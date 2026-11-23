@@ -50,14 +50,14 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
                 json!({
                     "state":"no_workspace", "mental_model":MODEL,
                     "when_to_use":"Use for questions needing multiple observations, a meaningful comparison, or a handoff; use a shell or notebook for one-shot facts and ordinary implementation work.",
-                    "next":[first_use::init_step(), first_use::start_step("./casework")],
+                    "next":[first_use::init_step(), first_use::start_step("./casework", None)],
                     "supported_flows":["init","schema","start","ingest","record","receipt","check"],
                     "agent_instructions":docs::onboard_pointer()
                 }),
                 format!(
                     "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\n{}\nNo workspace here. {}",
                     docs::onboard_line(),
-                    first_use::start_text("./casework", true)
+                    first_use::start_text("./casework", true, None)
                 ),
             ));
         }
@@ -83,6 +83,10 @@ fn onboard_workspace(
         .map(|d| d.info().name)
         .collect();
     let root = store.workspace().root().to_string_lossy().into_owned();
+    let local_actor = store
+        .workspace()
+        .local_actor()
+        .map_err(crate::selection::workspace_failure)?;
     let next = if heads.is_empty() {
         let argv = scoped(
             &store,
@@ -90,7 +94,7 @@ fn onboard_workspace(
                 .map(str::to_owned)
                 .to_vec(),
         );
-        json!([first_use::start_step(&root), {"kind":"inspect_schema","argv":argv,"unresolved_fields":["case question", "actor", "command ID"]}])
+        json!([first_use::start_step(&root, local_actor.as_ref()), {"kind":"inspect_schema","argv":argv,"unresolved_fields":["case question", "actor", "command ID"]}])
     } else if let Some(case_id) =
         selection.or_else(|| (heads.len() == 1).then_some(heads[0].case_id))
     {
@@ -145,7 +149,7 @@ fn onboard_workspace(
         active_ops.join(", ")
     ));
     if heads.is_empty() {
-        text.push_str(&first_use::start_text(&root, false));
+        text.push_str(&first_use::start_text(&root, false, local_actor.as_ref()));
         if store.workspace().config().import_roots.is_empty() {
             text.push_str(&format!(
                 "\nNo import roots are configured, so FILE paths are refused. {}",

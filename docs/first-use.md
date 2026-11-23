@@ -62,6 +62,37 @@ W05b.18 changed the CLI after this comparison for items 1, 2, 3 and 6 above. **T
 - **Missing relative attachments.** If `--attach FILE` (or `source add PATH`) names a file that does not exist, the error gives the resolved path and the import roots. If the file exists beneath an import root, the repair argv repeats the command with that path.
 - **Next step after `start`.** The JSON receipt from `start` now has a `next_write` field. It holds the `observe` template with `STATEMENT`, `EXACT TEXT` and `LIMITATION` placeholders. The v1 receipt `next` list can only hold `local_read` steps, so it is not changed.
 
+## Actor named once (bn-6vlm)
+
+The Milestone B re-run ([rerun-mb](../training/first-use/rerun-mb/results.json)) reached a receipt within three calls in only 2/12 assignments. In 3 of 6 gemma assignments the investigator copied the `init` line from the root help, then wrote `start` without `--actor`, although the help and the `init` output both showed it. The refusal gave the exact retry, but the receipt came one call late. In 3 of 6 qwen assignments the investigator first ran `init --workspace /work`, which had no PATH and named a directory that already held files.
+
+Changes:
+
+- `investigation init DIR --actor ACTOR` records ACTOR in `DIR/local/actor.toml`. `local/` is machine-specific and not canonical. Only an explicit `init --actor` writes the file; nothing infers it.
+- A write uses that actor only when nothing else names one. `--actor`, the request's actor, the `investigation.toml` actor and `AGENT` all take precedence, so the setting changes only calls that were refused before. Each receipt that used it carries a warning that names the actor and the file. A malformed file fails the write. Without the file, a write with no actor is still refused, and the refusal names both fixes.
+- The first `init` example in the root help, the `init` help and `onboard` carries `--actor agent:investigator`. The `start` example keeps `--actor` too.
+- `init` accepts `--workspace DIR` as its destination when PATH is omitted or names the same directory. `init` on a directory that holds files but no workspace is refused with a repair: the same call for `DIR/casework`, with DIR as an import root.
+
+Re-measure: the revised arm only, with the same runner (SHA-256 `aa4e9447…`), seed 51701, six comparison cases, both models with the same digests and the same budgets, on `df2d797` (debug build, SHA-256 `adb8cc83…f59472c4`). That build is this change on `abddc9b`. The merged commit is the same change rebased onto later main, which adds the W17.01 and W17.02 help and error changes; the rebased build was not measured. The 12 assignments took 17 min. Results: [results.json](../training/first-use/rerun-6vlm/results.json) · [raw archive](../training/first-use/rerun-6vlm/raw.tar.zst).
+
+| Measure | rerun-mb (`495688d`) | bn-6vlm (`df2d797`) |
+| --- | ---: | ---: |
+| Source and Case receipt ≤3 calls after first CLI contact | 2/12 | 8/12 |
+| … qwen / gemma | 1/6 / 1/6 | 6/6 / 2/6 |
+| Median calls from contact to receipt | 4 | 3 |
+| Assignments with an actor-required refusal | 5/12 | 0/12 |
+| Persisted Source and Case at any time | 8/12 | 9/12 |
+| Source-linked handoff | 4/12 | 4/12 |
+| Successor answered / decisive citation / limitation | 10 / 10 / 8 | 9 / 6 / 8 |
+| Successor used the CLI | 7/12 | 5/12 |
+| Unsupported claims | 0/12 | 1/12 |
+| Successor phases ended by the budget | 1/12 | 3/12 |
+| Mean investigator-plus-successor wall time | 73.8 s | 83.2 s |
+
+Seven investigators passed `--actor` to `init`, and two of them chose their own actor name. Three ran `start` without `--actor` and got the recorded actor with the warning. Two qwen investigators used the new `init --workspace` paths, one through the non-empty repair. Of the four gemma misses, two never ran the CLI, one handed off after `--help` without running `init`, and one spent a call between `--help` and `init` on `ls`, so its receipt came at the fourth call.
+
+The successor measures did not improve, and citation fell. The two gemma successors that used the CLI and lost the citation item cited `source.txt` as a line range (`lines 1-15`, `lines 14-28`), which the grader did not read as a decisive line. Three successors again read `state/` event files and ran out of budget. The one unsupported claim (`bay_wide_humidity`, qwen) is in the successor's answer text. These failures are in the successor phase, which this change does not touch, but more persisted workspaces give successors more raw files to read. This is one unpaired run per cell, so a difference of one or two assignments is noise.
+
 ## Scope and provenance
 
 - **Scale.** The study used 6 comparison cases instead of a larger set, one variant per case and one run per cell. Total session time was about 25 min for the comparison and 11 min for tuning. With this sample, differences of one or two assignments are noise.
