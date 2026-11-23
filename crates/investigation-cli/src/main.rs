@@ -161,7 +161,7 @@ enum Format {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Create a local workspace and an optional Obsidian vault.
+    /// Create a local workspace and an optional Markdown vault.
     #[command(
         after_help = "Example: investigation init ./casework --no-vault --import-root . --format json"
     )]
@@ -169,7 +169,7 @@ enum Commands {
         /// New or empty directory for the workspace, or an existing workspace.
         #[arg(value_name = "PATH")]
         path: PathBuf,
-        /// Skip creation of the optional Obsidian vault.
+        /// Skip creation of the optional Markdown vault.
         #[arg(long)]
         no_vault: bool,
         /// Let the workspace retain copies of files beneath DIR (read-only; repeatable).

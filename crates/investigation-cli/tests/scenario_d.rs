@@ -17,7 +17,12 @@
 //!   with no inquiry plan and no executable experiment;
 //! - in `injected-output`, planted instructions in crawler output stay quoted
 //!   data: onboarding, schemas, method packs, command selection and the result
-//!   are the same as the baseline.
+//!   are the same as the baseline;
+//! - the W10 steps close the walk: a blindspot Review made from the current
+//!   audit dispositions every reported gap and records one gap no check names
+//!   as a Question without changing the conclusion, then a Retrospective
+//!   started from the process digest is recorded and the case closed in one
+//!   transaction.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -287,6 +292,25 @@ impl Walk {
                     }
                 }
             }
+        }
+        receipt
+    }
+
+    /// Several operations in one transaction; returns the receipt.
+    fn batch(&mut self, actor: &str, operations: Value, pre: Value) -> Value {
+        self.sequence += 1;
+        let command = json!({
+            "schema_version": "inv.command.v1", "command_id": format!("scenario-d-{}", self.sequence),
+            "case_id": self.case, "actor": actor, "preconditions": pre, "operations": operations,
+        });
+        let receipt = run(
+            &self.root,
+            &["record", "--input", "-", "--json"],
+            Some(&command),
+            0,
+        );
+        for change in receipt["created"].as_array().unwrap() {
+            self.created.push(text(&change["id"]).to_owned());
         }
         receipt
     }
@@ -1233,6 +1257,7 @@ fn walk(variant: &str) -> (Walk, Outcome) {
     if w.injected() {
         injected_text_stays_inert(&w, &planted, &brief);
     }
+    let closure = challenge_and_close(&mut w, &validated, &prior, applies);
 
     let outcome = json!({
         "acquisitions": w.documents.keys().filter(|file| file.as_str() != CRAWL).collect::<Vec<_>>(),
@@ -1243,6 +1268,7 @@ fn walk(variant: &str) -> (Walk, Outcome) {
         "searches": registries.iter().filter(|r| r.as_str() != "Public forum crawl").map(|r| &recorded[r]).collect::<Vec<_>>(),
         "absence_gate": absence_codes,
         "blindspots": blindspots,
+        "closure": closure,
         "conclusion": {
             "statement": shown["record"]["body"]["statement"], "status": shown["record"]["body"]["status"],
             "caveats": shown["recorded_caveats"], "concerns": concerns,
@@ -1359,6 +1385,169 @@ fn blindspots_reported(
             .or_default() += 1;
     }
     json!(counts)
+}
+
+/// The W10 steps that end the walk. A reviewer reads the current audit and
+/// records a blindspot Review of the validated conclusion: every reported gap
+/// is dispositioned and one gap that no check names becomes a Question in the
+/// same transaction. The conclusion is unchanged by it. The investigator then
+/// starts a Retrospective from the process digest and records it with the
+/// closure in one transaction. Returns what every variant must share with the
+/// baseline that carries the same outcome.
+fn challenge_and_close(w: &mut Walk, validated: &Value, prior: &Value, applies: bool) -> Value {
+    let audit = w.cli(&["blindspots"], 0);
+    let statement = text(&audit["statement"]).to_lowercase();
+    assert!(
+        !statement.contains("all blindspots resolved") && !statement.contains("verified correct"),
+        "{statement}"
+    );
+    let checks = audit["checks"].as_array().unwrap().clone();
+    // A finding can name the revision its basis read; a review reads and cites
+    // the current one, as the REVISION_CONFLICT repair asks.
+    let related = |check: &Value| -> Vec<Value> {
+        let mut current: Vec<Value> = Vec::new();
+        for reference in check["related_refs"].as_array().unwrap() {
+            let reference = w.current(reference);
+            if !current.contains(&reference) {
+                current.push(reference);
+            }
+        }
+        current
+    };
+    let mut read_set = vec![validated.clone()];
+    for check in &checks {
+        for reference in related(check) {
+            if !read_set.contains(&reference) {
+                read_set.push(reference);
+            }
+        }
+    }
+    let dispositions: Vec<Value> = checks
+        .iter()
+        .map(|check| {
+            let reason = match text(&check["check_id"]) {
+                "origin.shared_origin_citations" => {
+                    "The restatements trace to one specification; they count once, not three times."
+                }
+                "source.absence_basis_incomplete" => {
+                    "The empty registry searches name no expected signal, so the absence stays unconfirmed."
+                }
+                "source.invalidated_basis_unreviewed" => {
+                    "The erratum corrected the earlier judgment's edition; that judgment was not re-reviewed."
+                }
+                "conclusion.support_not_assessed_against_rival" => {
+                    "The cited support was not assessed against the rival reading of the documents."
+                }
+                other => panic!("no disposition for audit check {other}: {audit:#}"),
+            };
+            json!({"gap_id": check["gap_id"], "disposition": "accepted", "reason": reason,
+                "related_refs": related(check)})
+        })
+        .collect();
+    let before = w.show(validated, "full")["record"].clone();
+    let checks_run: Vec<Value> = audit["checks_run"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|check| check["check_id"].clone())
+        .collect();
+    let receipt = w.batch(REVIEWER, json!([
+        {"op": "question.create", "client_ref": "measured", "payload": {
+            "wording": "Has the frame limit been measured on a build of the named edition?", "importance": "high"}},
+        {"op": "review.submit", "payload": {
+            "kind": "blindspot", "subject_ref": validated, "audited_snapshot": audit["snapshot"],
+            "read_set": read_set, "method": "Read each audit finding against the cited passages and their origins.",
+            "scope_examined": "The validated conclusion, the passages it cites and the searches behind the absence claim.",
+            "checks_considered": checks_run,
+            "gaps": ["No measurement on a build of the named edition backs the documented limit."],
+            "evidence_refs": [], "assumption_refs": [], "limitations": ["Source reading only; nothing was tested."],
+            "verdict": "gaps_identified", "context_isolation": "fresh_context_unblinded",
+            "context": {"saw_original_conclusion": {"state": "known", "value": true},
+                "gathered_new_evidence": {"state": "known", "value": false}, "method_or_source_changes": [],
+                "activity": "Challenge the validated conclusion after the audit.", "dependencies": "shared",
+                "dependence_basis": "The same retained documents."},
+            "audit": {"check_version": audit["check_version"], "check_set_digest": audit["check_set_digest"]},
+            "gap_dispositions": dispositions,
+            "novel_gaps": [{"statement": "The documented limit was never measured on the named build.",
+                "uncertainty": "A measurement may agree with the documents.", "related_refs": [validated],
+                "record_refs": [{"client_ref": "measured"}]}],
+        }},
+    ]), json!([]));
+    assert_eq!(receipt["updated"], json!([]), "{receipt:#}");
+    let question = reference(&receipt["created"][0]);
+    let review = w.show(&receipt["created"][1], "full");
+    assert_eq!(
+        review["record"]["body"]["audit"]["undispositioned_gap_ids"],
+        json!([])
+    );
+    assert_eq!(
+        review["record"]["body"]["novel_gaps"][0]["origin"],
+        "reviewer"
+    );
+    assert_eq!(
+        w.show(validated, "full")["record"],
+        before,
+        "a blindspot review never rewrites the conclusion"
+    );
+
+    let digest = w.cli(&["retrospective", "--draft"], 0);
+    assert!(
+        text(&digest["coverage"]).contains("recorded work only"),
+        "{digest:#}"
+    );
+    let mut account = digest["record_template"].clone();
+    let misleading = if applies {
+        json!([{"description": "The earlier 64-frame judgment rested on the edition the erratum corrected.",
+            "support_refs": [prior["id"]]}])
+    } else {
+        json!([])
+    };
+    let fields = json!({
+        "methods_attempted": [{"name": "Trace each passage to its origin and search the registries for corrections"}],
+        "effective_steps": [{"description": "Tracing restatements to one origin kept three acquisitions from counting as three confirmations.",
+            "support_refs": [prior["id"]]}],
+        "invalid_or_misleading_steps": misleading,
+        "costs_or_constraints": "Retained documents and registry search logs only; no unit was tested.",
+        "residual_unknowns": ["No measurement on a build of the named edition."],
+        "lessons": [], "no_reusable_lesson_reason": "One source family; no method was compared with another.",
+    });
+    let account_fields = account.as_object_mut().unwrap();
+    account_fields.extend(fields.as_object().unwrap().clone());
+    if !applies {
+        account_fields.insert(
+            "none_observed_reason".into(),
+            json!("No step relied on an invalid reading."),
+        );
+    }
+    let case = json!({"id": w.case.clone()});
+    let case_ref = w.current(&case);
+    let outcome = if applies { "answered" } else { "inconclusive" };
+    let closed = w.batch(ACTOR, json!([
+        {"op": "retrospective.record", "client_ref": "account", "payload": account},
+        {"op": "case.close", "payload": {"outcome": outcome,
+            "reason": "The sources answer the question for the named build within their stated limits.",
+            "unresolved_questions": [question],
+            "reopen_condition": "A measurement on a build of the named edition, or a later erratum.",
+            "retrospective_ref": {"client_ref": "account"}}},
+    ]), json!([case_ref]));
+    let retrospective = text(&closed["created"][0]["id"]).to_owned();
+    assert!(retrospective.starts_with("retro_"), "{closed:#}");
+    let body = w.show(&case, "full")["record"]["body"].clone();
+    assert_eq!(body["lifecycle"], "closed", "{body:#}");
+    assert_eq!(
+        body["closure"]["retrospective_ref"]["id"],
+        retrospective.as_str()
+    );
+    assert_eq!(w.cli(&["check"], 0)["ok"], true);
+
+    let mut by_check = BTreeMap::<String, usize>::new();
+    for check in &checks {
+        *by_check
+            .entry(text(&check["check_id"]).to_owned())
+            .or_default() += 1;
+    }
+    json!({"review_verdict": "gaps_identified", "accepted_gaps": by_check, "outcome": outcome,
+        "retrospective": "recorded with the closure"})
 }
 
 fn summary_counts(w: &Walk, assessment: &Value) -> Value {

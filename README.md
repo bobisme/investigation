@@ -58,6 +58,8 @@ python3 scripts/prove_milestone_a.py target/debug/investigation
 
 Use `--output PATH` to keep the case workspaces and their handoffs in a new directory. The proof records a scoped timeout explanation, checks a conditional architecture choice under a changed requirement, and tests both handoffs. The proof note records the independent cold reads and durability evidence. [Milestone A proof](docs/milestone-a.md)
 
+`python3 scripts/prove_milestone_b.py target/debug/investigation` runs the Milestone B checks on one executable from a clean copy of the committed tree. It covers four domains with their blindspot reviews and retrospectives, the producer conformance suite, the vault renders, drills 1–6 and neutrality, and writes one JSON report. [Milestone B proof](docs/milestone-b.md)
+
 ## Repository contents
 
 | Path | Contents |

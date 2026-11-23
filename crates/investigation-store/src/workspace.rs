@@ -644,7 +644,7 @@ fn config_text(config: &WorkspaceConfig) -> Result<String, WorkspaceError> {
          # Read this workspace with {PROGRAM_NAME} --workspace DIR brief, where DIR is this directory;\n\
          # do not read state/ or cache/ files directly. See README.txt.\n\
          # Add an import root with {PROGRAM_NAME} init DIR --import-root SOURCE_DIR, not by editing this file.\n\
-         # state/ is canonical evidence and journal data; do not sync it as an Obsidian vault.\n\
+         # state/ is canonical evidence and journal data; do not open or sync it as a notes vault.\n\
          # cache/ is rebuildable and can be deleted by cache maintenance.\n\
          # local/ stores machine-specific, noncanonical bookkeeping.\n\
          # vault/ is an optional child projection; Notes, Boards and Inbox are human-owned.\n\

@@ -142,6 +142,73 @@ def expect_review(cli, case, record_id, exit_code=0):
                       preconditions=preconditions, exit_code=exit_code)
 
 
+COMPLETENESS = ("all blindspots resolved", "verified correct")
+DISPOSITIONS = {
+    "comparability.environment_differs": (
+        "not_applicable", "The candidate that used the incompatible-build trial was refused review and never "
+        "promoted; the validated conclusion cites only same-build captures."),
+    "empirical.confirmatory_basis_incomplete": (
+        "accepted", "The synthetic captures record no observation window or sample count."),
+    "conclusion.causal_claim_without_rival_account": (
+        "accepted", "No recorded assessment weighs the scheduler rival against the support."),
+}
+
+
+def challenge(cli, case, claim_ref, refused):
+    """A structural audit, then a recorded blindspot Review of the validated conclusion.
+
+    The review dispositions every reported gap, records one gap no check names as a
+    Question, and changes neither conclusion."""
+    audit = cli.call("--case", case, "blindspots")
+    assert audit["schema_version"] == "inv.audit.v1" and audit["outcome"] == "gaps_identified_in_recorded_structure"
+    assert not any(phrase in audit["statement"].lower() for phrase in COMPLETENESS), audit["statement"]
+    assert "not proof of completeness" in audit["limits"], audit["limits"]
+    checks = {check["check_id"] for check in audit["checks"]}
+    assert checks == set(DISPOSITIONS), checks
+    assert {item["id"] for check in audit["checks"] for item in check["subject_refs"]} == {claim_ref["id"], refused}
+    read_set = [claim_ref]
+    for check in audit["checks"]:
+        read_set += [item for item in check["related_refs"] if item not in read_set]
+    before = {record: cli.show(case, record)["record"] for record in (claim_ref["id"], refused)}
+    review = {
+        "kind": "blindspot", "subject_ref": claim_ref, "audited_snapshot": audit["snapshot"], "read_set": read_set,
+        "method": "Read each audit finding against the validated conclusion's captures and their recorded fields.",
+        "scope_examined": "The validated conclusion, the refused candidate and the captures they cite.",
+        "checks_considered": [check["check_id"] for check in audit["checks_run"]],
+        "gaps": ["The scheduler's own contribution under a compatible build is untested."],
+        "evidence_refs": [], "assumption_refs": [],
+        "limitations": ["Recorded material only; no capture was re-run."], "verdict": "gaps_identified",
+        "context_isolation": "fresh_context_unblinded",
+        "context": {"saw_original_conclusion": {"state": "known", "value": True},
+                    "gathered_new_evidence": {"state": "known", "value": False},
+                    "method_or_source_changes": [], "activity": "Challenge the validated conclusion after the audit.",
+                    "dependencies": "shared", "dependence_basis": "The same retained synthetic captures."},
+        "audit": {"check_version": audit["check_version"], "check_set_digest": audit["check_set_digest"]},
+        "gap_dispositions": [
+            {"gap_id": check["gap_id"], "disposition": DISPOSITIONS[check["check_id"]][0],
+             "reason": DISPOSITIONS[check["check_id"]][1], "related_refs": check["related_refs"]}
+            for check in audit["checks"]],
+        "novel_gaps": [{"statement": "No compatible-build trial isolates the scheduler, so its share is unknown.",
+                        "uncertainty": "The scheduler may contribute nothing.", "related_refs": [claim_ref],
+                        "record_refs": [{"client_ref": "scheduler"}]}],
+    }
+    receipt = cli.record(case, op("question.create", {
+        "wording": "Does the scheduler add to the connection hold under a compatible build?",
+        "importance": "normal"}, "scheduler"), op("review.submit", review), actor=REVIEWER)
+    assert receipt["updated"] == [], receipt
+    reviewed = receipt["created"][1]["id"]
+    stored = cli.show(case, reviewed)["record"]["body"]
+    assert stored["audit"]["undispositioned_gap_ids"] == [] and stored["novel_gaps"][0]["origin"] == "reviewer", stored
+    # The review records the challenge; it never rewrites either conclusion.
+    assert {record: cli.show(case, record)["record"] for record in before} == before
+    # A later audit keeps every earlier finding. The challenge is a second review of the
+    # conclusion from the same undeclared actor family, which the audit now reports.
+    again = {check["gap_id"] for check in cli.call("--case", case, "blindspots")["checks"]}
+    assert again - {check["gap_id"] for check in audit["checks"]} == {
+        f"blindspot:review.promoted_single_dependence_group:{claim_ref['id']}"}, again
+    return reviewed
+
+
 def proof(binary, handoff, workspace=None):
     if workspace is not None:
         workspace.mkdir(parents=True)
@@ -236,6 +303,7 @@ def proof(binary, handoff, workspace=None):
         promoted = cli.record(case, op("conclusion.validate", {"conclusion_ref": ref(claim, ready), "review_ref": ref(review)}),
                               preconditions=[ref(claim, ready), ref(review), *basis["read_set"]])
         claim_ref = ref(claim, promoted["updated"][0]["revision"])
+        blindspot_review = challenge(cli, case, claim_ref, wrong_claim)
         point = cli.call("--case", case, "brief")["snapshot"]
         closing = {"outcome": "answered", "reason": "The synthetic fixture isolates the scoped mechanism.",
                    "unresolved_questions": [ref(question)], "reopen_condition": "A comparable scheduler-only toggle changes the result."}
@@ -259,8 +327,8 @@ def proof(binary, handoff, workspace=None):
         rejected = cli.record(case, op("retrospective.record", uncited), exit_code=5)
         assert rejected["error"]["path"].endswith("/lessons/0/support_refs"), rejected
         assert rejected["error"]["repair"]["argv"][-4:] == ["retrospective", "--draft", "--format", "json"]
-        retrospective = {
-            "case_ref": ref(case), "snapshot": point,
+        # The account starts from the digest's template: the case and snapshot it covers.
+        retrospective = dict(digest["record_template"], **{
             "methods_attempted": [{"name": "Compare a slow/control pair and a bounded toggle/reversal"}],
             "effective_steps": [{"description": "The compatible toggle and reversal distinguished the connection-hold mechanism.",
                                  "support_refs": [base, treated, reverse]}],
@@ -269,7 +337,7 @@ def proof(binary, handoff, workspace=None):
             "costs_or_constraints": "Offline synthetic captures only.",
             "residual_unknowns": ["The scheduler's independent contribution under a compatible build."],
             "lessons": [], "no_reusable_lesson_reason": "The result is scoped to a synthetic workload.",
-        }
+        })
         receipt = cli.record(case, op("retrospective.record", retrospective, "methods"),
                              op("case.close", dict(closing, retrospective_ref={"client_ref": "methods"})),
                              preconditions=[ref(case)])
@@ -296,7 +364,8 @@ def proof(binary, handoff, workspace=None):
         waiver = cli.show(small, small)["record"]["body"]["closure"]
         assert waiver["retrospective_waived"] and waiver["retrospective_ref"] is None
         assert cli.call("check")["structurally_valid"]
-        return {"case": case, "validated": claim_ref, "handoff": str(handoff), "successor": successor}
+        return {"case": case, "validated": claim_ref, "blindspot_review": blindspot_review,
+                "handoff": str(handoff), "successor": successor}
 
 
 def main():

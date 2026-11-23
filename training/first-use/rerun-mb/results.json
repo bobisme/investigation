@@ -1,0 +1,1038 @@
+{
+  "schema": "first-use-results.v1",
+  "runs": [
+    {
+      "directory": "rerun",
+      "role": "comparison",
+      "arms": [
+        "revised"
+      ],
+      "seed": 51701,
+      "models": {
+        "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "gemma4:26b": "5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251"
+      },
+      "binaries": {
+        "revised": {
+          "path": "investigation-495688d",
+          "sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+          "commit": "495688d6ac9f231f6b2f28e193a33fa951c59d1f"
+        }
+      },
+      "runner_sha256": "aa4e9447d5524d0f64abf396dd6c4e3d98222be60c9cf1e5eb8da4212824e284",
+      "fixture_commit": "495688d6ac9f231f6b2f28e193a33fa951c59d1f",
+      "blocks": [
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 745346620,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 2124881018,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1557843569,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 1081929851,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1592218822,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "qwen3.5:9b",
+          "block_seed": 545735307,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "gemma4:26b",
+          "block_seed": 897622071,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 1411254907,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 1779656773,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 589334537,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "gemma4:26b",
+          "block_seed": 365780597,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "gemma4:26b",
+          "block_seed": 1706133070,
+          "order": [
+            "revised"
+          ]
+        }
+      ]
+    }
+  ],
+  "assignments": [
+    {
+      "id": "d487b667-51d2-4ca1-8f32-c0b87c9f8c6a",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 27,
+        "elapsed_ms": 51030,
+        "input_tokens": 9720,
+        "output_tokens": 4757,
+        "first_contact_call": 7,
+        "first_onboard_call": null,
+        "first_receipt_call": 10,
+        "source_case_call": 10,
+        "cli_calls": 18,
+        "cli_error_calls": 6,
+        "shell_timeouts": 0,
+        "discovery_bytes": 4969
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 3,
+        "elapsed_ms": 19091,
+        "input_tokens": 1961,
+        "output_tokens": 1912,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 7,
+        "annotation.add": 2
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          16,
+          17,
+          18
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 70121
+    },
+    {
+      "id": "6ea11cdd-be85-478e-9cbc-f7287de01a69",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 11,
+        "elapsed_ms": 18735,
+        "input_tokens": 6024,
+        "output_tokens": 1598,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 9,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": 4969
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 10,
+        "elapsed_ms": 42509,
+        "input_tokens": 56906,
+        "output_tokens": 2660,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 61244
+    },
+    {
+      "id": "596f2a1c-d8d9-454c-ada1-991f99a1854a",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 18,
+        "elapsed_ms": 49523,
+        "input_tokens": 7973,
+        "output_tokens": 4910,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 16,
+        "cli_error_calls": 9,
+        "shell_timeouts": 0,
+        "discovery_bytes": 9761
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 20039,
+        "input_tokens": 7359,
+        "output_tokens": 1686,
+        "cli_calls": 4,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 3
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          7,
+          9,
+          10,
+          12
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 69562
+    },
+    {
+      "id": "bd33b2bb-fe51-46a4-a90e-541d2afa89c0",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 5,
+        "elapsed_ms": 18096,
+        "input_tokens": 1050,
+        "output_tokens": 1918,
+        "first_contact_call": null,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 2,
+        "elapsed_ms": 24731,
+        "input_tokens": 1936,
+        "output_tokens": 2853,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          10,
+          12,
+          15,
+          18
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 42827
+    },
+    {
+      "id": "6e311552-f6b1-4831-9bab-9f740ec6563a",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 6,
+        "elapsed_ms": 12602,
+        "input_tokens": 1110,
+        "output_tokens": 1312,
+        "first_contact_call": null,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 15128,
+        "input_tokens": 1545,
+        "output_tokens": 1621,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 27730
+    },
+    {
+      "id": "66b2747b-84b8-42ad-a0fa-38515f9a6cfd",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 25,
+        "elapsed_ms": 58355,
+        "input_tokens": 8255,
+        "output_tokens": 5594,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 22,
+        "cli_error_calls": 14,
+        "shell_timeouts": 0,
+        "discovery_bytes": 4969
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 20323,
+        "input_tokens": 5176,
+        "output_tokens": 1862,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          11,
+          12,
+          16,
+          18
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 78678
+    },
+    {
+      "id": "6a6e0172-a331-48da-a000-14b3be10a2ef",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 43908,
+        "input_tokens": 12232,
+        "output_tokens": 3440,
+        "first_contact_call": 3,
+        "first_onboard_call": 7,
+        "first_receipt_call": 9,
+        "source_case_call": 9,
+        "cli_calls": 26,
+        "cli_error_calls": 10,
+        "shell_timeouts": 0,
+        "discovery_bytes": 11529
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 43516,
+        "input_tokens": 29187,
+        "output_tokens": 3289,
+        "cli_calls": 4,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          16,
+          17,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 87424
+    },
+    {
+      "id": "0bb1ca34-74ad-4270-b8d0-78470126a8f8",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 65766,
+        "input_tokens": 29961,
+        "output_tokens": 5447,
+        "first_contact_call": 4,
+        "first_onboard_call": 9,
+        "first_receipt_call": 11,
+        "source_case_call": 11,
+        "cli_calls": 25,
+        "cli_error_calls": 12,
+        "shell_timeouts": 0,
+        "discovery_bytes": 13349
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 14,
+        "elapsed_ms": 27786,
+        "input_tokens": 30776,
+        "output_tokens": 1779,
+        "cli_calls": 8,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 93552
+    },
+    {
+      "id": "0ceb5bb7-e4b2-4d92-ac50-02b23d4a18ab",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 55839,
+        "input_tokens": 13527,
+        "output_tokens": 4702,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 22,
+        "cli_error_calls": 8,
+        "shell_timeouts": 0,
+        "discovery_bytes": 7576
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 63443,
+        "input_tokens": 73878,
+        "output_tokens": 4183,
+        "cli_calls": 2,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 7
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          4,
+          7,
+          12,
+          15
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 119282
+    },
+    {
+      "id": "b05352a2-fe0f-42ef-bbc2-88f4220acc03",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 11,
+        "elapsed_ms": 43102,
+        "input_tokens": 7951,
+        "output_tokens": 4149,
+        "first_contact_call": 7,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 4969
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 3,
+        "elapsed_ms": 17189,
+        "input_tokens": 3382,
+        "output_tokens": 1683,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          8,
+          12,
+          15,
+          18,
+          22
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 60291
+    },
+    {
+      "id": "f8db713b-e49e-4ecf-b4a0-80e2d0ada09b",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 59706,
+        "input_tokens": 15186,
+        "output_tokens": 5366,
+        "first_contact_call": 3,
+        "first_onboard_call": 11,
+        "first_receipt_call": 15,
+        "source_case_call": 15,
+        "cli_calls": 25,
+        "cli_error_calls": 9,
+        "shell_timeouts": 0,
+        "discovery_bytes": 12522
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 13,
+        "elapsed_ms": 34810,
+        "input_tokens": 11598,
+        "output_tokens": 3137,
+        "cli_calls": 6,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": [
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 94516
+    },
+    {
+      "id": "a8606e27-7a5a-4229-9c78-f2d4af71d5e5",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "5fe02ee03a870b947aed5ffc345970877d02089bbf1e7073685eab7afbfbabed",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 17,
+        "elapsed_ms": 42398,
+        "input_tokens": 9132,
+        "output_tokens": 4023,
+        "first_contact_call": 3,
+        "first_onboard_call": 12,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 12,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": 14799
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 37390,
+        "input_tokens": 25918,
+        "output_tokens": 2958,
+        "cli_calls": 7,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          12,
+          13,
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 79788
+    }
+  ],
+  "comparison": {
+    "runs": [
+      "rerun"
+    ]
+  },
+  "summary": {
+    "by_arm": {
+      "revised": {
+        "assignments": 12,
+        "receipt_within_three_after_contact": {
+          "count": 2,
+          "of": 12
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 2,
+          "of": 4
+        },
+        "ran_onboard": {
+          "count": 4,
+          "of": 12
+        },
+        "persisted_source_and_case": {
+          "count": 8,
+          "of": 12
+        },
+        "source_linked_handoff": {
+          "count": 4,
+          "of": 12
+        },
+        "successor_answered": {
+          "count": 10,
+          "of": 12
+        },
+        "successor_citation": {
+          "count": 10,
+          "of": 12
+        },
+        "successor_limitation": {
+          "count": 8,
+          "of": 12
+        },
+        "successor_answer": {
+          "count": 10,
+          "of": 12
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_used_cli": {
+          "count": 7,
+          "of": 12
+        },
+        "investigator_failed_cli_calls": 74,
+        "investigator_cli_calls": 176,
+        "investigator_budget_or_timeout": {
+          "count": 4,
+          "of": 12
+        },
+        "successor_budget_or_timeout": {
+          "count": 1,
+          "of": 12
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 8.0,
+        "median_calls_contact_to_source_case": 4.0,
+        "mean_total_seconds": 73.8,
+        "mean_investigator_calls": 19.3
+      }
+    },
+    "by_model": {
+      "gemma4:26b": {
+        "revised": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 1,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 0,
+            "upper_95": null
+          },
+          "ran_onboard": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "persisted_source_and_case": {
+            "count": 4,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 2,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 5,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 2,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 31,
+          "investigator_cli_calls": 65,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 7.0,
+          "median_calls_contact_to_source_case": 4.0,
+          "mean_total_seconds": 58.4,
+          "mean_investigator_calls": 15.3
+        }
+      },
+      "qwen3.5:9b": {
+        "revised": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 1,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 2,
+            "of": 4
+          },
+          "ran_onboard": {
+            "count": 4,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 4,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 2,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 5,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 5,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 43,
+          "investigator_cli_calls": 111,
+          "investigator_budget_or_timeout": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_budget_or_timeout": {
+            "count": 1,
+            "of": 6
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 10.0,
+          "median_calls_contact_to_source_case": 6.5,
+          "mean_total_seconds": 89.1,
+          "mean_investigator_calls": 23.3
+        }
+      }
+    },
+    "comparison": {
+      "runs": [
+        "rerun"
+      ]
+    }
+  }
+}

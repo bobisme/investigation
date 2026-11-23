@@ -83,12 +83,17 @@ def criterion(question, name, kind, unit, threshold=None):
             "threshold": threshold, "weighting_rationale": None}
 
 
-def blindspots(d, case):
-    """The read-only inv.audit.v1 response, which has no receipt `ok` field."""
+def read(d, case, *args):
+    """A read-only response that has no receipt `ok` field, such as an audit or digest."""
     result = subprocess.run(
-        [str(d.binary), "--workspace", str(d.workspace), "--format", "json", "--case", case, "blindspots"],
+        [str(d.binary), "--workspace", str(d.workspace), "--format", "json", "--case", case, *args],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=d.workspace, check=True)
-    audit = json.loads(result.stdout)
+    return json.loads(result.stdout)
+
+
+def blindspots(d, case):
+    """The read-only inv.audit.v1 response."""
+    audit = read(d, case, "blindspots")
     assert audit["schema_version"] == "inv.audit.v1", audit
     return audit
 
@@ -103,6 +108,63 @@ def hard_unmeasured(d, case):
 def missing_options(entry):
     return {reference["id"] for fact in entry["facts"] if fact["fact"] == "hard_cell:missing"
             for reference in fact["refs"]}
+
+
+def challenge(d, case, decision_ref):
+    """A recorded blindspot Review of the accepted decision, made from the current audit.
+
+    It dispositions every reported gap, records one gap no check names as a Question, and
+    leaves the decision exactly as it was."""
+    audit = blindspots(d, case)
+    assert audit["outcome"] == "gaps_identified_in_recorded_structure", audit
+    assert not any(phrase in audit["statement"].lower() for phrase in ("all blindspots resolved", "verified correct"))
+    assert "not proof of completeness" in audit["limits"], audit["limits"]
+    dispositions = {
+        "criterion.hard_unmeasured": ("accepted", "No option has an evidence-backed result for this hard criterion."),
+        "promoted.material_assumption_unsupported": (
+            "accepted", "The traffic assumption behind the cost ordering is untested."),
+        "criterion.weight_without_range": (
+            "accepted", "The stated effort weight has no range, so it stays out of any score."),
+        "decision.accepted_with_unresolved_hard_cell": (
+            "accepted", "The decision is conditional on the two hard conditions it names."),
+        "case.material_closure_without_current_retrospective": (
+            "accepted", "The case is still open; its account is recorded at closure."),
+    }
+    assert {check["check_id"] for check in audit["checks"]} == set(dispositions), audit
+    read_set = [decision_ref]
+    for check in audit["checks"]:
+        read_set += [item for item in check["related_refs"] if item not in read_set]
+    before = d.show(case, decision_ref["id"])["record"]
+    payload = {
+        "kind": "blindspot", "subject_ref": decision_ref, "audited_snapshot": audit["snapshot"], "read_set": read_set,
+        "method": "Read each audit finding against the accepted decision's comparisons and conditions.",
+        "scope_examined": "The accepted decision, its comparison cells, criteria and the traffic assumption.",
+        "checks_considered": [check["check_id"] for check in audit["checks_run"]],
+        "gaps": ["The failure model behind the recovery trial is not stated for the alternatives."],
+        "evidence_refs": [], "assumption_refs": [], "limitations": ["Recorded material only; no trial was re-run."],
+        "verdict": "gaps_identified", "context_isolation": "fresh_context_unblinded",
+        "context": {"saw_original_conclusion": {"state": "known", "value": True},
+                    "gathered_new_evidence": {"state": "known", "value": False}, "method_or_source_changes": [],
+                    "activity": "Challenge the accepted decision after the audit.", "dependencies": "shared",
+                    "dependence_basis": "The same retained synthetic trials."},
+        "audit": {"check_version": audit["check_version"], "check_set_digest": audit["check_set_digest"]},
+        "gap_dispositions": [{"gap_id": check["gap_id"], "disposition": dispositions[check["check_id"]][0],
+                              "reason": dispositions[check["check_id"]][1], "related_refs": check["related_refs"]}
+                             for check in audit["checks"]],
+        "novel_gaps": [{"statement": "The alternatives were never tested under the failure model the recovery trial used.",
+                        "uncertainty": "The managed queue and the broker may recover faster or slower.",
+                        "related_refs": [decision_ref], "record_refs": [{"client_ref": "failure-model"}]}],
+    }
+    receipt = d.batch(case, [
+        {"op": "question.create", "client_ref": "failure-model", "payload": {
+            "wording": "How fast do the alternatives recover under the trial's failure model?", "importance": "high"}},
+        {"op": "review.submit", "payload": payload}], [])
+    assert receipt["updated"] == [] and [item["id"].split("_")[0] for item in receipt["created"]] == ["q", "rev"], receipt
+    review = receipt["created"][1]["id"]
+    stored = d.show(case, review)["record"]["body"]
+    assert stored["audit"]["undispositioned_gap_ids"] == [] and stored["novel_gaps"][0]["origin"] == "reviewer", stored
+    assert d.show(case, decision_ref["id"])["record"] == before, "a blindspot review never rewrites the decision"
+    return review
 
 
 def main():
@@ -319,6 +381,7 @@ def main():
         assert ref(observation) in successor_answer["observation_refs"] and ref(artifact) in successor_answer["artifact_refs"], successor_answer
         if args.handoff:
             args.handoff.write_text(json.dumps(handoff, indent=2) + "\n", encoding="utf-8")
+        challenged = challenge(d, case, ref(decision, 2))
         strict = dict(hard_input)
         strict["threshold"] = {"kind": "measured", "operator": "at_most", "value": {"decimal": "60", "unit": "seconds"}}
         d.record(case, "criterion.amend", {"criterion_ref": ref(hard), "reason": "Stricter synthetic recovery requirement", "replacement": strict})
@@ -346,14 +409,21 @@ def main():
         assert successor != decision
         closure_snapshot = d.brief(case)["snapshot"]
         case_revision = d.show(case, case)["record"]["header"]["revision"]
-        retrospective = {"case_ref": ref(case, case_revision), "snapshot": closure_snapshot,
+        # The account starts from the process digest: its template names the case
+        # revision and snapshot, and its items list what went stale on the way.
+        digest = read(d, case, "retrospective", "--draft")
+        assert "recorded work only" in digest["coverage"], digest
+        assert digest["record_template"] == {"case_ref": ref(case, case_revision), "snapshot": closure_snapshot}, digest
+        stale = {item["id"] for item in digest["items"] if item["category"] == "review.stale"}
+        assert {f"review.stale/{review}", f"review.stale/{challenged}"} <= stale, digest["items"]
+        retrospective = dict(digest["record_template"], **{
             "methods_attempted": [{"name": "Inspect synthetic recovery trials and bounded enqueue samples"}],
             "effective_steps": [{"description": "Retained and checked the recovery-time source", "support_refs": [observation]}],
             "invalid_or_misleading_steps": [], "none_observed_reason": "No invalid test result was promoted",
             "costs_or_constraints": "Synthetic data and twelve latency samples per option",
             "residual_unknowns": ["Independent zero-loss verification and peak-traffic costs remain unavailable",
                                   "The revised 60-second threshold requires a fresh comparison"],
-            "lessons": [], "no_reusable_lesson_reason": "Synthetic evidence alone does not establish a transferable method"}
+            "lessons": [], "no_reusable_lesson_reason": "Synthetic evidence alone does not establish a transferable method"})
         closed = d.batch(case, [
             {"op": "retrospective.record", "client_ref": "account", "payload": retrospective},
             {"op": "case.close", "payload": {"outcome": "inconclusive",
@@ -367,7 +437,8 @@ def main():
         assert d.call("check")["ok"] is True
         print(json.dumps({"ok": True, "scenario": "C", "case_id": case, "decision_id": decision, "workspace": str(workspace) if args.workspace else None,
                           "handoff": "saved" if args.handoff else "checked", "after_threshold": "needs_review",
-                          "case_outcome": "inconclusive", "retrospective": "recorded"}))
+                          "case_outcome": "inconclusive", "retrospective": "recorded",
+                          "blindspot_review": challenged, "stale_reviews": sorted(stale)}))
 
 
 if __name__ == "__main__":

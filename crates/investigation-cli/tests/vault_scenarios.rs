@@ -536,13 +536,21 @@ fn scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision() {
         "{answer}"
     );
     // The criterion amendment after acceptance leaves the accepted review
-    // stale. The unsafe decision's review never read the stricter threshold
-    // either, so every review of this case is stale.
+    // and the blindspot review of the accepted decision stale. The unsafe
+    // decision's review never read the stricter threshold either, so every
+    // review of this case is stale.
     let reviews: Vec<_> = state
         .records()
         .filter(|record| record.header.id.kind() == Kind::Review)
         .collect();
-    assert_eq!(reviews.len(), 2);
+    assert_eq!(reviews.len(), 3);
+    assert_eq!(
+        reviews
+            .iter()
+            .filter(|review| review.body["kind"] == "blindspot")
+            .count(),
+        1
+    );
     for review in reviews {
         let review_note = note(&plan, case.case_id(), review.header.id);
         assert_eq!(
