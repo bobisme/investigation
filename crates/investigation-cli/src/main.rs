@@ -15,6 +15,7 @@ mod lessons;
 mod lineage;
 mod next;
 mod onboard;
+mod read_only;
 mod retrospective;
 mod review_packet;
 mod schema;
@@ -121,8 +122,10 @@ pub(crate) struct Global {
     format: Option<Format>,
     #[arg(long, global = true, hide = true, overrides_with = "format")]
     json: bool,
-    /// Reject commands that write workspace data.
+    /// Reject commands that write or export; INVESTIGATION_READ_ONLY=1 does the same.
+    // Enforced from the parsed matches by `read_only::refusal` before dispatch.
     #[arg(long, global = true)]
+    #[allow(dead_code)]
     read_only: bool,
     /// Suppress terminal colors.
     #[arg(long, global = true)]
@@ -342,28 +345,6 @@ fn requested_format(args: &[OsString]) -> Format {
 
 fn dispatch(cli: Cli) -> Result<Output, Failure> {
     let global = cli.global;
-    if global.read_only
-        && matches!(
-            cli.command,
-            Commands::Init { .. }
-                | Commands::Record { .. }
-                | Commands::Ingest { .. }
-                | Commands::Start { .. }
-                | Commands::Capture(
-                    capture::CaptureCommand::Begin { .. }
-                        | capture::CaptureCommand::Append { .. }
-                        | capture::CaptureCommand::Attach { .. }
-                        | capture::CaptureCommand::Finalize { .. }
-                )
-                | Commands::Repair(_)
-        )
-    {
-        return Err(Failure::new(
-            ErrorCode::InvalidInput,
-            "This command requires write access. Remove --read-only to run it.",
-        )
-        .at("--read-only"));
-    }
     match cli.command {
         Commands::Schema(args) => schema::describe(args, &global),
         Commands::Init {
@@ -1069,7 +1050,9 @@ fn main() -> ExitCode {
     let parsed = parser.try_get_matches_from(args);
     let output = match parsed {
         Ok(mut matches) => {
-            if let Some(shortcut) = shortcuts::from_matches(&mut matches) {
+            if let Some(refusal) = read_only::refusal(&matches) {
+                Output::failure(refusal)
+            } else if let Some(shortcut) = shortcuts::from_matches(&mut matches) {
                 dispatch_shortcut(shortcut).unwrap_or_else(Output::failure)
             } else {
                 match Cli::from_arg_matches_mut(&mut matches) {
@@ -1124,13 +1107,6 @@ fn parse_error(error: clap::Error) -> Output {
 }
 
 fn dispatch_shortcut(shortcut: shortcuts::ParsedShortcut) -> Result<Output, Failure> {
-    if shortcut.global.read_only && !shortcut.print_envelope {
-        return Err(Failure::new(
-            ErrorCode::InvalidInput,
-            "This command requires write access. Remove --read-only to run it.",
-        )
-        .at("--read-only"));
-    }
     let workspace = open_workspace(shortcut.global.workspace.as_deref())?;
     let mut store = Store::open(workspace);
     shortcuts::run(&mut store, shortcut)
