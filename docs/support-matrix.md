@@ -2,6 +2,8 @@
 
 The filesystem checks admit recognized local Linux filesystems. The evidence below qualifies specific behaviors on the tested configuration. Full power-loss and clean-machine restore qualification is still open.
 
+`investigation doctor` reports this classification for the selected workspace, or for the working directory when there is none, together with the enforced input limits, selector validation and index, staging, lock and vault health. It writes nothing. A refused filesystem is a finding with its reason and repair, not a failure. `investigation doctor bundle --preview` lists what a redacted troubleshooting archive would hold; it leaves out evidence content, credentials and local paths, and this build writes no archive and uploads nothing.
+
 | Platform and filesystem | Read policy | Write policy | Evidence and limits |
 | --- | --- | --- | --- |
 | Linux ext4 | Enabled | Enabled | Linux 7.2.8-arch1-2, ext4 with `rw,nosuid,nodev,relatime`. [LocalFs fault boundaries](../crates/investigation-store/src/real_crash_tests.rs) and [multi-process append, receipt, and revision conflicts](../crates/investigation-store/tests/production.rs) passed. Physical power loss and clean-machine archive restore are unqualified. Ext2 and ext3 share the ext-family detector magic and were outside this run. |
@@ -24,6 +26,9 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `ingest.items` | 32 | items | Paths in one ingest manifest. | `INVALID_INPUT` |
 | `ingest.file_bytes` | 64 MiB | bytes | One copied import: a local file or standard input. Checked before reading and again while copying. | `INVALID_INPUT` |
 | `ingest.reference_bytes` | 1 TiB | bytes | One local file hashed in reference mode without copying. | `INVALID_INPUT` |
+| `ingest.derivation_inputs` | 64 | items | Input artifacts named by one derived artifact. | `INVALID_INPUT` |
+| `ingest.derivation_selectors` | 64 | items | Selectors recorded for one derived artifact. | `INVALID_INPUT` |
+| `ingest.derivation_redactions` | 256 | items | Redaction decisions recorded for one derived artifact. | `INVALID_INPUT` |
 | `ingest.metadata_bytes` | 64 KiB | bytes | Serialized opaque source metadata. | `INVALID_INPUT` |
 | `ingest.metadata_depth` | 16 | levels | Nesting of one opaque metadata value. | `INVALID_INPUT` |
 | `ingest.metadata_key_chars` | 128 | characters | One opaque metadata key. | `INVALID_INPUT` |
@@ -41,6 +46,7 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `selector.json_depth` | 64 | levels | Nesting of an artifact parsed by the json_pointer reader. | `INVALID_INPUT` |
 | `selector.table_columns` | 4096 | items | Fields in one row of a CSV or TSV table read by table_cell. | `INVALID_INPUT` |
 | `selector.excerpt_bytes` | 32 KiB | bytes | One excerpt returned by an evidence read. | `INVALID_INPUT` |
+| `search.candidates` | 5000 | items | Index rows read for one search before the canonical checks. | — |
 | `method_pack.bytes` | 256 KiB | bytes | One method pack file. | `INVALID_INPUT` |
 | `method_pack.depth` | 16 | levels | Nesting of a method pack. | `INVALID_INPUT` |
 | `journal.event_bytes` | 2 MiB | bytes | One canonical journal event read from disk. | `INTEGRITY_FAILURE` |

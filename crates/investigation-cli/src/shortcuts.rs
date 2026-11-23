@@ -47,7 +47,9 @@ pub(crate) fn augment(command: Command) -> Command {
             "source" => "Add source material through verified ingest.",
             _ => "Shortcut commands.",
         };
-        let mut parent = Command::new(parent_name).about(description);
+        let mut parent = Command::new(parent_name)
+            .about(description)
+            .subcommand_required(true);
         for spec in shortcut_specs()
             .iter()
             .filter(|spec| spec.path.len() > 1 && spec.path[0] == parent_name)

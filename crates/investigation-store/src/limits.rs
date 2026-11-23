@@ -110,6 +110,27 @@ pub const LIMITS: &[Limit] = &[
         INVALID_INPUT,
     ),
     limit(
+        "ingest.derivation_inputs",
+        ingest::derivation::MAX_INPUTS as u64,
+        Items,
+        "Input artifacts named by one derived artifact.",
+        INVALID_INPUT,
+    ),
+    limit(
+        "ingest.derivation_selectors",
+        ingest::derivation::MAX_SELECTORS as u64,
+        Items,
+        "Selectors recorded for one derived artifact.",
+        INVALID_INPUT,
+    ),
+    limit(
+        "ingest.derivation_redactions",
+        ingest::derivation::MAX_REDACTIONS as u64,
+        Items,
+        "Redaction decisions recorded for one derived artifact.",
+        INVALID_INPUT,
+    ),
+    limit(
         "ingest.metadata_bytes",
         opaque::MAX_METADATA_BYTES as u64,
         Bytes,
@@ -227,6 +248,13 @@ pub const LIMITS: &[Limit] = &[
         Bytes,
         "One excerpt returned by an evidence read.",
         INVALID_INPUT,
+    ),
+    limit(
+        "search.candidates",
+        crate::projection::MAX_SEARCH_CANDIDATES as u64,
+        Items,
+        "Index rows read for one search before the canonical checks.",
+        NO_REFUSAL,
     ),
     limit(
         "method_pack.bytes",

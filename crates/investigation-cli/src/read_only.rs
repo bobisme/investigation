@@ -69,6 +69,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("vault render", Effect::Write),
     ("vault status", Effect::Read),
     ("vault conflicts", Effect::Read),
+    // `doctor bundle` requires --preview and writes no archive.
+    ("doctor", Effect::Read),
+    ("doctor bundle", Effect::Read),
 ];
 
 fn effect_of(path: &str) -> Option<Effect> {
@@ -164,7 +167,8 @@ mod tests {
             .get_subcommands()
             .filter(|sub| sub.get_name() != "help")
             .collect();
-        if subs.is_empty() {
+        // A parent that runs without a subcommand is itself a command.
+        if subs.is_empty() || (!prefix.is_empty() && !command.is_subcommand_required_set()) {
             out.insert(prefix.to_owned());
         }
         for sub in subs {

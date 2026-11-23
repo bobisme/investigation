@@ -12,6 +12,82 @@ pub const MAX_JSON_BYTES: usize = 16 * 1024 * 1024;
 /// Deepest nesting, in JSON Pointer segments, the `json_pointer` reader accepts.
 pub const MAX_JSON_DEPTH: usize = 64;
 
+/// The strict JSON parser `json_pointer` selectors resolve with.
+pub const JSON_POINTER_PARSER: &str = "serde_json-strict-v1";
+
+/// How the core can validate one selector type against retained bytes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeValidation {
+    /// [`resolve`] checks it against the retained bytes.
+    Native,
+    /// [`resolve`] checks it only when the cited artifact is the exact blob
+    /// the selector names; otherwise it needs an attributed validation.
+    NativeForExactBlob,
+    /// The core checks its shape only; validation needs `selector.attest`.
+    AttestationOnly,
+}
+
+/// What [`resolve`] can check for one selector type, and with which readers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub struct SelectorSupport {
+    /// The wire `type` of the selector.
+    pub selector: &'static str,
+    pub validation: NativeValidation,
+    /// Declared readers or parsers the core resolves this selector with.
+    pub readers: &'static [&'static str],
+}
+
+/// The selector types and how this build validates each. A test resolves an
+/// instance of every type and fails when this table and [`resolve`] disagree.
+pub const SELECTOR_SUPPORT: &[SelectorSupport] = &[
+    SelectorSupport {
+        selector: "whole",
+        validation: NativeValidation::Native,
+        readers: &[],
+    },
+    SelectorSupport {
+        selector: "byte_range",
+        validation: NativeValidation::Native,
+        readers: &[],
+    },
+    SelectorSupport {
+        selector: "text_lines",
+        validation: NativeValidation::Native,
+        readers: &[crate::store::ingest::TEXT_PARSER_VERSION],
+    },
+    SelectorSupport {
+        selector: "text_quote",
+        validation: NativeValidation::Native,
+        readers: &[crate::store::ingest::TEXT_PARSER_VERSION],
+    },
+    SelectorSupport {
+        selector: "json_pointer",
+        validation: NativeValidation::Native,
+        readers: &[JSON_POINTER_PARSER],
+    },
+    SelectorSupport {
+        selector: "table_cell",
+        validation: NativeValidation::Native,
+        readers: &[TABLE_CSV_READER, TABLE_TSV_READER],
+    },
+    SelectorSupport {
+        selector: "code_span",
+        validation: NativeValidation::NativeForExactBlob,
+        readers: &[],
+    },
+    SelectorSupport {
+        selector: "time_window",
+        validation: NativeValidation::AttestationOnly,
+        readers: &[],
+    },
+    SelectorSupport {
+        selector: "external_selector",
+        validation: NativeValidation::AttestationOnly,
+        readers: &[],
+    },
+];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextDerivative {
     pub encoding: String,
@@ -173,10 +249,7 @@ pub fn resolve(
             }
         }
         SelectorKind::JsonPointer { pointer, parser } => {
-            if parser
-                .as_deref()
-                .is_some_and(|p| p != "serde_json-strict-v1")
-            {
+            if parser.as_deref().is_some_and(|p| p != JSON_POINTER_PARSER) {
                 return Err(SelectorError::Unavailable(
                     "requested JSON parser is unavailable",
                 ));
@@ -500,5 +573,90 @@ mod tests {
             verify_quote(Some(b"a  b"), "a b", None, None).unwrap(),
             QuoteResult::NotFound
         );
+    }
+
+    /// Every selector type, built to succeed when the core can check it.
+    /// The match in `type_of` is exhaustive, so a new selector type cannot
+    /// compile without a decision here and in [`SELECTOR_SUPPORT`].
+    fn sample(name: &str, blob: &[u8]) -> SelectorKind {
+        let value = match name {
+            "whole" => serde_json::json!({"type": "whole"}),
+            "byte_range" => serde_json::json!({"type": "byte_range", "start": 0, "end": 1}),
+            "text_lines" => serde_json::json!({"type": "text_lines", "start_line": 1,
+                "end_line": 1, "encoding": "utf-8", "parser_version": "v1"}),
+            "text_quote" => serde_json::json!({"type": "text_quote", "exact": "k"}),
+            "json_pointer" => serde_json::json!({"type": "json_pointer", "pointer": ""}),
+            "table_cell" => serde_json::json!({"type": "table_cell", "table": "t",
+                "row_index": 0, "column": "k", "extraction_version": TABLE_CSV_READER}),
+            "code_span" => serde_json::json!({"type": "code_span", "repository": "r",
+                "commit": "c", "blob_digest": crate::journal::hash_bytes(blob), "path": "p",
+                "start_line": 1, "end_line": 1}),
+            "time_window" => serde_json::json!({"type": "time_window", "start": "0",
+                "end": "1", "unit": "s", "coordinate_origin": "o", "channel": "c"}),
+            "external_selector" => serde_json::json!({"type": "external_selector",
+                "namespace": "n", "schema_uri": "u", "schema_version": "1", "value": {}}),
+            other => panic!("no sample for selector type {other}"),
+        };
+        let kind: SelectorKind = serde_json::from_value(value).unwrap();
+        assert_eq!(type_of(&kind), name);
+        kind
+    }
+
+    fn type_of(kind: &SelectorKind) -> &'static str {
+        match kind {
+            SelectorKind::Whole
+            | SelectorKind::ByteRange { .. }
+            | SelectorKind::TextLines { .. }
+            | SelectorKind::TextQuote { .. }
+            | SelectorKind::JsonPointer { .. }
+            | SelectorKind::TableCell { .. }
+            | SelectorKind::TimeWindow { .. }
+            | SelectorKind::CodeSpan { .. }
+            | SelectorKind::ExternalSelector { .. } => kind.type_name(),
+        }
+    }
+
+    #[test]
+    fn the_support_table_matches_what_resolve_checks() {
+        let json = br#"{"k":1}"#;
+        let csv = b"k\n1\n";
+        let text = TextDerivative {
+            encoding: "utf-8".into(),
+            parser_version: "v1".into(),
+        };
+        let mut names: Vec<_> = SELECTOR_SUPPORT.iter().map(|s| s.selector).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            SELECTOR_SUPPORT.len(),
+            "duplicate selector rows"
+        );
+        assert_eq!(names.len(), 9, "every selector type has one row");
+        for support in SELECTOR_SUPPORT {
+            let bytes: &[u8] = match support.selector {
+                "table_cell" => csv,
+                _ => json,
+            };
+            let kind = sample(support.selector, bytes);
+            let resolved = resolve(Some(bytes), &kind, Some(&text), 1024);
+            match support.validation {
+                NativeValidation::Native => {
+                    assert!(resolved.is_ok(), "{}: {resolved:?}", support.selector);
+                }
+                NativeValidation::NativeForExactBlob => {
+                    assert!(resolved.is_ok(), "{}: {resolved:?}", support.selector);
+                    assert!(matches!(
+                        resolve(Some(b"other"), &kind, Some(&text), 1024),
+                        Err(SelectorError::Unavailable(_))
+                    ));
+                }
+                NativeValidation::AttestationOnly => assert!(
+                    matches!(resolved, Err(SelectorError::Unavailable(_))),
+                    "{}: {resolved:?}",
+                    support.selector
+                ),
+            }
+        }
     }
 }

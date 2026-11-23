@@ -24,8 +24,10 @@ const CONFIG_FILE: &str = "investigation.toml";
 pub const POINTER_FILE: &str = "README.txt";
 const GENESIS_FILE: &str = "state/workspace.json";
 const LOCK_FILE: &str = "state/locks/commit.lock";
-const WORKSPACE_VERSION: WorkspaceVersion = WorkspaceVersion::V1;
-const RECORD_FAMILY: RecordSchemaFamily = RecordSchemaFamily::V0Alpha;
+/// The workspace marker version this build creates and opens.
+pub const WORKSPACE_VERSION: WorkspaceVersion = WorkspaceVersion::V1;
+/// The record schema family this build creates and opens.
+pub const RECORD_FAMILY: RecordSchemaFamily = RecordSchemaFamily::V0Alpha;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WorkspaceVersion {
@@ -130,6 +132,55 @@ pub struct FilesystemInfo {
     pub kind: FilesystemKind,
     pub name: String,
     pub magic: Option<u64>,
+}
+
+/// How the support matrix (docs/support-matrix.md) treats a filesystem.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SupportLevel {
+    /// Workspaces open and write.
+    Enabled,
+    /// Workspaces open and write, but the storage does not survive a reboot.
+    TestUse,
+    /// `init` and `open` refuse the workspace.
+    Refused,
+}
+
+/// The support decision for one filesystem and the reason for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct FilesystemSupport {
+    pub level: SupportLevel,
+    pub reason: &'static str,
+}
+
+impl FilesystemInfo {
+    /// The support decision `init` and `open` enforce for this filesystem.
+    pub fn support(&self) -> FilesystemSupport {
+        let (level, reason) = match self.kind {
+            FilesystemKind::Local if matches!(self.name.as_str(), "tmpfs" | "ramfs") => (
+                SupportLevel::TestUse,
+                "a RAM-backed filesystem: workspaces work but disappear on reboot",
+            ),
+            FilesystemKind::Local => (SupportLevel::Enabled, "a recognized local Linux filesystem"),
+            FilesystemKind::Network => (
+                SupportLevel::Refused,
+                "a network filesystem: no-replace publication can fail with EINVAL and file locking is unreliable there, so canonical state could fork or be overwritten",
+            ),
+            FilesystemKind::Fuse => (
+                SupportLevel::Refused,
+                "a FUSE filesystem: its publication, locking and sync semantics depend on the userspace server and are not qualified for durable writes",
+            ),
+            FilesystemKind::Unknown => (
+                SupportLevel::Refused,
+                "an unrecognized filesystem: its publication, locking and sync semantics are unknown",
+            ),
+            FilesystemKind::UnsupportedPlatform => (
+                SupportLevel::Refused,
+                "durable writes are qualified on Linux only; this platform has no publication or sync test evidence",
+            ),
+        };
+        FilesystemSupport { level, reason }
+    }
 }
 
 /// Filesystem checks are injectable so refusal can be tested before init makes
@@ -449,6 +500,12 @@ impl Workspace {
     /// Find the nearest ancestor containing `investigation.toml`; never walks
     /// descendants or scans the user's home directory.
     pub fn discover(start: &Path) -> Result<Self, WorkspaceError> {
+        Self::open(&Self::locate(start)?)
+    }
+
+    /// The nearest ancestor of `start` holding `investigation.toml`, without
+    /// opening it, so a caller can diagnose a workspace `open` would refuse.
+    pub fn locate(start: &Path) -> Result<PathBuf, WorkspaceError> {
         let start = absolute_lexical(start)?;
         let mut candidate = if start.is_file() {
             start.parent().unwrap_or(Path::new("/")).to_path_buf()
@@ -458,7 +515,7 @@ impl Workspace {
         loop {
             let config = candidate.join(CONFIG_FILE);
             if config.is_file() {
-                return Self::open(&candidate);
+                return Ok(candidate);
             }
             match candidate.parent() {
                 Some(parent) if parent != candidate => candidate = parent.to_path_buf(),
@@ -730,7 +787,7 @@ fn local_filesystem_name(magic: u64) -> &'static str {
 }
 
 fn require_supported_filesystem(info: &FilesystemInfo) -> Result<(), WorkspaceError> {
-    if info.kind == FilesystemKind::Local {
+    if info.support().level != SupportLevel::Refused {
         return Ok(());
     }
     Err(WorkspaceError::UnsupportedFilesystem {
@@ -1183,6 +1240,42 @@ mod tests {
             }),
             Err(WorkspaceError::UnsupportedFilesystem { .. })
         ));
+    }
+
+    #[test]
+    fn support_levels_agree_with_the_refusal_init_and_open_enforce() {
+        let info = |kind, name: &str| FilesystemInfo {
+            kind,
+            name: name.into(),
+            magic: None,
+        };
+        for (info, level) in [
+            (info(FilesystemKind::Local, "ext"), SupportLevel::Enabled),
+            (info(FilesystemKind::Local, "tmpfs"), SupportLevel::TestUse),
+            (info(FilesystemKind::Network, "nfs"), SupportLevel::Refused),
+            (info(FilesystemKind::Fuse, "fuse"), SupportLevel::Refused),
+            (
+                info(FilesystemKind::Unknown, "unknown"),
+                SupportLevel::Refused,
+            ),
+            (
+                info(FilesystemKind::UnsupportedPlatform, "macos"),
+                SupportLevel::Refused,
+            ),
+        ] {
+            let support = info.support();
+            assert_eq!(support.level, level, "{info:?}");
+            assert!(!support.reason.is_empty());
+            assert_eq!(
+                require_supported_filesystem(&info).is_err(),
+                level == SupportLevel::Refused,
+                "{info:?}"
+            );
+        }
+        assert_eq!(
+            classify_linux_filesystem(0x0102_1994).support().level,
+            SupportLevel::TestUse
+        );
     }
 
     #[test]

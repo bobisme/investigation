@@ -36,7 +36,8 @@ pub const MAX_EVENT_DEPTH: usize = 64;
 const MAX_SEQUENCE: u64 = 999_999_999_999;
 const GENESIS_VERSION: &str = "inv.case-genesis.v0-alpha";
 const LEGACY_EVENT_VERSION: &str = "inv.event.v0-alpha";
-const EVENT_VERSION: &str = "inv.event.v0-alpha.2";
+/// Version written on every new journal event.
+pub const EVENT_VERSION: &str = "inv.event.v0-alpha.2";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalErrorKind {

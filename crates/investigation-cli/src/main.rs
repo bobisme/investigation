@@ -6,6 +6,7 @@ mod brief_delta;
 mod calibration;
 mod capture;
 mod capture_schema;
+mod doctor;
 mod evidence;
 mod explain;
 mod first_use;
@@ -278,6 +279,9 @@ enum Commands {
     /// Publish the working vault and inspect its health and drift.
     #[command(subcommand, after_help = vault::AFTER_HELP)]
     Vault(vault::VaultCommand),
+    /// Report versions, capabilities, limits, filesystem support and workspace health.
+    #[command(after_help = doctor::AFTER_HELP)]
+    Doctor(doctor::Args),
 }
 
 #[derive(Subcommand)]
@@ -379,6 +383,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Onboard => onboard::run(&global),
         Commands::Guide(args) => guide::show(args, &global),
         Commands::Method(command) => guide::method(command, &global),
+        Commands::Doctor(args) => doctor::run(args, &global),
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
@@ -431,7 +436,8 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Init { .. }
                 | Commands::Onboard
                 | Commands::Guide(_)
-                | Commands::Method(_) => {
+                | Commands::Method(_)
+                | Commands::Doctor(_) => {
                     unreachable!("workspace-independent command")
                 }
             }

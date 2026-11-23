@@ -21,7 +21,7 @@ use crate::store::ingest::acquisition::AcquisitionCursor;
 // Version 2 added acquisitions; version 3 added the record dependency index;
 // version 4 adds full-text search over labelled record text. Older indexes are
 // rebuilt.
-const INDEX_USER_VERSION: u32 = 4;
+pub const INDEX_USER_VERSION: u32 = 4;
 /// Rows read from the full-text index for one query, before canonical checks.
 pub const MAX_SEARCH_CANDIDATES: usize = 5_000;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
