@@ -716,6 +716,7 @@ pub fn enumerate_gaps(
         }
     }
 
+    measurement_flag_gaps(state, case_id, &mut gaps);
     deduplicate_and_sort(&mut gaps);
     Ok(GapInventory {
         schema_version: "inv.gaps.v1".into(),
@@ -1064,6 +1065,48 @@ fn is_time_sensitive(record: &Record) -> bool {
             .extensions
             .get("inv.preservation_deadline")
             .is_some_and(|value| !value.is_null())
+}
+
+/// One advisory gap per measurement flag, keyed by the flag ID and the records
+/// it is about. These never block; they point at fields worth recording.
+fn measurement_flag_gaps(state: &State, case_id: Id, gaps: &mut Vec<Gap>) {
+    for flag in crate::measurement_flags::case_flags(state, case_id) {
+        let subject = flag.subject_ref;
+        let comparison = subject.id.kind() == Kind::Comparison;
+        let mut read_set = flag.related_refs.clone();
+        read_set.extend(flag.fields.iter().map(|field| field.record_ref));
+        gaps.push(make_gap(GapFields {
+            rule_id: &flag.flag_id,
+            subject_refs: std::iter::once(subject)
+                .chain(flag.related_refs.iter().copied())
+                .collect(),
+            read_set,
+            status: GapStatus::ReadyToAnalyze,
+            reason: &flag.reason,
+            prerequisites: vec![prerequisite(
+                "measurement_conditions",
+                PrerequisiteState::Unknown,
+                crate::measurement_flags::ADVISORY_NOTICE,
+                vec![subject],
+            )],
+            suggested_operation: match subject.id.kind() {
+                Kind::Observation => Some("measurement.assess"),
+                Kind::Comparison => Some("comparison.revise"),
+                _ => None,
+            },
+            unresolved_fields: flag.fields.iter().map(|field| field.path.clone()).collect(),
+            outcome_branches: vec![],
+            decision_effect: if comparison {
+                "could_flip_choice"
+            } else {
+                "context_only"
+            },
+            time_sensitive: false,
+            creation_sequence: state
+                .revision(subject)
+                .map_or(0, |record| record.header.acceptance_sequence),
+        }));
+    }
 }
 
 fn deduplicate_and_sort(gaps: &mut Vec<Gap>) {

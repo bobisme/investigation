@@ -179,6 +179,76 @@
         }
       ]
     },
+    "Knowledge10": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/StatisticPopulation"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge11": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/StatisticCombination"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "Knowledge2": {
       "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
       "oneOf": [
@@ -429,6 +499,41 @@
         }
       ]
     },
+    "Knowledge9": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Statistic"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "LoadLoop": {
       "oneOf": [
         {
@@ -547,6 +652,17 @@
             }
           ],
           "description": "Raw samples, flat or carrying their repetition level and order."
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge9"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What the reported value summarizes, such as a quantile of the samples.\nDescriptive only: the core never computes the statistic."
         },
         "tool_identity": {
           "anyOf": [
@@ -1056,6 +1172,106 @@
         "clock_quality"
       ],
       "type": "object"
+    },
+    "Statistic": {
+      "additionalProperties": false,
+      "description": "The summary statistic a reported value states.",
+      "properties": {
+        "combination": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge11"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How values from separate runs were combined into this one, if they were."
+        },
+        "kind": {
+          "$ref": "#/$defs/StatisticKind"
+        },
+        "population": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge10"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Which attempts the statistic is computed over."
+        },
+        "quantile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DecimalString"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Quantile level strictly between 0 and 1, such as `0.99`, with at most\nsix fractional digits. Required for a quantile and refused otherwise."
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "StatisticCombination": {
+      "oneOf": [
+        {
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "single_run",
+          "description": "Computed from one run.",
+          "type": "string"
+        },
+        {
+          "const": "pooled_samples",
+          "description": "Computed from the raw samples of several runs together.",
+          "type": "string"
+        },
+        {
+          "const": "merged_histograms",
+          "description": "Computed from mergeable histograms of several runs.",
+          "type": "string"
+        },
+        {
+          "const": "averaged_run_values",
+          "description": "The mean of a value computed separately for each run.",
+          "type": "string"
+        }
+      ]
+    },
+    "StatisticKind": {
+      "enum": [
+        "quantile",
+        "mean",
+        "minimum",
+        "maximum",
+        "other"
+      ],
+      "type": "string"
+    },
+    "StatisticPopulation": {
+      "oneOf": [
+        {
+          "const": "completed_attempts",
+          "description": "Only attempts whose outcome was observed.",
+          "type": "string"
+        },
+        {
+          "const": "all_attempts",
+          "description": "Every started attempt, with unfinished or excluded attempts counted.",
+          "type": "string"
+        }
+      ]
     },
     "TrialOrder": {
       "enum": [

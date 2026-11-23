@@ -26,6 +26,7 @@ pub mod header;
 pub mod identity;
 pub mod input;
 pub mod measurement_fields;
+pub mod measurement_flags;
 pub mod measurement_ops;
 pub mod method_pack;
 pub mod method_pack_ops;

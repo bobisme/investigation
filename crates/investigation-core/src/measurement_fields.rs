@@ -88,6 +88,10 @@ pub struct MeasurementFields {
     /// Limits of these measurement conditions.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub limitations: Vec<String>,
+    /// What the reported value summarizes, such as a quantile of the samples.
+    /// Descriptive only: the core never computes the statistic.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub statistic: Option<Knowledge<Statistic>>,
 }
 
 /// A decimal quantity with its unit.
@@ -97,6 +101,59 @@ pub struct Quantity {
     pub value: DecimalString,
     pub unit: String,
 }
+
+/// The summary statistic a reported value states.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Statistic {
+    pub kind: StatisticKind,
+    /// Quantile level strictly between 0 and 1, such as `0.99`, with at most
+    /// six fractional digits. Required for a quantile and refused otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quantile: Option<DecimalString>,
+    /// Which attempts the statistic is computed over.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub population: Option<Knowledge<StatisticPopulation>>,
+    /// How values from separate runs were combined into this one, if they were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub combination: Option<Knowledge<StatisticCombination>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatisticKind {
+    Quantile,
+    Mean,
+    Minimum,
+    Maximum,
+    Other,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatisticPopulation {
+    /// Only attempts whose outcome was observed.
+    CompletedAttempts,
+    /// Every started attempt, with unfinished or excluded attempts counted.
+    AllAttempts,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum StatisticCombination {
+    /// Computed from one run.
+    SingleRun,
+    /// Computed from the raw samples of several runs together.
+    PooledSamples,
+    /// Computed from mergeable histograms of several runs.
+    MergedHistograms,
+    /// The mean of a value computed separately for each run.
+    AveragedRunValues,
+    Other,
+}
+
+/// Most fractional digits a quantile level may state.
+pub const MAX_QUANTILE_FRACTION_DIGITS: usize = 6;
 
 /// Raw samples. A flat array is accepted; it carries no repetition level or
 /// acquisition order beyond its array position.
@@ -298,6 +355,9 @@ impl MeasurementFields {
             &format!("{path}/observation_window"),
         )?;
         quantity(self.warmup.as_ref(), &format!("{path}/warmup"))?;
+        if let Some(Knowledge::Known(statistic)) = &self.statistic {
+            statistic.validate(&format!("{path}/statistic/value"))?;
+        }
         if let Some(set) = &self.samples {
             samples(set, &format!("{path}/samples"))?;
         }
@@ -353,6 +413,45 @@ impl MeasurementFields {
         }
         Ok(())
     }
+}
+
+impl Statistic {
+    fn validate(&self, path: &str) -> Result<(), Failure> {
+        match (self.kind, &self.quantile) {
+            (StatisticKind::Quantile, Some(level)) if quantile_level(level).is_some() => Ok(()),
+            (StatisticKind::Quantile, _) => Err(invalid(
+                &format!("{path}/quantile"),
+                format!(
+                    "A quantile states its level strictly between 0 and 1 with at most {MAX_QUANTILE_FRACTION_DIGITS} fractional digits, such as 0.99."
+                ),
+            )),
+            (_, Some(_)) => Err(invalid(
+                &format!("{path}/quantile"),
+                "Only a quantile statistic states a quantile level.",
+            )),
+            (_, None) => Ok(()),
+        }
+    }
+
+    /// The quantile level, when this is a quantile with a well-formed level.
+    pub fn quantile_level(&self) -> Option<f64> {
+        match (self.kind, &self.quantile) {
+            (StatisticKind::Quantile, Some(level)) => quantile_level(level),
+            _ => None,
+        }
+    }
+}
+
+/// A level `0.d…` with 1 to [`MAX_QUANTILE_FRACTION_DIGITS`] digits, not all zero.
+fn quantile_level(level: &DecimalString) -> Option<f64> {
+    let fraction = level.as_str().strip_prefix("0.")?;
+    if fraction.is_empty()
+        || fraction.len() > MAX_QUANTILE_FRACTION_DIGITS
+        || fraction.bytes().all(|byte| byte == b'0')
+    {
+        return None;
+    }
+    level.as_str().parse().ok()
 }
 
 impl AttemptCounts {
@@ -496,6 +595,11 @@ mod tests {
             "observation_window": {"state": "known", "value": {"value": "300", "unit": "s"}},
             "warmup": {"state": "known", "value": {"value": "30", "unit": "s"}},
             "sample_count": {"state": "known", "value": 3},
+            "statistic": {"state": "known", "value": {
+                "kind": "quantile", "quantile": "0.99",
+                "population": {"state": "known", "value": "all_attempts"},
+                "combination": {"state": "known", "value": "single_run"}
+            }},
             "samples": {"shape": "leveled", "unit": "ms", "samples": [
                 {"value": "10.1", "order": {"state": "known", "value": 0},
                  "build": {"state": "known", "value": "b41"},
@@ -544,6 +648,7 @@ mod tests {
             "warmup": unknown, "sample_count": unknown, "trial_order": unknown,
             "load_model": unknown, "environment_identity": unknown,
             "tool_identity": unknown, "instrumentation_changed": unknown,
+            "statistic": unknown,
             "attempts": {"started": {"count": unknown, "definition": unknown}}
         });
         let fields: MeasurementFields = input::decode(&value).unwrap();
@@ -590,6 +695,26 @@ mod tests {
             (
                 json!({"environment_identity": {"state": "known", "value": {}}}),
                 "/measurement/environment_identity/value",
+            ),
+            (
+                json!({"statistic": {"state": "known", "value": {"kind": "quantile"}}}),
+                "/measurement/statistic/value/quantile",
+            ),
+            (
+                json!({"statistic": {"state": "known", "value": {"kind": "quantile", "quantile": "1.0"}}}),
+                "/measurement/statistic/value/quantile",
+            ),
+            (
+                json!({"statistic": {"state": "known", "value": {"kind": "quantile", "quantile": "0.000"}}}),
+                "/measurement/statistic/value/quantile",
+            ),
+            (
+                json!({"statistic": {"state": "known", "value": {"kind": "quantile", "quantile": "0.9999999"}}}),
+                "/measurement/statistic/value/quantile",
+            ),
+            (
+                json!({"statistic": {"state": "known", "value": {"kind": "mean", "quantile": "0.5"}}}),
+                "/measurement/statistic/value/quantile",
             ),
             (
                 json!({"workload": {"state": "known", "value": " "}}),

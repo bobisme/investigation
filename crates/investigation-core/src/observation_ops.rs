@@ -354,7 +354,8 @@ fn add(payload: ObservationAddPayload, context: &mut OperationContext<'_>) -> Re
     let run_ref = resolve_run(context, run_ref)?;
     let body = accepted_body(add, context)?;
     let body = with_metadata(body, Some("active"), run_ref, None, None)?;
-    context.create(Kind::Observation, body)?;
+    let created = context.create(Kind::Observation, body)?;
+    crate::measurement_flags::warn_recorded(context, created);
     Ok(())
 }
 
@@ -384,7 +385,8 @@ fn correct(
     // Decode the previous body before update so malformed history is never
     // replaced by a fresh valid image.
     let _ = old_body;
-    context.update(reference, body)?;
+    let corrected = context.update(reference, body)?;
+    crate::measurement_flags::warn_recorded(context, corrected);
     Ok(())
 }
 

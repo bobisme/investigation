@@ -10,7 +10,7 @@ use investigation_core::{
     decision_ops::{self, EffectiveDecision},
     header::display_title,
     identity::{Id, Kind},
-    measurement_ops, objection_policy,
+    measurement_flags, measurement_ops, objection_policy,
     review::EffectiveDisposition,
     review_ops, source_ops,
     state::Record,
@@ -326,6 +326,10 @@ fn project_record(
             );
         }
         _ => {}
+    }
+    // Advisory measurement flags: never a gate, never a validity change.
+    if let Some(report) = measurement_flags::record_flags(&replay.state, record) {
+        out.insert("measurement_flags".into(), json!(report));
     }
     // Withdrawal is labeled wherever evidence material is read; it is not erasure.
     if matches!(

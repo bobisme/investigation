@@ -631,7 +631,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             ok,
             |p: ComparisonInput, c| {
                 let b = compare(c, p)?;
-                c.create(Kind::Comparison, body(b)?)?;
+                let created = c.create(Kind::Comparison, body(b)?)?;
+                crate::measurement_flags::warn_recorded(c, created);
                 Ok(())
             },
         ),
@@ -659,7 +660,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                     ));
                 }
                 next.change_reason = Some(p.reason);
-                c.update(p.comparison_ref, body(next)?)?;
+                let revised = c.update(p.comparison_ref, body(next)?)?;
+                crate::measurement_flags::warn_recorded(c, revised);
                 Ok(())
             },
         ),
