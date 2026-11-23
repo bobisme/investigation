@@ -1,0 +1,882 @@
+[
+  {
+    "id": "436af09c-7ea0-4d6f-be4f-d30be456e9ae",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "eeb85e4b-d9df-4d8d-8606-2c40d873c852",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "8f1918cb-cbbe-4517-9f19-df77daff00f0",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "85dab4f2-6ee0-4940-9eae-af4b48b5c99f",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "6da14613-e172-4bce-a401-bca32f51d299",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "95444f35-08a9-4312-9de3-1ee8cddd68ab",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "6720e8f6-76c3-40f4-a797-c4a5d29cc033",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "26174ae4-3493-429a-be2f-c951e21b5965",
+    "correct": {
+      "current_disposition": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "invented_independent_verification": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "f28b4db6-0367-49cd-a81d-66091d1d3667",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "76525c0d-4a14-4e8d-85ec-b5e96a711b30",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": true
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.5,
+    "missed_warranted": 2
+  },
+  {
+    "id": "4655ce68-12d4-4508-b0b7-cdc7bb12d718",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 5
+  },
+  {
+    "id": "bb07fc7d-ca03-4807-b630-415b1f8c746e",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "ddd9fa76-6c0b-4756-9d96-781ff7b854c0",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "25175e9b-2bd9-4831-9364-3fc28c4f2d7b",
+    "correct": {
+      "current_disposition": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "invented_independent_verification": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "58e160a6-a56e-4b66-8634-ab5c2a7814bc",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "eab05c53-06c6-4e70-a59f-cdc8122ae45e",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "c7fb7321-0d67-47ed-a4b6-b24770b45bc1",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "16e93f10-95da-4fca-a872-7b840f68b8b0",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "90573497-d2ab-4bbc-9210-df1a9517dbdd",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "62ba3a4d-1a27-4322-a781-6df89d13cb9d",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "671deb65-58b2-4d2d-9476-3720236251b3",
+    "correct": {
+      "current_disposition": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "invented_independent_verification": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "94bbee7b-26fb-4651-be20-b5de3cf52f3d",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "333ee1be-c5f8-4ce0-9973-9ad6c2659b00",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "59229ec4-370a-4948-835e-a221edc64c77",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "4ead2b5a-303c-4b4f-b5c9-d34bf7f0ab14",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": true
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.5,
+    "missed_warranted": 0
+  },
+  {
+    "id": "4b05d064-1fd0-4a62-8942-61e7275410dc",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.2,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 4
+  },
+  {
+    "id": "1d86658e-4080-4ba9-8169-3e86acec925a",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "7f0db4fb-1f90-46fc-9897-f6adf4a0727e",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "8092075a-793f-4f61-86d4-42084acd38ca",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "91cde9ae-8736-43f1-aec0-9f121fb77ce1",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "d6484779-2f92-492b-9ab6-d4e665523e61",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "039d3d03-2aa0-41b0-a79c-d3d1c2e4660e",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "94eb0c72-9d18-4328-b545-981b4ea87732",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "ae3fe296-de6e-4c68-9436-802c4ca00ea3",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "418b7497-fade-4bb5-aafe-266d543c7902",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "8bd1ddd3-4699-49c3-8eb5-6bdf7101ad23",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": true
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.5,
+    "missed_warranted": 3
+  },
+  {
+    "id": "e22ebec5-93aa-4c08-841a-30af76b529a0",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "e82d834e-f5e3-425c-b2ed-2ab858c89f8d",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "1be20d5e-3fa6-4457-9546-8bc6fcb1e1e9",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "56d8e644-7c75-4ec5-9cf2-5acdb8bc59f3",
+    "correct": {
+      "current_disposition": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "invented_independent_verification": false
+    },
+    "accuracy": 0.75,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "ba892361-6ffe-4b33-8f85-2904d9c612f8",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": true
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.5,
+    "missed_warranted": 0
+  },
+  {
+    "id": "0e721144-75e6-4a28-8e6a-651284e1c7f3",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "2d0f8191-63b2-4651-ba72-d393d4ae5337",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "7af45b3d-7930-4277-9312-fb8797adf455",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "fd2137e1-64d6-49cd-934f-685050d00bc4",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "fd97b555-76e5-4e55-9291-73726d585bf2",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 1.0,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 0
+  },
+  {
+    "id": "20ccee23-60bb-4d1c-9ea6-6f22b7ed5177",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": false,
+      "material_limitation": false,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "f53f3a8d-914e-40e8-ac5a-a8fc4f7a0bb2",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  },
+  {
+    "id": "f653af1b-3e40-4bab-8542-8b2d72b5166f",
+    "correct": {
+      "current_disposition": false,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "promoted_without_decisive_measurement": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "78f91ea2-6b08-424c-a13e-4e1a7b424be5",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": true,
+      "decisive_citation": true,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.8,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 1
+  },
+  {
+    "id": "64848a63-cef5-4389-9560-c27f64953743",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": false,
+      "material_limitation": true,
+      "discriminating_followup": false
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_mechanism": false
+    },
+    "accuracy": 0.4,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 3
+  },
+  {
+    "id": "da6bb668-a421-4f53-af1b-c33866130199",
+    "correct": {
+      "current_disposition": true,
+      "change_since_review": false,
+      "decisive_citation": true,
+      "material_limitation": false,
+      "discriminating_followup": true
+    },
+    "unwarranted": {
+      "wrong_explanation_or_choice": false,
+      "unbounded_eligibility": false
+    },
+    "accuracy": 0.6,
+    "false_promotion_rate": 0.0,
+    "missed_warranted": 2
+  }
+]

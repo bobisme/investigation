@@ -1,0 +1,19 @@
+{
+  "planned": 52,
+  "terminal": 52,
+  "by_model": {
+    "qwen3.5:9b": 26,
+    "gemma4:26b": 26
+  },
+  "validated": {
+    "investigator": {
+      "budget_exhausted": 10,
+      "completed": 42
+    },
+    "successor": {
+      "answer": 51,
+      "budget_exhausted": 1,
+      "completed": 51
+    }
+  }
+}

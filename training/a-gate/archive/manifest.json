@@ -1,0 +1,336 @@
+{
+  "created_at": "2026-11-23T00:21:09.892678+00:00",
+  "split": "pilot",
+  "seed": 320301,
+  "environment": {
+    "decision_adr_commit": "4a17b0f582214e845bf5f883f37b2daca5db564d",
+    "fixture_commit": "4eeb50a3e44b18a0fe67e31fb1dbe5a4c737fc9f",
+    "binary_commit": "bebd8b0e2ec1e25324f5f909ed95fb87308e5d33",
+    "binary_sha256": "785114714253de4c347a93e125dff64e63e6102d30d31421561b46dfddf24a1a",
+    "runner_sha256": "914fdf222ce42f45ec71df013d28eea748f55fdae40f98266dca7c3a714ba519",
+    "provider": "local-ollama",
+    "models": {
+      "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+      "gemma4:26b": "5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251"
+    },
+    "inference": {
+      "temperature": 0,
+      "num_ctx": 16384,
+      "think": true
+    },
+    "input_metering": "reported prompt evaluation plus cached tokens when the server reports them",
+    "host": {
+      "kernel": "7.2.8-arch1-2",
+      "machine": "x86_64"
+    },
+    "tools": {
+      "ollama": "0.30.0",
+      "python": "3.14.5",
+      "bubblewrap": "bubblewrap 0.13.0",
+      "strace": "strace -- version 7.2",
+      "bash": "GNU bash, version 5.3.20(1)-release (x86_64-pc-linux-gnu)"
+    }
+  },
+  "budgets": {
+    "investigator": {
+      "seconds": 210,
+      "tool_calls": 28,
+      "input_tokens": 180000,
+      "output_tokens": 14000
+    },
+    "successor": {
+      "seconds": 120,
+      "tool_calls": 14,
+      "input_tokens": 95000,
+      "output_tokens": 6000
+    }
+  },
+  "blocks": [
+    {
+      "family": "field-logger-autonomy",
+      "variant": "missing",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 1213636607,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "sprite-linear-export",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 310656293,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "lexicon-workspace-index",
+      "variant": "cosmetic",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 310431791,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "gallery-crate-lookup",
+      "variant": "lookup",
+      "domain": "lookup",
+      "model": "qwen3.5:9b",
+      "block_seed": 251204761,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "museum-audio-packaging",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 1409282754,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "museum-audio-packaging",
+      "variant": "missing",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 1624838619,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "field-logger-autonomy",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 113408616,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "sprite-linear-export",
+      "variant": "missing",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 1674830503,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "edge-cache-coalescing",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 880678191,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "digest-window-fold",
+      "variant": "cosmetic",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 1998684327,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "edge-cache-coalescing",
+      "variant": "missing",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 497690553,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "digest-window-fold",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "block_seed": 1620825587,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "lexicon-workspace-index",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "block_seed": 196165297,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "sprite-linear-export",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 924832492,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "edge-cache-coalescing",
+      "variant": "missing",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 1467374151,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "digest-window-fold",
+      "variant": "cosmetic",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 687957948,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "lexicon-workspace-index",
+      "variant": "cosmetic",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 1736380583,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "museum-audio-packaging",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 1114411947,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "sprite-linear-export",
+      "variant": "missing",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 591762986,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "digest-window-fold",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 1246531403,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "field-logger-autonomy",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 502404052,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "lexicon-workspace-index",
+      "variant": "sufficient",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 770551721,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "edge-cache-coalescing",
+      "variant": "sufficient",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "block_seed": 1084203367,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "field-logger-autonomy",
+      "variant": "missing",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 1733721764,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    },
+    {
+      "family": "gallery-crate-lookup",
+      "variant": "lookup",
+      "domain": "lookup",
+      "model": "gemma4:26b",
+      "block_seed": 669104335,
+      "order": [
+        "inv",
+        "notes"
+      ]
+    },
+    {
+      "family": "museum-audio-packaging",
+      "variant": "missing",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "block_seed": 1125177511,
+      "order": [
+        "notes",
+        "inv"
+      ]
+    }
+  ]
+}

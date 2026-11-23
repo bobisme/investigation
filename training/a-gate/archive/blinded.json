@@ -1,0 +1,822 @@
+[
+  {
+    "id": "436af09c-7ea0-4d6f-be4f-d30be456e9ae",
+    "family": "museum-audio-packaging",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The evidence warrants the recommendation of the Delta-pack format. This represents a change from the provisional recommendation of 'Whole-bundle', as the latter fails the new hard constraint regarding peak installation usage.",
+      "limitation": "The recommendation is contingent on the accuracy of the current measurement for Delta-pack's peak usage (91 MB); if it is found to exceed the 95 MB threshold, it will be disqualified.",
+      "next": "A measurement showing Delta-pack's peak usage exceeds 95 MB would change the answer by eliminating the only remaining viable format."
+    },
+    "citations": {
+      "update.txt": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "eeb85e4b-d9df-4d8d-8606-2c40d873c852",
+    "family": "lexicon-workspace-index",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The selected architecture is Local-shard. While the initial preference (as documented in source.txt) was for Central-index due to its lower maintenance and better latency, the introduction of a new hard requirement regarding data isolation during offline states (update.txt) disqualifies Central-index because it exposes neighbor extracts. Local-shard remains the only eligible option that meets all performance requirements (p95 < 130 ms and nightly re-indexing) and satisfies the isolation mandate.",
+      "limitation": "The selection depends on the assumption that Local-shard's performance metrics (113 ms p95 and 71 min re-indexing) will remain within the required thresholds as data volume increases.",
+      "next": "Monitoring the scalability of Local-shard; if its search latency exceeds 130 ms or its re-index time exceeds the nightly window, a new architecture must be evaluated."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "8f1918cb-cbbe-4517-9f19-df77daff00f0",
+    "family": "sprite-linear-export",
+    "variant": "missing",
+    "answer": {
+      "answer": "The sprite test establishes desaturation in exported sprite sheets is caused by an export conversion mechanism (double linear-space transformation), not a rendering-profile effect. The linear-twice export flag triggers this double linear-space conversion, causing saturation loss independent of ICC profile handling. Export conversion applies transformations during the export process itself; rendering-profile effects would involve ICC profile application at render/display time—the source bytes contain an embedded sRGB ICC profile but its presence does NOT correlate with desaturation pattern (it's preserved through export).",
+      "limitation": "One screenshot comes from a separate preview application with an unknown color pipeline; two preview screenshots used different display profiles and don't establish export change. Measurement extractor discarded exported images—no file-level pixel values available to directly compare flag on/off/restore states at the byte level.",
+      "next": "Retain file bytes under one embedded profile and compare pixels with linear-twice flag on, off, and restored (as suggested in update.txt). This would separate export conversion from display/profile effects by controlling for ICC profile handling while varying only the double-linear-space transformation parameter."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "85dab4f2-6ee0-4940-9eae-af4b48b5c99f",
+    "family": "museum-audio-packaging",
+    "variant": "missing",
+    "answer": {
+      "answer": "DELTA-PACK format (provisional, pending measurement confirmation). Whole-bundle is disqualified by its measured peak of 159 MB exceeding the hard requirement of ≤95 MB. Delta-pack remains as only viable candidate if it can be shown to meet the peak memory constraint while retaining previous copy readable during installation.",
+      "limitation": "Delta-pack's peak memory measurement has not yet been completed; the logger was unavailable in prior tests, so we cannot confirm whether it satisfies the ≤95 MB hard requirement without new measurement while retaining previous copy readable.",
+      "next": "Measure Delta-pack installation peak memory usage while ensuring previous copy remains readable throughout/after interruption. If measured peak ≤ 95 MB → accept DELTA-PACK as final recommendation; if > 95 MB → neither format qualifies and redesign is required for both formats or alternative solution needed."
+    },
+    "citations": {
+      "update.txt": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "id": "6da14613-e172-4bce-a401-bca32f51d299",
+    "family": "edge-cache-coalescing",
+    "variant": "missing",
+    "answer": {
+      "answer": "The duplicate catalog origin requests at cache expiration are explained by the absence of request coalescing during an eight-client burst to an expired cache key. When request coalescing is enabled, there is one upstream request; when it is disabled, there are eight.",
+      "limitation": "There are no raw upstream counters available for the window where request coalescing was enabled, and the span ID match may be unreliable due to unmapped proxy and worker clocks.",
+      "next": "A run using a same-worker off/on/off renewal with synchronized clocks and raw upstream counters that shows whether the request count drops to 1 when coalescing is enabled."
+    },
+    "citations": {
+      "source.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "95444f35-08a9-4312-9de3-1ee8cddd68ab",
+    "family": "museum-audio-packaging",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Recommend Delta-pack as current choice for exhibit audio update format. The provisional recommendation was Whole-bundle, but new hard constraint (peak ≤95 MB during installation) eliminates it since measured peak is 159 MB. Delta-pack peaks at 91 MB with readable prior copy after interruption—meeting all constraints including offline install and rollback capability. Further measurement of a redesigned Whole-bundle could restore its speed preference if redesign meets both peak≤95MB AND rollback conditions, but current evidence warrants selecting the only compliant option: Delta-pack.",
+      "limitation": "Evidence does not confirm whether a Whole-bundle redesign can meet both peak≤95MB AND rollback constraints; current selection is based on Delta-pack being only known-compliant option.",
+      "next": "Observe if investigation tool or additional measurements provide data on redesigned Whole-bundle's peak memory and rollback behavior—result would change answer to recommend Whole-bundle redesign if it meets both constraints, otherwise maintain Delta-pack recommendation."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "6720e8f6-76c3-40f4-a797-c4a5d29cc033",
+    "family": "digest-window-fold",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The daily digest was delivered twice because the 'UTC-key control', which normally uses a canonical subscription-day key to ensure only one producer ledger row is produced, was disabled. This allowed two separate producer ledger rows to be created for the same digest content (matching recipients and hashes) with the same local 01:30 label but different offsets (-04:00 and -05:00). Because the delivery harness processes each ledger row independently and both rows received successful acknowledgments, two identical deliveries occurred. Two producer windows are distinguished from a delivery retry by the following: - Two Producer Windows: Characterized by distinct offsets (e.g., -04:00 and -05:00) for the same label, multiple ledger rows, and each row having its own successful acknowledgment. - Delivery Retry: Characterized by the same offset for the delivery attempt, a single row being re-processed or updated, and potentially repeated acknowledgments for one unchanged producer row.",
+      "limitation": "The investigation is limited to the provided files and does not explain why the UTC-key control was disabled in the first place.",
+      "next": "No further observation is required as the cause and distinction are clearly established by the evidence."
+    },
+    "citations": {}
+  },
+  {
+    "id": "26174ae4-3493-429a-be2f-c951e21b5965",
+    "family": "gallery-crate-lookup",
+    "variant": "lookup",
+    "answer": {
+      "answer": "The east gallery crate accession code is MR-417, as documented in the synthetic museum crate register (source.txt). This finding has been confirmed with no contradictory evidence present in the available records.",
+      "limitation": "The evidence file is read-only (-r--r--r--) with no chain-of-custody or timestamp metadata; it is described as a \"synthetic\" register which may not represent actual physical records. Only three locations (West gallery, East gallery, North store) are documented—other galleries if they exist remain unrecorded in this evidence set.",
+      "next": "No further observations needed—the task objective is complete with a single authoritative record providing the requested accession code for the east gallery crate. The synthetic nature of the register and read-only status constitute inherent limitations, but do not affect the factual answer within the scope of this evidence set."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "f28b4db6-0367-49cd-a81d-66091d1d3667",
+    "family": "museum-audio-packaging",
+    "variant": "missing",
+    "answer": {
+      "answer": "Recommend the Delta-pack format, subject to verification of its peak installation footprint. This is a change from the previous recommendation of Whole-bundle, which was disqualified due to exceeding the new 95 MB peak constraint.",
+      "limitation": "The peak disk/memory usage during the Delta-pack installation process has not yet been measured.",
+      "next": "Measure the peak usage during Delta-pack installation; if it exceeds 95 MB, the recommendation must change to a redesign of the Delta-pack."
+    },
+    "citations": {}
+  },
+  {
+    "id": "76525c0d-4a14-4e8d-85ec-b5e96a711b30",
+    "family": "sprite-linear-export",
+    "variant": "missing",
+    "answer": {
+      "answer": "The sprite test establishes that desaturation is caused by an export conversion effect triggered when the linear-twice flag is enabled (on), as disabling it restores colors matching the source bytes with embedded sRGB ICC profile. The evidence distinguishes this from a rendering-profile display effect because: (1) raw file bytes contain the same embedded profile regardless of preview, and (2) color differences persist across different display profiles when linear-twice varies—indicating export conversion is separate from how previews render on screen. However, full separation requires comparing pixel values at identical conditions with flag toggled while holding display constant; currently only preview screenshots exist under varying profiles.",
+      "limitation": "No file-level pixel values exist for exported images; only preview screenshots are available which used different display profiles, preventing complete separation of export conversion from rendering-profile effects.",
+      "next": "Obtain or generate exported image files with linear-twice flag toggled under identical conditions and same embedded profile to compare raw pixels directly—this would confirm whether desaturation is purely an export conversion effect independent of display profiles."
+    },
+    "citations": {
+      "source.txt": [
+        1,
+        3
+      ],
+      "update.txt": [
+        4
+      ]
+    }
+  },
+  {
+    "id": "4655ce68-12d4-4508-b0b7-cdc7bb12d718",
+    "family": "field-logger-autonomy",
+    "variant": "missing",
+    "answer": null,
+    "citations": {}
+  },
+  {
+    "id": "bb07fc7d-ca03-4807-b630-415b1f8c746e",
+    "family": "digest-window-fold",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Daily digest delivered twice because two independent producer windows operated under different timezone offsets (-04:00 and -05:00), each producing its own ledger row with identical content when UTC-key control was disabled in the test. Distinguishing factor from delivery retry: distinct ledger offsets vs same/sequential retry IDs; retries would show partial/failed then success ack patterns, while producer windows have one complete ack per offset independently recorded by harness.",
+      "limitation": "Cannot distinguish retries solely by acknowledgment patterns since harness records counts per ledger row independently; must rely on offset differences and UTC-key behavior as primary distinguishing factors.",
+      "next": "Monitor production for duplicate deliveries with same offsets to confirm expected multi-offset artifact pattern, or verify UTC-key control is enabled in prod to prevent duplication."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3,
+        4,
+        5
+      ]
+    }
+  },
+  {
+    "id": "ddd9fa76-6c0b-4756-9d96-781ff7b854c0",
+    "family": "field-logger-autonomy",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Choose Relay-stream as the logging arrangement. Depot-sync is ineligible because its retrieval time (18 hours) exceeds the new hard requirement of ≤4 hours when access road is closed, despite being cheaper ($240 vs $410). Relay-stream meets all requirements including 62h battery runtime and 2-hour retrieval.",
+      "limitation": "Battery numbers are from temperature-matched tests; if field conditions differ significantly (e.g., extreme cold), actual runtime may vary and could affect eligibility or require thermal management measures.",
+      "next": "Monitor real-world deployment for: 1) Depot-sync battery life under actual temperatures, 2) Whether a qualifying alternate route becomes available that enables depot pickup within 4 hours, 3) Relay-stream failure modes requiring depot intervention. If any of these occur, re-evaluate eligibility and choice. Otherwise no further measurement needed—Relay-stream remains the only eligible option."
+    },
+    "citations": {
+      "update.txt": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "25175e9b-2bd9-4831-9364-3fc28c4f2d7b",
+    "family": "gallery-crate-lookup",
+    "variant": "lookup",
+    "answer": {
+      "answer": "The accession code of the crate assigned to the east gallery is MR-417.",
+      "limitation": "The information is derived from a single synthetic source (source.txt), which may not represent a complete or verified real-world dataset.",
+      "next": "No further observations are required as the answer is directly stated in the provided source."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "58e160a6-a56e-4b66-8634-ab5c2a7814bc",
+    "family": "lexicon-workspace-index",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Local-shard architecture selected. Both options meet timing criteria (Central-index: 72ms p95, Local-shard: 113ms; both <130ms). New hard requirement prohibits other departments' extracts from being readable when index is offline. Machine-offline review shows Central-index presents raw neighbor extracts (FAILS), while Local-shard exposes only its own team's text (PASSES). Engineering prefers lower ongoing work, but the isolation/security hard requirement overrides this preference—Central-index cannot be selected despite better operator-hours/week because it fails the new security constraint.",
+      "limitation": "Evidence is based on a single machine-offline review snapshot; no additional validation, testing across scenarios, or independent verification of the offline isolation behavior has been performed beyond what's documented in update.txt and source.txt.",
+      "next": "Observe whether any new evidence emerges showing an isolation fix for Central-index (e.g., configuration change that prevents neighbor extract exposure) or if Local-shard demonstrates a vulnerability to exposing other departments' data under different test conditions; such findings would alter the selection by either restoring Central-index eligibility or disqualifying Local-shard."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "eab05c53-06c6-4e70-a59f-cdc8122ae45e",
+    "family": "sprite-linear-export",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The sprite test establishes that desaturation is caused by a double linear-space conversion in the export path when linear-twice flag is enabled (file-level pixel values change from source-matching to dull). This distinguishes it from rendering-profile effects: preview screenshots used different display profiles and do not establish an export change, meaning the observed color shift occurs at file creation time during export processing—not due to how displays render images via their ICC profiles. The embedded sRGB profile in raw bytes is preserved; desaturation happens because of conversion operations applied during export when linear-twice is on.",
+      "limitation": "Evidence is limited to synthetic test images with embedded sRGB ICC profile; generalization to other profiles or non-sprite exports requires additional testing. Also, preview screenshots from separate applications introduce unknown color pipeline variables that were ruled out but not fully characterized.",
+      "next": "Obtain the raw pixel value records for flag on/off/restored states and verify they match (155,82,60), (211,69,44), (155,82,60) as claimed. Also check if any other export paths or profiles show similar double-conversion behavior to confirm generality of the linear-twice flag effect."
+    },
+    "citations": {
+      "source.txt": [
+        1,
+        3
+      ],
+      "update.txt": [
+        1
+      ]
+    }
+  },
+  {
+    "id": "c7fb7321-0d67-47ed-a4b6-b24770b45bc1",
+    "family": "digest-window-fold",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The daily digest was delivered twice because the UTC-key control—which uses a canonical subscription-day key to ensure only one producer ledger row is produced—was disabled. This allowed two separate producer ledger entries to be created for the same digest content (matching recipients and hashes). While these two rows shared the same local 01:30 label (now called an envelope alias), they possessed distinct offsets (-04:00 and -05:00). Because the delivery harness processes ledger rows independently, it processed both rows and recorded a successful acknowledgment for each, resulting in two identical deliveries. To distinguish between two producer windows and a delivery retry: * Two Producer Windows: Characterized by distinct offsets (e.g., -04:00 and -05:00) for the same envelope alias/label, where each row has its own separate acknowledgment. * Delivery Retry: Characterized by a repeated acknowledgment for a single, unchanged producer row (the same offset).",
+      "limitation": "The evidence does not explain the specific reason why the UTC-key control was disabled during the test.",
+      "next": "No further observation is required as the cause and distinction are clearly identified in the provided logs and reports."
+    },
+    "citations": {}
+  },
+  {
+    "id": "16e93f10-95da-4fca-a872-7b840f68b8b0",
+    "family": "edge-cache-coalescing",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Duplicate catalog origin requests at cache expiration are expected behavior when request coalescing is disabled: each of 8 clients makes its own upstream fetch after a cache miss (raw counters show 8). When coalescing IS enabled, only 1 consolidated request occurs. The \"duplicate\" characterization reflects per-client misses rather than an anomaly—provided origin health/p95 remain ordinary as observed in source.txt and confirmed by raw same-worker counters in update.txt showing consistent off/on/off pattern of 8/1/8 requests.",
+      "limitation": "Span ID-based measurements are unreliable due to proxy/worker clock misalignment (update.txt); origin latency elsewhere remains untested per update.txt; separate upstream-slowdown capture used different worker build with no matched control limits generalizability.",
+      "next": "Observe raw same-worker counters after fixing proxy/worker clock mapping—if counts deviate from expected 8:1 ratio when coalescing is off/on, or if origin health/p95 degrades during \"duplicate\" requests, the conclusion would change to indicate a configuration bug or performance issue."
+    },
+    "citations": {
+      "source.txt": [
+        3
+      ],
+      "update.txt": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "90573497-d2ab-4bbc-9210-df1a9517dbdd",
+    "family": "field-logger-autonomy",
+    "variant": "missing",
+    "answer": {
+      "answer": "Provisional: Relay-stream (eligibility pending). Depot-sync is INELIGIBLE per new hard requirement (18h pickup > 4h max when road closed). Relay-stream's eligibility depends on end-to-end road-closure timing test at target workload. Further measurement WILL change the choice - either confirming Relay-stream as sole viable option or eliminating both if it also fails retrieval timing.",
+      "limitation": "No measured data exists for Relay-stream's retrieval time under road closure conditions; eligibility is purely hypothetical pending test results.",
+      "next": "Conduct end-to-end road-closure timing measurement on Relay-stream at target workload to determine if it meets 4-hour retrieval requirement, which would either confirm selection or eliminate both options."
+    },
+    "citations": {
+      "source.txt": [
+        1,
+        2
+      ],
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "62ba3a4d-1a27-4322-a781-6df89d13cb9d",
+    "family": "lexicon-workspace-index",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Selected Architecture: Local-shard. Disposition: Initial preference was Central-index (better performance/lower ongoing work), but the new hard requirement prohibiting other departments' extracts from being readable when index offline eliminates it as eligible. Only Local-shard passes all requirements including offline isolation. Engineering's lower-work preference is secondary to mandatory constraints.",
+      "limitation": "Selection depends on accurate characterization of Central-index's offline behavior; if its raw neighbor extracts exposure is a test artifact rather than inherent architecture property, re-evaluation warranted. Also contingent on Local-shard maintaining p95 < 130ms and nightly re-index capability.",
+      "next": "Monitor whether Central-index can be modified to pass offline isolation (if feasible) or if the hard requirement about neighbor extract visibility is relaxed; either change would warrant reconsideration of selection between architectures."
+    },
+    "citations": {
+      "update.txt": [
+        4
+      ]
+    }
+  },
+  {
+    "id": "671deb65-58b2-4d2d-9476-3720236251b3",
+    "family": "gallery-crate-lookup",
+    "variant": "lookup",
+    "answer": {
+      "answer": "The accession code of the crate assigned to the east gallery is MR-417.",
+      "limitation": "The evidence is limited to a single synthetic source text and does not confirm if this is the most current version or if other records exist.",
+      "next": "No further observations are required as the answer is explicitly stated in the provided source."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "94bbee7b-26fb-4651-be20-b5de3cf52f3d",
+    "family": "lexicon-workspace-index",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "Local-shard is selected over Central-index due to a new hard requirement prohibiting another department's extracts from being readable when index is offline. Pre-review preference was Central-index, but it fails the new isolation test (presents raw neighbor extracts), while Local-shard passes (exposes only its own team's text). Selection changed from pre-review preference because of this mandatory compliance issue that cannot be resolved by latency adjustments alone.",
+      "limitation": "The limitation is that we have no evidence of whether either architecture can be modified to pass the new hard requirement, or what operational changes would enable such compliance beyond selecting Local-shard as-is.",
+      "next": "Observe if Central-index's offline isolation behavior can be demonstrated to change (e.g., via configuration update), which could restore its eligibility and potentially reverse selection back to it given better performance metrics; also monitor whether any architectural modifications are possible that would satisfy the new requirement."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "333ee1be-c5f8-4ce0-9973-9ad6c2659b00",
+    "family": "edge-cache-coalescing",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The disabling of request coalescing explains the duplicate catalog origin requests at cache expiration; when disabled, an eight-client burst against an expired cache key triggers eight upstream requests instead of one.",
+      "limitation": "The findings are specific to the observed load pattern (eight-client burst), and the effect on origin latency under other conditions remains untested.",
+      "next": "An experiment demonstrating duplicate requests occurring while request coalescing is explicitly enabled would change the answer."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "59229ec4-370a-4948-835e-a221edc64c77",
+    "family": "museum-audio-packaging",
+    "variant": "missing",
+    "answer": {
+      "answer": "Recommend 'Delta-pack'. The recommendation has shifted from 'Whole-bundle' to 'Delta-pack' because 'Whole-bundle' failed the new 95 MB peak usage constraint (measuring 159 MB), whereas 'Delta-pack' is still a viable candidate pending verification of its peak usage.",
+      "limitation": "The peak installation usage for 'Delta-pack' has not yet been measured to confirm it stays below the 95 MB threshold.",
+      "next": "Measure the peak usage of the 'Delta-pack' installation process while retaining the previous copy; if the peak exceeds 95 MB, a redesign will be required."
+    },
+    "citations": {}
+  },
+  {
+    "id": "4ead2b5a-303c-4b4f-b5c9-d34bf7f0ab14",
+    "family": "museum-audio-packaging",
+    "variant": "missing",
+    "answer": {
+      "answer": "Delta-pack (pending measurement confirmation). Whole-bundle definitively fails the new hard constraint: its measured installation peak of 159 MB exceeds the required ≤95 MB limit per update.txt. Delta-pack's final footprint is acceptable at 62 MB and it satisfies interrupted-update-readability, but its installation peak must be confirmed via measurement to determine eligibility. If measured peak ≤95 MB → recommend Delta-pack; if >95 MB → reject/redesign needed.",
+      "limitation": "Delta-pack's installation peak is unknown because the peak logger was unavailable during prior testing; measurement must be performed to confirm eligibility under the ≤95 MB hard constraint.",
+      "next": "Measure Delta-pack installation peak while retaining previous copy readable (per update.txt directive). Result: if peak ≤95 MB → accept and deploy Delta-pack as recommended format; if >95 MB → reject both options or redesign required, changing the recommendation from \"Delta-pack pending\" to \"no acceptable option without redesign\"."
+    },
+    "citations": {
+      "update.txt": [
+        1,
+        2,
+        4
+      ]
+    }
+  },
+  {
+    "id": "4b05d064-1fd0-4a62-8942-61e7275410dc",
+    "family": "edge-cache-coalescing",
+    "variant": "missing",
+    "answer": {
+      "answer": "The duplication of catalog origin requests (8 requests for an 8-client burst) at cache expiration is explained by the disabling of request coalescing. When request coalescing is enabled, only one upstream request is made; when it is disabled, eight requests are made.",
+      "limitation": "The evidence for a single request during the 'coalescing enabled' window is potentially unreliable because of clock misalignment between the proxy and worker, and no raw upstream counter survived for that specific window (update.txt).",
+      "next": "An experiment showing multiple upstream requests occurring even when request coalescing is enabled, or demonstrating that the eight requests in the 'off' windows are not directly attributable to the client burst."
+    },
+    "citations": {
+      "source.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "1d86658e-4080-4ba9-8169-3e86acec925a",
+    "family": "digest-window-fold",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Two producer windows are distinguished from a delivery retry by their ledger offsets: separate production events have distinct offset values (-04:00 and -05:00) with one immutable acknowledgment each, while a retry would show repeated acknowledgments on the same unchanged row. The duplicate digest deliveries occurred because two independent producers (different time-zone offsets) generated valid rows for the same synthetic fold interval; turning off UTC-key control restored both rows rather than creating retries.",
+      "limitation": "No direct observation of a retry scenario; distinction inferred from offset pattern rather than explicit retry log evidence in available files.",
+      "next": "Search for any logs or test artifacts that show repeated acknowledgment patterns on the same row to confirm retry behavior, or examine harness output showing how message labels are generated vs actual sends."
+    },
+    "citations": {
+      "source.txt": [
+        2
+      ],
+      "update.txt": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "7f0db4fb-1f90-46fc-9897-f6adf4a0727e",
+    "family": "field-logger-autonomy",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Depot-sync is no longer the warranted choice; Relay-stream must now be selected due to a new hard requirement: when access road closes, retrieval must complete within 4 hours. Under measured conditions, Depot-sync requires an 18-hour road pickup (fails), while Relay-stream retrieves in 2 hours (passes). Both still meet the 48+ hour duration requirement. The previous preference for lower cost is overridden by this hard constraint that makes Depot-sync ineligible under current evidence.",
+      "limitation": "Battery duration numbers are from temperature-matched tests only, not representative of all field conditions. If actual thermal loads differ significantly, both options' durations may vary proportionally (cost ratio unchanged), but retrieval times under real road-closure scenarios also need confirmation if alternate routes exist or relay failures occur.",
+      "next": "Measure retrieval performance under actual field temperature and confirm whether a qualifying alternate route exists that could reduce Depot-sync's 18-hour pickup time below the 4-hour threshold, OR observe any relay-stream failure modes that would make it ineligible despite its faster normal retrieval."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "8092075a-793f-4f61-86d4-42084acd38ca",
+    "family": "field-logger-autonomy",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Relay-stream is the chosen arrangement. It is the only option that meets both hard requirements (minimum 48 hours of power and maximum 4 hours for retrieval during road closures). This is a change from the pre-review preference of Depot-sync, which was based on an earlier set of requirements. Further measurement could change this choice if Relay-stream's battery duration falls below 48 hours under actual field temperatures.",
+      "limitation": "The battery duration for Relay-stream (62h) is based on temperature-matched tests rather than actual field conditions, meaning extreme temperatures could reduce it below the 48-hour requirement.",
+      "next": "Measuring battery performance under actual field temperatures; if Relay-stream's duration falls below 48 hours, the current choice would no longer be valid."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "91cde9ae-8736-43f1-aec0-9f121fb77ce1",
+    "family": "edge-cache-coalescing",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Duplicate catalog origin requests at cache expiration are explained by lack of active request coalescing when an eight-client burst reaches an expired cache key. Evidence shows: (1) synthetic API makes 8 upstream requests on expired cache, warm-key control sends zero; (2) experiment sheet reports one upstream with coalescing enabled vs eight disabled; (3) raw same-worker counters show pattern of 8/1/8 for off/on/off states after reversal—confirming the coalescing mechanism controls duplicate behavior. The duplicates occur because request coalescing was not active during the expired-key burst, allowing all eight clients to hit origin independently rather than being merged into a single upstream call.",
+      "limitation": "The investigation tool requires workspace initialization before additional evidence can be ingested or examined; current analysis relies solely on source.txt and update.txt which describe but do not contain raw request logs, span IDs, or timing data that would independently verify the coalescing mechanism's behavior at cache expiration.",
+      "next": "Initialize workspace with investigation init ./casework --no-vault then ingest source files via source add, observe counter patterns and clock alignment effects on duplicate requests, and check if any additional logs or metrics in state/ directories provide independent verification of the coalescing mechanism's activation status during expired-key bursts."
+    },
+    "citations": {
+      "source.txt": [
+        1
+      ],
+      "update.txt": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "d6484779-2f92-492b-9ab6-d4e665523e61",
+    "family": "lexicon-workspace-index",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The selected architecture is Local-shard. While Central-index was initially preferred due to its lower maintenance (1 hour/week vs 3 hours/week) and better performance (72ms p95 vs 113ms p95), it is no longer an eligible option because it fails a new hard requirement for data isolation during offline states. Local-shard is the only architecture that meets all current requirements, including the mandate that another department's extracts must not be readable when the index is offline.",
+      "limitation": "The selection of Local-shard is contingent on it continuing to meet the latency (< 130ms p95) and re-indexing (one per night) requirements. If these performance metrics degrade, the architecture would no longer be viable.",
+      "next": "Monitor for a demonstrated isolation change in Central-index under the same offline test conditions; if implemented, Central-index would become the preferred choice again due to its lower maintenance and higher performance."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "039d3d03-2aa0-41b0-a79c-d3d1c2e4660e",
+    "family": "digest-window-fold",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The daily digest was delivered twice because two distinct producer windows operated with different local offsets (-04:00 and -05:00), each producing its own ledger row for the same envelope alias (displayed label). These are not a delivery retry. A retry would repeat an unchanged producer row's acknowledgment; here, acknowledgments bind separately to two rows from separate windows. The UTC-key control unified them into one canonical subscription-day key when enabled; disabling it restored both rows showing they originate from different producers/windows rather than being retries of the same send attempt.",
+      "limitation": "No direct log or trace evidence showing producer window identifiers, retry flags, or timestamp sequences that would definitively rule out all alternative explanations for duplicate deliveries beyond offset differences.",
+      "next": "Obtain the working record and ingest source.txt/update.txt as case artifacts to inspect ledger row metadata (producer IDs, offsets, acknowledgment bindings) directly; observe whether retry markers exist in delivery harness logs that would distinguish a true retry from separate producer window outputs."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ],
+      "update.txt": [
+        1,
+        2
+      ]
+    }
+  },
+  {
+    "id": "94eb0c72-9d18-4328-b545-981b4ea87732",
+    "family": "sprite-linear-export",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The sprite test establishes that desaturation is an export conversion artifact caused by a double linear-space transformation (via the linear-twice flag) in the exporter's internal color management pipeline, NOT from rendering-profile interpretation. The embedded sRGB ICC profile does not cause export-time desaturation; it only affects display-time interpretation. Export conversion occurs during file creation via intentional workflow transformations and is controlled by flags like linear-twice. Rendering-profile effects occur at render/viewer stage when interpreting ICC profiles and would persist regardless of linear-conversion flag states, being dependent on display profile settings rather than exporter pipeline choices. Evidence chain: (1) Source contains embedded sRGB ICC profile but this alone doesn't cause export desaturation; (2) When linear-twice disabled: colors match source (control test passes); (3) File-level pixel values remain consistent across on/off/restored states with same embedded profile [(155,82,60), (211,69,44), (155,82,60)]; (4) Different display profiles in screenshots don't explain the change. Key distinction: Export conversion = exporter's internal processing pipeline triggered by flags; Rendering-profile effect = ICC profile interpretation at render/viewer stage dependent on display settings.",
+      "limitation": "Test results are confounded by external software's undocumented color handling: different display profiles in preview applications mean RGB comparisons from rendered files cannot definitively attribute changes to exporter alone without file-level byte analysis (though that was performed). An unobserved case of \"export with unchanged embedded profile and flag off that still has dull pixels\" would weaken the explanation.",
+      "next": "Validate findings against known color pipeline applications only; document any additional control tests in working record if needed to isolate exporter behavior from preview application pipelines."
+    },
+    "citations": {
+      "source.txt": [
+        2
+      ],
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "ae3fe296-de6e-4c68-9436-802c4ca00ea3",
+    "family": "edge-cache-coalescing",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The disabling (disanchoring) of request coalescing explains the duplicate catalog origin requests at cache expiration. When request coalescing is enabled, only one upstream request is made; when disabled, eight upstream requests are made (one for each client in the burst).",
+      "limitation": "The reliability of span ID matches is questionable due to clock misalignment between proxy and worker, although independent counter data provides verification.",
+      "next": "A run showing multiple upstream requests occurring while request coalescing was enabled, supported by independent counters."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "418b7497-fade-4bb5-aafe-266d543c7902",
+    "family": "sprite-linear-export",
+    "variant": "missing",
+    "answer": {
+      "answer": "The sprite test establishes that there is a visible difference in saturation between previews, but it fails to definitively establish whether this desaturation is caused by an export conversion or a rendering-profile effect; the two effects remain \"unseparated.\" The distinction between the two is as follows: * Export Conversion: The potential alteration of color values during the export process, specifically attributed to the linear-twice flag which may perform a \"double linear-space conversion.\" * Rendering-Profile Effect: The variation in how different preview applications interpret the embedded sRGB ICC profile based on their specific color pipelines or display profiles. The test is inconclusive because the use of different preview applications with unknown/different pipelines means the observed change could be due to either the file's contents being changed during export or simply being rendered differently by the viewer.",
+      "limitation": "The lack of pixel-level analysis (as the measurement extractor discarded the exported images) prevents independent verification of whether the file's actual color values were altered during export.",
+      "next": "Perform a pixel-level comparison of the exported files (with the flag on, off, and restored) while keeping the rendering environment/display profile constant to isolate the export conversion effect."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "8bd1ddd3-4699-49c3-8eb5-6bdf7101ad23",
+    "family": "edge-cache-coalescing",
+    "variant": "missing",
+    "answer": {
+      "answer": "Duplicate catalog origin requests at cache expiration are caused by request coalescing being disabled. When enabled: 1 upstream request (coalesced). When disabled: 8 separate upstream requests per client burst, creating duplicates. The warm-key control confirms valid caches prevent any duplicate behavior entirely (0 requests). This conclusion is warranted because the evidence shows consistent correlation between coalescing state and request count at cache expiration across multiple conditions tested in source.txt.",
+      "limitation": "No raw upstream counter survived for the coalescing-on window (update.txt). Additionally, span ID match may be unreliable due to proxy/worker clock misalignment. The separate upstream-slowdown capture used a different worker build with no matched control limits generalizability beyond that specific environment/build combination.",
+      "next": "Run same-worker off/on/off renewal test with upstream counters enabled (as suggested in update.txt) to verify whether duplicate requests fall only when coalescing is on, or if another root cause exists independent of the worker build/environment differences noted above."
+    },
+    "citations": {
+      "source.txt": [
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "e22ebec5-93aa-4c08-841a-30af76b529a0",
+    "family": "museum-audio-packaging",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The recommended exhibit audio update format is Delta-pack. It is the only option that satisfies all current constraints, specifically the new requirement for a peak installation footprint of less than 95 MB and the atomicity requirement (the existing copy must remain readable after an interrupted update). The Whole-bundle format fails the peak usage constraint with a measured 159 MB.",
+      "limitation": "The recommendation is contingent on the current measurement of Delta-pack's peak usage (91 MB) remaining below the 95 MB threshold.",
+      "next": "A future measurement showing Delta-pack's peak usage exceeding 95 MB would disqualify it and change the recommendation."
+    },
+    "citations": {}
+  },
+  {
+    "id": "e82d834e-f5e3-425c-b2ed-2ab858c89f8d",
+    "family": "sprite-linear-export",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The sprite test establishes that desaturation occurs during the export process when the linear-twice flag is enabled, causing a \"double linear-scale conversion\" that alters the raw pixel values of the exported sprite sheet (e.g., from 211, 69, 44 to 155, 82, 60). The test distinguishes export conversion from a rendering-profile effect by comparing file-level pixel data against visual screenshots. While screenshots are subject to varying color pipelines in different preview applications (rendering-profile effects), the analysis of the exported files' raw bytes proves that the change is an intrinsic part of the export transformation logic (export conversion) because the pixel values themselves are altered regardless of the viewer.",
+      "limitation": "The evidence relies on a specific synthetic test case with a known source swatch; it does not account for all possible export flags or complex color space interactions beyond the 'linear-twice' flag.",
+      "next": "Investigate if other export flags or different ICC profiles (other than sRGB) produce similar desaturation effects during the double linear conversion."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "1be20d5e-3fa6-4457-9546-8bc6fcb1e1e9",
+    "family": "digest-window-fold",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The daily digest was delivered twice because the UTC-key control—which uses a canonical subscription-day key to ensure only one producer ledger row is produced—was disabled. This allowed two separate producer ledger entries to be created for the same digest content (matching recipients and hashes). While these two rows shared the same local 01:30 label (now called an envelope alias), they possessed distinct offsets (-04:00 and -05:00). Because the delivery harness processes ledger rows independently, it processed both rows and recorded a successful acknowledgment for each, resulting in two identical deliveries. To distinguish between two producer windows and a delivery retry: * Two Producer Windows: Characterized by distinct offsets (e.g., -04:00 and -05:00) for the same envelope alias/label, where each row has its own separate acknowledgment. * Delivery Retry: Characterized by a repeated acknowledgment for a single, unchanged producer row (the same offset).",
+      "limitation": "The evidence does not explain the specific reason why the UTC-key control was disabled during the test.",
+      "next": "No further observation is required as the cause and distinction are clearly identified in the provided logs and reports."
+    },
+    "citations": {}
+  },
+  {
+    "id": "56d8e644-7c75-4ec5-9cf2-5acdb8bc59f3",
+    "family": "gallery-crate-lookup",
+    "variant": "lookup",
+    "answer": {
+      "answer": "The accession code of the crate assigned to the east gallery is MR-417, as stated in source.txt line 3: \"East gallery crate accession code: MR-417.\" This record appears complete and uncontradicted within /work.",
+      "limitation": "Only source.txt is available in /work; working record is empty, so no additional constraints or cross-references can be verified. The register may not represent all crates if other files exist outside this directory.",
+      "next": "If new evidence emerges (e.g., a different crate assignment for the east gallery), it would need to override line 3 of source.txt directly, which appears definitive as a \"signed-off transfer sheet.\""
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "ba892361-6ffe-4b33-8f85-2904d9c612f8",
+    "family": "field-logger-autonomy",
+    "variant": "missing",
+    "answer": {
+      "answer": "The current choice is Relay-stream, though its selection is contingent/pending verification. Depot-sync is disqualified because its 18-hour retrieval time fails the new hard requirement of retrieval within 4 hours during road closures. Relay-stream remains the only viable option among those evaluated, provided its retrieval time is confirmed to be $\\le$ 4 hours.",
+      "limitation": "The retrieval time for Relay-stream under road-closure conditions is currently unknown.",
+      "next": "Measuring the retrieval time of Relay-stream; if it meets the $\\le$ 4-hour requirement, the choice is confirmed as Relay-stream. If it exceeds 4 hours, a new arrangement must be investigated."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "0e721144-75e6-4a28-8e6a-651284e1c7f3",
+    "family": "museum-audio-packaging",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "Delta-pack is recommended. This replaces provisional Whole-bundle selection after measurement revealed it fails the new hard constraint (159 MB peak > 95 MB limit). Delta-pack qualifies with measured 91 MB peak ≤ 95 MB, readable prior copy at interruption. Further measurement CAN affect this: if Delta-pack peaks above 95 MB or a Whole-bundle redesign meets both constraints simultaneously, selection would change.",
+      "limitation": "Further measurement of Delta-pack could show peak > 95 MB, which would eliminate it per update.txt: \"A measurement showing Delta-pack above 95 MB would eliminate it.\" Also, a Whole-bundle redesign meeting both constraints could restore eligibility.",
+      "next": "Measure Delta-pack installation again to verify ≤ 95 MB peak; if > 95 MB measured → eliminates Delta-pack requiring alternative or redesign consideration. If Whole-bundle redesigned achieves ≤ 95 MB AND interrupt safety, it becomes eligible for speed preference reconsideration."
+    },
+    "citations": {
+      "update.txt": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "2d0f8191-63b2-4651-ba72-d393d4ae5337",
+    "family": "edge-cache-coalescing",
+    "variant": "missing",
+    "answer": {
+      "answer": "Duplicate catalog origin requests at cache expiration are explained by unreliable span ID matching due to proxy-worker clock misalignment, combined with missing raw upstream counter data for the request-coalescing-on window. The surviving off-window counts (eight) reflect normal per-client behavior when coalescing is disabled; no definitive evidence of actual duplicates exists because the on-window counters were lost and span IDs cannot be trusted across systems without time mapping.",
+      "limitation": "The strongest remaining limitation is that no raw upstream counters exist for when request coalescing was enabled, preventing verification of whether duplicate requests actually occur in that condition versus being an artifact of unreliable span ID matching due to clock misalignment.",
+      "next": "Run a same-worker off/on/off renewal test with preserved upstream counters (as suggested in update.txt) to determine if duplicates fall only when coalescing is on, which would change the answer from \"clock alignment issue\" to either confirming duplicate behavior under coalescing or proving it's purely an observation artifact."
+    },
+    "citations": {
+      "source.txt": [
+        4
+      ],
+      "update.txt": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "7af45b3d-7930-4277-9312-fb8797adf455",
+    "family": "lexicon-workspace-index",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The selected architecture is Local-shard. While Central-index was the initial preference due to lower maintenance (1 hour/week vs 3 hours/week) and better performance (72ms vs 113ms p95), it fails the newly introduced hard requirement for data isolation during offline states. Local-shard is the only architecture that meets all current hard requirements, including latency, re-indexing frequency, infrastructure, and data isolation.",
+      "limitation": "The selection is currently constrained by the data isolation requirement; if Central-index can demonstrate an isolation fix under the same offline test conditions, the choice would revert to Central-index.",
+      "next": "Observe whether Central-index can demonstrate a successful isolation change/fix under the same offline test parameters."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "fd2137e1-64d6-49cd-934f-685050d00bc4",
+    "family": "field-logger-autonomy",
+    "variant": "missing",
+    "answer": {
+      "answer": "Relay-stream is provisionally selected pending road-closure timing measurement; Depot-sync is ineligible due to 18h retrieval time exceeding the new ≤4h hard requirement from update.txt. Further measurement IS required and would change the choice: if Relay-stream's end-to-end road-closure timing at target workload is ≤4h, select it (only eligible option); if >4h, both options are ineligible requiring alternative solution or requirement relaxation.",
+      "limitation": "No actual measurement data exists for Relay-stream's end-to-end road-closure timing at target workload; must conduct new test before final selection can be warranted with confidence.",
+      "next": "Conduct end-to-end road-closure timing test for Relay-stream under field conditions (target workload); result ≤4h confirms Relay-stream as sole eligible option, result >4h requires alternative solution or requirement relaxation."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3,
+        4
+      ]
+    }
+  },
+  {
+    "id": "fd97b555-76e5-4e55-9291-73726d585bf2",
+    "family": "lexicon-workspace-index",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "Local-shard selected as translation index architecture. Initial analysis favored Central-index (72ms p95 vs 113ms; lower ongoing work), but new hard requirement from update.txt prohibits another department's extracts being readable when offline—Central-index fails this test, Local-shard passes. Selection changed due to governance addendum invalidating eligibility of previously preferred option despite meeting timing criteria.",
+      "limitation": "Selection relies on offline snapshot review results; production behavior may differ if online/offline boundary conditions or network topology affect isolation guarantees differently than tested. Also assumes no third untested architecture exists that could meet all requirements with better tradeoffs.",
+      "next": "Observe whether Central-index can demonstrate isolation compliance under same offline test (not latency improvements). If proven, selection would revert to preference-based choice favoring lower ongoing work. Alternatively, if governance addendum is rescinded or modified, eligibility criteria change and could restore Central-index consideration."
+    },
+    "citations": {
+      "update.txt": [
+        4
+      ]
+    }
+  },
+  {
+    "id": "20ccee23-60bb-4d1c-9ea6-6f22b7ed5177",
+    "family": "digest-window-fold",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The daily digest was delivered twice because the 'UTC-key control', which normally uses a canonical subscription-day key to ensure only one producer ledger row is produced, was disabled. This allowed two separate producer ledger rows to be created for the same digest content (matching recipients and hashes) with the same local 01:30 label but different offsets (-04:00 and -05:00). Because the delivery harness processes each ledger row independently and both rows received successful acknowledgments, two identical deliveries occurred. Two producer windows are distinguished from a delivery retry by the following: - Two Producer Windows: Characterized by distinct offsets (e.g., -04:00 and -05:00) for the same label, multiple ledger rows, and each row having its own successful acknowledgment. - Delivery Retry: Characterized by the same offset for the delivery attempt, a single row being re-processed or updated, and potentially repeated acknowledgments for one unchanged producer row.",
+      "limitation": "The investigation is limited to the provided files and does not explain why the UTC-key control was disabled in the first place.",
+      "next": "No further observation is required as the cause and distinction are clearly established by the evidence."
+    },
+    "citations": {}
+  },
+  {
+    "id": "f53f3a8d-914e-40e8-ac5a-a8fc4f7a0bb2",
+    "family": "field-logger-autonomy",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The chosen logging arrangement is Relay-stream. This decision is final based on current evidence, as it is the only option that satisfies both hard requirements: a minimum of 48 hours of power autonomy and retrieval within 4 hours during road closures.",
+      "limitation": "The current decision relies on battery durations derived from 'temperature-matched tests' (source.txt). If further measurement under extreme field temperatures reveals that Relay-stream's duration falls below the 48-hour hard requirement, it would no longer be an eligible option.",
+      "next": "Measurement of battery performance under actual field temperature fluctuations is required to confirm if Relay-stream remains a viable and eligible choice."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "f653af1b-3e40-4bab-8542-8b2d72b5166f",
+    "family": "sprite-linear-export",
+    "variant": "missing",
+    "answer": {
+      "answer": "The sprite test establishes only a \"preview difference\" regarding desaturation; it does not definitively prove that the loss of saturation is caused by an export conversion error. The distinction between an export conversion effect (specifically the linear-twice flag) and a rendering-profile effect remains unseparated because the comparison screenshots were taken using different preview applications with different/unknown color pipelines, making the observed desaturation potentially attributable to the display profiles rather than the export process itself.",
+      "limitation": "The lack of file-level pixel values (as the measurement extractor discarded the exported images) prevents a definitive comparison between the flag states.",
+      "next": "Retain file bytes under a single embedded profile and compare pixel values with the linear-twice flag in three states: ON, OFF, and RESTORED."
+    },
+    "citations": {
+      "update.txt": [
+        3
+      ]
+    }
+  },
+  {
+    "id": "78f91ea2-6b08-424c-a13e-4e1a7b424be5",
+    "family": "sprite-linear-export",
+    "variant": "sufficient",
+    "answer": {
+      "answer": "The sprite test establishes that desaturation is caused by an export-time transformation triggered by the linear-twice flag, which implements a double linear-space conversion. This is evidenced by pixel values in the exported file changing from the source value (211, 69, 44) to a different value (155, 82, 60) when the flag is enabled, and reverting to the source value when the flag is disabled or restored. The distinction between export conversion and rendering-profile effect is that the export conversion (the linear-twice flag) actively modifies the pixel data within the exported file, whereas a rendering-profile effect refers to variations in visual appearance caused by different display profiles or application pipelines (as seen in the preview screenshots) without altering the underlying file bytes.",
+      "limitation": "The evidence regarding rendering-profile effects is limited to the observation that certain screenshots were unreliable due to unknown pipelines or different display profiles, rather than a comprehensive study of all possible rendering-profile impacts.",
+      "next": "None."
+    },
+    "citations": {
+      "update.txt": [
+        1,
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "64848a63-cef5-4389-9560-c27f64953743",
+    "family": "digest-window-fold",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The daily digest was delivered twice because two distinct producer execution windows (different UTC offsets -04:00 EST and -05:00 CST) ran within the same local hour, each producing valid acknowledged deliveries with identical content. This is distinguished from a delivery retry by: (1) Producer Windows have multiple distinct ledger row offsets (-04:00 vs -05:00), while retries share the same offset; (2) Each producer window's row has exactly one complete send acknowledgment independently, not showing partial/failed-then-success patterns typical of retries.",
+      "limitation": "The test harness groups rows by message label but does not deduplicate across offset boundaries when UTC-key control is disabled; evidence relies on documentation rather than raw delivery logs or timestamps beyond what's described in the files.",
+      "next": "Check for additional log files, configuration about producer window timing, and whether similar duplicate-delivery patterns occur with other message types to validate this behavior isn't isolated to test feeds."
+    },
+    "citations": {
+      "source.txt": [
+        2,
+        3
+      ]
+    }
+  },
+  {
+    "id": "da6bb668-a421-4f53-af1b-c33866130199",
+    "family": "lexicon-workspace-index",
+    "variant": "cosmetic",
+    "answer": {
+      "answer": "The selected architecture is Local-shard. This represents a change from the initial preference (Central-index) because Central-index no longer meets the hard requirements due to a new data isolation mandate.",
+      "limitation": "The analysis is limited to the two architectures provided; a third architecture meeting all requirements and offering lower maintenance or better performance could be superior.",
+      "next": "A demonstrated isolation change for Central-index under the same offline test would revert the selection to Central-index."
+    },
+    "citations": {
+      "update.txt": [
+        2,
+        3
+      ]
+    }
+  }
+]
