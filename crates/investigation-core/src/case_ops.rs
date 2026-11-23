@@ -285,7 +285,9 @@ fn unresolved_question(
     Ok(())
 }
 
-fn case_for_update(context: &OperationContext<'_>) -> Result<(RevisionRef, CaseBody), Failure> {
+pub(crate) fn case_for_update(
+    context: &OperationContext<'_>,
+) -> Result<(RevisionRef, CaseBody), Failure> {
     let id = context
         .case_id()
         .ok_or_else(|| invalid("Select an existing case."))?;

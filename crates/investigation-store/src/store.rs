@@ -47,6 +47,9 @@ pub mod ingest;
 #[path = "evidence_read.rs"]
 pub mod evidence_read;
 
+#[path = "method_packs.rs"]
+mod method_packs;
+
 #[cfg(test)]
 #[path = "crash_tests.rs"]
 mod crash_tests;
@@ -308,6 +311,7 @@ impl<F: DurableFs> Store<F> {
         let mut projected = original.clone();
         projected.apply(&accepted)?;
         self.verify_promotion_artifacts(&projected, &accepted)?;
+        self.verify_method_pack_adoptions(&accepted)?;
         let case_id = accepted.case_id;
         let transaction_id = ids
             .next_id(Kind::Transaction)

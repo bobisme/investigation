@@ -95,6 +95,10 @@ pub struct CaseBody {
     pub closure: Option<CaseClosureDetails>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub transition_reason: Option<String>,
+    /// Digest-pinned method packs adopted through `method_pack.adopt`. The
+    /// free-text `method_pins` above carry no pack resolution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub adopted_method_packs: Vec<crate::method_pack_ops::MethodPackPin>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -151,6 +155,7 @@ impl CaseCreate {
             closure_outcome: None,
             closure: None,
             transition_reason: None,
+            adopted_method_packs: Vec::new(),
         }
     }
 }

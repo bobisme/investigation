@@ -408,6 +408,7 @@
           "case.close",
           "case.pause",
           "case.reopen",
+          "method_pack.adopt",
           "question.create",
           "question.resolve"
         ],

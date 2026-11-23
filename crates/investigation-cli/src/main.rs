@@ -395,6 +395,9 @@ fn show(
                 id
             )?);
         }
+        if id.kind() == investigation_core::identity::Kind::Case {
+            view["method_packs"] = json!(store.method_packs(&replay.state, case, None)?);
+        }
     }
     if depth == ViewDepth::Full {
         let text = serde_json::to_string_pretty(&view).expect("full view serializes");

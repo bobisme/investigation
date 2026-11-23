@@ -24,6 +24,7 @@ pub mod identity;
 pub mod input;
 pub mod measurement_ops;
 pub mod method_pack;
+pub mod method_pack_ops;
 pub mod observation_ops;
 pub mod retrospective;
 mod retrospective_ops;

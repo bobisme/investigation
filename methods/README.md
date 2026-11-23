@@ -62,3 +62,30 @@ Optional sections:
 - `[[views]]`: `name`, `title`, `view` (a renderer view identifier), optional
   `record_kinds`.
 - `[[reports]]`: `name`, `title`, `template` (a renderer template identifier).
+
+## Adoption per case
+
+Loading a pack does not adopt it. The built-in `general` pack always applies
+and cannot be pinned. Any other pack applies to a case only after an explicit,
+attributed adoption:
+
+1. Retain the pack file through the standard ingest path (`ingest` or
+   `source add`). The case then holds the exact bytes as an Artifact.
+2. Submit `method_pack.adopt` with the exact Artifact revision, the file
+   digest, the `id` and `version` declared in the file and a reason. Include
+   the current case revision in the transaction preconditions. The store loads
+   the retained bytes under the commit lock and rejects the adoption unless
+   they load as the declared pack.
+
+The pin (ID, version, digest, Artifact revision, reason and acceptance
+sequence) is stored on a new Case revision; the journal event carries the
+actor. To move to another revision of a pinned pack, retain the new file and
+adopt it with `replaces` set to the digest that is pinned now. Earlier Case
+revisions keep the pins they had, so work recorded before the change still
+resolves the policy it was made under.
+
+Resolution reads only the retained bytes for the pinned digest, never the
+original path, so editing the file on disk changes nothing for the case. A pin
+whose bytes are missing, altered or no longer loadable is reported as
+unavailable (`show CASE_ID --depth full` lists `method_packs`); recording,
+reading and export continue.

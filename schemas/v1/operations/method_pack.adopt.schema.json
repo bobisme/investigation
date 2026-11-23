@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:method_pack.adopt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Payload for `method_pack.adopt`.",
+  "properties": {
+    "artifact_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact revision of the retained Artifact that holds the original pack file bytes."
+    },
+    "digest": {
+      "$ref": "#/$defs/Digest",
+      "description": "SHA-256 digest of the exact pack file bytes; it must match the Artifact."
+    },
+    "pack_id": {
+      "description": "The `id` declared in the pack file.",
+      "maxLength": 64,
+      "minLength": 1,
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "type": "string"
+    },
+    "replaces": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Digest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Digest currently pinned for this pack ID. Required, and must match, when\nthe case already pins the pack; omit it for a first adoption."
+    },
+    "version": {
+      "description": "The `version` declared in the pack file.",
+      "maxLength": 64,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_ref",
+    "pack_id",
+    "version",
+    "digest",
+    "reason"
+  ],
+  "title": "MethodPackAdopt",
+  "type": "object"
+}

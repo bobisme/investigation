@@ -35,6 +35,7 @@
     "inquiry.freeze": "operations/inquiry.freeze.schema.json",
     "inquiry.retire": "operations/inquiry.retire.schema.json",
     "measurement.assess": "operations/measurement.assess.schema.json",
+    "method_pack.adopt": "operations/method_pack.adopt.schema.json",
     "objection.raise": "operations/objection.raise.schema.json",
     "objection.resolve": "operations/objection.resolve.schema.json",
     "objection.withdraw": "operations/objection.withdraw.schema.json",
@@ -132,6 +133,7 @@
         "case.close",
         "case.pause",
         "case.reopen",
+        "method_pack.adopt",
         "question.create",
         "question.resolve"
       ],
