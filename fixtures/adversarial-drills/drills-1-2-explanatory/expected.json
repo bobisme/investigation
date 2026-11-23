@@ -1,0 +1,90 @@
+{
+  "drills": [
+    "title-only cold start",
+    "stale synopsis"
+  ],
+  "case": {
+    "title": "Nightly export stalls",
+    "mode": "explain"
+  },
+  "synopses": [
+    {
+      "subject": "No batch stalled in the four runs after the lock_timeout change.",
+      "text": "The lock_timeout fix passed: the stall is resolved."
+    },
+    {
+      "subject": "Every stalled batch waited for the table lock.",
+      "text": "Settled: maintenance caused every stall."
+    },
+    {
+      "subject": "Four of twelve export batches stalled in the week of 1 November.",
+      "text": "Settled: the stall count is final and needs no caveat."
+    }
+  ],
+  "cold_start": {
+    "right_question": "Why do nightly report exports stall?",
+    "leading_outcome": "No batch stalled in the four runs after the lock_timeout change.",
+    "lead_gap": {
+      "rule_id": "hypothesis.no_assessment",
+      "status": "requires_source",
+      "subject_titles": [
+        "A slow upstream query blocks the batch."
+      ],
+      "read_set_titles": [
+        "A slow upstream query blocks the batch."
+      ]
+    },
+    "frontier_rules": {
+      "hypothesis.no_assessment": 1,
+      "observation.validity_context_missing": 16
+    },
+    "outcomes": [
+      {
+        "title": "No batch stalled in the four runs after the lock_timeout change.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "unknown",
+        "material_caveat": "Four runs on one night."
+      },
+      {
+        "title": "Completed batches finish in about three seconds.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "unknown",
+        "material_caveat": null
+      },
+      {
+        "title": "Stalls cluster after midnight.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "known",
+        "material_caveat": "Timestamps are wall-clock without attestation."
+      },
+      {
+        "title": "Every stalled batch waited for the table lock.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "unknown",
+        "material_caveat": "The log does not name the lock holder."
+      },
+      {
+        "title": "Four of twelve export batches stalled in the week of 1 November.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "unknown",
+        "material_caveat": "One week of logs from one host."
+      }
+    ]
+  },
+  "stale_synopsis": {
+    "subject": "No batch stalled in the four runs after the lock_timeout change.",
+    "untouched_subject": "Every stalled batch waited for the table lock.",
+    "change": "source.withdraw of the after-change log (update.txt)",
+    "freshness_after": "candidate / needs_review",
+    "summary": "No batch stalled in the four runs after the lock_timeout change. The logged export batches.",
+    "search_term": "resolved",
+    "overview_reason": "`needs_review` because of `withdrawn` at",
+    "evidence_excerpt": "2026-11-08 00:15 export batch 12 completed in 3 s after lock_timeout change",
+    "evidence_use": "withdrawn"
+  }
+}

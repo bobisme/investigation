@@ -1,0 +1,12 @@
+2026-11-01 00:15 export batch 00 stalled 41 s waiting for table lock
+2026-11-01 23:15 export batch 01 completed in 3 s
+2026-11-02 00:15 export batch 02 completed in 3 s
+2026-11-02 23:15 export batch 03 stalled 41 s waiting for table lock
+2026-11-03 00:15 export batch 04 completed in 3 s
+2026-11-03 23:15 export batch 05 completed in 3 s
+2026-11-04 00:15 export batch 06 stalled 41 s waiting for table lock
+2026-11-04 23:15 export batch 07 completed in 3 s
+2026-11-05 00:15 export batch 08 completed in 3 s
+2026-11-05 23:15 export batch 09 stalled 41 s waiting for table lock
+2026-11-06 00:15 export batch 10 completed in 3 s
+2026-11-06 23:15 export batch 11 completed in 3 s

@@ -1,0 +1,12 @@
+database queue: recovery p95 110 s over 30 trials
+database queue: enqueue p99 42 ms over 12 samples
+database queue: estimated cost 300 USD per month
+database queue: migration effort 1 engineer-weeks
+managed queue: recovery p95 140 s over 30 trials
+managed queue: enqueue p99 35 ms over 12 samples
+managed queue: estimated cost 900 USD per month
+managed queue: migration effort 3 engineer-weeks
+dedicated broker: recovery p95 95 s over 30 trials
+dedicated broker: enqueue p99 31 ms over 12 samples
+dedicated broker: estimated cost 1400 USD per month
+dedicated broker: migration effort 6 engineer-weeks

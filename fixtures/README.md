@@ -52,6 +52,22 @@ For each source, the manifest should preserve origin/revision, acquisition, dige
 
 Scenario D (`development/scenario-d-source-research/`) is a source-only family: a primary specification, a trade article that restates it and reports its own bench test, a blog that repeats the article, and a first-party erratum tied to one edition. Each manifest lists `claim_origins` so three acquisitions can trace to one originating claim while every Source and selector stays intact. Variants: `baseline`, `later-edition-twin` (the erratum applies only to a later edition than the named build), and `injected-output` (crawler output with planted instructions that must stay inert data). Run `python3 scripts/check-scenario-d-fixture.py` to evaluate digests, selectors, origin structure, search coverage and the injection sample. See the family's README for roles.
 
+## Adversarial drills 1 and 2
+
+`adversarial-drills/drills-1-2-explanatory/` (nightly export stalls: two export logs, three questions, rival hypotheses, five Conclusions) and `adversarial-drills/drills-1-2-evaluative/` (queue choice: one trial log, three options, one hard and three soft criteria, a proposed Decision and a Conclusion) hold source bytes and an `expected.json` that pins read sets, rule IDs, caveats, freshness labels, summaries and evidence excerpts by title, never by generated ID. `crates/investigation-cli/tests/adversarial_drills.rs` builds each case (at least 40 records) through the CLI with an empty `PATH`.
+
+- Drill 1, title-only cold start: `brief --level compact`, `frontier` and `show --depth title` find the open gap and the question it serves, and every compact Conclusion and Decision shows its material caveat and effective freshness, identical with and without authored synopses.
+- Drill 2, stale synopsis: after a source withdrawal (explanatory) or a hard-threshold change (evaluative), no brief level, delta, `show`, search hit or vault Overview presents the old synopsis as current. `show --depth full`, `explain` and `evidence read` of the cited bytes show the change.
+
+Recorded byte counts (serialized JSON, `cargo test --test adversarial_drills -- --nocapture`, 2026-11-23):
+
+| Variant | Records | Compact brief | Cold path | Title sweep | Full traversal | Full / compact |
+|---|---|---|---|---|---|---|
+| Explanatory | 47 | 14,574 | 22,049 (brief, filtered frontier, 4 reads) | 69,319 | 191,818 | 13.2 |
+| Evaluative | 43 | 15,557 | 25,558 (brief, filtered frontier, 6 reads) | 58,333 | 160,330 | 10.3 |
+
+The test requires the compact brief to be at most a fifth of the full traversal and within 16 KiB, and the cold path to cost less than the full traversal.
+
 ## Adversarial drills 3 and 4
 
 `adversarial-drills/` holds scripted drills from plan §17.7. Each file is a list of steps: `find` (bind a record by ID kind and body fields), `record` (one `inv.command.v1` transaction), `cli`, `audit` (`blindspots`) and `surface` (`next` or `frontier`). Each step can pin expected values. Placeholders such as `{"$": "audit/checks/[check_id=criterion.weight_without_range]/gap_id"}` read earlier bindings, and `{name/id}` inside a path reads one first (`[gap_id=blindspot:criterion.hard_unmeasured:{recovery_guarantee/id}]`), so no file pins a generated ID. The format is documented in `crates/investigation-cli/tests/drills_3_4.rs`, which replays every file through the CLI.

@@ -1,0 +1,4 @@
+2026-11-08 00:15 export batch 12 completed in 3 s after lock_timeout change
+2026-11-08 00:16 export batch 13 completed in 3 s after lock_timeout change
+2026-11-08 00:17 export batch 14 completed in 3 s after lock_timeout change
+2026-11-08 00:18 export batch 15 completed in 3 s after lock_timeout change

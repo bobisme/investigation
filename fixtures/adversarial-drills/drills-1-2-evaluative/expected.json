@@ -1,0 +1,67 @@
+{
+  "drills": [
+    "title-only cold start",
+    "stale synopsis"
+  ],
+  "case": {
+    "title": "Queue choice",
+    "mode": "evaluate"
+  },
+  "synopses": [
+    {
+      "subject": "database queue",
+      "text": "Settled: the database queue passed the recovery criterion; no conditions remain."
+    },
+    {
+      "subject": "The dedicated broker had the lowest enqueue p99 in the trials.",
+      "text": "The broker is the fastest queue."
+    }
+  ],
+  "cold_start": {
+    "right_question": "Which queue should the application use?",
+    "leading_outcome": "database queue",
+    "lead_gap": {
+      "rule_id": "decision.hard_criterion_cell_missing",
+      "status": "requires_source",
+      "subject_titles": [
+        "dedicated broker",
+        "Recovery time"
+      ],
+      "read_set_titles": [
+        "dedicated broker",
+        "Recovery time"
+      ]
+    },
+    "frontier_rules": {
+      "decision.hard_criterion_cell_missing": 1,
+      "observation.validity_context_missing": 12
+    },
+    "outcomes": [
+      {
+        "title": "database queue",
+        "effective_status": "proposed",
+        "freshness": "proposed / current",
+        "contradiction": "unknown",
+        "material_caveat": "The proposed choice depends on unresolved hard criteria."
+      },
+      {
+        "title": "The dedicated broker had the lowest enqueue p99 in the trials.",
+        "effective_status": "candidate",
+        "freshness": "candidate / current",
+        "contradiction": "unknown",
+        "material_caveat": "Twelve samples do not establish a production p99."
+      }
+    ]
+  },
+  "stale_synopsis": {
+    "subject": "database queue",
+    "untouched_subject": "The dedicated broker had the lowest enqueue p99 in the trials.",
+    "change": "criterion.amend of Recovery time to at most 100 seconds",
+    "freshness_after": "proposed / needs_review",
+    "summary": "Retest recovery if the threshold changes A maintainable queue",
+    "search_term": "conditions",
+    "overview_reason": "`needs_review` because of `material_revision` at",
+    "evidence_excerpt": "database queue: recovery p95 110 s over 30 trials",
+    "evidence_use": "in_use"
+  }
+}
