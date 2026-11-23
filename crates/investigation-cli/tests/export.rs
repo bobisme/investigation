@@ -519,7 +519,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
     assert_eq!(value["error"]["path"], "--kind");
     assert_eq!(
         value["error"]["expected"]["available"],
-        json!(["case-report"])
+        json!(["case-report", "decision-record"])
     );
     assert!(!out.exists());
     let (exit, value) = run(

@@ -10,7 +10,7 @@ use super::{Facts, citing, comparison::cell, decimal, refs};
 use crate::{RenderError, evidence::prose, note::text_at, text::inline_code};
 
 /// A recorded threshold: measured (operator, value) or qualitative.
-pub(super) fn threshold(value: &Value) -> Option<String> {
+pub(crate) fn threshold(value: &Value) -> Option<String> {
     if value.is_null() {
         return None;
     }

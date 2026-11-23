@@ -31,9 +31,9 @@ use crate::{
 };
 
 /// Most options shown as rows.
-pub(super) const MAX_ROWS: usize = 12;
+pub(crate) const MAX_ROWS: usize = 12;
 /// Most criteria shown as columns.
-pub(super) const MAX_COLUMNS: usize = 8;
+pub(crate) const MAX_COLUMNS: usize = 8;
 const BASIS_CHARS: usize = 60;
 
 /// `### Option-by-criterion comparison` for `question`, or nothing when it
@@ -109,6 +109,54 @@ fn criterion_visible(notes: &NoteContext<'_>, reference: RevisionRef) -> bool {
     option_visible(notes, reference)
 }
 
+/// What one cell records beyond its state: the outcome and value when
+/// recorded, a bounded basis statement for a preference, qualitative or
+/// unknown cell, and the `evidence` count the caller may show. Shared by the vault matrix and the
+/// exported decision record, so both say the same thing about a cell.
+pub(crate) fn cell_details(cell: &TableCell, evidence: usize) -> Vec<String> {
+    let mut details = Vec::new();
+    if let Some(outcome) = cell.outcome {
+        details.push(format!(
+            "outcome {}",
+            table_code(&wire(&wire_word(&outcome)))
+        ));
+    }
+    if let Some(value) = &cell.value {
+        details.push(format!(
+            "{} {}",
+            table_code(&token(value.decimal.as_str())),
+            table_code(&value.unit)
+        ));
+    }
+    match &cell.basis {
+        Some(
+            ComparisonBasis::Preference { statement } | ComparisonBasis::Qualitative { statement },
+        ) => details.push(format!("\"{}\"", inline_text(statement, BASIS_CHARS))),
+        Some(ComparisonBasis::Unknown { reason }) => {
+            details.push(format!("because \"{}\"", inline_text(reason, BASIS_CHARS)));
+        }
+        None => {}
+    }
+    if evidence > 0 {
+        details.push(format!("{evidence} evidence"));
+    }
+    details
+}
+
+/// A Pareto status in words.
+pub(crate) const fn pareto_words(status: ParetoStatus) -> &'static str {
+    match status {
+        ParetoStatus::DisqualifiedHard => "disqualified by a hard criterion",
+        ParetoStatus::StrictlyDominated => {
+            "strictly dominated by another option on every compared criterion"
+        }
+        ParetoStatus::ParetoFrontier => "on the Pareto frontier",
+        ParetoStatus::UncertainFrontier => {
+            "on the frontier only provisionally, because some cells are uncertain"
+        }
+    }
+}
+
 /// One cell: its state in words, the outcome and value when recorded, a
 /// bounded basis statement for a preference, qualitative or unknown cell,
 /// and a link to each comparison.
@@ -153,32 +201,7 @@ fn cell_text(
     if !content_shown {
         return Ok(text);
     }
-    let mut details = Vec::new();
-    if let Some(outcome) = cell.outcome {
-        details.push(format!(
-            "outcome {}",
-            table_code(&wire(&wire_word(&outcome)))
-        ));
-    }
-    if let Some(value) = &cell.value {
-        details.push(format!(
-            "{} {}",
-            table_code(&token(value.decimal.as_str())),
-            table_code(&value.unit)
-        ));
-    }
-    match &cell.basis {
-        Some(
-            ComparisonBasis::Preference { statement } | ComparisonBasis::Qualitative { statement },
-        ) => details.push(format!("\"{}\"", inline_text(statement, BASIS_CHARS))),
-        Some(ComparisonBasis::Unknown { reason }) => {
-            details.push(format!("because \"{}\"", inline_text(reason, BASIS_CHARS)));
-        }
-        None => {}
-    }
-    if !cell.evidence_refs.is_empty() {
-        details.push(format!("{} evidence", cell.evidence_refs.len()));
-    }
+    let details = cell_details(cell, cell.evidence_refs.len());
     if !details.is_empty() {
         text.push_str(": ");
         text.push_str(&details.join(", "));
@@ -186,7 +209,7 @@ fn cell_text(
     Ok(text)
 }
 
-fn state_words(state: CellState) -> &'static str {
+pub(crate) fn state_words(state: CellState) -> &'static str {
     match state {
         CellState::Measured => "measured",
         CellState::MeasuredUnverified => "measured, evidence unverified",
@@ -256,16 +279,7 @@ fn standing(
         return Ok(());
     };
     for entry in statuses.iter().take(MAX_ROWS) {
-        let words = match entry.status {
-            ParetoStatus::DisqualifiedHard => "disqualified by a hard criterion",
-            ParetoStatus::StrictlyDominated => {
-                "strictly dominated by another option on every compared criterion"
-            }
-            ParetoStatus::ParetoFrontier => "on the Pareto frontier",
-            ParetoStatus::UncertainFrontier => {
-                "on the frontier only provisionally, because some cells are uncertain"
-            }
-        };
+        let words = pareto_words(entry.status);
         let _ = writeln!(f.out, "- {}: {words}", notes.link(entry.option_ref.id)?);
     }
     if statuses.len() > MAX_ROWS {

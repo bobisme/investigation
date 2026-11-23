@@ -65,6 +65,7 @@
 //! inputs on [`ExportInput`], never by reading the workspace while planning.
 
 mod case_report;
+mod decision_record;
 mod inclusion;
 mod manifest;
 mod snapshot;
@@ -214,7 +215,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Report,
         purpose: "Record an evaluative decision, ADR-like.",
         contains: "Context, options, hard constraints, criteria, evidence, choice, tradeoffs, consequences, revisit trigger, unresolved warnings.",
-        renderer: None,
+        renderer: Some(&decision_record::DecisionRecord),
     },
     KindSpec {
         name: "method-retrospective",

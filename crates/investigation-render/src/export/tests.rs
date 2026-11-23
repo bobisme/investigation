@@ -11,6 +11,10 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
         ("export/inclusion.rs", include_str!("inclusion.rs")),
         ("export/manifest.rs", include_str!("manifest.rs")),
         ("export/case_report.rs", include_str!("case_report.rs")),
+        (
+            "export/decision_record.rs",
+            include_str!("decision_record.rs"),
+        ),
     ];
     let forbidden = [
         ["std", "::fs"].concat(),
@@ -81,7 +85,7 @@ fn the_registry_lists_every_section_15_4_kind_once() {
             "producer-bundle",
         ]
     );
-    assert_eq!(available_kinds(), ["case-report"]);
+    assert_eq!(available_kinds(), ["case-report", "decision-record"]);
     assert!(kind("case-report").is_some_and(KindSpec::available));
     assert!(kind("handoff").is_some_and(|spec| !spec.available()));
     assert!(kind("vault").is_none());
