@@ -47,7 +47,11 @@ use crate::{
 /// v17: a code span whose text starts with `=` or `$=` (after any whitespace,
 /// which Dataview trims) shows that first character as `\u{3d}` or `\u{24}`,
 /// so it never runs as a Dataview inline query or script (W08.18).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v17";
+/// v18: freshness rules version 7 (W10.27): a question answered with a record
+/// that rests on its reader no longer makes that reader `needs_review`, so
+/// effective states, caveats and gaps in case notes change for the same
+/// snapshot.
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v18";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

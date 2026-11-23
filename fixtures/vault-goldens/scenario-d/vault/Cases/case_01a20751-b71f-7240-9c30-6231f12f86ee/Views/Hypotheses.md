@@ -22,6 +22,6 @@ Each explanation's standing, its rivals and how the assessed evidence bears on i
 
 | Hypothesis | Standing | Rival explanations | Contradicting, supporting, non-diagnostic | Assumptions |
 |---|---|---|---|---|
-| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-bce2-7201-8259-367fedfcd589\|The window at build 3.1.4 is 64 frames.]] | `proposed`, effective `needs_review` | 2 rivals | 0 contradicting, 1 supporting, 0 non-diagnostic, 0 other | none recorded |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-bce2-7201-8259-367fedfcd589\|The window at build 3.1.4 is 64 frames.]] | `proposed` | 2 rivals | 0 contradicting, 1 supporting, 0 non-diagnostic, 0 other | none recorded |
 | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c281-7630-87a9-5d791bfe48ad\|No further erratum changes the Edition 3.1 value.]] | `proposed`, effective `needs_review` | 2 rivals | 0 contradicting, 1 supporting, 0 non-diagnostic, 0 other | none recorded |
-| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c38c-7c93-838f-689519183676\|The window at build 3.1.4 is 48 frames.]] | `proposed`, effective `needs_review` | 2 rivals | 0 contradicting, 1 supporting, 0 non-diagnostic, 0 other | none recorded |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c38c-7c93-838f-689519183676\|The window at build 3.1.4 is 48 frames.]] | `proposed` | 2 rivals | 0 contradicting, 1 supporting, 0 non-diagnostic, 0 other | none recorded |

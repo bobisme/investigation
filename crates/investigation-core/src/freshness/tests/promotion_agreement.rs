@@ -109,7 +109,7 @@ fn accept(
 }
 
 /// `review.stale_read_set` gaps and the stale revisions each names.
-fn stale_read_sets(case: &Case) -> BTreeMap<Id, Vec<RevisionRef>> {
+pub(super) fn stale_read_sets(case: &Case) -> BTreeMap<Id, Vec<RevisionRef>> {
     let snapshot = crate::wire::Snapshot {
         sequence: case.state.sequence(),
         head_hash: format!("sha256:{}", "0".repeat(64)).parse().unwrap(),
@@ -127,7 +127,7 @@ fn stale_read_sets(case: &Case) -> BTreeMap<Id, Vec<RevisionRef>> {
 }
 
 /// The gate's verdict on the fixture's stored validation reviews.
-fn reviews_current(case: &Case, f: &Fixture) -> [Result<(), Failure>; 2] {
+pub(super) fn reviews_current(case: &Case, f: &Fixture) -> [Result<(), Failure>; 2] {
     [
         (f.conclusion, f.conclusion_review),
         (f.decision, f.decision_review),

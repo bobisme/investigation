@@ -1189,6 +1189,18 @@ fn walk(variant: &str) -> (Walk, Outcome) {
             "reason": outcomes[1], "evidence_refs": [validated]})
     };
     w.one("question.resolve", resolution);
+    // Naming the validated conclusion as the answer leaves it and its review
+    // current: the question's only new evidence rests on them (freshness
+    // rules version 7, W10.27).
+    let answered = w.show(&validated, "full");
+    assert_eq!(answered["record"]["body"]["status"], "validated");
+    assert_eq!(
+        answered["freshness"]["effective"], "current",
+        "{answered:#}"
+    );
+    assert_eq!(answered["freshness"]["label"], "validated / current");
+    let review = w.show(&answered["record"]["body"]["review_ref"], "full");
+    assert_eq!(review["freshness"]["effective"], "current", "{review:#}");
     let blindspots =
         blindspots_reported(&w, &prior, &restated, &bench, &absence, &claim, &validated);
 
@@ -1332,6 +1344,7 @@ fn blindspots_reported(
     assert!(!invalidated.contains(&id(validated)), "{audit:#}");
     // A second actor's fresh-context review is not self-review only.
     for check in [
+        "promoted.basis_not_current",
         "review.promoted_self_review_only",
         "review.promoted_single_dependence_group",
         "review.source_invalidated",

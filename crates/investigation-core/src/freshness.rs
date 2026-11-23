@@ -48,7 +48,12 @@ use crate::{
 /// promotion closure), and keeps a validation review's membership checks
 /// after its subject changes in substance, so an objection raised after the
 /// review disputes it rather than leaving it only `needs_review`.
-pub const FRESHNESS_RULES_VERSION: u32 = 6;
+/// Version 7 judges a Question revision against the record that reads it: a
+/// resolution whose answer evidence rests on that reader (see
+/// [`resolution_only`]) is benign to it, and the reader inherits nothing
+/// through such a question, so naming a validated conclusion as the answer no
+/// longer makes it, its review or its hypotheses `needs_review`.
+pub const FRESHNESS_RULES_VERSION: u32 = 7;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -853,6 +858,7 @@ fn edge_change(
     state: &State,
     case: Id,
     scope: Option<Id>,
+    reader: &Record,
     edge: &DependencyEdge,
 ) -> Option<(Change, RevisionRef)> {
     let current = state
@@ -864,7 +870,7 @@ fn edge_change(
     // A judgment about a subject stays a record of that subject when the
     // subject is later rejected or superseded; only its claim matters.
     let subject = edge.propagation == Propagation::ChangeOnly && edge.field == "subject_ref";
-    revision_change(state, cited, current, scope, subject)
+    revision_change(state, cited, current, scope, subject, Some(reader))
         .map(|change| (change, current.reference()))
 }
 
@@ -893,6 +899,7 @@ fn revision_change(
     current: &Record,
     scope: Option<Id>,
     subject: bool,
+    reader: Option<&Record>,
 ) -> Option<Change> {
     if current.header.revision == cited.header.revision {
         return None;
@@ -928,10 +935,108 @@ fn revision_change(
     if let Some(trigger) = measurement_change(state, cited, current) {
         return Some(Change::from(trigger));
     }
-    if substantive(cited, scope) != substantive(current, scope) {
+    if substantive(cited, scope) != substantive(current, scope)
+        && !reader.is_some_and(|reader| resolution_only(state, cited, current, reader))
+    {
         return Some(Change::from(Trigger::MaterialRevision));
     }
     None
+}
+
+/// The records a reader stands for under the resolution rule: itself and,
+/// for a Review, the subject it judged. A review reads on its subject's
+/// behalf, and whatever rests on the review reaches its subject through the
+/// review's `subject_ref`.
+fn reader_ids(reader: &Record) -> BTreeSet<Id> {
+    let mut ids = BTreeSet::from([reader.header.id]);
+    if reader.header.id.kind() == Kind::Review
+        && let Ok(subject) = crate::input::decode::<RevisionRef>(&reader.body["subject_ref"])
+    {
+        ids.insert(subject.id);
+    }
+    ids
+}
+
+/// Whether the exact revision `from` is one of `readers` or rests on one:
+/// some chain of exact-revision citations (any field, any propagation) leads
+/// from it to a revision of a reader. Revisions are immutable, so the answer
+/// never changes for a given snapshot's history.
+fn rests_on(state: &State, from: RevisionRef, readers: &BTreeSet<Id>) -> bool {
+    if readers.contains(&from.id) {
+        return true;
+    }
+    let mut seen = BTreeSet::from([from]);
+    let mut queue = std::collections::VecDeque::from([from]);
+    while let Some(next) = queue.pop_front() {
+        let Some(record) = state.revision(next) else {
+            continue;
+        };
+        let Ok(edges) = dependency_edges(record) else {
+            continue;
+        };
+        for edge in edges {
+            if readers.contains(&edge.target.id) {
+                return true;
+            }
+            if seen.insert(edge.target) {
+                queue.push_back(edge.target);
+            }
+        }
+    }
+    false
+}
+
+/// The answer evidence of a Question revision, or `None` for another kind or
+/// an unreadable list.
+fn answer_evidence(record: &Record) -> Option<Vec<RevisionRef>> {
+    (record.header.id.kind() == Kind::Question)
+        .then(|| decode_refs(&record.body["evidence_refs"]).ok())
+        .flatten()
+}
+
+/// A Question whose answer evidence is non-empty and rests entirely on the
+/// reader: everything it carries beyond its framing is the reader's own
+/// downstream, so the reader inherits nothing through it (rules version 7).
+/// Inheriting would only loop the reader's own freshness back to it.
+fn answered_by_reader(state: &State, question: &Record, reader: &Record) -> bool {
+    let readers = reader_ids(reader);
+    answer_evidence(question).is_some_and(|evidence| {
+        !evidence.is_empty()
+            && evidence
+                .iter()
+                .all(|reference| rests_on(state, *reference, &readers))
+    })
+}
+
+/// The resolution rule (rules version 7). Two revisions of a Question differ
+/// only in how it was resolved, as far as `reader` is concerned, when their
+/// framing (wording, context, scope, importance, parent) is identical and
+/// every answer evidence reference either revision cites rests on the reader
+/// ([`rests_on`]): the reader itself, the subject of a reader that is a
+/// review, or a record whose exact-revision basis reaches one of them, such
+/// as a conclusion validated by the reading review or a decision citing that
+/// conclusion. Disposition, answer text and reason are lifecycle fields and
+/// never substantive. A resolution that cites any other evidence, or changes
+/// the framing, stays a material revision to every reader.
+fn resolution_only(state: &State, cited: &Record, current: &Record, reader: &Record) -> bool {
+    let (Some(before), Some(after)) = (answer_evidence(cited), answer_evidence(current)) else {
+        return false;
+    };
+    let framing = |record: &Record| {
+        let mut record = record.clone();
+        if let Some(body) = record.body.as_object_mut() {
+            body.remove("evidence_refs");
+        }
+        substantive(&record, None)
+    };
+    if framing(cited) != framing(current) {
+        return false;
+    }
+    let readers = reader_ids(reader);
+    before
+        .iter()
+        .chain(&after)
+        .all(|reference| rests_on(state, *reference, &readers))
 }
 
 /// The freshness trigger a plain citation of `cited` sees in the record's
@@ -943,13 +1048,36 @@ fn revision_change(
 /// the cited revision was current, so every later withdrawal or raised concern
 /// is new to it; only the index knows when a dependent was accepted.
 pub fn successor_change(state: &State, case: Id, cited: RevisionRef) -> Option<Trigger> {
+    successor_change_inner(state, case, cited, None)
+}
+
+/// [`successor_change`] for a citation held by `reader`, the record that read
+/// `cited`. It also applies the reader-relative resolution rule (rules
+/// version 7): a Question answered only with evidence that rests on the
+/// reader is unchanged to it. Pass the record whose field cites `cited`; a
+/// promotion gate may pass the subject a validation review read for.
+pub fn successor_change_for(
+    state: &State,
+    case: Id,
+    cited: RevisionRef,
+    reader: &Record,
+) -> Option<Trigger> {
+    successor_change_inner(state, case, cited, Some(reader))
+}
+
+fn successor_change_inner(
+    state: &State,
+    case: Id,
+    cited: RevisionRef,
+    reader: Option<&Record>,
+) -> Option<Trigger> {
     let current = state
         .current(cited.id)
         .filter(|record| record.header.case_id == case);
     let (Some(current), Some(historic)) = (current, state.revision(cited)) else {
         return Some(Trigger::MissingDependency);
     };
-    revision_change(state, historic, current, None, false).map(|change| change.trigger)
+    revision_change(state, historic, current, None, false, reader).map(|change| change.trigger)
 }
 
 /// The current same-case revision of a cited record when every change since
@@ -961,6 +1089,22 @@ pub fn successor_change(state: &State, case: Id, cited: RevisionRef) -> Option<T
 /// gap rule flags only read-set revisions it rejects.
 pub fn benign_successor(state: &State, case: Id, cited: RevisionRef) -> Option<&Record> {
     if successor_change(state, case, cited).is_some() {
+        return None;
+    }
+    state
+        .current(cited.id)
+        .filter(|record| record.header.case_id == case)
+}
+
+/// [`benign_successor`] for a citation held by `reader`
+/// ([`successor_change_for`]).
+pub fn benign_successor_for<'a>(
+    state: &'a State,
+    case: Id,
+    cited: RevisionRef,
+    reader: &Record,
+) -> Option<&'a Record> {
+    if successor_change_for(state, case, cited, reader).is_some() {
         return None;
     }
     state
@@ -1129,9 +1273,20 @@ impl Node {
         match dependency_edges(record) {
             Ok(edges) => {
                 let scope = scope_option(record);
-                for edge in edges {
+                for mut edge in edges {
                     targets.insert(edge.target.id);
-                    match edge_change(state, case, scope, &edge) {
+                    // No inheritance through a question answered with the
+                    // reader's own downstream (rules version 7).
+                    if edge.propagation == Propagation::Inherit
+                        && edge.target.id.kind() == Kind::Question
+                        && state
+                            .current(edge.target.id)
+                            .filter(|question| question.header.case_id == case)
+                            .is_some_and(|question| answered_by_reader(state, question, record))
+                    {
+                        edge.propagation = Propagation::ChangeOnly;
+                    }
+                    match edge_change(state, case, scope, record, &edge) {
                         Some((change, cause)) => {
                             let reason = FreshnessReason {
                                 since: change.since,
@@ -1573,6 +1728,7 @@ mod tests {
     mod blindspot_review;
     mod judgments;
     mod promotion_agreement;
+    mod resolution;
     mod source_use;
 
     use super::*;

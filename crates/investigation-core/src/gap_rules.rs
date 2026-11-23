@@ -588,13 +588,16 @@ pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure>
         let mut stale = Vec::new();
         if let Some(read_set) = field(&review.body, "read_set").and_then(Value::as_array) {
             for value in read_set {
-                // The freshness index's predicate: a benign later revision,
-                // such as a valid measurement judgment, leaves the read current.
+                // The freshness index's predicate for the review's own edge:
+                // a benign later revision, such as a valid measurement
+                // judgment or a question answered with the reviewed subject,
+                // leaves the read current.
                 if let Some(reference) = exact_ref(Some(value))
                     && state
                         .current(reference.id)
                         .is_some_and(|current| current.reference() != reference)
-                    && crate::freshness::benign_successor(state, case_id, reference).is_none()
+                    && crate::freshness::benign_successor_for(state, case_id, reference, review)
+                        .is_none()
                 {
                     stale.push(reference);
                 }

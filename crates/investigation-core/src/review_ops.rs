@@ -269,12 +269,15 @@ fn current<'a>(
 /// without change. Any other change is a revision conflict naming the record
 /// and the trigger. The freshness index's basis-expansion check walks this
 /// same closure, so a benign revision neither blocks a promotion nor hides a
-/// new required read from the index.
+/// new required read from the index. `reader` is the record whose field cites
+/// `reference`, so the reader-relative resolution rule applies as it does to
+/// the index's edge from that record; `None` judges without a reader.
 fn cited<'a>(
     state: &'a State,
     case: Id,
     reference: RevisionRef,
     path: &str,
+    reader: Option<&Record>,
 ) -> Result<&'a Record, Failure> {
     let successor = match reference.id.kind() {
         Kind::Source | Kind::Artifact => crate::source_ops::use_successor(state, case, reference),
@@ -283,13 +286,21 @@ fn cited<'a>(
         }
         _ => None,
     }
-    .or_else(|| crate::freshness::benign_successor(state, case, reference));
+    .or_else(|| match reader {
+        Some(reader) => crate::freshness::benign_successor_for(state, case, reference, reader),
+        None => crate::freshness::benign_successor(state, case, reference),
+    });
     if let Some(record) = successor {
         return Ok(record);
     }
     current(state, case, reference, path).map_err(|mut failure| {
         if failure.error.code == ErrorCode::RevisionConflict
-            && let Some(trigger) = crate::freshness::successor_change(state, case, reference)
+            && let Some(trigger) = match reader {
+                Some(reader) => {
+                    crate::freshness::successor_change_for(state, case, reference, reader)
+                }
+                None => crate::freshness::successor_change(state, case, reference),
+            }
         {
             failure.error.message = format!(
                 "{} changed since revision {}: {}. Inspect its current revision.",
@@ -417,7 +428,7 @@ fn causal_rivals_in(
         .ok_or_else(integrity)?
     {
         let factor: RevisionRef = decode(&factor["hypothesis_ref"])?;
-        let hypothesis = match cited(state, case, factor, "/causal_factors") {
+        let hypothesis = match cited(state, case, factor, "/causal_factors", Some(record)) {
             Err(_) if tolerant => state.revision(factor).ok_or_else(integrity)?,
             read => read?,
         };
@@ -537,12 +548,13 @@ fn dependency_closure(
                 // Source and Artifact use changes (assessment, withdrawal) and
                 // benign later revisions of any kind keep the cited revision's
                 // content; the current revision is what is read.
-                let child: &'a Record = match cited(self.state, case, reference, "/read_set") {
-                    Err(_) if self.tolerant => {
-                        self.state.revision(reference).ok_or_else(integrity)?
-                    }
-                    read => read?,
-                };
+                let child: &'a Record =
+                    match cited(self.state, case, reference, "/read_set", Some(record)) {
+                        Err(_) if self.tolerant => {
+                            self.state.revision(reference).ok_or_else(integrity)?
+                        }
+                        read => read?,
+                    };
                 if inactive(child) {
                     self.refuse(&format!(
                         "Dependency {} is withdrawn, retracted, or retired.",
@@ -689,7 +701,7 @@ fn qualification(
             "Use an active observation in the same case.",
         ));
     }
-    let record = cited(state, case, observation, "/support_refs")?;
+    let record = cited(state, case, observation, "/support_refs", None)?;
     if inactive(record) {
         return Err(gate(
             "/support_refs",
@@ -921,7 +933,7 @@ fn ready(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Failure> {
     let case = record.header.case_id;
     let mut direct = false;
     for reference in support {
-        let evidence = cited(state, case, reference, "/support_refs")?;
+        let evidence = cited(state, case, reference, "/support_refs", Some(record))?;
         match reference.id.kind() {
             Kind::Observation => {
                 qualification(state, case, reference)?;
@@ -1448,12 +1460,14 @@ pub fn validation_review_current(
     // A reviewed revision still covers its current revision when the shared
     // freshness predicate finds every change since benign, such as a Source
     // judgment that raises no concern or a measurement judgment that keeps or
-    // raises effective validity.
+    // raises effective validity. The review reads for its subject, so the
+    // subject is the reader: a question answered with the subject (or with a
+    // record resting on it) is unchanged to the review, as in the index.
     let covered = |revision: &RevisionRef| {
         review.read_set.iter().any(|read| {
             read == revision
                 || (read.id == revision.id
-                    && crate::freshness::benign_successor(state, case, *read)
+                    && crate::freshness::benign_successor_for(state, case, *read, target)
                         .is_some_and(|current| current.reference() == *revision))
         })
     };
@@ -1466,7 +1480,8 @@ pub fn validation_review_current(
         return Err(failure);
     }
     for reference in &review.read_set {
-        let examined = match crate::freshness::benign_successor(state, case, *reference) {
+        let examined = match crate::freshness::benign_successor_for(state, case, *reference, target)
+        {
             Some(record) => record,
             None => current(state, case, *reference, "/read_set")?,
         };
@@ -1527,7 +1542,7 @@ fn conclusion_validate(
         .read_set
         .iter()
         .map(|read| {
-            crate::freshness::benign_successor(ctx.state(), case, *read)
+            crate::freshness::benign_successor_for(ctx.state(), case, *read, record)
                 .map_or(*read, Record::reference)
         })
         .collect();

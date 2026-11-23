@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_67f1f06b433c725bcbf78d9650fd154adca2abec1ce5eaf3506375dad84f7fce"
+inv_generation: "gen_d9d6bbb2823b5635d6486e6d2acc6e5ec56515116ca13e4888c75feff650c772"
 ---
 # Start Here
 
@@ -9,12 +9,12 @@ inv_generation: "gen_67f1f06b433c725bcbf78d9650fd154adca2abec1ce5eaf3506375dad84
 
 This vault is a read-only view of the Investigation workspace that contains it. The workspace journal is the record; every note here is projected from one verified snapshot of it, and nothing written in the vault changes it. The notes are plain Markdown with wikilinks, and nothing here needs a community plugin.
 
-- Renderer: `inv.vault-renderer.v17`
+- Renderer: `inv.vault-renderer.v18`
 - View audience: `internal`
 
 ## Projection health
 
-- Generation: `gen_67f1f06b433c725bcbf78d9650fd154adca2abec1ce5eaf3506375dad84f7fce` (the `inv_generation` property of this note)
+- Generation: `gen_d9d6bbb2823b5635d6486e6d2acc6e5ec56515116ca13e4888c75feff650c772` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
 - Each case note names the case head its exact content was rendered at, in `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose content changed, so a note that later commits left unchanged keeps an older sequence than its case's below. While a render runs, notes can briefly mix generations; once it completes, every note is one that render confirmed.
@@ -44,12 +44,11 @@ One case.
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Overview|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]]
   - Case ID: `case_01a20751-b71f-7240-9c30-6231f12f86ee`
   - Last committed snapshot: sequence 50, head `sha256:fc18d1cae6527d27e4b32e1bd8081e5e9954060f92731cae9cf879bb0e63f3d4`
-  - Current answer: [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]], effective `needs_review`
+  - Current answer: [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]], effective `validated`
   - Case freshness: `stale`
   - Focus: explanation
   - Pending questions: none identified
-  - Outstanding reviews (1):
-    - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Reviews/rev_01a20751-c51e-7201-b3f6-66ea0a628654|Re-read every cited passage against its retained source and check which edition the erratum names.]]: review is `stale`
+  - Outstanding reviews: none identified
   - Unresolved blindspot reviews: none identified
   - Retrospectives: none identified
   - Resume:

@@ -38,15 +38,15 @@ tags:
 
 ## Opening summary
 
-We are investigating [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Questions/q_01a20751-bcc1-7333-b6fa-ffedf9386ee8|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]] because it informs (no dependent decision recorded). Our current answer is [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] (`needs_review`), within scope (no scope stated). The strongest original evidence is (no observation cited), the strongest outstanding objection is none open on the answer or its basis, and the most useful next information is what `next` ranks first: A Review read\-set contains revisions that have since changed in a way its reader must recheck (on [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Reviews/rev_01a20751-c51e-7201-b3f6-66ea0a628654|Re-read every cited passage against its retained source and check which edition the erratum names.]]).
+We are investigating [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Questions/q_01a20751-bcc1-7333-b6fa-ffedf9386ee8|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]] because it informs (no dependent decision recorded). Our current answer is [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] (`validated`), within scope (no scope stated). The strongest original evidence is [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b989-7331-acb9-8fe8b60134d2|the relay accepts a maximum unacknowledged frame window of 64 frames]] (validity `valid`, not read from an original acquisition), the strongest outstanding objection is none open on the answer or its basis, and the most useful next information is what `next` ranks first: Effective freshness is current \/ needs\_review\: withdrawn\: src\_01a20751\-b71f\-7240\-9c30\-6245533b72a2 r3 via assess\_01a20751\-bd05\-7942\-ad90\-0e3a23510e0b evidence\_refs \-\> obs\_01a20751\-b947\-7f80\-831f\-df5b9f8ba215 basis\.artifact\_ref \-\> art\_01a20751\-b71f\-7240\-9c30\-62683ce08030 source (on [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-bd05-7942-ad90-0e3a23510e0b|The specification, a trade article and a blog all state 64 frames.]]).
 
 ## Answer and caveat
 
-- Answer: [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] revision 3, effective `needs_review` (recorded lifecycle `validated`)
+- Answer: [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] revision 3, effective `validated` (recorded lifecycle `validated`)
 - Strongest outstanding objection: none open on the answer or its basis
-- Material caveat: The exact review or evidence basis has changed.
+- Material caveat: recorded caveat: erratum applicability tied to edition
 - Contradiction: contradicting records [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-bd05-7942-ad90-0e3a23510e0b|The specification, a trade article and a blog all state 64 frames.]] revision 1
-- Freshness: `stale` (effective `needs_review`; of 54 records in evidentiary use, 13 need review and 0 are disputed)
+- Freshness: `stale` (effective `needs_review`; of 54 records in evidentiary use, 8 need review and 0 are disputed)
 - Summary: `summary_current` for [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] revision 3: the deterministic projection of typed fields, conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th
 
 ## Evidence and assessments
@@ -55,11 +55,33 @@ What the answer cites, by the field that cites it:
 
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-c3ea-7630-aae6-6766168a7950|Erratum for Edition 3.1 sets 48 frames; the bench test stalled above 48 on one unit of another 3.1 build.]] revision 1 through `support_refs`, `current`
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-bd05-7942-ad90-0e3a23510e0b|The specification, a trade article and a blog all state 64 frames.]] revision 1 through `contradiction_refs`, `current` (effective `needs_review`)
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Reviews/rev_01a20751-c51e-7201-b3f6-66ea0a628654|Re-read every cited passage against its retained source and check which edition the erratum names.]] revision 1 through `review_ref`, `submitted` (effective `stale`)
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Reviews/rev_01a20751-c51e-7201-b3f6-66ea0a628654|Re-read every cited passage against its retained source and check which edition the erratum names.]] revision 1 through `review_ref`, `submitted` (effective `current`)
 
 ## Sources
 
-The answer rests on no recorded Source or Artifact.
+The exact revisions the answer rests on. Selectors and quotes are on each Observation note.
+
+### Sources
+
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2|primary-specification.txt / primary-specification.txt]] revision 3
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8|trade-article.txt / trade-article.txt]] revision 2
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0|blog-post.txt / blog-post.txt]] revision 2
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5|first-party-erratum.txt / first-party-erratum.txt]] revision 2
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2|primary-specification.txt / primary-specification.txt]] revision 1 (current revision 3)
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8|trade-article.txt / trade-article.txt]] revision 1 (current revision 2)
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0|blog-post.txt / blog-post.txt]] revision 1 (current revision 2)
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5|first-party-erratum.txt / first-party-erratum.txt]] revision 1 (current revision 2)
+
+### Artifacts
+
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b71f-7240-9c30-625a405beefe|text/plain]] revision 1: digest `sha256:50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587`, availability `retained`, original acquisition
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b71f-7240-9c30-62683ce08030|text/plain; charset=utf-8]] revision 1: digest `sha256:50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587`, availability `retained`, derivative
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b73e-7610-82a1-e674aebe18a9|text/plain]] revision 1: digest `sha256:61b7f0969528e5236078ef9db4b89a5f3efaee8a994319c96a449aa1f5691775`, availability `retained`, original acquisition
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b73e-7610-82a1-e684382b4dfb|text/plain; charset=utf-8]] revision 1: digest `sha256:61b7f0969528e5236078ef9db4b89a5f3efaee8a994319c96a449aa1f5691775`, availability `retained`, derivative
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b75b-76b1-af70-74db12d68b54|text/plain]] revision 1: digest `sha256:92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03`, availability `retained`, original acquisition
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b75b-76b1-af70-74ef5a3a0145|text/plain; charset=utf-8]] revision 1: digest `sha256:92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03`, availability `retained`, derivative
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b779-7ff2-a13f-13c779a08316|text/plain]] revision 1: digest `sha256:e09cdd7d9dea13c84c43e278c7b2d7de47e38f289d106219c2800ca87d6e62c4`, availability `retained`, original acquisition
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b779-7ff2-a13f-13d1bd2db647|text/plain; charset=utf-8]] revision 1: digest `sha256:e09cdd7d9dea13c84c43e278c7b2d7de47e38f289d106219c2800ca87d6e62c4`, availability `retained`, derivative
 
 ## Reviews and retrospectives
 
@@ -74,9 +96,9 @@ No review names the case itself.
 
 ### Rival hypotheses
 
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-bce2-7201-8259-367fedfcd589|The window at build 3.1.4 is 64 frames.]], `proposed` (effective `needs_review`); assessments: 0 contradicting, 1 supporting, 0 non-diagnostic
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-bce2-7201-8259-367fedfcd589|The window at build 3.1.4 is 64 frames.]], `proposed` (effective `current`); assessments: 0 contradicting, 1 supporting, 0 non-diagnostic
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c281-7630-87a9-5d791bfe48ad|No further erratum changes the Edition 3.1 value.]], `proposed` (effective `needs_review`); assessments: 0 contradicting, 1 supporting, 0 non-diagnostic
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c38c-7c93-838f-689519183676|The window at build 3.1.4 is 48 frames.]], `proposed` (effective `needs_review`); assessments: 0 contradicting, 1 supporting, 0 non-diagnostic
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c38c-7c93-838f-689519183676|The window at build 3.1.4 is 48 frames.]], `proposed` (effective `current`); assessments: 0 contradicting, 1 supporting, 0 non-diagnostic
 
 ### Decisive and non-diagnostic observations
 
@@ -115,7 +137,7 @@ Plain Markdown tables over this case at this snapshot, readable in any text view
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Inquiries and Runs|Inquiries and Runs]]: 5 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Conclusions|Conclusions]]: 2 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Reviews and Blindspots|Reviews and Blindspots]]: 1 row
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Epistemic Frontier|Epistemic Frontier]]: 18 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Epistemic Frontier|Epistemic Frontier]]: 16 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Timeline|Timeline]]: 68 rows
 
 ## Records
