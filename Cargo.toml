@@ -5,6 +5,7 @@ members = [
   "crates/investigation-recording",
   "crates/investigation-render",
   "crates/investigation-store",
+  "examples/rust-producer",
 ]
 resolver = "3"
 

@@ -16,6 +16,8 @@ ALLOWED = {
     "investigation-cli": {
         "investigation-core", "investigation-store", "investigation-recording", "investigation-render"
     },
+    # Example producer: public recording API only. Test setup also uses the store.
+    "example-rust-producer": {"investigation-recording", "investigation-store"},
     "investigation-mcp": {
         "investigation-core", "investigation-store", "investigation-recording", "investigation-render",
         "investigation-cli",

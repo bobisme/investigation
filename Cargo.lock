@@ -304,6 +304,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "example-rust-producer"
+version = "0.1.0"
+dependencies = [
+ "investigation-recording",
+ "investigation-store",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
