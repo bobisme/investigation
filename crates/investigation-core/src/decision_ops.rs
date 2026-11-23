@@ -442,10 +442,19 @@ fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
         let Ok(rec) = exact(s, case, *r, Kind::Observation, "/evidence_refs") else {
             return false;
         };
-        let Ok(o) = decode::<ObservationBody>(&rec.body) else {
+        // Stored Observation bodies carry lifecycle and assessment metadata that
+        // the strict content type rejects; strip it before decoding.
+        let mut content = rec.body.clone();
+        let Some(object) = content.as_object_mut() else {
             return false;
         };
-        if o.validity != MeasurementValidity::Valid {
+        for key in crate::observation_ops::OBSERVATION_METADATA {
+            object.remove(*key);
+        }
+        let Ok(o) = decode::<ObservationBody>(&content) else {
+            return false;
+        };
+        if crate::measurement_ops::effective_validity(s, rec) != MeasurementValidity::Valid {
             return false;
         }
         let (Some(measurement), ObservationValue::Measurement { value, unit }) =
@@ -471,7 +480,14 @@ fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
         let Ok(artifact) = exact(s, case, artifact_ref, Kind::Artifact, "/evidence_refs") else {
             return false;
         };
-        let Ok(a) = decode::<ArtifactBody>(&artifact.body) else {
+        let mut artifact_content = artifact.body.clone();
+        let Some(object) = artifact_content.as_object_mut() else {
+            return false;
+        };
+        for key in crate::observation_ops::ARTIFACT_METADATA {
+            object.remove(*key);
+        }
+        let Ok(a) = decode::<ArtifactBody>(&artifact_content) else {
             return false;
         };
         selector.validation == SelectorValidation::Verified
@@ -1289,6 +1305,35 @@ mod tests {
             }
         }
         (state, case, question)
+    }
+
+    #[test]
+    fn stored_observation_metadata_does_not_hide_verified_evidence() {
+        let rows = [[Cell::Measured(10); 3]];
+        let (mut state, case, _) = generated_table(&rows, &[0]);
+        let observation_id = id("obs", 1200);
+        let comparison_id = id("cmp", 1300);
+        let artifact_id = id("art", 903);
+        let mut artifact = state.current(artifact_id).unwrap().body.clone();
+        artifact["status"] = json!("active");
+        artifact["lifecycle"] = json!("active");
+        update_body(&mut state, artifact_id, artifact);
+        let artifact_revision = state.current(artifact_id).unwrap().header.revision.0;
+        let observation = state.current(observation_id).unwrap().body.clone();
+        for (validity, expected) in [("valid", true), ("invalid", false)] {
+            let mut stored = observation.clone();
+            stored["validity"] = json!(validity);
+            stored["status"] = json!("active");
+            stored["run_ref"] = Value::Null;
+            stored["basis"]["artifact_ref"]["revision"] = json!(artifact_revision);
+            stored["measurement_assessment"] = json!({"judgments":[]});
+            update_body(&mut state, observation_id, stored);
+            let mut cell = state.current(comparison_id).unwrap().body.clone();
+            let revision = state.current(observation_id).unwrap().header.revision.0;
+            cell["evidence_refs"] = json!([{"id":observation_id,"revision":revision}]);
+            let cell: ComparisonBody = decode(&cell).unwrap();
+            assert_eq!(verified(&state, case, &cell), expected, "{validity}");
+        }
     }
 
     #[test]

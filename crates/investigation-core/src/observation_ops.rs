@@ -22,7 +22,7 @@ use crate::{
     wire::{Digest, ErrorCode, Failure},
 };
 
-const OBSERVATION_METADATA: &[&str] = &[
+pub(crate) const OBSERVATION_METADATA: &[&str] = &[
     "status",
     "revision_reason",
     "retraction_reason",
@@ -34,7 +34,8 @@ const OBSERVATION_METADATA: &[&str] = &[
     "measurement_assessment",
     "run_ref",
 ];
-const ARTIFACT_METADATA: &[&str] = &["status", "lifecycle", "rationale", "withdrawal_reason"];
+pub(crate) const ARTIFACT_METADATA: &[&str] =
+    &["status", "lifecycle", "rationale", "withdrawal_reason"];
 
 /// Store-computed result for the exact source bytes named by an observation.
 /// This value is only produced by the trusted read path, never decoded from an
