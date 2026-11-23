@@ -31,8 +31,9 @@
 //! A step has one action key. Values may hold placeholders, resolved when the
 //! step runs: `{"$": "name/segment/..."}` reads a binding (a segment is an
 //! object key, an array index, `*` for every element, or `[key=value]` for the
-//! one element whose `key` equals `value`); `{"$concat": [..]}` joins arrays
-//! and single values.
+//! one element whose `key` equals `value`, where `{name/segment/...}` inside
+//! the path is replaced by the string it reads first); `{"$concat": [..]}`
+//! joins arrays and single values.
 //!
 //! - `find`: bind each name to the current revision of the one record of an ID
 //!   kind (`kind` is the ID prefix) whose body matches `where` (JSON pointer to
@@ -212,12 +213,36 @@ impl Drill {
     }
 
     fn lookup(&self, path: &str) -> Value {
+        let path = &self.interpolate(path);
         let segments: Vec<&str> = path.split('/').collect();
         let binding = self
             .bindings
             .get(segments[0])
             .unwrap_or_else(|| panic!("{}: unbound {path}", self.context()));
         walk(binding, &segments[1..], path)
+    }
+
+    /// Replaces each `{name/segment/...}` in a path with the string it reads,
+    /// so a filter can name a value bound earlier, such as a record ID.
+    fn interpolate(&self, path: &str) -> String {
+        let mut resolved = String::new();
+        let mut rest = path;
+        while let Some(start) = rest.find('{') {
+            let end = rest[start..]
+                .find('}')
+                .map(|offset| start + offset)
+                .unwrap_or_else(|| panic!("{}: unclosed {{ in {path}", self.context()));
+            resolved.push_str(&rest[..start]);
+            let value = self.lookup(&rest[start + 1..end]);
+            resolved.push_str(
+                value
+                    .as_str()
+                    .unwrap_or_else(|| panic!("{}: {path} reads {value}", self.context())),
+            );
+            rest = &rest[end + 1..];
+        }
+        resolved.push_str(rest);
+        resolved
     }
 
     fn resolve(&self, template: &Value) -> Value {

@@ -529,6 +529,64 @@ pub(crate) fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
     })
 }
 
+/// Applicable hard criteria of a selected option that a proposal leaves
+/// unaddressed: it cites no Comparison of the option against the criterion's
+/// current revision with a known outcome, and it states no hard condition for
+/// it. `decision.accept` refuses such a decision, so `decision.propose` warns
+/// and records it: a proposal may still be revised before review.
+fn unconditioned_hard(s: &State, case: Id, b: &DecisionBody) -> Vec<RevisionRef> {
+    let Choice::Select {
+        option_ref: selected,
+    } = b.choice
+    else {
+        return Vec::new();
+    };
+    let scope = MembershipScope::Question {
+        case_id: case,
+        question_id: b.question_ref.id,
+        option_id: Some(selected.id),
+    };
+    let Ok(criteria) = membership(s, MembershipRule::ActiveHardCriteria, scope) else {
+        return Vec::new();
+    };
+    let cited: Vec<ComparisonBody> = b
+        .comparison_refs
+        .iter()
+        .filter_map(|reference| s.revision(*reference))
+        .filter_map(|record| decode::<ComparisonBody>(&record.body).ok())
+        .filter(|cell| !cell.retracted && cell.option_ref.id == selected.id)
+        .collect();
+    criteria
+        .members
+        .iter()
+        .filter_map(|member| s.current(member.id).map(Record::reference))
+        .filter(|current| {
+            !b.hard_conditions
+                .iter()
+                .any(|condition| condition.criterion_ref == *current)
+                && !cited.iter().any(|cell| {
+                    cell.criterion_ref == *current
+                        && matches!(
+                            cell.outcome,
+                            ComparisonOutcome::Meets | ComparisonOutcome::Fails
+                        )
+                })
+        })
+        .collect()
+}
+
+fn warn_unconditioned_hard(c: &mut OperationContext<'_>, b: &DecisionBody) {
+    let Some(case) = c.case_id() else {
+        return;
+    };
+    for criterion in unconditioned_hard(c.state(), case, b) {
+        c.warn(format!(
+            "Hard criterion {} applies to the selected option, but the proposal cites no Comparison of its current revision with a known outcome and states no hard condition for it (see criterion.hard_unmeasured). decision.accept refuses it until the cell is measured or a hard condition with a reason is stated.",
+            criterion.id
+        ));
+    }
+}
+
 /// Acceptance examines every applicable hard criterion; missing and uncertain
 /// comparisons require an explicit condition and never imply satisfaction.
 fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
@@ -947,6 +1005,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             ok,
             |p: DecisionInput, c| {
                 let b = proposal_gate(c, normalize(c, p)?)?;
+                warn_unconditioned_hard(c, &b);
                 c.create(Kind::Decision, body(b)?)?;
                 Ok(())
             },
@@ -1317,6 +1376,41 @@ mod tests {
             status[0].uncertain_criteria,
             vec![RevisionRef { id: k, revision: 1 }]
         );
+    }
+    #[test]
+    fn a_proposal_that_ignores_an_unmeasured_hard_criterion_is_named() {
+        let (mut s, case, q, o, d, _) = fixture();
+        let k = id("crit", 30);
+        add(&mut s, rec(k, case, 6, criterion(q)));
+        let mut b: DecisionBody = decode(&s.current(d).unwrap().body).unwrap();
+        let current = RevisionRef { id: k, revision: 1 };
+        assert_eq!(unconditioned_hard(&s, case, &b), vec![current]);
+        // A cited cell with a known outcome against the current revision
+        // addresses the criterion; one against an earlier revision does not.
+        let cell = id("cmp", 31);
+        let comparison = json!({"option_ref":{"id":o,"revision":1},"criterion_ref":current,"outcome":"meets","method":"Benchmark","value":{"decimal":"20","unit":"ms"},"basis":null,"evidence_refs":[],"assumption_refs":[],"limitations":null,"uncertainty":"One run.","rationale":"Below the limit.","retracted":false,"change_reason":null});
+        add(&mut s, rec(cell, case, 7, comparison));
+        b.comparison_refs = vec![RevisionRef {
+            id: cell,
+            revision: 1,
+        }];
+        assert!(unconditioned_hard(&s, case, &b).is_empty());
+        let mut stricter = criterion(q);
+        stricter["threshold"]["value"]["decimal"] = json!("15");
+        update_body(&mut s, k, stricter);
+        let revised = RevisionRef { id: k, revision: 2 };
+        assert_eq!(unconditioned_hard(&s, case, &b), vec![revised]);
+        // A stated hard condition on the current revision acknowledges it.
+        b.hard_conditions.push(HardCondition {
+            criterion_ref: revised,
+            reason: "Accept only if remeasured below the new limit".into(),
+        });
+        assert!(unconditioned_hard(&s, case, &b).is_empty());
+        b.choice = Choice::Defer {
+            reason: "Await data".into(),
+        };
+        b.hard_conditions.clear();
+        assert!(unconditioned_hard(&s, case, &b).is_empty());
     }
     #[test]
     fn generated_unknown_tables_never_prove_dominance_and_threshold_changes_stale_basis() {

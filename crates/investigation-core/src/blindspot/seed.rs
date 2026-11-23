@@ -165,7 +165,9 @@ fn token(value: impl serde::Serialize, field: Option<&str>) -> String {
     value.as_str().unwrap_or_default().to_owned()
 }
 
-fn trigger_name(trigger: &Trigger) -> String {
+/// The `freshness_trigger:` token of a trigger, shared with the evaluative
+/// family.
+pub(super) fn trigger_name(trigger: &Trigger) -> String {
     match trigger {
         Trigger::MembershipChanged { rule } => {
             format!("membership_changed:{}", token(rule, None))

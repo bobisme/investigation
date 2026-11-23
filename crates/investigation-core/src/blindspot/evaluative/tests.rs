@@ -794,3 +794,176 @@ fn scenario_c_a_weight_without_a_range_is_reported_and_never_scored() {
     );
     assert!(case.findings("criterion.weight_without_range").is_empty());
 }
+
+/// Every hard cell measured: the recovery time for each option and the loss
+/// requirement for each option. Returns the recovery cells in option order.
+fn measure_every_hard_cell(case: &mut Case, frame: &Frame) -> Vec<RevisionRef> {
+    let support = case.assumption("nonmaterial");
+    let recovery = frame
+        .options
+        .iter()
+        .zip(["110", "200", "250"])
+        .map(|(option, seconds)| {
+            case.compare(
+                *option,
+                frame.recovery,
+                json!({"outcome":"meets","value":{"decimal":seconds,"unit":"seconds"},"assumption_refs":[support]}),
+            )
+        })
+        .collect();
+    for option in &frame.options {
+        case.compare(
+            *option,
+            frame.loss,
+            json!({"outcome":"meets","basis":{"kind":"qualitative","statement":"Recorded design."},"assumption_refs":[support]}),
+        );
+    }
+    recovery
+}
+
+fn recovery_limit(frame: &Frame, seconds: &str) -> Value {
+    criterion(
+        frame.question,
+        "Recovery time",
+        "hard",
+        Some("seconds"),
+        json!({"kind":"measured","operator":"at_most","value":{"decimal":seconds,"unit":"seconds"}}),
+    )
+}
+
+#[test]
+fn hard_cells_that_cite_a_materially_superseded_criterion_revision_are_unmeasured() {
+    let mut case = Case::new("evaluate");
+    let frame = case.frame();
+    let recovery = measure_every_hard_cell(&mut case, &frame);
+    assert!(case.findings("criterion.hard_unmeasured").is_empty());
+
+    // The recovery-time threshold becomes stricter: every recorded cell was
+    // judged against the old 300-second limit, so none disposes of the
+    // current requirement.
+    let strict = case.one(
+        "criterion.amend",
+        json!({"criterion_ref":frame.recovery,"reason":"Stricter recovery requirement.",
+            "replacement":recovery_limit(&frame, "60")}),
+    );
+    let findings = case.findings("criterion.hard_unmeasured");
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    let finding = &findings[0];
+    assert_eq!(finding.check_version, "v2");
+    assert_eq!(finding.subject_refs, vec![strict]);
+    assert_eq!(
+        facts(finding, "hard_cell:criterion_superseded"),
+        sorted(recovery.clone())
+    );
+    assert!(facts(finding, "hard_cell:missing").is_empty());
+    assert!(facts(finding, "hard_cell:unknown").is_empty());
+    assert_eq!(
+        facts(finding, "freshness_trigger:material_revision"),
+        vec![frame.recovery, strict]
+    );
+    assert!(finding.related_refs.contains(&frame.recovery));
+    // Each cell names the frontier gap that reports the stale Comparison.
+    let gaps = crate::gap_rules::enumerate_gaps(&case.state, &case.snapshot(), case.case.unwrap())
+        .unwrap();
+    for cell in &recovery {
+        let gap = gaps
+            .gaps
+            .iter()
+            .find(|gap| {
+                gap.rule_id == "comparison.stale_dependency_revision"
+                    && gap.subject_refs == vec![*cell]
+            })
+            .unwrap();
+        assert_eq!(
+            facts(finding, &format!("frontier_gap:{}", gap.gap_id)),
+            vec![*cell]
+        );
+    }
+
+    // Reassessing one cell against the current revision measures it; a new
+    // Comparison of another option does the same, and the older one of that
+    // option no longer counts.
+    let support = case.assumption("nonmaterial");
+    case.one(
+        "comparison.revise",
+        json!({"comparison_ref":recovery[0],"reason":"Reassessed against the 60-second limit.",
+            "replacement":{"option_ref":frame.options[0],"criterion_ref":strict,"outcome":"fails",
+                "method":"Recorded fixture","value":{"decimal":"110","unit":"seconds"},
+                "evidence_refs":[],"assumption_refs":[support],"uncertainty":"One fixture.",
+                "rationale":"110 seconds exceeds the 60-second limit."}}),
+    );
+    case.compare(
+        frame.options[1],
+        strict,
+        json!({"outcome":"meets","value":{"decimal":"45","unit":"seconds"},"assumption_refs":[support]}),
+    );
+    let findings = case.findings("criterion.hard_unmeasured");
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(
+        facts(&findings[0], "hard_cell:criterion_superseded"),
+        vec![recovery[2]]
+    );
+
+    // A withdrawn option no longer needs the cell.
+    case.one(
+        "option.disposition",
+        json!({"option_ref":frame.options[2],"lifecycle":"withdrawn","reason":"No longer offered"}),
+    );
+    assert!(case.findings("criterion.hard_unmeasured").is_empty());
+}
+
+#[test]
+fn a_benign_criterion_revision_keeps_its_cells_measured() {
+    let mut case = Case::new("evaluate");
+    let frame = case.frame();
+    let recovery = measure_every_hard_cell(&mut case, &frame);
+    // Restated without change: the shared freshness predicate finds the later
+    // revision benign, so the recorded outcomes still dispose of each cell.
+    let restated = case.one(
+        "criterion.amend",
+        json!({"criterion_ref":frame.recovery,"reason":"Restated for the review.",
+            "replacement":recovery_limit(&frame, "300")}),
+    );
+    assert_ne!(restated, frame.recovery);
+    assert!(
+        crate::freshness::benign_successor(&case.state, case.case.unwrap(), frame.recovery)
+            .is_some()
+    );
+    let gaps = crate::gap_rules::enumerate_gaps(&case.state, &case.snapshot(), case.case.unwrap())
+        .unwrap();
+    assert!(
+        gaps.gaps
+            .iter()
+            .any(|gap| gap.rule_id == "comparison.stale_dependency_revision"
+                && gap.subject_refs == vec![recovery[0]])
+    );
+    assert!(
+        case.findings("criterion.hard_unmeasured").is_empty(),
+        "{:#?}",
+        case.findings("criterion.hard_unmeasured")
+    );
+
+    // A cell recorded as unknown against the restated revision's predecessor
+    // is still unknown: the benign revision keeps its outcome, whatever it is.
+    let mut fresh = Case::new("evaluate");
+    let frame = fresh.frame();
+    let unknown = fresh.unknown(frame.options[0], frame.loss);
+    let loss = fresh.one(
+        "criterion.amend",
+        json!({"criterion_ref":frame.loss,"reason":"Restated for the review.","replacement":criterion(
+            frame.question, "No acknowledged job is lost", "hard", None,
+            json!({"kind":"qualitative","requirement":"Zero acknowledged jobs lost"}))}),
+    );
+    let findings = fresh.findings("criterion.hard_unmeasured");
+    let finding = findings
+        .iter()
+        .find(|finding| finding.subject_refs == vec![loss])
+        .unwrap();
+    assert_eq!(facts(finding, "hard_cell:unknown"), vec![unknown]);
+    assert!(facts(finding, "hard_cell:criterion_superseded").is_empty());
+    assert!(!has_fact(finding, "freshness_trigger:"));
+    assert_eq!(
+        facts(finding, "hard_cell:missing"),
+        sorted(frame.options[1..].to_vec())
+    );
+}

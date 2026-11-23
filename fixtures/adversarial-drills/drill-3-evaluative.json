@@ -3,7 +3,7 @@
   "form": "evaluative",
   "title": "A blindspot that changes the answer: a queue choice ignores an unmeasured recovery guarantee",
   "plan": "notes/plan.md §17.7 drill 3, §8.5, §20.1",
-  "description": "Scenario C variant. The checked-in architecture case is reopened, and a new choice of the dedicated broker is proposed. It cites only the enqueue-latency cells and states no hard condition, while the hard criterion that no acknowledged job is lost is unknown for every option. The audit reports the pinned checks, including criterion.hard_unmeasured on that criterion. The scripted reviewer records a blindspot Review, a Question and an Assumption in one transaction. No Decision changes.",
+  "description": "Scenario C variant. The checked-in architecture case is reopened, and a new choice of the dedicated broker is proposed. It cites only the enqueue-latency cells and states no hard condition, while the hard criterion that no acknowledged job is lost is unknown for every option. The audit reports the pinned checks, including criterion.hard_unmeasured on that criterion and, since check version v2, on the recovery-time criterion, whose every cell cites the revision before its threshold changed. The scripted reviewer records a blindspot Review, a Question and an Assumption in one transaction. No Decision changes.",
   "base": {"workspace": "scenario-c"},
   "steps": [
     {"find": {"case": {"kind": "case", "where": {"/mode": "evaluate"}}}},
@@ -13,10 +13,12 @@
       "managed_queue": {"kind": "opt", "where": {"/description": "Adopt managed queue"}},
       "broker": {"kind": "opt", "where": {"/description": "Run dedicated broker"}},
       "recovery_guarantee": {"kind": "crit", "where": {"/name": "No acknowledged job is lost"}},
+      "recovery_time": {"kind": "crit", "where": {"/name": "Recovery time after acknowledged enqueue"}},
       "latency": {"kind": "crit", "where": {"/name": "Enqueue latency (small synthetic benchmark)"}},
       "effort": {"kind": "crit", "where": {"/name": "Team implementation effort"}}
     }},
     {"find": {"latency_cells": {"kind": "cmp", "all": true, "where": {"/criterion_ref/id": {"$": "latency/id"}}}}},
+    {"find": {"recovery_time_cells": {"kind": "cmp", "all": true, "where": {"/criterion_ref/id": {"$": "recovery_time/id"}}}}},
     {"record": {
       "actor": "agent:drill-variant",
       "preconditions": [{"$": "case"}],
@@ -42,10 +44,13 @@
        "check_ids": [
          "case.material_closure_without_current_retrospective",
          "criterion.hard_unmeasured",
+         "criterion.hard_unmeasured",
          "criterion.weight_without_range"
        ],
        "findings": [
          {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_guarantee"}]},
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_time"}],
+          "facts_include": [{"fact": "hard_cell:criterion_superseded", "refs": {"$": "recovery_time_cells"}}]},
          {"check_id": "criterion.weight_without_range", "subject_refs": [{"$": "effort"}]}
        ]}},
     {"record": {
@@ -66,7 +71,7 @@
           "kind": "blindspot",
           "subject_ref": {"$": "choice"},
           "audited_snapshot": {"$": "audit/snapshot"},
-          "read_set": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/related_refs"},
+          "read_set": {"$": "audit/checks/[gap_id=blindspot:criterion.hard_unmeasured:{recovery_guarantee/id}]/related_refs"},
           "method": "Compared the proposed choice's cited cells with each hard criterion the audit reports.",
           "scope_examined": "The proposed broker choice and the hard recovery guarantee of its question.",
           "checks_considered": {"$": "audit/checks_run/*/check_id"},
@@ -89,11 +94,11 @@
             "read_other_reviews": {"state": "known", "value": true}},
           "audit": {"check_version": {"$": "audit/check_version"}, "check_set_digest": {"$": "audit/check_set_digest"}},
           "gap_dispositions": [
-            {"gap_id": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/gap_id"},
+            {"gap_id": {"$": "audit/checks/[gap_id=blindspot:criterion.hard_unmeasured:{recovery_guarantee/id}]/gap_id"},
              "disposition": "accepted",
              "reason": "No option has an evidence-backed disposition for the hard recovery guarantee, so the latency ranking cannot settle the choice.",
              "uncertainty": "The broker may meet the guarantee; it was not tested under the failure model.",
-             "related_refs": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/related_refs"},
+             "related_refs": {"$": "audit/checks/[gap_id=blindspot:criterion.hard_unmeasured:{recovery_guarantee/id}]/related_refs"},
              "record_refs": [{"client_ref": "recovery"}]}
           ],
           "novel_gaps": [
@@ -110,10 +115,12 @@
        "check_ids": [
          "case.material_closure_without_current_retrospective",
          "criterion.hard_unmeasured",
+         "criterion.hard_unmeasured",
          "criterion.weight_without_range"
        ],
        "findings": [
-         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_guarantee"}]}
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_guarantee"}]},
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_time"}]}
        ]}},
     {"cli": ["--case", {"$": "case/id"}, "show", {"$": "choice/id"}, "--depth", "full"],
      "expect": {

@@ -322,6 +322,12 @@ def main():
         strict = dict(hard_input)
         strict["threshold"] = {"kind": "measured", "operator": "at_most", "value": {"decimal": "60", "unit": "seconds"}}
         d.record(case, "criterion.amend", {"criterion_ref": ref(hard), "reason": "Stricter synthetic recovery requirement", "replacement": strict})
+        # Every recovery cell was judged against the old threshold, so the
+        # stricter requirement is unmeasured until a cell is reassessed.
+        unmeasured = hard_unmeasured(d, case)
+        assert set(unmeasured) == {hard, loss}, unmeasured
+        superseded = [fact for fact in unmeasured[hard]["facts"] if fact["fact"] == "hard_cell:criterion_superseded"]
+        assert len(superseded) == 1 and ref(comparison) in superseded[0]["refs"], unmeasured[hard]
         after = d.show(case, decision)
         assert after["effective_status"]["state"] == "needs_review", after
         comparison_after = d.show(case, comparison)

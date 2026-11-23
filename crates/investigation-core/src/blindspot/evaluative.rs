@@ -26,9 +26,12 @@ use serde_json::Value;
 use crate::{
     command::RevisionRef,
     decision_ops::DecisionBody,
-    evaluate::{ComparisonBasis, CriterionLifecycle, DecisionLifecycle},
-    evaluate_ops::{ComparisonBody, CriterionBody},
-    freshness::dependency_edges,
+    evaluate::{
+        ComparisonBasis, ComparisonOutcome, CriterionKind, CriterionLifecycle, DecisionLifecycle,
+        OptionLifecycle,
+    },
+    evaluate_ops::{ComparisonBody, CriterionBody, OptionBody},
+    freshness::{Trigger, dependency_edges, successor_change},
     identity::{Id, Kind},
     objection_policy::relevant_open_objections,
     retrospective_ops::{check_retrospective, material_revisions},
@@ -40,7 +43,10 @@ use crate::{
     wire::Failure,
 };
 
-use super::{AuditContext, CheckSource, CheckSpec, Detection, FindingFact, Severity, is_promoted};
+use super::{
+    AuditContext, CheckSource, CheckSpec, Detection, FindingFact, Severity, is_promoted,
+    seed::trigger_name,
+};
 
 /// Collection transactions in a row, with no consequence between them, that
 /// make `case.collection_without_consequence` report. Part of its version.
@@ -49,18 +55,23 @@ pub(crate) use crate::stall::STALL_COLLECTION_TRANSACTIONS;
 /// The gap rules `criterion.hard_unmeasured` groups by criterion.
 const HARD_CELL_MISSING: &str = "decision.hard_criterion_cell_missing";
 const HARD_CELL_UNKNOWN: &str = "decision.hard_criterion_cell_unknown";
+/// A Comparison citing an earlier Option or Criterion revision. The rule never
+/// emits the unknown-cell rule for the same Comparison, so the check judges
+/// these cells itself.
+const STALE_COMPARISON: &str = "comparison.stale_dependency_revision";
 
 pub(super) const CHECKS: &[CheckSpec] = &[
     CheckSpec {
         check_id: "criterion.hard_unmeasured",
-        version: "v1",
+        version: "v2",
         subject_kinds: &[Kind::Criterion],
         reads: &[
-            "gaps of rules decision.hard_criterion_cell_missing and decision.hard_criterion_cell_unknown (slice-gaps.v1)",
-            "kind, lifecycle, question_ref and option_refs of each Criterion",
-            "option_ref, criterion_ref and outcome of each Comparison",
+            "gaps of rules decision.hard_criterion_cell_missing, decision.hard_criterion_cell_unknown and comparison.stale_dependency_revision (slice-gaps.v1)",
+            "kind, lifecycle, question_ref and option_refs of each Criterion, and every revision since the one a Comparison cites",
+            "question_ref and lifecycle of each Option",
+            "option_ref, criterion_ref, outcome and retracted of each Comparison",
         ],
-        condition: "An active hard Criterion has an applicable eligible Option with no Comparison, or a current Comparison whose outcome is unknown. One finding per Criterion; the facts list the Options without a cell, the unknown Comparisons and the frontier gap IDs.",
+        condition: "An active hard Criterion has an applicable eligible Option with no Comparison, with a Comparison whose outcome is unknown, or whose only Comparisons with a known outcome cite an earlier revision of the Criterion that a later revision changed for its readers (the shared freshness predicate, for example a changed threshold). A later revision that is benign to a reader, such as a restatement without change, keeps the cell measured. One finding per Criterion; the facts list the Options without a cell, the unknown Comparisons, the Comparisons that cite a superseded Criterion revision with the freshness trigger, and the frontier gap IDs.",
         why: "A hard requirement has no evidence-backed disposition for at least one applicable option.",
         severity: Severity::Material,
         severity_reason: "An unassessed hard requirement could rule out an option, including the one chosen.",
@@ -202,39 +213,72 @@ fn fact(fact: impl Into<String>, refs: Vec<RevisionRef>) -> FindingFact {
 
 /// Hard cells without a known outcome, grouped by Criterion from the gap
 /// inventory, so the frontier and the audit agree on which cells are open.
+///
+/// A Comparison that cites an earlier Criterion revision is a
+/// `comparison.stale_dependency_revision` gap, never an unknown-cell gap. Its
+/// cell is unmeasured for the current Criterion when the shared freshness
+/// predicate ([`successor_change`]) finds the later revision changed it for a
+/// reader (a threshold, unit or kind change, for example) and no other
+/// Comparison of the same Option measures it; a benign later revision keeps
+/// the recorded outcome, so only an unknown one is reported.
 fn hard_unmeasured(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure> {
     #[derive(Default)]
     struct Cells {
         missing: Vec<RevisionRef>,
         unknown: Vec<RevisionRef>,
+        superseded: Vec<RevisionRef>,
+        triggers: BTreeMap<String, Vec<RevisionRef>>,
         related: Vec<RevisionRef>,
         gaps: Vec<FindingFact>,
     }
     let mut criteria = BTreeMap::<Id, Cells>::new();
+    let mut measured = None;
     for gap in &context.gaps.gaps {
-        let missing = gap.rule_id == HARD_CELL_MISSING;
-        if !missing && gap.rule_id != HARD_CELL_UNKNOWN {
-            continue;
-        }
-        let Some(criterion) = gap
-            .subject_refs
-            .iter()
-            .chain(&gap.read_set)
-            .find(|reference| reference.id.kind() == Kind::Criterion)
-        else {
-            continue;
-        };
-        let cells = criteria.entry(criterion.id).or_default();
-        let subjects = gap
-            .subject_refs
-            .iter()
-            .copied()
-            .filter(|reference| reference.id.kind() != Kind::Criterion);
-        if missing {
-            cells.missing.extend(subjects);
+        let cells = if gap.rule_id == STALE_COMPARISON {
+            let measured = measured.get_or_insert_with(|| measured_cells(context));
+            let Some(cell) = stale_hard_cell(context, gap, measured) else {
+                continue;
+            };
+            let cells = criteria.entry(cell.criterion.id).or_default();
+            match cell.superseded {
+                Some((cited, trigger)) => {
+                    cells.superseded.push(cell.comparison);
+                    cells
+                        .triggers
+                        .entry(format!("freshness_trigger:{}", trigger_name(&trigger)))
+                        .or_default()
+                        .extend([cited, cell.criterion]);
+                }
+                None => cells.unknown.push(cell.comparison),
+            }
+            cells.related.push(cell.criterion);
+            cells
         } else {
-            cells.unknown.extend(subjects);
-        }
+            let missing = gap.rule_id == HARD_CELL_MISSING;
+            if !missing && gap.rule_id != HARD_CELL_UNKNOWN {
+                continue;
+            }
+            let Some(criterion) = gap
+                .subject_refs
+                .iter()
+                .chain(&gap.read_set)
+                .find(|reference| reference.id.kind() == Kind::Criterion)
+            else {
+                continue;
+            };
+            let cells = criteria.entry(criterion.id).or_default();
+            let subjects = gap
+                .subject_refs
+                .iter()
+                .copied()
+                .filter(|reference| reference.id.kind() != Kind::Criterion);
+            if missing {
+                cells.missing.extend(subjects);
+            } else {
+                cells.unknown.extend(subjects);
+            }
+            cells
+        };
         cells.related.extend(gap.read_set.iter().copied());
         cells.gaps.push(fact(
             format!("frontier_gap:{}", gap.gap_id),
@@ -257,9 +301,22 @@ fn hard_unmeasured(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure
         if !cells.unknown.is_empty() {
             facts.push(fact("hard_cell:unknown", cells.unknown.clone()));
         }
+        if !cells.superseded.is_empty() {
+            facts.push(fact(
+                "hard_cell:criterion_superseded",
+                cells.superseded.clone(),
+            ));
+        }
         let mut related = cells.related;
+        for (trigger, mut refs) in cells.triggers {
+            refs.sort_unstable();
+            refs.dedup();
+            related.extend(refs.iter().copied());
+            facts.push(fact(trigger, refs));
+        }
         related.extend(cells.missing);
         related.extend(cells.unknown);
+        related.extend(cells.superseded);
         detections.push(Detection {
             subject_refs: vec![criterion.reference()],
             related_refs: related,
@@ -267,6 +324,112 @@ fn hard_unmeasured(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure
         });
     }
     Ok(detections)
+}
+
+/// A hard cell behind a `comparison.stale_dependency_revision` gap that has
+/// no evidence-backed disposition for the current Criterion.
+struct StaleCell {
+    /// The current revision of the active hard Criterion.
+    criterion: RevisionRef,
+    comparison: RevisionRef,
+    /// The cited Criterion revision and the trigger its later revision raises,
+    /// or `None` when every later revision is benign and the outcome unknown.
+    superseded: Option<(RevisionRef, Trigger)>,
+}
+
+/// The current same-case revision of an active hard Criterion.
+fn active_hard<'a>(context: &AuditContext<'a>, id: Id) -> Option<(&'a Record, CriterionBody)> {
+    let record = context
+        .state
+        .current(id)
+        .filter(|record| record.header.case_id == context.case_id)?;
+    decode::<CriterionBody>(record)
+        .filter(|body| {
+            body.kind == CriterionKind::Hard && body.lifecycle == CriterionLifecycle::Active
+        })
+        .map(|body| (record, body))
+}
+
+/// The Criterion revision a Comparison cites is still the one a reader of the
+/// current Criterion would apply: it is current, or every later revision is
+/// benign to it.
+fn criterion_unchanged(context: &AuditContext<'_>, criterion: &Record, cited: RevisionRef) -> bool {
+    criterion.reference() == cited
+        || successor_change(context.state, context.case_id, cited).is_none()
+}
+
+/// Option and Criterion ID pairs with a Comparison that has a known outcome
+/// against an unchanged Criterion revision.
+fn measured_cells(context: &AuditContext<'_>) -> BTreeSet<(Id, Id)> {
+    context
+        .current(Kind::Comparison)
+        .into_iter()
+        .filter_map(decode::<ComparisonBody>)
+        .filter(|comparison| {
+            !comparison.retracted
+                && comparison.outcome != ComparisonOutcome::Unknown
+                && context
+                    .state
+                    .current(comparison.criterion_ref.id)
+                    .is_some_and(|criterion| {
+                        criterion_unchanged(context, criterion, comparison.criterion_ref)
+                    })
+        })
+        .map(|comparison| (comparison.option_ref.id, comparison.criterion_ref.id))
+        .collect()
+}
+
+/// Judges one stale-dependency gap as a hard cell: the cited Criterion
+/// revision is materially superseded and no other Comparison measures the
+/// cell, or the Criterion is unchanged for a reader and the outcome unknown.
+/// The Option must still apply to the Criterion as the missing-cell rule reads
+/// it: same question, in scope, and not ruled out, withdrawn or superseded.
+fn stale_hard_cell(
+    context: &AuditContext<'_>,
+    gap: &crate::gap_rules::Gap,
+    measured: &BTreeSet<(Id, Id)>,
+) -> Option<StaleCell> {
+    let comparison_ref = *gap.subject_refs.first()?;
+    let comparison = decode::<ComparisonBody>(context.state.revision(comparison_ref)?)?;
+    if comparison.retracted {
+        return None;
+    }
+    let (criterion, body) = active_hard(context, comparison.criterion_ref.id)?;
+    let option = context
+        .state
+        .current(comparison.option_ref.id)
+        .filter(|record| record.header.case_id == context.case_id)
+        .and_then(decode::<OptionBody>)?;
+    if option.question_ref.id != body.question_ref.id
+        || matches!(
+            option.lifecycle,
+            OptionLifecycle::RuledOut | OptionLifecycle::Withdrawn | OptionLifecycle::Superseded
+        )
+        || body.option_refs.as_ref().is_some_and(|scope| {
+            !scope
+                .iter()
+                .any(|reference| reference.id == comparison.option_ref.id)
+        })
+    {
+        return None;
+    }
+    let superseded = if criterion_unchanged(context, criterion, comparison.criterion_ref) {
+        if comparison.outcome != ComparisonOutcome::Unknown {
+            return None;
+        }
+        None
+    } else {
+        if measured.contains(&(comparison.option_ref.id, criterion.header.id)) {
+            return None;
+        }
+        let trigger = successor_change(context.state, context.case_id, comparison.criterion_ref)?;
+        Some((comparison.criterion_ref, trigger))
+    };
+    Some(StaleCell {
+        criterion: criterion.reference(),
+        comparison: comparison_ref,
+        superseded,
+    })
 }
 
 /// Active weighted Criteria whose weight has no stated range (§15.1).
