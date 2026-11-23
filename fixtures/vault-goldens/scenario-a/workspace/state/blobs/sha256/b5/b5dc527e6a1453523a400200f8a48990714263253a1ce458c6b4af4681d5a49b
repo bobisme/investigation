@@ -1,0 +1,1 @@
+{"schema_version": "inv.ingest.v1", "command_id": "capture-13", "actor": "agent:timeout-fixture", "case_id": "case_01a20751-8e56-7b21-9630-4b49275ec85d", "source": {"title": "trace-unmapped-clock.json", "format": "application/json"}, "paths": ["trace-unmapped-clock.json"], "extract_text": true}

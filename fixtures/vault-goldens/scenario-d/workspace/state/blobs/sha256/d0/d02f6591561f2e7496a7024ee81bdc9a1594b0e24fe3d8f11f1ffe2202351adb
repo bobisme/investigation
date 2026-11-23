@@ -1,0 +1,1 @@
+{"actor":"agent:scenario-d","case_id":"case_01a20751-b71f-7240-9c30-6231f12f86ee","command_id":"scenario-d-collect-2","extract_text":true,"paths":["trade-article.txt"],"schema_version":"inv.ingest.v1","source":{"format":"text/plain","title":"trade-article.txt"}}

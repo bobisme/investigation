@@ -1,0 +1,15 @@
+Synthetic specification excerpt: Corvin Relay Specification, Edition 3.1
+Publisher: Corvin Relay Working Group (fictional). Published 2026-02-10.
+
+Section 2.3 Edition applicability
+Firmware builds numbered 3.1.x implement Edition 3.1. A later edition states
+its own build numbering.
+
+Section 5.2 Flow control
+A sender shall not have more than 64 frames outstanding. A receiver may close
+the session when the unacknowledged window exceeds the value in Table 7.
+
+Table 7 Session limits (Edition 3.1)
+row 3  Maximum frame payload ........................ 1024 bytes
+row 4  Maximum unacknowledged frame window .......... 64 frames
+row 5  Idle session timeout ......................... 30 seconds

@@ -1,0 +1,18 @@
+{
+  "record_kind": "synthetic_request_trace.v1",
+  "trace_id": "trace-clock-invalid-021",
+  "request_id": "REQ-021",
+  "build_id": "build-7c2a",
+  "deployment_id": "deploy-sim-04",
+  "workload_id": "burst-3-40-concurrent",
+  "route": "/items/lookup",
+  "dataset_revision": "dataset-sim-2",
+  "clock_domain": "wall-sim-c",
+  "wall_clock_mapping": {"offset_ms": null, "uncertainty_ms": null, "status": "incompatible_clock_domain"},
+  "events": [
+    {"wall_ms": 1700000000000, "event": "request_received", "text": "request REQ-021 received"},
+    {"wall_ms": 1700000032000, "event": "db_connection_released", "text": "connection released according to unaligned wall clock"}
+  ],
+  "ingest_note": "The source clock jumped 32000 ms during capture; no monotonic clock or usable cross-clock mapping was retained.",
+  "selector_quotes": ["source clock jumped 32000 ms during capture", "no monotonic clock or usable cross-clock mapping was retained"]
+}

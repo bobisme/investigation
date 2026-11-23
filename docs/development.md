@@ -16,6 +16,13 @@ Rust suite with an isolated network namespace, a clean environment, and a
 PATH containing the pinned toolchain and the native linker tools. Tests should
 use checked-in fixtures and temporary workspaces.
 
+`fixtures/vault-goldens/` holds the Scenario A, C and D workspaces and the
+vaults rendered from them. The vault tests read them and never write them. A
+change to generated vault bytes needs a `RENDERER_VERSION` bump and
+`python3 scripts/vault-goldens.py target/debug/investigation --write`;
+`--rebuild-workspaces` reruns the scenario proofs and replaces the workspaces
+too.
+
 The neutrality check reads the actual CLI help, published schemas, and
 `methods/general.toml` or files under `methods/general/`. Once `init` appears
 in command help, the check invokes it in a temporary workspace and scans the

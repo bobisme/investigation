@@ -1,0 +1,21 @@
+{
+  "record_kind": "synthetic_enqueue_benchmark.v1",
+  "workload_id": "queue-mix-1500-per-minute-v1",
+  "offered_rate": {"value": 1500, "unit": "jobs/minute"},
+  "payload_size": {"value": 2048, "unit": "bytes/job"},
+  "environment": "offline simulator; 4 producer workers; local clock monotonic; no network provider",
+  "warmup": {"duration": 60, "unit": "seconds", "excluded": true},
+  "sample_count_per_option": 12,
+  "sample_unit": "enqueue latency per accepted job",
+  "run_order": ["database_queue", "managed_queue", "dedicated_broker"],
+  "latency_unit": "milliseconds",
+  "percentile_method": "nearest_rank",
+  "samples": {
+    "database_queue": [15, 17, 16, 18, 14, 20, 17, 16, 19, 15, 18, 42],
+    "managed_queue": [9, 10, 11, 12, 10, 13, 11, 9, 14, 10, 12, 35],
+    "dedicated_broker": [6, 7, 8, 8, 7, 9, 6, 8, 10, 7, 9, 31]
+  },
+  "build_ids": {"database_queue": "bench-a-04", "managed_queue": "bench-b-04", "dedicated_broker": "bench-c-04"},
+  "reported_p99": {"database_queue": {"value": 42, "unit": "milliseconds"}, "managed_queue": {"value": 35, "unit": "milliseconds"}, "dedicated_broker": {"value": 31, "unit": "milliseconds"}},
+  "selector_quotes": ["sample_count_per_option: 12", "latency_unit: milliseconds", "offered_rate: 1500 jobs/minute"]
+}

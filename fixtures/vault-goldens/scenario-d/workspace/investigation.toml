@@ -1,0 +1,16 @@
+# Investigation workspace configuration. Unknown top-level keys are rejected.
+# Read this workspace with investigation --workspace DIR brief, where DIR is this directory;
+# do not read state/ or cache/ files directly. See README.txt.
+# Add an import root with investigation init DIR --import-root SOURCE_DIR, not by editing this file.
+# state/ is canonical evidence and journal data; do not sync it as an Obsidian vault.
+# cache/ is rebuildable and can be deleted by cache maintenance.
+# local/ stores machine-specific, noncanonical bookkeeping.
+# vault/ is an optional child projection; Notes, Boards and Inbox are human-owned.
+# Import roots are read-only inputs. They do not authorize writes or external actions.
+schema_version = "inv.workspace-config.v1"
+import_roots = ["."]
+
+[vault_policy]
+enabled = true
+include_approved_derivatives = false
+preserve_human_folders = true

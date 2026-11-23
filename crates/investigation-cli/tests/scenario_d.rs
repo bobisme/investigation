@@ -1439,8 +1439,26 @@ fn baseline() -> &'static Value {
     BASELINE.get_or_init(|| {
         let (walk, outcome) = walk("baseline");
         assert_eq!(walk.expected["variant"], "baseline");
+        // `scripts/vault-goldens.py --rebuild-workspaces` sets this to keep
+        // the finished workspace as the Scenario D vault fixture.
+        if let Some(keep) = std::env::var_os("INVESTIGATION_KEEP_SCENARIO_D") {
+            copy_tree(&walk.root, Path::new(&keep));
+        }
         outcome
     })
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), target).unwrap();
+        }
+    }
 }
 
 #[test]
