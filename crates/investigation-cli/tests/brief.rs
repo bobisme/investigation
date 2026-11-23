@@ -165,7 +165,12 @@ impl Casework {
 
     fn observations(&mut self, count: usize) -> Vec<String> {
         let operations = (0..count)
-            .map(|index| ("observation.add", self.observation(&format!("18.{index}"))))
+            .map(|index| {
+                (
+                    "observation.add",
+                    self.observation(&format!("4217.{index}")),
+                )
+            })
             .collect();
         ids(&self.record(operations))
     }
@@ -689,7 +694,7 @@ fn a_historical_read_of_a_since_withdrawn_artifact_reports_it_unavailable() {
     let restricted = pinned(&observation);
     assert_eq!(restricted["content_state"], "restricted");
     let (brief, _) = work.brief(&["--snapshot", &sequence, "--level", "deep"]);
-    assert!(!brief.to_string().contains("18.0"), "{brief}");
+    assert!(!brief.to_string().contains("4217.0"), "{brief}");
 
     let mismatch = run(
         &root,
