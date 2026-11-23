@@ -16,6 +16,7 @@ pub mod evaluate_ops;
 pub mod evidence;
 pub mod explain;
 mod explain_ops;
+pub mod freshness;
 pub mod gap_page;
 pub mod gap_rules;
 pub mod header;

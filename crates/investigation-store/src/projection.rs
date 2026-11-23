@@ -6,6 +6,7 @@ use std::{path::Path, time::Duration};
 use investigation_core::{
     command::RevisionRef,
     evidence::AcquisitionKey,
+    freshness::dependency_edges,
     header::Actor,
     identity::{Id, Kind},
     retrospective::Relation,
@@ -16,7 +17,9 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, pa
 
 use crate::store::ingest::acquisition::AcquisitionCursor;
 
-const INDEX_USER_VERSION: u32 = 2;
+// Version 2 added acquisitions; version 3 adds the record dependency index.
+// Older indexes are rebuilt.
+const INDEX_USER_VERSION: u32 = 3;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy)]
@@ -30,6 +33,15 @@ pub struct IndexEvent<'a> {
 
 pub struct Projection {
     database: Connection,
+}
+
+/// One exact reference from a record revision to the revision it cites.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StoredDependency {
+    pub dependent: RevisionRef,
+    pub field: String,
+    pub propagation: String,
+    pub target: RevisionRef,
 }
 
 impl Projection {
@@ -97,7 +109,16 @@ impl Projection {
                      source_revision INTEGER NOT NULL, description_digest TEXT,
                      acceptance_sequence INTEGER NOT NULL,
                      PRIMARY KEY (namespace, external_id, item)
-                 );",
+                 );
+                 CREATE TABLE IF NOT EXISTS dependencies (
+                     case_id TEXT NOT NULL,
+                     dependent_id TEXT NOT NULL, dependent_revision INTEGER NOT NULL,
+                     field TEXT NOT NULL, propagation TEXT NOT NULL,
+                     target_id TEXT NOT NULL, target_revision INTEGER NOT NULL,
+                     PRIMARY KEY (dependent_id, dependent_revision, field, target_id, target_revision)
+                 );
+                 CREATE INDEX IF NOT EXISTS dependencies_targets
+                     ON dependencies (case_id, target_id, target_revision);",
             )
             .map_err(db_error)?;
         database
@@ -212,6 +233,26 @@ impl Projection {
                 ],
             )
             .map_err(db_error)?;
+            let edges = dependency_edges(record)
+                .map_err(|_| invalid("Accepted record has unreadable dependency references."))?;
+            for edge in edges {
+                tx.execute(
+                    "INSERT OR IGNORE INTO dependencies
+                         (case_id, dependent_id, dependent_revision, field, propagation,
+                         target_id, target_revision)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        case_id,
+                        record.header.id.to_string(),
+                        sql_counter(record.header.revision.0)?,
+                        edge.field,
+                        edge.propagation.as_str(),
+                        edge.target.id.to_string(),
+                        sql_counter(edge.target.revision)?
+                    ],
+                )
+                .map_err(db_error)?;
+            }
         }
         for record in &accepted.records {
             if record.header.id.kind() != Kind::Source {
@@ -342,6 +383,51 @@ impl Projection {
                     })
                     .transpose()?,
                 acceptance_sequence: read_counter(sequence)?,
+            })
+        })
+        .collect()
+    }
+
+    /// Every indexed record revision that cites any revision of `target`.
+    /// Callers decide which dependent revisions are current.
+    pub fn dependents(&self, case_id: Id, target: Id) -> Result<Vec<StoredDependency>, Failure> {
+        let mut query = self
+            .database
+            .prepare(
+                "SELECT dependent_id, dependent_revision, field, propagation, target_id,
+                     target_revision
+                 FROM dependencies WHERE case_id = ?1 AND target_id = ?2
+                 ORDER BY dependent_id, dependent_revision, field, target_revision",
+            )
+            .map_err(db_error)?;
+        let rows = query
+            .query_map([case_id.to_string(), target.to_string()], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
+            .map_err(db_error)?;
+        let reference = |id: String, revision: i64| -> Result<RevisionRef, Failure> {
+            Ok(RevisionRef {
+                id: id
+                    .parse()
+                    .map_err(|_| invalid("Index contains an invalid record ID."))?,
+                revision: read_counter(revision)?,
+            })
+        };
+        rows.map(|row| {
+            let (dependent, revision, field, propagation, target, target_revision) =
+                row.map_err(db_error)?;
+            Ok(StoredDependency {
+                dependent: reference(dependent, revision)?,
+                field,
+                propagation,
+                target: reference(target, target_revision)?,
             })
         })
         .collect()
@@ -587,6 +673,95 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM record_q", [], |row| row.get(0))
             .unwrap();
         assert_eq!(questions, 2);
+    }
+
+    #[test]
+    fn dependency_index_is_rebuilt_from_journal_events() {
+        let mut state = State::default();
+        let genesis = append(
+            &mut state,
+            None,
+            json!([{"op":"case.create", "payload":{"title":"Dependency fixture", "mode":"record"}}]),
+        );
+        let case_id = genesis.case_id;
+        let question = append(
+            &mut state,
+            Some(case_id),
+            json!([{"op":"question.create", "payload":{"wording":"Which queue?", "importance":"normal"}}]),
+        );
+        let question_ref = question.records[0].reference();
+        let options = append(
+            &mut state,
+            Some(case_id),
+            json!([
+                {"op":"option.create", "payload":{"question_ref":question_ref,"description":"Managed","dependencies":[],"tradeoff_notes":[]}},
+                {"op":"option.create", "payload":{"question_ref":question_ref,"description":"Broker","dependencies":[],"tradeoff_notes":[]}}
+            ]),
+        );
+        let receipts = [
+            receipt(&genesis, "dep-1", digest('2')),
+            receipt(&question, "dep-2", digest('3')),
+            receipt(&options, "dep-3", digest('4')),
+        ];
+        let genesis_hash = digest('1');
+        let actor = "agent:test".parse().unwrap();
+        let accepted = [&genesis, &question, &options];
+        let events: Vec<_> = (0..3)
+            .map(|i| IndexEvent {
+                previous_hash: if i == 0 {
+                    &genesis_hash
+                } else {
+                    &receipts[i - 1].snapshot.head_hash
+                },
+                actor: &actor,
+                accepted: accepted[i],
+                receipt: &receipts[i],
+                relations: &[],
+            })
+            .collect();
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.sqlite");
+        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000098".parse().unwrap();
+        let mut index = Projection::open(&path, workspace_id).unwrap();
+        for event in &events {
+            index.apply(*event).unwrap();
+        }
+        let mut expected: Vec<_> = options
+            .records
+            .iter()
+            .map(|record| StoredDependency {
+                dependent: record.reference(),
+                field: "question_ref".into(),
+                propagation: "change_only".into(),
+                target: question_ref,
+            })
+            .collect();
+        expected.sort_by_key(|row| row.dependent.id);
+        assert_eq!(
+            index.dependents(case_id, question_ref.id).unwrap(),
+            expected
+        );
+        drop(index);
+        let rebuilt = Projection::rebuild(&path, workspace_id, events).unwrap();
+        assert_eq!(
+            rebuilt.dependents(case_id, question_ref.id).unwrap(),
+            expected
+        );
+        assert!(rebuilt.dependents(case_id, case_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn version_one_indexes_are_not_reused() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.sqlite");
+        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000097".parse().unwrap();
+        drop(Projection::open(&path, workspace_id).unwrap());
+        Connection::open(&path)
+            .unwrap()
+            .pragma_update(None, "user_version", 1)
+            .unwrap();
+        assert!(Projection::open(&path, workspace_id).is_err());
+        assert!(Projection::inspect(&path, workspace_id).is_err());
     }
 
     #[test]
