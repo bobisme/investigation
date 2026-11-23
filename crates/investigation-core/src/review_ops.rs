@@ -20,6 +20,7 @@ use crate::{
     },
     header::Knowledge,
     identity::{Id, Kind},
+    objection_policy::{open_objections, raised_after_review},
     review::{
         AssessmentRelation, BlindspotVerdict, ConclusionCreate, ConclusionStatus,
         ConclusionValidate, ContextIsolation, EffectiveDisposition, ObjectionChange,
@@ -957,6 +958,7 @@ fn conclusion_request_review(
     require_expected(ctx, &expected)?;
     let mut body = record.body.clone();
     let tracked = record.clone();
+    warn_open_challenges(ctx, &tracked, &reads)?;
     body["status"] = json!(ConclusionStatus::ReviewReady);
     ctx.update(payload.conclusion_ref, body)?;
     ctx.check_final(move |state| closure_changed(&tracked, state, &basis, &reads, &sets));
@@ -1182,19 +1184,47 @@ fn critical_objections(
         .map(|reference| reference.id)
         .chain([subject])
         .collect();
-    let mut found = Vec::new();
-    for record in state.records().filter(|record| {
-        record.header.case_id == case && record.header.id.kind() == Kind::Objection
-    }) {
-        let body: ObjectionBody = decode(&record.body)?;
-        if relevant.contains(&body.subject_ref.id)
-            && body.status == ObjectionStatus::Open
-            && body.severity == ObjectionSeverity::Critical
-        {
-            found.push(record.reference());
-        }
+    Ok(open_objections(state, case, &relevant)?
+        .into_iter()
+        .filter(|objection| objection.severity == ObjectionSeverity::Critical)
+        .map(|objection| objection.objection_ref)
+        .collect())
+}
+
+/// Promotion never hides disagreement: name every open objection on the claim
+/// or its basis, and every live rival explanation, in the receipt.
+fn warn_open_challenges(
+    ctx: &mut OperationContext<'_>,
+    record: &Record,
+    reads: &[RevisionRef],
+) -> Result<(), Failure> {
+    let id = record.header.id;
+    let relevant: BTreeSet<_> = reads
+        .iter()
+        .map(|reference| reference.id)
+        .chain([id])
+        .collect();
+    let mut warnings = Vec::new();
+    for objection in open_objections(ctx.state(), record.header.case_id, &relevant)? {
+        let severity = match objection.severity {
+            ObjectionSeverity::Critical => "critical",
+            ObjectionSeverity::Material => "material",
+        };
+        warnings.push(format!(
+            "Conclusion {id} has open {severity} objection {} on {}.",
+            objection.objection_ref.id, objection.subject_ref.id
+        ));
     }
-    Ok(found)
+    for rival in causal_rivals(ctx.state(), record)? {
+        warnings.push(format!(
+            "Conclusion {id} has live rival explanation {}.",
+            rival.id
+        ));
+    }
+    for warning in warnings {
+        ctx.warn(warning);
+    }
+    Ok(())
 }
 
 fn enforce_no_critical(
@@ -1292,6 +1322,9 @@ fn conclusion_validate(
     }
     let reads = ready(ctx.state(), record)?;
     enforce_no_critical(ctx.state(), record, &reads)?;
+    let record = record.clone();
+    warn_open_challenges(ctx, &record, &reads)?;
+    let record = &record;
     let review_ref = resolve(ctx, &payload.review_ref, &[Kind::Review], "/review_ref")?;
     let review = scoped(ctx, review_ref, Kind::Review, "/review_ref")?;
     let review_body: ValidationReviewBody = decode(&review.body).map_err(|_| {
@@ -1431,6 +1464,7 @@ fn objection_raise(payload: ObjectionRaise, ctx: &mut OperationContext<'_>) -> R
         evidence_refs,
         resolution_reason: None,
         resolution_evidence_refs: Vec::new(),
+        resolution_review_ref: None,
     };
     ctx.create(Kind::Objection, encode(body)?)?;
     Ok(())
@@ -1466,9 +1500,32 @@ fn objection_change(
             "Cite the evidence that resolves this objection, or withdraw it with a reason.",
         ));
     }
+    let review_ref = payload
+        .review_ref
+        .as_ref()
+        .map(|entry| resolve(ctx, entry, &[Kind::Review], "/review_ref"))
+        .transpose()?;
+    if let Some(review_ref) = review_ref {
+        let review = current(
+            ctx.state(),
+            record.header.case_id,
+            review_ref,
+            "/review_ref",
+        )?;
+        let reviewed: RevisionRef = decode(&review.body["subject_ref"])?;
+        if reviewed.id != body.subject_ref.id {
+            return Err(gate(
+                "/review_ref",
+                "Cite a review of the disputed subject.",
+            ));
+        }
+    }
+    // A new revision records the disposition; the statement, scope, severity
+    // and evidence of the original objection are kept unchanged.
     body.status = status;
     body.resolution_reason = Some(payload.reason);
     body.resolution_evidence_refs = evidence;
+    body.resolution_review_ref = review_ref;
     ctx.update(payload.objection_ref, encode(body)?)?;
     Ok(())
 }
@@ -1523,6 +1580,11 @@ pub fn effective_disposition(state: &State, record: &Record) -> EffectiveDisposi
             let review: RevisionRef = decode(&record.body["review_ref"])?;
             let review_record = current(state, case, review, "/review_ref")?;
             let review: ValidationReviewBody = decode(&review_record.body)?;
+            // A challenge raised after promotion disputes the subject; it is
+            // not just a stale review awaiting refresh.
+            if raised_after_review(state, record, &review)? {
+                return Ok(EffectiveDisposition::Disputed);
+            }
             validation_review_current(state, record, &review)?;
         }
         if read_set

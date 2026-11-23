@@ -19,6 +19,24 @@
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
     },
+    "ObjectionAcknowledgmentInput": {
+      "additionalProperties": false,
+      "description": "Caller-supplied acknowledgment of one open objection.",
+      "properties": {
+        "objection_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "rationale": {
+          "description": "Why the choice is acceptable despite the objection.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "objection_ref",
+        "rationale"
+      ],
+      "type": "object"
+    },
     "Reference": {
       "anyOf": [
         {
@@ -53,6 +71,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "acknowledgments": {
+      "default": [],
+      "description": "Attributed acknowledgments of open objections on the decision or its\nbasis. The case policy decides which objections require one.",
+      "items": {
+        "$ref": "#/$defs/ObjectionAcknowledgmentInput"
+      },
+      "type": "array"
+    },
     "decision_ref": {
       "$ref": "#/$defs/RevisionRef"
     },

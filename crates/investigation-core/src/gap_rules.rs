@@ -415,6 +415,9 @@ pub fn enumerate_gaps(
                 exact_ref(field(&objection.body, "subject_ref"))
                     .is_some_and(|r| r.id == conclusion_ref.id)
                     && !is_retracted(&objection.body)
+                    // Resolved or withdrawn objections stay on record but no
+                    // longer dispute the conclusion.
+                    && field(&objection.body, "status").and_then(Value::as_str) == Some("open")
             });
         if disputed {
             gaps.push(make_gap(GapFields {

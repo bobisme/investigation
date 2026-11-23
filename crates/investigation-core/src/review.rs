@@ -347,6 +347,9 @@ pub struct ObjectionChange {
     pub objection_ref: RevisionRef,
     pub reason: String,
     pub evidence_refs: Vec<Reference>,
+    /// A current review of the disputed subject that this disposition relies on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_ref: Option<Reference>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -64,6 +64,17 @@
     },
     "reason": {
       "type": "string"
+    },
+    "review_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Reference"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A current review of the disputed subject that this disposition relies on."
     }
   },
   "required": [

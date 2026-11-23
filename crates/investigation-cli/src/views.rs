@@ -10,7 +10,7 @@ use investigation_core::{
     decision_ops::{self, EffectiveDecision},
     header::display_title,
     identity::{Id, Kind},
-    measurement_ops,
+    measurement_ops, objection_policy,
     review::EffectiveDisposition,
     review_ops, source_ops,
     state::Record,
@@ -110,6 +110,17 @@ pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> E
     } else {
         json!("current")
     };
+    // Open objections on the record or its basis outrank recorded caveats:
+    // a material objection must be visible in every default read.
+    let open_objections: Vec<RevisionRef> = if reviewed && kind != Kind::Review {
+        objection_policy::relevant_open_objections(&replay.state, record)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|objection| objection.objection_ref)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let caveat = if !unavailable.is_empty() {
         Some(
             json!({"state":"known","reason":"Expected retained bytes are missing or fail integrity verification.","unavailable_artifacts":unavailable}),
@@ -131,6 +142,9 @@ pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> E
                     json!({"state":"known","conditions":record.body["hard_conditions"],"reason":"The proposed choice depends on unresolved hard criteria."}),
                 )
             }
+            _ if !open_objections.is_empty() => Some(
+                json!({"state":"known","reason":"Open objections apply to the record or its basis.","open_objections":open_objections}),
+            ),
             _ => record.body["caveats"]
                 .as_array()
                 .and_then(|items| items.first())
@@ -139,7 +153,7 @@ pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> E
     };
     let contradiction = if state == "disputed" {
         Some(
-            json!({"state":"known","reason":"An open critical objection applies to the record or its basis."}),
+            json!({"state":"known","reason":"An open critical objection applies to the record or its basis, or an objection was raised after its review.","open_objections":open_objections}),
         )
     } else {
         record.body["contradiction_refs"]
@@ -390,6 +404,12 @@ fn project_record(
                 out.insert("closure".into(), closure.clone());
             }
         }
+        if let Some(challenges) = objection_policy::challenges_view(&replay.state, record) {
+            out.insert("challenges".into(), challenges);
+        }
+        if record.header.id.kind() == Kind::Objection {
+            out.insert("objection".into(), objection_view(record));
+        }
         if record.header.id.kind() == Kind::Decision {
             out.insert("choice".into(), record.body["choice"].clone());
             out.insert(
@@ -449,6 +469,61 @@ fn project_record(
         );
     }
     Value::Object(out)
+}
+
+/// Text lines naming open objections and what an accepted decision was
+/// accepted over; empty when there is nothing to show.
+pub fn challenges_text(view: &Value) -> String {
+    let list = |items: &Value| -> Vec<String> {
+        items
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|item| {
+                format!(
+                    "{} ({})",
+                    item["objection_ref"]["id"].as_str().unwrap_or("?"),
+                    item["severity"].as_str().unwrap_or("?")
+                )
+            })
+            .collect()
+    };
+    let mut text = String::new();
+    let open = list(&view["challenges"]["open_objections"]);
+    if !open.is_empty() {
+        text.push_str(&format!("\nOpen objections: {}", open.join(", ")));
+    }
+    let accepted = list(&view["challenges"]["accepted_over"]["open_objections"]);
+    if !accepted.is_empty() {
+        text.push_str(&format!(
+            "\nAccepted over objections: {}",
+            accepted.join(", ")
+        ));
+    }
+    text
+}
+
+/// Disposition of an objection, attributed to the revision that recorded it.
+/// Resolution and withdrawal are revisions; the original statement remains.
+fn objection_view(record: &Record) -> Value {
+    let body = &record.body;
+    let mut view = json!({
+        "subject_ref":body["subject_ref"],
+        "severity":body["severity"],
+        "status":body["status"],
+        "scope":body["scope"],
+    });
+    if body["status"] != "open" {
+        view["disposition"] = json!({
+            "reason":body["resolution_reason"],
+            "evidence_refs":body["resolution_evidence_refs"],
+            "review_ref":body.get("resolution_review_ref").cloned().unwrap_or(Value::Null),
+            "recorded_by":record.header.recorded_by,
+            "recorded_at":record.header.recorded_at,
+            "revision":record.header.revision.0,
+        });
+    }
+    view
 }
 
 fn record_title(record: &Record) -> String {

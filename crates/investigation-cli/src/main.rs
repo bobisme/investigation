@@ -428,12 +428,13 @@ fn show(
         let text = serde_json::to_string_pretty(&view).expect("full view serializes");
         return Ok(Output::success("record_shown", view, text));
     }
-    let text = format!(
+    let mut text = format!(
         "{}  {}\n{}",
         id,
         view["title"].as_str().unwrap_or(""),
         view["summary"].as_str().unwrap_or("")
     );
+    text.push_str(&views::challenges_text(&view));
     Ok(Output::success("record_shown", view, text))
 }
 

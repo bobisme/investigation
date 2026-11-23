@@ -84,7 +84,7 @@ const RULES: &[RuleSpec] = &[
         rule_id: "conclusion.disputed",
         subject_kinds: &[Kind::Conclusion],
         status: GapStatus::StaleDueToRevision,
-        condition: "A live Conclusion has effective_disposition or status disputed, or a non-retracted Objection names it as subject_ref.",
+        condition: "A live Conclusion has effective_disposition or status disputed, or an open Objection names it as subject_ref.",
         inspected_fields: &[
             "lifecycle",
             "effective_disposition",
@@ -92,7 +92,7 @@ const RULES: &[RuleSpec] = &[
             "subject_ref and status of each Objection",
         ],
         suggested_operation: Some("review.submit"),
-        persistence: "Stops when no disputed disposition or live Objection remains, or the Conclusion is no longer live.",
+        persistence: "Stops when no disputed disposition or open Objection remains, or the Conclusion is no longer live.",
     },
     RuleSpec {
         rule_id: "decision.accepted_with_unresolved_hard_cell",

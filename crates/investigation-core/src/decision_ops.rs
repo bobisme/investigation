@@ -13,6 +13,10 @@ use crate::{
         ObservationBasis, ObservationBody, ObservationValue, SelectorValidation,
     },
     identity::{Id, Kind},
+    objection_policy::{
+        AcceptanceChallenges, ObjectionAcknowledgmentInput, acknowledge, acknowledgment_policy,
+        relevant_open_objections,
+    },
     review::ValidationVerdict,
     review_ops::{ValidationReviewBody, validation_review_current},
     state::{OperationContext, Record, State},
@@ -104,12 +108,20 @@ pub struct DecisionBody {
     pub supersedes: Option<RevisionRef>,
     pub superseded_by: Option<RevisionRef>,
     pub change_reason: Option<String>,
+    /// Open objections and uncertainty the decision was accepted over (§14.3).
+    /// Written once at acceptance; absent on proposals and older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance_challenges: Option<AcceptanceChallenges>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct DecisionAccept {
     pub decision_ref: RevisionRef,
     pub review_ref: Reference,
+    /// Attributed acknowledgments of open objections on the decision or its
+    /// basis. The case policy decides which objections require one.
+    #[serde(default)]
+    pub acknowledgments: Vec<ObjectionAcknowledgmentInput>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -434,6 +446,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
         supersedes: None,
         superseded_by: None,
         change_reason: None,
+        acceptance_challenges: None,
     })
 }
 /// A claim without current validated, retained evidence stays uncertain.
@@ -580,6 +593,37 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
         }
     }
     Ok(())
+}
+/// Everything the decision is accepted over: relevant open objections (with
+/// policy-required acknowledgments), uncertain comparisons and conditional
+/// hard criteria. Acceptance under disagreement is allowed; silence is not.
+fn acceptance_challenges(
+    s: &State,
+    target: &Record,
+    b: &DecisionBody,
+    acknowledgments: &[(RevisionRef, String)],
+) -> Result<AcceptanceChallenges, Failure> {
+    let case = target.header.case_id;
+    let policy = acknowledgment_policy(s, case);
+    let open_objections = acknowledge(
+        relevant_open_objections(s, target)?,
+        acknowledgments,
+        policy,
+    )?;
+    let mut uncertain_comparisons = Vec::new();
+    for r in &b.comparison_refs {
+        let cell: ComparisonBody =
+            decode(&exact(s, case, *r, Kind::Comparison, "/comparison_refs")?.body)?;
+        if cell.outcome == ComparisonOutcome::Unknown || !verified(s, case, &cell) {
+            uncertain_comparisons.push(*r);
+        }
+    }
+    Ok(AcceptanceChallenges {
+        policy,
+        open_objections,
+        uncertain_comparisons,
+        conditional_hard_criteria: b.hard_conditions.iter().map(|h| h.criterion_ref).collect(),
+    })
 }
 fn current_review(s: &State, target: &Record, r: RevisionRef) -> Result<(), Failure> {
     let review = exact(s, target.header.case_id, r, Kind::Review, "/review_ref")?;
@@ -872,8 +916,30 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 let r = pin(c, &p.review_ref, Kind::Review, "/review_ref")?;
                 current_review(c.state(), &target, r)?;
                 check_cells(c.state(), case, &b)?;
+                let acknowledgments = p
+                    .acknowledgments
+                    .iter()
+                    .enumerate()
+                    .map(|(index, ack)| {
+                        let path = format!("/acknowledgments/{index}/objection_ref");
+                        Ok((
+                            c.resolve(&ack.objection_ref, Kind::Objection, &path)?,
+                            ack.rationale.clone(),
+                        ))
+                    })
+                    .collect::<Result<Vec<_>, Failure>>()?;
+                let challenges = acceptance_challenges(c.state(), &target, &b, &acknowledgments)?;
+                for warning in challenges.warnings(p.decision_ref.id) {
+                    c.warn(warning);
+                }
+                let recorded: Vec<_> = challenges
+                    .open_objections
+                    .iter()
+                    .map(|objection| objection.objection_ref)
+                    .collect();
                 b.lifecycle = DecisionLifecycle::Accepted;
                 b.review_ref = Some(r);
+                b.acceptance_challenges = Some(challenges);
                 c.update(p.decision_ref, body(b)?)?;
                 let id = p.decision_ref.id;
                 c.check_final(move |s| {
@@ -882,7 +948,20 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                         .ok_or_else(|| fail("/decision_ref", "Decision missing."))?;
                     let b: DecisionBody = decode(&record.body)?;
                     current_review(s, record, r)?;
-                    check_cells(s, case, &b)
+                    check_cells(s, case, &b)?;
+                    let open: Vec<_> = relevant_open_objections(s, record)?
+                        .into_iter()
+                        .map(|objection| objection.objection_ref)
+                        .collect();
+                    if open != recorded {
+                        let mut failure = fail(
+                            "/acknowledgments",
+                            "The final transaction changes the open objections this decision is accepted over.",
+                        );
+                        failure.error.expected = Some(json!(open));
+                        return Err(failure);
+                    }
+                    Ok(())
                 });
                 Ok(())
             },

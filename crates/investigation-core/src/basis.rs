@@ -34,6 +34,9 @@ pub struct ObjectionBody {
     pub evidence_refs: Knowledge<Vec<RevisionRef>>,
     pub resolution_reason: Option<String>,
     pub resolution_evidence_refs: Vec<RevisionRef>,
+    /// The fresh review a resolution cites, when one was required or given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution_review_ref: Option<RevisionRef>,
 }
 /// Mirrors the flat canonical assumption body produced by the explanatory lane.
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -176,7 +179,12 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "review_ref",
                 "evidence_refs",
             ],
-            &["status", "resolution_reason", "resolution_evidence_refs"],
+            &[
+                "status",
+                "resolution_reason",
+                "resolution_evidence_refs",
+                "resolution_review_ref",
+            ],
         ),
         Kind::Assessment => (
             &[
@@ -247,6 +255,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "supersedes",
                 "superseded_by",
                 "change_reason",
+                "acceptance_challenges",
             ],
         ),
         _ => return Err(failure("Record kind has no defined substantive basis.")),
