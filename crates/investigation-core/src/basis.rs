@@ -139,6 +139,8 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "preferred_direction",
                 "threshold",
                 "weighting_rationale",
+                "weight",
+                "overlaps",
             ],
             &["lifecycle", "change_reason", "material_change"],
         ),
@@ -285,6 +287,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 | (Kind::Conclusion, "causal_test" | "claim_form")
                 | (Kind::Assessment, "frozen_basis" | "absence" | "equivalence")
                 | (Kind::Comparison, "absence")
+                | (Kind::Criterion, "weight" | "overlaps")
         );
         if !object.contains_key(*key) && !optional {
             return Err(failure("Record is missing a substantive basis field."));

@@ -12,8 +12,7 @@
 //! material assumptions that were never supported.
 //!
 //! Seams, not checks: a reopening trigger is required by `decision.propose`,
-//! so a Decision without one cannot be recorded; a weight recorded without a
-//! range (W10.20) needs the weight fields that bone adds; a stall pattern of
+//! so a Decision without one cannot be recorded; a stall pattern of
 //! the gap rules (W05b.03, `guidance::STALL_GAP_RULES`) would be adopted by a
 //! gap-rule check of its own.
 
@@ -34,6 +33,7 @@ use crate::{
     review::ObjectionSeverity,
     review_ops::required_read_set,
     state::{Record, State},
+    weighting::WeightStatus,
     wire::Failure,
 };
 
@@ -81,6 +81,19 @@ pub(super) const CHECKS: &[CheckSpec] = &[
         suggested_schema: Some("comparison.revise"),
         guide: Some("compare"),
         source: CheckSource::Native(unit_mismatch),
+    },
+    CheckSpec {
+        check_id: "criterion.weight_without_range",
+        version: "v1",
+        subject_kinds: &[Kind::Criterion],
+        reads: &["lifecycle, question_ref and weight.status of each Criterion"],
+        condition: "An active Criterion records a weight with status stated_preference: no worst and best values it trades off. The facts name the other active Criteria of the same question whose weight has a range.",
+        why: "A weight is recorded without the range it trades off, so it is kept as a stated preference and never enters a weighted score.",
+        severity: Severity::Advisory,
+        severity_reason: "A weight without a range has no meaning for a score; the preference stays visible but does not rank options.",
+        suggested_schema: Some("criterion.amend"),
+        guide: Some("sensitivity"),
+        source: CheckSource::Native(weight_without_range),
     },
     CheckSpec {
         check_id: "decision.preference_without_tradeoff",
@@ -247,6 +260,44 @@ fn hard_unmeasured(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure
         detections.push(Detection {
             subject_refs: vec![criterion.reference()],
             related_refs: related,
+            facts,
+        });
+    }
+    Ok(detections)
+}
+
+/// Active weighted Criteria whose weight has no stated range (§15.1).
+fn weight_without_range(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure> {
+    let active: Vec<(RevisionRef, CriterionBody)> = context
+        .current(Kind::Criterion)
+        .into_iter()
+        .filter_map(|record| {
+            decode::<CriterionBody>(record)
+                .filter(|criterion| criterion.lifecycle == CriterionLifecycle::Active)
+                .map(|criterion| (record.reference(), criterion))
+        })
+        .collect();
+    let status = |criterion: &CriterionBody| criterion.weight.as_ref().map(|weight| weight.status);
+    let mut detections = Vec::new();
+    for (subject, criterion) in &active {
+        if status(criterion) != Some(WeightStatus::StatedPreference) {
+            continue;
+        }
+        let ranged: Vec<RevisionRef> = active
+            .iter()
+            .filter(|(_, other)| {
+                other.question_ref.id == criterion.question_ref.id
+                    && status(other) == Some(WeightStatus::Ranged)
+            })
+            .map(|(reference, _)| *reference)
+            .collect();
+        let mut facts = vec![fact("weight:stated_preference", vec![*subject])];
+        if !ranged.is_empty() {
+            facts.push(fact("question_ranged_weights", ranged.clone()));
+        }
+        detections.push(Detection {
+            subject_refs: vec![*subject],
+            related_refs: ranged,
             facts,
         });
     }

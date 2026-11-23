@@ -53,6 +53,7 @@ pub mod search_text;
 pub mod source_ops;
 pub mod state;
 pub mod synopsis;
+pub mod weighting;
 pub mod wire;
 
 #[cfg(test)]

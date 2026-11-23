@@ -22,6 +22,34 @@ pub(super) fn threshold(value: &Value) -> Option<String> {
     Some(format!("{} {amount}", inline_code(&super::wire(operator))))
 }
 
+fn unit_text(body: &Value) -> String {
+    text_at(body, "scale.unit").map_or_else(String::new, |unit| format!(" {}", inline_code(unit)))
+}
+
+/// A weight is a preference: with a range it may enter a weighted score;
+/// without one it is shown and never scored.
+fn weight(f: &mut Facts<'_, '_, '_>, unit: String) {
+    let body = &f.record.body;
+    let Some(value) = text_at(body, "weight.value") else {
+        return;
+    };
+    let value = inline_code(value);
+    let line = match (
+        text_at(body, "weight.range.worst"),
+        text_at(body, "weight.range.best"),
+    ) {
+        (Some(worst), Some(best)) => format!(
+            "- Weight: {value} for the swing from {}{unit} (worst) to {}{unit} (best); a stated preference, not a measurement\n",
+            inline_code(worst),
+            inline_code(best),
+        ),
+        _ => format!(
+            "- Weight: {value}, a stated preference with no range; it never enters a weighted score\n"
+        ),
+    };
+    f.out.push_str(&line);
+}
+
 pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     let body = &f.record.body;
     let kind = text_at(body, "kind").unwrap_or_default();
@@ -59,6 +87,9 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         f.reference_list("Applies to", &scope, "")?;
     }
     f.text_present("Weighting rationale", "weighting_rationale");
+    weight(f, unit_text(body));
+    f.text_present("Weight rationale", "weight.rationale");
+    f.text_present("Weight stated by", "weight.stated_by");
     f.text_present("Change reason", "change_reason");
     f.word_present("Material change", "material_change");
 

@@ -24,6 +24,13 @@
         "name": {
           "type": "string"
         },
+        "overlaps": {
+          "description": "Criteria of the same question this one overlaps or stands in for.",
+          "items": {
+            "$ref": "#/$defs/CriterionOverlapInput"
+          },
+          "type": "array"
+        },
         "preferred_direction": {
           "$ref": "#/$defs/PreferredDirection"
         },
@@ -42,6 +49,17 @@
               "type": "null"
             }
           ]
+        },
+        "weight": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CriterionWeightInput"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "An optional weight on a soft criterion. Without a range it is stored\nas a stated preference and never scored. See `weighting`."
         },
         "weighting_rationale": {
           "type": [
@@ -65,6 +83,27 @@
         "soft"
       ],
       "type": "string"
+    },
+    "CriterionOverlapInput": {
+      "additionalProperties": false,
+      "description": "An investigator's declaration that a criterion overlaps or proxies another.",
+      "properties": {
+        "criterion_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "relation": {
+          "$ref": "#/$defs/OverlapRelation"
+        },
+        "statement": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_ref",
+        "relation",
+        "statement"
+      ],
+      "type": "object"
     },
     "CriterionScale": {
       "additionalProperties": false,
@@ -136,6 +175,60 @@
         }
       ]
     },
+    "CriterionWeightInput": {
+      "additionalProperties": false,
+      "description": "An optional weight on a soft criterion, supplied by people.",
+      "properties": {
+        "range": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeightRange"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Without a range the weight is stored as a stated preference and never\nenters a score."
+        },
+        "rationale": {
+          "description": "Why this swing is worth this weight.",
+          "type": "string"
+        },
+        "source_refs": {
+          "description": "Where the preference was stated: Sources, Artifacts or Observations.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "stated_by": {
+          "description": "Whose preference this is, when not the recorder's.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "uncertainty": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WeightUncertainty"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString",
+          "description": "A positive weight for the swing from `range.worst` to `range.best`."
+        }
+      },
+      "required": [
+        "value",
+        "rationale"
+      ],
+      "type": "object"
+    },
     "DecimalString": {
       "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
       "type": "string"
@@ -174,6 +267,20 @@
         "unit"
       ],
       "type": "object"
+    },
+    "OverlapRelation": {
+      "oneOf": [
+        {
+          "const": "overlaps",
+          "description": "Both criteria measure partly the same thing.",
+          "type": "string"
+        },
+        {
+          "const": "proxy_for",
+          "description": "This criterion stands in for the other one.",
+          "type": "string"
+        }
+      ]
     },
     "PreferredDirection": {
       "enum": [
@@ -280,6 +387,40 @@
         "greater_than"
       ],
       "type": "string"
+    },
+    "WeightRange": {
+      "additionalProperties": false,
+      "description": "The worst and best values a weight trades off, in the criterion's unit.",
+      "properties": {
+        "best": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "worst": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "worst",
+        "best"
+      ],
+      "type": "object"
+    },
+    "WeightUncertainty": {
+      "additionalProperties": false,
+      "description": "The stated uncertainty of a weight value; sensitivity varies the weight\nacross it.",
+      "properties": {
+        "high": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "low": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "low",
+        "high"
+      ],
+      "type": "object"
     }
   },
   "$id": "urn:investigation:schema:v1:operation:criterion.amend",

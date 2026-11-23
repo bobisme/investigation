@@ -535,6 +535,12 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
         Kind::Criterion => {
             out.add(body, "question_ref", "question_ref", ChangeOnly)?;
             out.add(body, "option_refs", "option_refs", ChangeOnly)?;
+            out.add(
+                &body["weight"],
+                "source_refs",
+                "weight.source_refs",
+                Inherit,
+            )?;
         }
         Kind::Comparison => {
             out.add(body, "option_ref", "option_ref", Inherit)?;

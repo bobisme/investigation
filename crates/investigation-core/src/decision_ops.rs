@@ -457,7 +457,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
     })
 }
 /// A claim without current validated, retained evidence stays uncertain.
-fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
+pub(crate) fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
     cell.evidence_refs.iter().any(|r| {
         // A later measurement judgment that keeps or raises effective validity
         // is benign to the cell, as it is to the freshness index.

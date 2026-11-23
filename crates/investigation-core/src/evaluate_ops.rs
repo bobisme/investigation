@@ -64,6 +64,11 @@ pub struct CriterionBody {
     pub lifecycle: CriterionLifecycle,
     pub change_reason: Option<String>,
     pub material_change: bool,
+    /// See `weighting`. Absent on unweighted and older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<crate::weighting::CriterionWeight>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overlaps: Vec<crate::weighting::CriterionOverlap>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -275,6 +280,12 @@ fn normalize_criterion(
             (q, Some(refs))
         }
     };
+    let weight = p
+        .weight
+        .as_ref()
+        .map(|w| crate::weighting::normalize_weight(ctx, &p, w))
+        .transpose()?;
+    let overlaps = crate::weighting::normalize_overlaps(ctx, question_ref.id, &p.overlaps)?;
     Ok(CriterionBody {
         name: p.name,
         kind: p.kind,
@@ -287,6 +298,8 @@ fn normalize_criterion(
         lifecycle: CriterionLifecycle::Active,
         change_reason: None,
         material_change: false,
+        weight,
+        overlaps,
     })
 }
 fn resolve_inputs(
@@ -588,6 +601,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             ok,
             |p: CriterionCreate, c| {
                 let b = normalize_criterion(c, p)?;
+                crate::weighting::warn_stated_preference(c, &b);
                 c.create(Kind::Criterion, body(b)?)?;
                 Ok(())
             },
@@ -612,7 +626,20 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                     || old.option_refs != next.option_refs
                     || old.scale.unit != next.scale.unit
                     || old.preferred_direction != next.preferred_direction
-                    || old.threshold != next.threshold;
+                    || old.threshold != next.threshold
+                    || old.weight != next.weight
+                    || old.overlaps != next.overlaps;
+                if next
+                    .overlaps
+                    .iter()
+                    .any(|o| o.criterion_id == p.criterion_ref.id)
+                {
+                    return Err(invalid(
+                        "/replacement/overlaps",
+                        "A criterion cannot overlap itself.",
+                    ));
+                }
+                crate::weighting::warn_stated_preference(c, &next);
                 next.change_reason = Some(p.reason);
                 c.update(p.criterion_ref, body(next)?)?;
                 Ok(())

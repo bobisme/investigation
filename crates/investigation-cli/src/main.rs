@@ -504,6 +504,11 @@ fn show(
                 case,
                 id
             )?);
+            if let Some(analysis) =
+                investigation_core::weighting::weighted_analysis(&replay.state, case, id)?
+            {
+                view["weighted_analysis"] = json!(analysis);
+            }
         }
         if id.kind() == investigation_core::identity::Kind::Case {
             view["method_packs"] = json!(store.method_packs(&replay.state, case, None)?);

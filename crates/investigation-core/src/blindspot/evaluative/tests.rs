@@ -288,6 +288,7 @@ fn registered_conditions_match_their_constants() {
     let registry = checks();
     for id in [
         "criterion.hard_unmeasured",
+        "criterion.weight_without_range",
         "comparison.unit_mismatch",
         "decision.preference_without_tradeoff",
         "promoted.material_assumption_unsupported",
@@ -733,4 +734,63 @@ fn a_decided_material_case_needs_a_current_retrospective_before_closure() {
         vec![retrospective]
     );
     assert!(facts(&findings[0], "changed_after_retrospective").contains(&objection));
+}
+
+#[test]
+fn scenario_c_a_weight_without_a_range_is_reported_and_never_scored() {
+    use crate::weighting::{ExclusionReason, weighted_analysis};
+    let mut case = Case::new("evaluate");
+    let frame = case.frame();
+    let mut effort = criterion(
+        frame.question,
+        "Team implementation effort",
+        "soft",
+        Some("engineer-weeks"),
+        Value::Null,
+    );
+    effort["weight"] = json!({"value":"3","rationale":"The team says effort matters most",
+        "stated_by":"synthetic planning interview"});
+    let effort_input = effort.clone();
+    let effort = case.one("criterion.create", effort);
+    let mut latency = criterion(
+        frame.question,
+        "Enqueue latency",
+        "soft",
+        Some("milliseconds"),
+        Value::Null,
+    );
+    latency["weight"] = json!({"value":"2","range":{"worst":"60","best":"20"},
+        "rationale":"The swing from 60 ms to 20 ms"});
+    let latency = case.one("criterion.create", latency);
+    let findings = case.findings("criterion.weight_without_range");
+    assert_eq!(findings.len(), 1, "{findings:#?}");
+    assert_eq!(findings[0].subject_refs, vec![effort]);
+    assert_eq!(
+        facts(&findings[0], "weight:stated_preference"),
+        vec![effort]
+    );
+    assert_eq!(
+        facts(&findings[0], "question_ranged_weights"),
+        vec![latency]
+    );
+    // Hard criteria are still unmeasured: no option is scored, whatever the
+    // soft weights say.
+    let analysis = weighted_analysis(&case.state, case.case.unwrap(), frame.question.id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(analysis.excluded.len(), frame.options.len());
+    assert!(analysis.excluded.iter().all(|excluded| excluded.reason
+        == ExclusionReason::HardUnresolved
+        && excluded.criterion_refs == vec![frame.recovery, frame.loss]));
+    assert!(analysis.scores.is_empty() && analysis.sensitivity.is_empty());
+    assert_eq!(analysis.consequences.rows.len(), frame.options.len());
+    assert_eq!(analysis.unweighted_criteria, vec![frame.cost, effort]);
+    // Stating the range the weight trades off resolves the finding.
+    let mut ranged = effort_input;
+    ranged["weight"]["range"] = json!({"worst":"12","best":"2"});
+    case.one(
+        "criterion.amend",
+        json!({"criterion_ref":effort,"reason":"State the swing","replacement":ranged}),
+    );
+    assert!(case.findings("criterion.weight_without_range").is_empty());
 }

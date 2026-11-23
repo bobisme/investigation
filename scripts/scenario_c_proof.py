@@ -136,8 +136,18 @@ def main():
             {"kind": "qualitative", "requirement": "Zero acknowledged jobs lost under the specified failure model"})
         loss = created(d.record(case, "criterion.create", loss_input))
         soft = created(d.record(case, "criterion.create", criterion(question, "Operational cost estimate", "soft", "USD/month")))
-        latency = created(d.record(case, "criterion.create", criterion(question, "Enqueue latency (small synthetic benchmark)", "soft", "milliseconds")))
-        complexity = created(d.record(case, "criterion.create", criterion(question, "Team implementation effort", "soft", "engineer-weeks")))
+        # Optional weights (W10.20): a weight with the range it trades off may
+        # enter a score; one without a range stays a stated preference.
+        latency_input = criterion(question, "Enqueue latency (small synthetic benchmark)", "soft", "milliseconds")
+        latency_input["weight"] = {"value": "2", "range": {"worst": "60", "best": "20"},
+                                   "rationale": "The swing from 60 ms to 20 ms enqueue latency"}
+        latency = created(d.record(case, "criterion.create", latency_input))
+        complexity_input = criterion(question, "Team implementation effort", "soft", "engineer-weeks")
+        complexity_input["weight"] = {"value": "3", "rationale": "The team says effort matters most",
+                                      "stated_by": "synthetic planning interview"}
+        complexity_receipt = d.record(case, "criterion.create", complexity_input)
+        assert any("criterion.weight_without_range" in warning for warning in complexity_receipt.get("warnings", [])), complexity_receipt
+        complexity = created(complexity_receipt)
 
         # Before the recovery measurement the audit names each hard criterion
         # with no evidence-backed disposition, keyed by the criterion itself.
@@ -286,6 +296,17 @@ def main():
         frontier = d.show(case, question)["pareto"]
         assert {entry["option_ref"]["id"] for entry in frontier} == {option["id"] for option in options}, frontier
         assert all(entry["status"] == "uncertain_frontier" for entry in frontier), frontier
+        # Any output that combines weights leads with the consequences table.
+        # Unresolved hard criteria keep every option out of a weighted score.
+        weighted = d.show(case, question)["weighted_analysis"]
+        assert next(iter(weighted)) == "consequences", list(weighted)
+        assert {row["option_ref"]["id"] for row in weighted["consequences"]["rows"]} == {option["id"] for option in options}
+        assert {entry["option_ref"]["id"] for entry in weighted["excluded"]} == {option["id"] for option in options}, weighted
+        assert all(entry["reason"] == "hard_unresolved" for entry in weighted["excluded"]), weighted
+        assert weighted["scores"] == [] and weighted["sensitivity"] == [], weighted
+        assert {entry["criterion_ref"]["id"]: entry["enters_score"] for entry in weighted["weights"]} == {latency: True, complexity: False}
+        assert [entry["subject_refs"] for entry in blindspots(d, case)["checks"]
+                if entry["check_id"] == "criterion.weight_without_range"] == [[ref(complexity)]]
         handoff = d.brief(case)
         assert handoff.get("ok") is True
         # Start a fresh process with only the brief, not the workspace or chat.

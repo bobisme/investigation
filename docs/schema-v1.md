@@ -81,6 +81,23 @@ An inquiry plan may carry an optional `equivalence` block: `population`, `unit`,
 
 A Conclusion may declare `claim_form`: `absence` or `equivalence`. `conclusion.request_review` and `conclusion.validate` refuse with `GATE_FAILED` when a supporting Assessment or Comparison, or one cited by a supporting Assessment, has an absence basis that does not hold, or an equivalence evaluation that is not a prespecified `bounded_equivalence_supported`. They also refuse when a declared `claim_form` has no supportive Assessment in `support_refs` with a basis of that kind that holds. The error's `actual` lists each unmet requirement by code, with `ceiling: inconclusive` and the human question. `decision.accept` reads a Comparison whose absence basis does not hold as `unknown`.
 
+## Weights and weighted analysis
+
+A soft Criterion may carry an optional `weight` with `criterion.create` or `criterion.amend`: a positive `value`, a `rationale`, and optionally `range` (`worst` and `best`, in the criterion's declared unit), `uncertainty` (`low` and `high` that bracket the value), `stated_by` and `source_refs` (the Sources, Artifacts or Observations that state the preference). A weight is a preference, never a measurement. The core never proposes a weight and has no default.
+
+- A weight with a `range` is stored with status `ranged`. The range needs a declared unit and a `higher` or `lower` preferred direction, and `best` must be better than `worst` in that direction.
+- A weight without a `range` is stored with status `stated_preference`. It is kept and shown and never enters a score. The receipt warns, and the audit check `criterion.weight_without_range` reports it.
+- A hard Criterion takes no weight; `criterion.create` refuses one at `/weight`.
+- A Criterion may declare `overlaps`: each names another active Criterion of the same question, a `relation` (`overlaps` or `proxy_for`) and a `statement`. The core shows the declaration and does not judge it.
+- A changed weight or overlap is a material criterion revision: its Comparisons, and the Decisions that cite them, become `needs_review`.
+
+When an active Criterion of a Question carries a weight, `show <question> --depth full` adds `weighted_analysis` (rule version `weighted-analysis.v1`) beside `pareto`. Its keys sort with `consequences` first: the table of eligible Options by active Criteria, each cell with its state (`measured`, `measured_unverified`, `preference`, `qualitative`, `unknown`, `not_applicable`, `missing`, `multiple`, `needs_review` or `out_of_scope`), Comparison, outcome, value, basis and evidence. A preference or qualitative basis is labelled as such and never scored. The other keys are:
+
+- `excluded`: Options that fail a hard Criterion (`hard_failed`), or that have a hard Criterion without one current, verified `meets` (`hard_unresolved`). A soft score never compensates for them.
+- `scores`: for each other Option, the `contributions` of each criterion with a ranged weight. A cell's utility is `(value - worst) / (best - worst)` on the stated range, so adding, removing or duplicating an Option never changes another Option's utility. A cell enters only under the evidence standard of `pareto`: one current Comparison with a retained, verified measurement. A value outside the range, or any other cell, makes the score `incomplete` with no `total`. `total_low` and `total_high` use the weight uncertainty.
+- `sensitivity`: for each pair of scored Options, the difference at the stated weights, its lowest and highest values across the weight uncertainty, and `order_can_flip`.
+- `weights`, `overlaps` (with `both_weighted` when both carry ranged weights), `unweighted_criteria` (soft Criteria in no score) and the `normalization` statement. Weights are used as given and are not rescaled.
+
 ## Structural blindspot audit
 
 `investigation blindspots` returns an `inv.audit.v1` object, published as the `audit` wire schema. It reads one committed snapshot of one case and writes nothing. It does not call a model and does not record a Review. The fields are:
@@ -100,6 +117,7 @@ Checks of `builtin-blindspot.v1`:
 - `measurement.advisory_flags`: an advisory measurement flag. `rule_id` is the flag ID.
 - `conclusion.causal_claim_without_rival_account`, `decision.accepted_with_unresolved_hard_cell` and `case.ready_to_close_without_retrospective`: the gap rules of the same names.
 - `criterion.hard_unmeasured`: an active hard Criterion has an applicable Option with no Comparison or with an `unknown` one. There is one finding for each Criterion. The facts list the Options and Comparisons and the `gap:` IDs that `frontier` shows for each cell.
+- `criterion.weight_without_range`: an active Criterion records a weight without the range it trades off, so the weight is kept as a stated preference and is never scored. The facts name the ranged weights on the same question.
 - `comparison.unit_mismatch`: a measured Comparison value has a unit other than the one the current Criterion revision declares. The audit does not convert units.
 - `decision.preference_without_tradeoff`: a proposed or accepted Decision cites a Comparison with a `preference` basis and records no tradeoff.
 - `promoted.material_assumption_unsupported`: a validated Conclusion or accepted Decision, or a record it relies on, cites or is named by a material Assumption that is `unassessed`, `challenged` or `rejected`.

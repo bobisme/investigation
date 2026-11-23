@@ -118,6 +118,13 @@ pub struct CriterionCreate {
     pub preferred_direction: PreferredDirection,
     pub threshold: Option<Threshold>,
     pub weighting_rationale: Option<String>,
+    /// An optional weight on a soft criterion. Without a range it is stored
+    /// as a stated preference and never scored. See `weighting`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<crate::weighting::CriterionWeightInput>,
+    /// Criteria of the same question this one overlaps or stands in for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub overlaps: Vec<crate::weighting::CriterionOverlapInput>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
