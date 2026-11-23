@@ -1,0 +1,169 @@
+{
+  "family": "lexicon-workspace-index",
+  "variants": {
+    "sufficient": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "local.shard",
+            "select|recommend|choose|prefer|only eligible|qualif|switch|meets"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "off.line|offline",
+            "isolation|neighbou?r|other (?:team|department)|extract"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "snapshot|tested|offline|workload|scope|corpus|isolation"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "central.index|hub|latency|search",
+            "isolat|extract|off.line|offline|cannot|would not"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) central.index\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|central.index\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_eligibility",
+          "field": "answer",
+          "all": [
+            "\\b(?:always|guaranteed|universally)\\b",
+            "\\b(?:eligible|appropriate|qualifies|meets|complies|safe)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    },
+    "cosmetic": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "local.shard",
+            "select|recommend|choose|prefer|only eligible|qualif|switch|meets"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "off.line|offline",
+            "isolation|neighbou?r|other (?:team|department)|extract"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "snapshot|tested|offline|workload|scope|corpus|isolation"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "central.index|hub|latency|search",
+            "isolat|extract|off.line|offline|cannot|would not"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) central.index\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|central.index\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_eligibility",
+          "field": "answer",
+          "all": [
+            "\\b(?:always|guaranteed|universally)\\b",
+            "\\b(?:eligible|appropriate|qualifies|meets|complies|safe)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    }
+  }
+}

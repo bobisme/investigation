@@ -1,0 +1,167 @@
+{
+  "family": "digest-window-fold",
+  "variants": {
+    "sufficient": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "two|duplic",
+            "producer|fold|offset|window"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:message|envelope).*(?:label|alias)|label|alias",
+            "acknowledg|immutable|ledger|harness"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "synthetic|interval|scope|row|acknowledg|retry|timezone"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "acknowledg|retry",
+            "same|one|repeated|unchanged|per.row"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:send|delivery|transport) retr(?:y|ies).{0,30}(?:caused|confirmed|proved)|(?:cause|explanation) (?:is|was) (?:an? )?(?:delivery|send|transport) retry"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_mechanism",
+          "field": "answer",
+          "all": [
+            "(?:all|every|any) (?:loads?|deployments?|workloads?|renders?|exports?|builds?|timezones?|intervals?)",
+            "\\b(?:proved|validated|always|every|causes|guaranteed)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "hypothesis",
+        "inquiry",
+        "run",
+        "conclusion",
+        "retrospective"
+      ]
+    },
+    "cosmetic": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "two|duplic",
+            "producer|fold|offset|window"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:message|envelope).*(?:label|alias)|label|alias",
+            "acknowledg|immutable|ledger|harness"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "synthetic|interval|scope|row|acknowledg|retry|timezone"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "acknowledg|retry",
+            "same|one|repeated|unchanged|per.row"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:send|delivery|transport) retr(?:y|ies).{0,30}(?:caused|confirmed|proved)|(?:cause|explanation) (?:is|was) (?:an? )?(?:delivery|send|transport) retry"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_mechanism",
+          "field": "answer",
+          "all": [
+            "(?:all|every|any) (?:loads?|deployments?|workloads?|renders?|exports?|builds?|timezones?|intervals?)",
+            "\\b(?:proved|validated|always|every|causes|guaranteed)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "hypothesis",
+        "inquiry",
+        "run",
+        "conclusion",
+        "retrospective"
+      ]
+    }
+  }
+}

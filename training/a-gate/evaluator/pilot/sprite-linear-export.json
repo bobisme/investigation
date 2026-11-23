@@ -1,0 +1,168 @@
+{
+  "family": "sprite-linear-export",
+  "variants": {
+    "sufficient": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "double|twice|second",
+            "conversion|linear|export"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "profile|screenshot",
+            "pixel|bytes|retained|file-level"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "same|synthetic|export|profile|renderer|pipeline"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "flag|linear|disabled",
+            "dull|155|saturat|unchanged|mismatch|fail"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:profile|display).{0,25}(?:sole|only|confirmed|definitive) cause|(?:definitive|validated) display.profile effect"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_mechanism",
+          "field": "answer",
+          "all": [
+            "(?:all|every|any) (?:loads?|deployments?|workloads?|renders?|exports?|builds?|timezones?|intervals?)",
+            "\\b(?:proved|validated|always|every|causes|guaranteed)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "hypothesis",
+        "inquiry",
+        "run",
+        "conclusion",
+        "retrospective"
+      ]
+    },
+    "missing": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "inconclus|unresolv|cannot|insufficient|unproven|not (?:establish|validat|confirmed)|plausible|candidate",
+            "display|export|profile|conversion"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "profile|screenshot",
+            "(?:missing|unavailable|discard|no (?:file|pixel)|lost)"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "profile|pixel|exported (?:files|image)|confound"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "same|one|unchanged|matched|identical",
+            "pixel|flag|reversal|file"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:profile|display).{0,25}(?:sole|only|confirmed|definitive) cause|(?:definitive|validated) display.profile effect"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "promoted_without_decisive_measurement",
+          "field": "answer",
+          "all": [
+            "double|linear.twice",
+            "\\b(?:validated|proved|confirmed|definitive|caused|eligible|choose|select|accept|guarantee)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "hypothesis",
+        "inquiry",
+        "run",
+        "conclusion",
+        "retrospective"
+      ]
+    }
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "family": "field-logger-autonomy",
+  "variants": {
+    "sufficient": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "relay.stream",
+            "select|recommend|choose|prefer|only eligible|qualif|switch|meets"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:4|four).{0,12}(?:h|hour)",
+            "road|closure|retriev"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "rehears|tested|workload|failure|road|relay|reliab|condition"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "retriev|road|relay|cost",
+            "(?:4|four).{0,12}(?:h|hour)|fail|ineligib|above|below|alternate route"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) depot.sync\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|depot.sync\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_eligibility",
+          "field": "answer",
+          "all": [
+            "\\b(?:always|guaranteed|universally)\\b",
+            "\\b(?:eligible|appropriate|qualifies|meets|complies|safe)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    },
+    "missing": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "relay.stream",
+            "inconclus|unresolv|cannot|insufficient|unknown|pending|conditional|not (?:know|choose|select|accept)|no (?:confirmed|eligible|justified)"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:4|four).{0,12}(?:h|hour)",
+            "road|closure|retriev"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "relay",
+            "miss|unknown|unavail|no (?:relevant|retrieval|measure)|lack|unverified"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "relay|road|closure",
+            "(?:4|four).{0,12}(?:h|hour)"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) depot.sync\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|depot.sync\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "promoted_without_decisive_measurement",
+          "field": "answer",
+          "all": [
+            "relay.stream",
+            "\\b(?:validated|proved|confirmed|definitive|caused|eligible|choose|select|accept|guarantee)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    }
+  }
+}

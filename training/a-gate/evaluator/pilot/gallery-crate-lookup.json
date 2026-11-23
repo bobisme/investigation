@@ -1,0 +1,62 @@
+{
+  "family": "gallery-crate-lookup",
+  "variants": {
+    "lookup": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "mr[- ]?417"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              3
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "(?:register|transfer|sheet|record|synthetic|verified|lookup|none|version)"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "update|correct|amend|later|none|register|record|no further|unchanged"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:east|accession|code).{0,20}(?:mr[- ]?902|mr[- ]?541)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "invented_independent_verification",
+          "field": "answer",
+          "all": [
+            "independent(?:ly)? (?:verified|confirmed|corroborat)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": []
+    }
+  }
+}

@@ -1,0 +1,172 @@
+{
+  "family": "museum-audio-packaging",
+  "variants": {
+    "sufficient": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "delta.pack",
+            "select|recommend|choose|prefer|only eligible|qualif|switch|meets"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:95).{0,12}(?:m[bib]|megabyte)",
+            "peak|rollback|readabl|prior|previous"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "same|tested|workload|set|rollback|peak|margin|threshold|prior|previous"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "peak|whole.bundle|delta.pack",
+            "(?:95).{0,12}(?:m[bib]|megabyte)|above|below|redesign|exceed|over"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) whole.bundle\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|whole.bundle\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "unbounded_eligibility",
+          "field": "answer",
+          "all": [
+            "\\b(?:always|guaranteed|universally)\\b",
+            "\\b(?:eligible|appropriate|qualifies|meets|complies|safe)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    },
+    "missing": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "delta.pack",
+            "inconclus|unresolv|cannot|insufficient|unknown|pending|conditional|not (?:know|choose|select|accept)|no (?:confirmed|eligible|justified)"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "(?:95).{0,12}(?:m[bib]|megabyte)",
+            "peak|rollback|readabl|prior|previous"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "peak",
+            "miss|unknown|unavail|no (?:relevant|peak|measure)|lack|unverified|footprint"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "peak|install",
+            "(?:95).{0,12}(?:m[bib]|megabyte)"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "wrong_explanation_or_choice",
+          "field": "answer",
+          "all": [
+            "(?:choose|select|recommend|accept) whole.bundle\\b[^.!;]*(?:final|unconditional|now|meets|eligible)|whole.bundle\\s+(?:is|remains|meets).{0,15}(?:the (?:best|winning)|eligible|all requirements)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        },
+        {
+          "id": "promoted_without_decisive_measurement",
+          "field": "answer",
+          "all": [
+            "delta.pack",
+            "\\b(?:validated|proved|confirmed|definitive|caused|eligible|choose|select|accept|guarantee)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|fails?|ineligible)\\b"
+          ]
+        }
+      ],
+      "record_opportunities": [
+        "case",
+        "source",
+        "artifact",
+        "observation",
+        "review",
+        "option",
+        "criterion",
+        "comparison",
+        "decision",
+        "assumption",
+        "retrospective"
+      ]
+    }
+  }
+}
