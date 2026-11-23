@@ -49,8 +49,11 @@ jobs:
         shell: bash
         run: |
           toolchain_bin="$(dirname "$(rustup which cargo)")"
+          # ar is required by the bundled SQLite build (cc-rs); python3 by the
+          # vault_scenarios and explain tests, which run the stdlib-only,
+          # network-free scenario proof scripts.
           tool_path="$(mktemp -d)"
-          for tool in cc as ld; do
+          for tool in cc as ld ar python3; do
             ln -s "$(command -v "$tool")" "$tool_path/$tool"
           done
           sudo unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups -- \
