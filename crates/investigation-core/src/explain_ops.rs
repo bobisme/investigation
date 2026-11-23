@@ -975,6 +975,8 @@ const RUN_META: &[&str] = &[
     "capture",
     // Producer statements of a Run ingested from an `inv.producer-run.v1` envelope.
     crate::producer_run::PRODUCER_RUN_KEY,
+    // What survived a capture, frozen by `capture.finalize`.
+    crate::producer_run::CAPTURE_FINALIZATION_KEY,
 ];
 
 fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {

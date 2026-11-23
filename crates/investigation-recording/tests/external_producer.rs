@@ -126,9 +126,9 @@ fn record_synthetic<R: Recorder + ?Sized>(
     summary
         .controls
         .push(ProducerControl::new("steady-load", "reported_pass"));
-    summary
-        .receipts
-        .push(ExternalReceipt::new("signed-statement"));
+    let mut statement = ExternalReceipt::new("signed-statement");
+    statement.reference = Some("urn:example:statement:1".into());
+    summary.receipts.push(statement);
     summary.limitations.push("Single synthetic workload".into());
     recorder.finalize(&summary)
 }
@@ -273,7 +273,10 @@ fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing()
         CaptureCompletion::Interrupted,
         ExecutionReport::new(ExecutionStatus::Unknown),
     );
-    assert_unsupported(recorder.finalize(&summary), Operation::Finalize);
+    // So is `finalize`.
+    let error = recorder.finalize(&summary).unwrap_err();
+    assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
+    assert_eq!(error.commit_status(), CommitStatus::NotCommitted);
     assert_unsupported(
         recorder.recover(&RecoverScope::Unsettled),
         Operation::Recover,

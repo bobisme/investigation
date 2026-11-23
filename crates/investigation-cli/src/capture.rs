@@ -11,8 +11,8 @@ use investigation_core::{
     wire::{ErrorCode, Failure},
 };
 use investigation_recording::{
-    BeginCapture, CaptureEvent, CaseTarget, LocalRecorder, ReceiptResult, Recorder, RecordingError,
-    StableArtifact, StagedAvailability,
+    BeginCapture, CaptureEvent, CaseTarget, Finalization, FinalizeCapture, LocalRecorder,
+    ReceiptResult, Recorder, RecordingError, StableArtifact, StagedAvailability,
 };
 use investigation_store::Store;
 
@@ -70,6 +70,27 @@ command and does not start, cancel or rerun anything.
 
 Example: investigation capture attach --input artifact.json --format json";
 
+const FINALIZE_HELP: &str = "\
+Reads one inv.capture.v1 finalize request: handle, key, expected_last_position,
+completion (complete, partial or interrupted), execution, and optional
+channels, declared_artifacts, assertions, controls, receipts, limitations and
+metadata. Prints the finalize receipt: finalization, execution, sealed
+position, missing positions, manifest digest and the journal receipt.
+
+Finalize seals the handle, then commits one transaction: the retained bytes,
+an immutable manifest of every item, and the Run's execution state, retained
+and missing artifacts and per-channel completeness. A complete claim whose
+expected_last_position is not the last accepted position is refused and seals
+nothing. Resend the identical request after a lost response to get the
+original receipt.
+
+Recording completeness and execution are independent: a failed run can be
+finalized, and its original error is kept verbatim. Producer results stay
+attributed producer claims. Finalize creates no Observation, Assessment or
+Conclusion, and an exit code of 0 sets no measurement validity.
+
+Example: investigation capture finalize --input finalize.json --format json";
+
 #[derive(clap::Subcommand)]
 pub(crate) enum CaptureCommand {
     /// Declare one Run before an external action and allocate its staging.
@@ -93,6 +114,13 @@ pub(crate) enum CaptureCommand {
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
     },
+    /// Seal a handle and commit the Run's manifest, execution state and completeness.
+    #[command(after_help = FINALIZE_HELP)]
+    Finalize {
+        /// Read the finalize request from FILE, or - for stdin.
+        #[arg(long, value_name = "FILE|-")]
+        input: PathBuf,
+    },
 }
 
 pub(crate) fn run(
@@ -104,6 +132,7 @@ pub(crate) fn run(
         CaptureCommand::Begin { input } => begin(store, global, &input),
         CaptureCommand::Append { input } => append(store, &input),
         CaptureCommand::Attach { input } => attach(store, &input),
+        CaptureCommand::Finalize { input } => finalize(store, &input),
     }
 }
 
@@ -187,6 +216,49 @@ fn attach(store: &mut Store, path: &Path) -> Result<Output, Failure> {
     let text = format!(
         "{}  {result}  position {}  key {}\nrun      {}\n{retained}\naccepted {}\nStaged only: nothing was parsed, started or rerun.",
         item.handle, item.position, item.key, item.run_id, item.accepted_at,
+    );
+    Ok(Output::new(receipt, text))
+}
+
+/// Like `append`, the handle names the Run, its case and its actor.
+fn finalize(store: &mut Store, path: &Path) -> Result<Output, Failure> {
+    let request: FinalizeCapture = input::parse_request(&read_input(path)?)
+        .and_then(|value| input::decode(&value))
+        .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?;
+    let receipt = LocalRecorder::open(store.workspace().root())
+        .and_then(|recorder| recorder.finalize(&request))
+        .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
+    let finalization = match receipt.finalization {
+        Finalization::Finalized => "finalized",
+        _ => "finalized_partial",
+    };
+    let execution = serde_json::to_value(receipt.execution)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default();
+    let missing = if receipt.missing_positions.is_empty() {
+        "none".to_owned()
+    } else {
+        receipt
+            .missing_positions
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let text = format!(
+        "{}  {finalization}  {}\nhandle    {}\nexecution {execution}\nsealed    {}\nmissing   {missing}\nmanifest  {}\nRecorded only: no Observation, Assessment or Conclusion was created.",
+        receipt.run_id,
+        serde_json::to_value(receipt.commit.result)
+            .ok()
+            .as_ref()
+            .and_then(|value| value.as_str())
+            .unwrap_or_default(),
+        receipt.handle,
+        receipt
+            .sealed_position
+            .map_or_else(|| "none".to_owned(), |position| position.to_string()),
+        receipt.manifest_digest,
     );
     Ok(Output::new(receipt, text))
 }

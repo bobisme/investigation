@@ -49,8 +49,8 @@ use serde::Deserialize;
 ///
 /// `capture.append` and `capture.attach` are absent by design: their items are
 /// staged per handle ([`items`]) and summarized into the manifest that
-/// finalization commits, never journaled one transaction per item.
-pub const CAPTURE_OPERATIONS: &[&str] = &["capture.begin"];
+/// finalization ([`finalize`]) commits, never journaled one transaction per item.
+pub const CAPTURE_OPERATIONS: &[&str] = &["capture.begin", finalize::FINALIZE_OPERATION];
 /// Root of every handle's staging directory, relative to the workspace.
 pub const STAGING_ROOT: &str = "state/staging";
 /// The binding file in each staging directory.
@@ -494,7 +494,7 @@ fn prior_declaration(visible: Visible<'_>, declaration: &CaptureDeclaration) -> 
     None
 }
 
-fn declaring_event<'a>(
+pub(crate) fn declaring_event<'a>(
     case: &'a CaseReplay,
     state: &State,
     run_id: Id,
@@ -510,7 +510,7 @@ fn declaring_event<'a>(
         .ok_or_else(|| integrity("A declared Run has no declaring transaction."))
 }
 
-fn binding_of(state: &State, run_id: Id) -> Result<CaptureBinding, Failure> {
+pub(crate) fn binding_of(state: &State, run_id: Id) -> Result<CaptureBinding, Failure> {
     let first = state
         .history(run_id)
         .next()
@@ -542,6 +542,9 @@ pub mod items;
 
 #[path = "capture_attach.rs"]
 pub mod attach;
+
+#[path = "capture_finalize.rs"]
+pub mod finalize;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

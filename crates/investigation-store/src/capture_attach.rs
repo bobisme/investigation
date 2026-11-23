@@ -35,7 +35,8 @@
 //!
 //! Blobs are durable before the item that names them. A crash between the two
 //! leaves an unreferenced blob, which a retry reuses after checking its bytes.
-//! Finalization moves referenced blobs into the canonical blob store.
+//! Finalization copies referenced blobs into the canonical blob store and
+//! sweeps unreferenced ones after the seal.
 //!
 //! # Stability
 //!

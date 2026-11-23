@@ -322,12 +322,14 @@ impl Event {
                 path,
                 JournalErrorKind::MetadataMismatch,
             )?;
+            // Only finalization retains a manifest; a declaration has none.
+            let manifest = request.operation == crate::store::capture::finalize::FINALIZE_OPERATION;
             if !CAPTURE_OPERATIONS.contains(&request.operation.as_str())
                 || request.actor != self.actor
                 || request.command_id != self.command_id
                 || request.case_id != ((self.sequence != 1).then_some(self.accepted.case_id))
                 || !self.preconditions.is_empty()
-                || self.manifest_digest.is_some()
+                || self.manifest_digest.is_some() != manifest
             {
                 return Err(invalid(
                     "Capture request disagrees with event metadata or case scope.",

@@ -14,7 +14,7 @@ A producer is an external program that runs something under its own authority an
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
-**Status.** The types and signatures are fixed. `begin`, `append` and `attach` are durable and have their CLI commands, `capture begin`, `capture append` and `capture attach`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+**Status.** The types and signatures are fixed. `begin`, `append`, `attach` and `finalize` are durable and have their CLI commands, `capture begin`, `capture append`, `capture attach` and `capture finalize`. `recover` returns `RecordingError::Unsupported` and records nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
 
 ## `capture begin`
 
@@ -156,6 +156,79 @@ What the checks cannot see: a writer that stops for the whole copy and writes ag
 
 Attaching runs no parser, extractor or command, and does not start, cancel or rerun anything.
 
+## `capture finalize`
+
+```sh
+investigation --workspace ./cases capture finalize --input finalize.json --format json
+```
+
+`--input` takes a file, or `-` for stdin. The request is the JSON form of `FinalizeCapture`:
+
+```json
+{
+  "handle": "handle_…",
+  "key": "run-0001/finalize",
+  "expected_last_position": 4,
+  "completion": "partial",
+  "execution": {"state": "failed", "exit_code": 3, "error": "worker exited"},
+  "channels": [{"channel": "trace", "completeness": "complete"}],
+  "declared_artifacts": ["result", "trace"],
+  "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms"}],
+  "controls": [{"name": "steady-load", "producer_result": "reported_pass"}],
+  "receipts": [{"kind": "signed-statement", "reference": "urn:example:statement:1"}],
+  "limitations": ["Single synthetic workload"]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `expected_last_position` | The last position the producer believes was accepted, or `null` if it sent no item. |
+| `completion` | `complete` (every item was sent), `partial` (some are known to be absent) or `interrupted` (the producer cannot vouch for its stream). |
+| `execution` | `state` (`declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`), optional `exit_code`, `started_at`, `ended_at` and `error`. The error has 1–16384 characters and is kept verbatim. |
+| `channels` | The producer's completeness claim per channel, each channel once, at most 256. |
+| `declared_artifacts` | Item keys of every artifact the producer meant to attach. A key that was never attached is recorded as missing. A key of an appended fact is refused. |
+| `assertions`, `controls` | The envelope's types and bounds. `validity_claim` may only be `producer_reported`. |
+| `receipts` | At most 32. `kind`, plus `artifact` (the key of an attached or declared artifact), `reference`, or both. |
+| `limitations`, `metadata` | As in the envelope. The serialized request is at most 512 KiB. |
+
+Stdout is the `FinalizeReceipt` (`handle`, `run_id`, `case_id`, `finalization`, `execution`, `sealed_position`, `missing_positions`, `manifest_digest`, `commit`), the same value `Recorder::finalize` returns.
+
+The cursor:
+
+- `complete` requires `expected_last_position` to equal the last accepted position. Any other value is refused with `REVISION_CONFLICT` at `/expected_last_position`; `expected` holds the `last_position`. Nothing is sealed, so the handle still accepts items.
+- `partial` refuses a cursor behind the last accepted position the same way. A cursor ahead of it names the positions that never arrived in `missing_positions`.
+- `interrupted` accepts any cursor and names missing positions the same way.
+
+`finalization` is `finalized` for a complete claim, otherwise `finalized_partial`. It says how the stream was sealed, not how the action ended: a failed execution can be `finalized`, and a completed one `finalized_partial`.
+
+### What finalize records
+
+Under the handle lock, finalize seals the handle, then commits one transaction, `capture.finalize` in the journal, attributed to the actor that declared the handle:
+
+- A Source for the capture, with acquisition channel `producer`.
+- An Artifact for each attachment with retained bytes. A derivative records its transform: the input is the original's Artifact, and `derived_from.transform` splits at its last `/` into transformation and version (`unspecified` when it has none).
+- The manifest Artifact, role `manifest`. Its bytes are an `inv.capture-manifest.v1` document: the stream seal, the case snapshot before finalization, execution, retained and missing artifacts, per-channel completeness, the producer's statements, and every staged item with its position, key, operation, request digest, acceptance time, request and outcome. That item map lets an identical retry resolve after staging is retired, and keeps every fact, including the exact text of an `error` fact. The manifest names neither itself nor its own transaction.
+- The next revision of the Run: `execution_status` as reported, `evidence_completeness` as computed, `manifest_digest`, `started_at` and `finished_at` when reported, the new Artifacts appended to `artifact_refs`, and the section `capture_finalization`. The event binds the manifest digest. Every retained byte is copied into the canonical blob store before the event; staging keeps its copies.
+
+`capture_finalization` holds `attribution: producer_reported`, the finalize `command_id`, the begin `producer` and `external_run_id`, `manifest` (`source_ref`, `artifact_ref`, `digest`, `size_bytes`), `snapshot`, `completion`, `expected_last_position`, `sealed_position`, `missing_positions`, `finalization`, `execution`, `evidence_completeness`, `artifacts`, `channels`, and the producer's `assertions`, `controls`, `receipts`, `limitations` and `metadata` exactly as sent. The names follow the `producer_run` section of an envelope Run where both describe the same thing. Each `artifacts` entry has `key`, `position`, `role`, `channel`, `media_type`, `declared` and `retention`: `retained` with `source_ref`, `artifact_ref`, `digest`, `size_bytes` and, for a derivative, `derived_from`; or `missing` with `cause` (`declared`, `not_found` or `not_attached`) and the producer's `reason`.
+
+Completeness states what survived, never more than the producer claims:
+
+- A channel is every channel the request declares or a staged item names. It is `missing` when nothing on it was staged, or when none of its attachments kept bytes. It is `partial` when an attachment on it is missing, it reported a `gap`, or it was never `closed` while the stream is unvouched (`completion` is not `complete`, or positions are missing). Otherwise it is `complete`. The recorded value is the lower of that and the producer's claim; `claimed` keeps the claim.
+- The Run's `evidence_completeness` is `missing` when no declared or attached artifact kept bytes, `partial` when any artifact is missing, the stream is unvouched or a channel is below `complete`, and otherwise `complete`. A handle with no items at all is `complete` only for a `complete` claim with no channels.
+
+Execution and evidence are independent. The Run's `evidence_validity` stays `unknown`: an exit code of 0, a `completed` state or a `reported_pass` control sets none. Finalize creates no Observation, Assessment or Conclusion, and writes no verdict. Assertions stay attributed producer claims.
+
+### Seal, retries and crashes
+
+The seal is `sealed.json` in staging. It binds the key, the request digest, the sealed position, the case snapshot and the manifest digest, and its presence closes the handle to new items. Finalize writes it before the transaction:
+
+- A refused request (a stale cursor, an unknown key, an invalid field) seals nothing.
+- A crash after the seal and before the transaction leaves a sealed handle. The identical request completes it with the same manifest. Any other request is refused with `REVISION_CONFLICT` at `/handle` (or `IDEMPOTENCY_KEY_REUSED` at `/key` for the same key); `expected` names the sealing `command_id` and `request_digest`.
+- After the transaction, the identical request returns the original receipt with `commit.result` `already_committed`, even after staging is retired. The same key with a different request is refused with `IDEMPOTENCY_KEY_REUSED` at `/key`. Another key is refused with `REVISION_CONFLICT` at `/handle`; the repair argv looks up the original receipt. A key that names another transaction of the declaring actor, such as the begin key, is refused before sealing.
+
+After the seal, finalize removes `blobs/*.tmp` and any staged blob that no item references. It never removes an item, a key entry or a referenced blob.
+
 ## Staging
 
 ```text
@@ -165,13 +238,14 @@ state/staging/<run-id>/          0700
   items/<position>.json          0400, one accepted item; twelve-digit position
   keys/<sha256-of-key>.json      0400, item key to position
   blobs/<sha256>                 0400, verified bytes of one or more attachments
+  sealed.json                    0400, written by finalize; closes the handle
 ```
 
 `staging_dir` in the receipt is this directory, relative to the workspace root. Begin commits the declaration first and then allocates the directory, under the workspace commit lock and with every file and directory synced. `handle.json` holds `schema_version` (`inv.capture-staging.v1`), `handle`, `run_id`, `case_id`, `transaction_id`, `command_id`, `actor`, `producer` and `external_run_id`. Its bytes are a function of the committed declaration only. A retry verifies them, and refuses to overwrite a file bound to another declaration.
 
 Later capture operations add their own entries beside `handle.json` and never rewrite it. A transient `handle.json.tmp` exists only while the binding is published.
 
-An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. An attachment item's `outcome` holds `availability` (`staged` or `missing`), `classification`, and either `digest`, `size_bytes` and `blob` (the path relative to the staging directory) or `missing` (`declared` or `not_found`). A derivative's outcome adds `derived_from` with the original's key and position. A blob is durable before the item that names it. A crash between the two leaves an unreferenced blob, which a retry reuses after checking its bytes. Finalization will move referenced blobs into the canonical blob store. Transient `*.tmp` files exist only while one entry is published or one copy is verified. `sealed.json` is reserved for finalization. Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
+An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. An attachment item's `outcome` holds `availability` (`staged` or `missing`), `classification`, and either `digest`, `size_bytes` and `blob` (the path relative to the staging directory) or `missing` (`declared` or `not_found`). A derivative's outcome adds `derived_from` with the original's key and position. A blob is durable before the item that names it. A crash between the two leaves an unreferenced blob, which a retry reuses after checking its bytes. Finalization copies referenced blobs into the canonical blob store. Transient `*.tmp` files exist only while one entry is published or one copy is verified. `sealed.json` is the seal that finalize publishes; see [`capture finalize`](#capture-finalize). Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
 
 Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. Recovery reports that state, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
 

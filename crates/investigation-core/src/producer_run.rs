@@ -601,6 +601,12 @@ pub struct ProducerRunRecord {
 /// Run body key that holds the [`ProducerRunRecord`].
 pub const PRODUCER_RUN_KEY: &str = "producer_run";
 
+/// Run body key that holds what `capture.finalize` froze for a captured Run:
+/// the manifest reference, stream seal, execution report, retained and missing
+/// artifacts, per-channel completeness and the producer's attributed
+/// statements. It is set once, by the finalizing transaction.
+pub const CAPTURE_FINALIZATION_KEY: &str = "capture_finalization";
+
 /// Retention completeness of a declared inventory: `complete` when every
 /// declared artifact was retained, `missing` when none of a nonempty inventory
 /// was, `partial` otherwise. It says nothing about artifacts the producer did

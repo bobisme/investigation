@@ -9,8 +9,8 @@ use std::{
 };
 
 use investigation_recording::{
-    ArtifactRef, BeginCapture, BeginReceipt, CaptureEvent, ItemReceipt, LocalRecorder, Recorder,
-    StableArtifact,
+    ArtifactRef, BeginCapture, BeginReceipt, CaptureEvent, FinalizeCapture, FinalizeReceipt,
+    ItemReceipt, LocalRecorder, Recorder, StableArtifact,
 };
 use serde_json::{Value, json};
 
@@ -539,6 +539,156 @@ fn capture_attach_retains_verified_bytes_and_refuses_mismatches_without_staging(
     assert_eq!(read_only["error"]["path"], "--read-only");
 
     // Attachments are staged: the journal holds only the declaration.
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["ok"], true);
+}
+
+#[test]
+fn capture_finalize_seals_the_handle_and_commits_the_manifest_once() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let begun = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "begin",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&begin_request()).unwrap()),
+        0,
+    );
+    let handle = begun["handle"].as_str().unwrap();
+    let append = |key: &str, position: u64, fact: Value| {
+        json_run(
+            root,
+            &[
+                "--workspace",
+                "ws",
+                "capture",
+                "append",
+                "--input",
+                "-",
+                "--format",
+                "json",
+            ],
+            Some(
+                &serde_json::to_vec(&json!({
+                    "handle": handle, "key": key, "position": position, "fact": fact
+                }))
+                .unwrap(),
+            ),
+            0,
+        )
+    };
+    append("started", 1, json!({"kind": "started"}));
+    append(
+        "crash",
+        2,
+        json!({"kind": "error", "message": "worker exited with 3"}),
+    );
+    let args = [
+        "--workspace",
+        "ws",
+        "capture",
+        "finalize",
+        "--input",
+        "-",
+        "--format",
+        "json",
+    ];
+    let request = |last: u64, completion: &str| {
+        serde_json::to_vec(&json!({
+            "handle": handle,
+            "key": "run-0001/finalize",
+            "expected_last_position": last,
+            "completion": completion,
+            "execution": {"state": "failed", "exit_code": 3, "error": "worker exited with 3"},
+            "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms"}],
+        }))
+        .unwrap()
+    };
+
+    // A complete claim with a stale cursor is refused and seals nothing.
+    let stale = json_run(root, &args, Some(&request(1, "complete")), 4);
+    assert_eq!(stale["error"]["code"], "REVISION_CONFLICT");
+    assert_eq!(stale["error"]["path"], "/expected_last_position");
+    assert_eq!(stale["commit_status"], "not_committed");
+
+    let first = json_run(root, &args, Some(&request(2, "complete")), 0);
+    let receipt: FinalizeReceipt = serde_json::from_value(first.clone()).unwrap();
+    assert_eq!(receipt.handle.to_string(), handle);
+    assert_eq!(first["finalization"], "finalized");
+    assert_eq!(first["execution"], "failed");
+    assert_eq!(first["sealed_position"], 2);
+    assert_eq!(first["run_id"], begun["run_id"]);
+    assert_eq!(first["commit"]["result"], "committed");
+
+    // A Rust producer resending the same request gets the identical receipt.
+    let parsed: FinalizeCapture = serde_json::from_slice(&request(2, "complete")).unwrap();
+    let native = LocalRecorder::open(root.join("ws"))
+        .unwrap()
+        .finalize(&parsed)
+        .unwrap();
+    let mut replayed = first.clone();
+    replayed["commit"]["result"] = json!("already_committed");
+    assert_eq!(
+        serde_json::to_value(&native).unwrap()["commit"]["transaction_id"],
+        replayed["commit"]["transaction_id"]
+    );
+    assert_eq!(
+        serde_json::to_value(&native).unwrap()["manifest_digest"],
+        replayed["manifest_digest"]
+    );
+
+    let output = invoke(
+        root,
+        &["--workspace", "ws", "capture", "finalize", "--input", "-"],
+        Some(&request(2, "complete")),
+    );
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("finalized  already_committed"), "{text}");
+    assert!(text.contains("execution failed"), "{text}");
+    assert!(
+        text.contains("no Observation, Assessment or Conclusion"),
+        "{text}"
+    );
+
+    let read_only = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "--read-only",
+            "capture",
+            "finalize",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&request(2, "complete")),
+        2,
+    );
+    assert_eq!(read_only["error"]["path"], "--read-only");
+
+    // The finalization is a verified journal transaction with its blobs.
     let check = json_run(
         root,
         &["--workspace", "ws", "check", "--format", "json"],

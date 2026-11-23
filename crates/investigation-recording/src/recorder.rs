@@ -189,8 +189,8 @@ impl Recorder for LocalRecorder {
         crate::attach::attach(&self.workspace, artifact)
     }
 
-    fn finalize(&self, _summary: &FinalizeCapture) -> Result<FinalizeReceipt, RecordingError> {
-        Err(unsupported(Operation::Finalize))
+    fn finalize(&self, summary: &FinalizeCapture) -> Result<FinalizeReceipt, RecordingError> {
+        crate::finalize::finalize(&self.workspace, summary)
     }
 
     fn recover(&self, _scope: &RecoverScope) -> Result<RecoveryState, RecordingError> {

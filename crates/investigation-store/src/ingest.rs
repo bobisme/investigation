@@ -980,22 +980,22 @@ fn add_text_derivative(
     )
 }
 
-struct IngestRecords<'a> {
-    actor: &'a Actor,
-    descriptor: Option<&'a ActorDescriptor>,
+pub(crate) struct IngestRecords<'a> {
+    pub(crate) actor: &'a Actor,
+    pub(crate) descriptor: Option<&'a ActorDescriptor>,
     /// Level of the records added or revised next.
-    classification: ClassificationLevel,
-    case_id: Id,
-    timestamp: UtcTimestamp,
-    sequence: u64,
-    ids: &'a mut dyn IdSource,
-    records: Vec<Record>,
-    created: Vec<RecordChange>,
-    updated: Vec<RecordChange>,
+    pub(crate) classification: ClassificationLevel,
+    pub(crate) case_id: Id,
+    pub(crate) timestamp: UtcTimestamp,
+    pub(crate) sequence: u64,
+    pub(crate) ids: &'a mut dyn IdSource,
+    pub(crate) records: Vec<Record>,
+    pub(crate) created: Vec<RecordChange>,
+    pub(crate) updated: Vec<RecordChange>,
 }
 
 impl IngestRecords<'_> {
-    fn add(
+    pub(crate) fn add(
         &mut self,
         id: Id,
         client_ref: String,
@@ -1050,7 +1050,11 @@ impl IngestRecords<'_> {
 
 impl IngestRecords<'_> {
     /// Record the next revision of a known record, keeping its creation identity.
-    fn revise(&mut self, old: &Record, body: impl Serialize) -> Result<RevisionRef, Failure> {
+    pub(crate) fn revise(
+        &mut self,
+        old: &Record,
+        body: impl Serialize,
+    ) -> Result<RevisionRef, Failure> {
         let mut header = old.header.clone();
         let revision = header
             .revision
@@ -1081,7 +1085,9 @@ impl IngestRecords<'_> {
     }
 }
 
-fn sensitivity(level: ClassificationLevel) -> investigation_core::evidence::ArtifactSensitivity {
+pub(crate) fn sensitivity(
+    level: ClassificationLevel,
+) -> investigation_core::evidence::ArtifactSensitivity {
     use investigation_core::evidence::ArtifactSensitivity;
     match level {
         ClassificationLevel::Public => ArtifactSensitivity::Public,
@@ -1181,7 +1187,7 @@ fn first_revision(id: Id) -> RevisionRef {
     RevisionRef { id, revision: 1 }
 }
 
-fn new_id(ids: &mut dyn IdSource, kind: Kind) -> Result<Id, Failure> {
+pub(crate) fn new_id(ids: &mut dyn IdSource, kind: Kind) -> Result<Id, Failure> {
     ids.next_id(kind)
         .map_err(|_| integrity("Could not allocate an import record ID."))
 }

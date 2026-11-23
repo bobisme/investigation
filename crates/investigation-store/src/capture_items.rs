@@ -16,7 +16,7 @@
 //!   items/<position:012>.json      0400, one accepted item
 //!   keys/<sha256(key)>.json        0400, item key -> position
 //!   items/*.tmp, keys/*.tmp        transient; only while one entry is published
-//!   sealed.json                    reserved for finalize; its presence closes the handle
+//!   sealed.json                    the seal finalize publishes; its presence closes the handle
 //! ```
 //!
 //! An item file holds `schema_version` (`inv.capture-item.v1`), `operation`,
@@ -331,6 +331,23 @@ impl<F: DurableFs> Store<F> {
         self.gate.check().map_err(durability_failure)?;
         let located = self.locate_handle(handle)?;
         let resolved = self.verify_handle(located)?;
+        let items = self.staged_items(&resolved)?;
+        let sealed = self.exists(&resolved.directory.join(SEAL_FILE))?;
+        Ok(HandleItems {
+            case_id: resolved.case_id,
+            run_id: resolved.run_id,
+            binding: resolved.binding,
+            sealed,
+            items,
+        })
+    }
+
+    /// Every staged item of a resolved handle, in position order, verified to
+    /// be contiguous, uniquely keyed and consistent with its digest.
+    pub(crate) fn staged_items(
+        &self,
+        resolved: &ResolvedHandle,
+    ) -> Result<Vec<StagedItem>, Failure> {
         let items_dir = resolved.directory.join(ITEMS_DIRECTORY);
         let mut positions = Vec::new();
         match self.fs.list(&items_dir) {
@@ -364,20 +381,13 @@ impl<F: DurableFs> Store<F> {
                     "Capture item {expected} is missing before item {position}."
                 )));
             }
-            let item = self.read_item(&resolved, position)?;
+            let item = self.read_item(resolved, position)?;
             if !keys.insert(item.key.clone()) {
                 return Err(integrity("Two capture items share one key."));
             }
             items.push(item);
         }
-        let sealed = self.exists(&resolved.directory.join(SEAL_FILE))?;
-        Ok(HandleItems {
-            case_id: resolved.case_id,
-            run_id: resolved.run_id,
-            binding: resolved.binding,
-            sealed,
-            items,
-        })
+        Ok(items)
     }
 
     /// Find a handle's staging directory from its `handle.json` binding, or
@@ -619,7 +629,12 @@ impl<F: DurableFs> Store<F> {
     /// Write, sync and exclusively publish one immutable entry, then sync its
     /// directory. A temporary left by a crashed writer is replaced first; only
     /// the handle lock holder writes here.
-    fn publish_entry(&mut self, directory: &Path, name: &str, bytes: &[u8]) -> Result<(), Failure> {
+    pub(crate) fn publish_entry(
+        &mut self,
+        directory: &Path,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<(), Failure> {
         let target = directory.join(name);
         let temporary = directory.join(format!("{name}.tmp"));
         match self.fs.remove(&temporary) {
