@@ -2,17 +2,27 @@
 //! transaction IDs, and never carry request content.
 use super::crash_tests::{apply, request, restart, setup};
 use super::*;
-use std::{
-    fs,
-    sync::{Arc, Mutex},
-};
+use std::{cell::RefCell, fs, sync::Once};
 
-#[derive(Clone, Default)]
-struct Buffer(Arc<Mutex<Vec<u8>>>);
+thread_local! {
+    /// The capture active on this thread: its level and buffer.
+    static CAPTURE: RefCell<Option<(tracing::Level, Vec<u8>)>> = const { RefCell::new(None) };
+}
 
-impl Write for Buffer {
+/// Writes one formatted event into this thread's capture, if any.
+struct ThreadWriter {
+    keep: bool,
+}
+
+impl Write for ThreadWriter {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.lock().unwrap().extend_from_slice(bytes);
+        if self.keep {
+            CAPTURE.with(|capture| {
+                if let Some((_, buffer)) = capture.borrow_mut().as_mut() {
+                    buffer.extend_from_slice(bytes);
+                }
+            });
+        }
         Ok(bytes.len())
     }
     fn flush(&mut self) -> io::Result<()> {
@@ -20,18 +30,51 @@ impl Write for Buffer {
     }
 }
 
-/// Run `body` and return everything logged at `level` or above.
+struct ThreadSink;
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ThreadSink {
+    type Writer = ThreadWriter;
+
+    fn make_writer(&'a self) -> ThreadWriter {
+        ThreadWriter { keep: false }
+    }
+
+    fn make_writer_for(&'a self, meta: &tracing::Metadata<'_>) -> ThreadWriter {
+        let keep = CAPTURE.with(|capture| {
+            capture
+                .borrow()
+                .as_ref()
+                .is_some_and(|(level, _)| meta.level() <= level)
+        });
+        ThreadWriter { keep }
+    }
+}
+
+/// Run `body` and return everything it logged on this thread at `level` or
+/// above.
+///
+/// One global subscriber, enabled for every level and installed once, writes
+/// to a per-thread buffer. Scoped `with_default` subscribers were flaky: tests
+/// running at once with different levels race on tracing's global callsite
+/// interest cache, and an event could be dropped.
 fn capture(level: tracing::Level, body: impl FnOnce()) -> String {
-    let buffer = Buffer::default();
-    let sink = buffer.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_max_level(level)
-        .with_writer(move || sink.clone())
-        .with_ansi(false)
-        .without_time()
-        .finish();
-    tracing::subscriber::with_default(subscriber, body);
-    let bytes = buffer.0.lock().unwrap().clone();
+    static INSTALL: Once = Once::new();
+    INSTALL.call_once(|| {
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_writer(ThreadSink)
+            .with_ansi(false)
+            .without_time()
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("no other global subscriber in the store tests");
+    });
+    CAPTURE.with(|capture| *capture.borrow_mut() = Some((level, Vec::new())));
+    body();
+    let bytes = CAPTURE
+        .with(|capture| capture.borrow_mut().take())
+        .map(|(_, bytes)| bytes)
+        .unwrap_or_default();
     String::from_utf8(bytes).unwrap()
 }
 
