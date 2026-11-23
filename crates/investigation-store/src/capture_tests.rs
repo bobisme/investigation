@@ -40,6 +40,7 @@ fn declaration(key: &str, external_run_id: &str) -> CaptureDeclaration {
         producer: "example-producer".into(),
         external_run_id: external_run_id.into(),
         external_plan_digest: None,
+        metadata: BTreeMap::new(),
         classification: ClassificationLevel::Internal,
         request: json!({"opaque": "recorder request", "external_run_id": external_run_id}),
     }
@@ -108,6 +109,29 @@ fn begin_commits_one_declared_run_in_a_new_record_case_and_allocates_staging() {
     assert_eq!(handles[0].command_id, "run-0001/begin");
     assert_eq!(handles[0].request["opaque"], "recorder request");
     assert!(fixture.store.check().unwrap().integrity_ok());
+}
+
+#[test]
+fn begin_metadata_is_readable_from_the_run_and_absent_when_not_sent() {
+    let mut fixture = fixture();
+    let mut with = declaration("run-0001/begin", "run-0001");
+    with.metadata
+        .insert("example-org.fixture".into(), json!({"seed": 7}));
+    let declared = fixture.store.declare_capture(&with).unwrap();
+    let replay = fixture.store.case(declared.case_id).unwrap();
+    let run = replay.state.current(declared.run_id).unwrap();
+    assert_eq!(
+        run.body["capture"]["metadata"],
+        json!({"example-org.fixture": {"seed": 7}})
+    );
+
+    let without = fixture
+        .store
+        .declare_capture(&declaration("run-0002/begin", "run-0002"))
+        .unwrap();
+    let replay = fixture.store.case(without.case_id).unwrap();
+    let run = replay.state.current(without.run_id).unwrap();
+    assert!(run.body["capture"].get("metadata").is_none());
 }
 
 #[test]

@@ -219,6 +219,8 @@ Under the handle lock, finalize seals the handle, then commits one transaction, 
 
 Finalize refuses, before sealing, a manifest whose `items` map does not equal the staged items.
 
+The Run body's `capture` binding keeps the `metadata` sent to `begin`, exactly as sent. It is omitted when `begin` sent none, and on Runs declared before it was stored.
+
 `capture_finalization` holds `attribution: producer_reported`, the finalize `command_id`, the begin `producer` and `external_run_id`, `manifest` (`source_ref`, `artifact_ref`, `digest`, `size_bytes`), `snapshot`, `completion`, `expected_last_position`, `sealed_position`, `missing_positions`, `finalization`, `execution`, `evidence_completeness`, `artifacts`, `channels`, and the producer's `assertions`, `controls`, `receipts`, `limitations` and `metadata` exactly as sent. The names follow the `producer_run` section of an envelope Run where both describe the same thing. Each `artifacts` entry has `key`, `position`, `role`, `channel`, `media_type`, `declared` and `retention`: `retained` with `source_ref`, `artifact_ref`, `digest`, `size_bytes` and, for a derivative, `derived_from`; or `missing` with `cause` (`declared`, `not_found` or `not_attached`) and the producer's `reason`.
 
 Completeness states what survived, never more than the producer claims:

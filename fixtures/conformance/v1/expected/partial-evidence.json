@@ -23,6 +23,11 @@
       "producer": "${producer}",
       "external_run_id": "${external_run_id}",
       "handle": "${handle}",
+      "metadata": {
+        "example-org.fixture": {
+          "seed": 7
+        }
+      },
       "limits": {
         "max_attachment_bytes": 67108864,
         "max_event_bytes": 65536,

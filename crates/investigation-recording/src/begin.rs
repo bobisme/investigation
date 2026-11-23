@@ -275,6 +275,7 @@ fn declaration(request: &BeginCapture) -> Result<CaptureDeclaration, Failure> {
         producer: producer.name.to_string(),
         external_run_id: request.external_run_id.to_string(),
         external_plan_digest: request.intent.external_plan_digest.clone(),
+        metadata: request.metadata.clone(),
         classification: request.classification,
         // The normalized form, so an identical retry compares equal however
         // its JSON was spelled.

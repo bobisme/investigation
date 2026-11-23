@@ -45,6 +45,7 @@ pub(crate) fn declaration() -> CaptureDeclaration {
         producer: "example-producer".into(),
         external_run_id: "run-0001".into(),
         external_plan_digest: None,
+        metadata: BTreeMap::new(),
         classification: ClassificationLevel::Internal,
         request: json!({"opaque": "begin"}),
     }

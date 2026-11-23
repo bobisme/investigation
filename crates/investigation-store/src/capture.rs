@@ -111,6 +111,10 @@ pub struct CaptureBinding {
     pub external_run_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_plan_digest: Option<investigation_core::wire::Digest>,
+    /// Inert namespaced producer metadata from `begin`, readable from the Run.
+    /// Absent on Runs declared before it was stored.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, Value>,
     pub limits: HandleLimits,
     /// Workspace-relative staging directory.
     pub staging: String,
@@ -138,6 +142,8 @@ pub struct CaptureDeclaration {
     pub producer: String,
     pub external_run_id: String,
     pub external_plan_digest: Option<investigation_core::wire::Digest>,
+    /// Inert namespaced producer metadata kept on the Run's capture binding.
+    pub metadata: BTreeMap<String, Value>,
     pub classification: ClassificationLevel,
     /// Normalized recorder request retained in the journal.
     pub request: Value,
@@ -450,6 +456,7 @@ fn declare(
         producer: declaration.producer.clone(),
         external_run_id: declaration.external_run_id.clone(),
         external_plan_digest: declaration.external_plan_digest.clone(),
+        metadata: declaration.metadata.clone(),
         limits: HandleLimits::DEFAULT,
         staging: format!("{STAGING_ROOT}/{}", run.header.id),
     };
