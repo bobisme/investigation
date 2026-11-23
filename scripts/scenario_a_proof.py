@@ -233,6 +233,23 @@ def proof(binary, handoff, workspace=None):
         failure = cli.record(case, op("case.close", dict(closing, retrospective_waived="Attempted waiver")),
                              preconditions=[ref(case)], exit_code=5)
         assert failure["error"]["code"] == "RETROSPECTIVE_REQUIRED"
+        digest = cli.call("--case", case, "retrospective", "--draft")
+        assert digest["snapshot"] == point and "recorded work only" in digest["coverage"]
+        listed = {item["id"]: item for item in digest["items"]}
+        assert listed[f"run.invalid/{unusable}"]["cite"] == unusable, listed
+        # Scenario A freezes one plan and never amends it, so no amended prediction is listed.
+        assert not any(item["category"] == "inquiry.amended_after_freeze" for item in digest["items"])
+        expected = {entry["kind"]: entry for entry in digest["expected_versus_actual"]}
+        assert expected["case.answer_or_choice"]["expected_state"] == "no_expectation_recorded"
+        assert digest["record_template"] == {"case_ref": ref(case), "snapshot": point}
+        uncited = dict(digest["record_template"], methods_attempted=[], effective_steps=[],
+                       invalid_or_misleading_steps=[], none_observed_reason="None recorded.",
+                       costs_or_constraints="Offline synthetic captures only.", residual_unknowns=[],
+                       lessons=[{"guidance": "Check clocks first", "applies_when": "Always",
+                                 "support_refs": [], "transfer_limits": "None stated"}])
+        rejected = cli.record(case, op("retrospective.record", uncited), exit_code=5)
+        assert rejected["error"]["path"].endswith("/lessons/0/support_refs"), rejected
+        assert rejected["error"]["repair"]["argv"][-4:] == ["retrospective", "--draft", "--format", "json"]
         retrospective = {
             "case_ref": ref(case), "snapshot": point,
             "methods_attempted": [{"name": "Compare a slow/control pair and a bounded toggle/reversal"}],

@@ -82,14 +82,9 @@ pub(crate) fn retrospective_failure(code: ErrorCode, message: &str) -> Failure {
     failure
 }
 
+/// Uncited entries are rejected in `retrospective_record`, where the case is
+/// known and the repair can name its digest.
 fn support_shape(refs: &[Id], path: &str) -> Result<(), Failure> {
-    if refs.is_empty() {
-        return Err(Failure::new(
-            ErrorCode::GateFailed,
-            "Cite recorded work that grounds this step or proposed lesson.",
-        )
-        .at(path));
-    }
     let unique: BTreeSet<_> = refs.iter().collect();
     if unique.len() != refs.len() {
         return Err(
@@ -189,10 +184,51 @@ fn cite(
         })
 }
 
+/// Every step and lesson rests on a digest item or record; a generic, uncited
+/// entry is rejected with a pointer to the case's process digest.
+fn require_citations(content: &RetrospectiveRecord, case: Option<Id>) -> Result<(), Failure> {
+    let entries =
+        [
+            ("/effective_steps", &content.effective_steps),
+            (
+                "/invalid_or_misleading_steps",
+                &content.invalid_or_misleading_steps,
+            ),
+        ]
+        .into_iter()
+        .flat_map(|(path, steps)| {
+            steps
+                .iter()
+                .enumerate()
+                .map(move |(index, step)| (format!("{path}/{index}"), step.support_refs.is_empty()))
+        })
+        .chain(
+            content.lessons.iter().enumerate().map(|(index, lesson)| {
+                (format!("/lessons/{index}"), lesson.support_refs.is_empty())
+            }),
+        );
+    for (path, uncited) in entries {
+        if uncited {
+            let mut failure = Failure::new(
+                ErrorCode::GateFailed,
+                "Cite a digest item or a recorded same-case record for this step or proposed lesson. Run the process digest to find citable facts.",
+            )
+            .with_schema("retrospective.record")
+            .at(format!("{path}/support_refs"));
+            if let Some(case) = case {
+                failure = failure.with_argv(crate::retrospective_digest::draft_argv(case));
+            }
+            return Err(failure);
+        }
+    }
+    Ok(())
+}
+
 fn retrospective_record(
     mut payload: RetrospectiveInput,
     ctx: &mut OperationContext<'_>,
 ) -> Result<(), Failure> {
+    require_citations(&payload.content, ctx.case_id())?;
     let case_ref = ctx.resolve(&payload.content.case_ref, Kind::Case, "/case_ref")?;
     let state = ctx.state();
     let snapshot = &payload.content.snapshot;
@@ -242,6 +278,19 @@ fn retrospective_record(
         for (index, id) in entry.support_refs.iter().enumerate() {
             let path = format!("/lessons/{lesson}/support_refs/{index}");
             cited.insert(*id, cite(state, case, sequence, *id, &path)?);
+        }
+    }
+    if payload.content.invalid_or_misleading_steps.is_empty() {
+        let unsuccessful = crate::retrospective_digest::unsuccessful_work(state, case, sequence);
+        if !unsuccessful.is_empty() {
+            let ids: Vec<_> = unsuccessful
+                .iter()
+                .map(|reference| reference.id.to_string())
+                .collect();
+            ctx.warn(format!(
+                "retrospective.unsuccessful_work_not_cited: the process digest lists invalid or failed work ({}). Cite it in invalid_or_misleading_steps if it was wasted or misleading.",
+                ids.join(", ")
+            ));
         }
     }
     payload.content.case_ref = Reference::Existing(case_ref);

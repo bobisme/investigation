@@ -34,6 +34,7 @@ pub mod objection_policy;
 pub mod observation_ops;
 pub mod producer_run;
 pub mod retrospective;
+pub mod retrospective_digest;
 mod retrospective_ops;
 pub mod review;
 pub mod review_ops;

@@ -7,6 +7,7 @@ mod guide;
 mod lineage;
 mod next;
 mod onboard;
+mod retrospective;
 mod schema;
 mod search;
 mod selection;
@@ -204,6 +205,9 @@ enum Commands {
         #[arg(long, default_value_t = 16_384)]
         max_bytes: usize,
     },
+    /// Compute the recorded process digest that a retrospective cites.
+    #[command(after_help = retrospective::AFTER_HELP)]
+    Retrospective(retrospective::Args),
     /// Find records by text; results are labelled pointers, not evidence.
     #[command(after_help = search::AFTER_HELP)]
     Search(search::Args),
@@ -340,6 +344,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
                 Commands::Search(args) => search::run(&mut store, &global, args),
+                Commands::Retrospective(args) => retrospective::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
