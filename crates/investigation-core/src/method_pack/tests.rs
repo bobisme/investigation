@@ -663,3 +663,38 @@ fn rejections_map_to_invalid_input_failures_with_paths() {
     assert_eq!(value["error"]["code"], "INVALID_INPUT");
     assert_eq!(value["error"]["path"], "/cards/0/hook");
 }
+
+#[test]
+fn builtin_general_pack_carries_the_framing_explanation_and_measurement_cards() {
+    let general = builtin_general();
+    let names: Vec<&str> = general
+        .pack()
+        .cards
+        .iter()
+        .filter(|card| PART_A_CARDS.contains(&card.name.as_str()))
+        .map(|card| card.name.as_str())
+        .collect();
+    assert_eq!(names, PART_A_CARDS);
+    for name in PART_A_CARDS {
+        let card = general.card(name).expect("part A card is built in");
+        assert!(
+            !card.body.skip.trim().is_empty(),
+            "{name} states a skip condition"
+        );
+        assert!(!card.triggers.is_empty(), "{name} has a trigger");
+    }
+}
+
+const PART_A_CARDS: [&str; 11] = [
+    "frame",
+    "alternatives",
+    "source-quality",
+    "measure",
+    "baseline",
+    "discriminate",
+    "negative-result",
+    "delta-debug",
+    "intervene",
+    "causal-structure",
+    "reference-class",
+];
