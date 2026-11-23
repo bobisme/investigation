@@ -43,7 +43,12 @@ use crate::{
 /// subject's closure: behind a benign later revision (such as a restated
 /// criterion), which the promotion closure now reads through, and where a
 /// promotion would refuse the walk (such as a rejected material assumption).
-pub const FRESHNESS_RULES_VERSION: u32 = 5;
+/// Version 6 tracks an objection's `resolution_evidence_refs` and an option's
+/// disposition `criterion_ref` as inherited dependencies (the option's in the
+/// promotion closure), and keeps a validation review's membership checks
+/// after its subject changes in substance, so an objection raised after the
+/// review disputes it rather than leaving it only `needs_review`.
+pub const FRESHNESS_RULES_VERSION: u32 = 6;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -556,6 +561,10 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
         Kind::Option => {
             out.add(body, "question_ref", "question_ref", ChangeOnly)?;
             out.add(body, "dependencies", "dependencies", Inherit)?;
+            // A disposition rests on the criterion it names: an option ruled
+            // out against a criterion that later changes needs review, and so
+            // does what relies on it (rules version 6).
+            out.add(body, "criterion_ref", "criterion_ref", Inherit)?;
         }
         Kind::Criterion => {
             out.add(body, "question_ref", "question_ref", ChangeOnly)?;
@@ -625,6 +634,13 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
                 out.add(&body["evidence_refs"], "value", "evidence_refs", Inherit)?;
             }
             out.add(body, "review_ref", "review_ref", ChangeOnly)?;
+            // A resolution rests on the evidence it cites (rules version 6).
+            out.add(
+                body,
+                "resolution_evidence_refs",
+                "resolution_evidence_refs",
+                Inherit,
+            )?;
         }
         Kind::Annotation => {
             out.closure = false;
@@ -982,10 +998,9 @@ fn review_basis(state: &State, case: Id, record: &Record) -> Vec<FreshnessReason
     else {
         return Vec::new();
     };
-    if basis_digest(target).ok().map(|digest| json!(digest)) != Some(body["basis_digest"].clone()) {
-        // A substantive subject change is reported by the subject_ref edge.
-        return Vec::new();
-    }
+    // A substantive subject change is reported by the subject_ref edge. The
+    // checks below still apply (rules version 6): an objection raised after
+    // the review disputes it whatever else changed since.
     let Ok(now) = promotion_memberships(state, target) else {
         return unreadable();
     };

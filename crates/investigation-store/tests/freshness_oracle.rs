@@ -44,7 +44,7 @@ use investigation_core::{
     wire::{ErrorCode, Failure, Receipt, Snapshot},
 };
 use investigation_store::{Store, Workspace, journal::CaseReplay, projection::Projection};
-use oracle::{Level, Oracle, Readings, Role, Verdict};
+use oracle::{Level, Oracle, Role, Verdict};
 use proptest::{
     prelude::*,
     test_runner::{Config, RngAlgorithm, TestCaseError, TestError, TestRng, TestRunner},
@@ -111,11 +111,15 @@ enum Edit {
     RetractObservation {
         observation: u8,
     },
+    /// An `entire` withdrawal, or a `partial` one that later readers can
+    /// acknowledge.
     WithdrawSource {
         source: u8,
+        partial: bool,
     },
     WithdrawArtifact {
         source: u8,
+        partial: bool,
     },
     AssessSource {
         source: u8,
@@ -228,8 +232,8 @@ fn edit_strategy() -> impl Strategy<Value = Edit> {
         3 => (n(), observation_change())
             .prop_map(|(observation, change)| Edit::CorrectObservation { observation, change }),
         1 => n().prop_map(|observation| Edit::RetractObservation { observation }),
-        2 => n().prop_map(|source| Edit::WithdrawSource { source }),
-        1 => n().prop_map(|source| Edit::WithdrawArtifact { source }),
+        2 => (n(), any::<bool>()).prop_map(|(source, partial)| Edit::WithdrawSource { source, partial }),
+        1 => (n(), any::<bool>()).prop_map(|(source, partial)| Edit::WithdrawArtifact { source, partial }),
         2 => (n(), any::<bool>()).prop_map(|(source, concern)| Edit::AssessSource { source, concern }),
         4 => (any::<u8>(), any::<bool>())
             .prop_map(|(target, critical)| Edit::RaiseObjection { target, critical }),
@@ -869,7 +873,8 @@ impl Run {
                     vec![],
                 )
             }
-            Edit::WithdrawSource { source } | Edit::WithdrawArtifact { source } => {
+            Edit::WithdrawSource { source, partial }
+            | Edit::WithdrawArtifact { source, partial } => {
                 let (name, key, pool) = match edit {
                     Edit::WithdrawSource { .. } => {
                         ("source.withdraw", "source_ref", &self.pools.sources)
@@ -880,12 +885,20 @@ impl Run {
                 if body(id)["status"] == "withdrawn" {
                     return None;
                 }
+                let (extent, scope) = if *partial {
+                    (
+                        "partial",
+                        json!({"extent":"partial","statement":"The warm-up table."}),
+                    )
+                } else {
+                    ("entire", json!({"extent":"entire"}))
+                };
                 planned(
-                    format!("{name} {}", self.name(id)),
+                    format!("{name} {} ({extent})", self.name(id)),
                     op(
                         name,
                         json!({
-                            key:self.cur(id),"reason":"retracted_by_origin","scope":{"extent":"entire"},
+                            key:self.cur(id),"reason":"retracted_by_origin","scope":scope,
                             "rationale":"The publisher retracted the benchmark.","evidence_refs":[]
                         }),
                     ),
@@ -1342,10 +1355,9 @@ fn compare(
     case: Id,
     index: &FreshnessIndex,
     view: &BTreeMap<Id, Seen>,
-    readings: Readings,
     stats: &mut Stats,
 ) -> (Vec<Divergence>, Vec<String>) {
-    let oracle = Oracle::new(state, case, readings);
+    let oracle = Oracle::new(state, case);
     let mut divergences = Vec::new();
     let records: Vec<&Record> = state
         .records()
@@ -1474,7 +1486,6 @@ fn describe_divergence(run: &Run, divergence: &Divergence) -> String {
 #[derive(Clone, Copy)]
 struct Settings {
     fault: Fault,
-    readings: Readings,
     /// Rebuild every snapshot from the journal and the projection at the end.
     replay_checks: bool,
 }
@@ -1483,7 +1494,6 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             fault: Fault::None,
-            readings: Readings::default(),
             replay_checks: true,
         }
     }
@@ -1542,8 +1552,7 @@ fn check_history(
         }
         report
     };
-    let (divergences, overview) =
-        compare(run.state(), case, &index, &view, settings.readings, stats);
+    let (divergences, overview) = compare(run.state(), case, &index, &view, stats);
     if !divergences.is_empty() || !overview.is_empty() {
         return Err(failure(&run, 0, &divergences, &overview));
     }
@@ -1656,14 +1665,13 @@ fn check_history(
             .map_err(|f| format!("index update failed: {:?}", f.error))?;
         view = current_view(&index, settings.fault, &view, run.state());
         snapshots.push((run.replay.snapshot.clone(), index.clone()));
-        let (divergences, overview) =
-            compare(run.state(), case, &index, &view, settings.readings, stats);
+        let (divergences, overview) = compare(run.state(), case, &index, &view, stats);
         if !divergences.is_empty() || !overview.is_empty() {
             return Err(failure(&run, number, &divergences, &overview));
         }
     }
     if settings.replay_checks {
-        replay_checks(&mut run, &snapshots, settings, stats)?;
+        replay_checks(&mut run, &snapshots, stats)?;
     }
     Ok(())
 }
@@ -1676,7 +1684,6 @@ fn check_history(
 fn replay_checks(
     run: &mut Run,
     snapshots: &[(Snapshot, FreshnessIndex)],
-    settings: Settings,
     stats: &mut Stats,
 ) -> Result<(), String> {
     let case = run.case;
@@ -1693,14 +1700,7 @@ fn replay_checks(
             ));
         }
         let view = current_view(&rebuilt, Fault::None, &BTreeMap::new(), &pinned.state);
-        let (divergences, overview) = compare(
-            &pinned.state,
-            case,
-            &rebuilt,
-            &view,
-            settings.readings,
-            stats,
-        );
+        let (divergences, overview) = compare(&pinned.state, case, &rebuilt, &view, stats);
         if let Some(first) = divergences.first() {
             return Err(format!(
                 "after replay to sequence {}: {}",
@@ -1740,7 +1740,7 @@ fn replay_checks(
     if maintained != rebuilt {
         return Err("the rebuilt dependency projection differs from the maintained one".into());
     }
-    let oracle = Oracle::new(run.state(), case, settings.readings);
+    let oracle = Oracle::new(run.state(), case);
     let mut cited = BTreeSet::new();
     for record in run.state().records().filter(|r| r.header.case_id == case) {
         for citation in oracle.citations(record) {
@@ -1902,6 +1902,7 @@ fn incremental_freshness_matches_an_independent_recomputation_over_generated_his
     }
     assert!(stats.stale_rejections > 0);
     for rule in [
+        "acknowledged",
         "assumption_disposition",
         "basis_expanded",
         "critical_objection",
@@ -1915,6 +1916,7 @@ fn incremental_freshness_matches_an_independent_recomputation_over_generated_his
         "objection_raised_after_review",
         "source_concern",
         "substantive_change",
+        "use_change_after_reading",
         "withdrawal",
     ] {
         assert!(
@@ -1941,7 +1943,6 @@ fn a_deliberately_missed_invalidation_is_caught_shrunk_and_reported() {
     let settings = Settings {
         fault: Fault::SkipDependents,
         replay_checks: false,
-        ..Settings::default()
     };
     let seed = DEFAULT_SEEDS[0];
     let stats = RefCell::new(Stats::default());
@@ -1989,35 +1990,40 @@ fn small_graph() -> Graph {
     }
 }
 
-/// Run a fixed history under the index's readings (must agree) and under one
-/// plain reading (must disagree on `expected`), returning the report.
-fn pinned_divergence(graph: &Graph, steps: &[Step], plain: Readings, expected: &str) -> String {
+/// Run a fixed history through the harness (the index and the oracle must
+/// agree after every step), then replay it and return the run, a full index
+/// of its final state and the harness counts, so a test can read the index.
+fn pinned(graph: &Graph, steps: &[Step]) -> (Run, FreshnessIndex, Stats) {
+    let mut stats = Stats::default();
     let settings = Settings {
         replay_checks: false,
         ..Settings::default()
     };
-    check_history(1, graph, steps, settings, &mut Stats::default())
-        .expect("the index's readings agree on this history");
-    let report = check_history(
-        1,
-        graph,
-        steps,
-        Settings {
-            readings: plain,
-            ..settings
-        },
-        &mut Stats::default(),
-    )
-    .expect_err("the plain reading disagrees with the index here");
-    assert!(
-        report.contains(&format!(
-            "first divergent review after step #{}",
-            steps.len()
-        )),
-        "{report}"
-    );
-    assert!(report.contains(expected), "{expected} in\n{report}");
-    report
+    check_history(1, graph, steps, settings, &mut stats)
+        .unwrap_or_else(|report| panic!("{report}"));
+    let mut run = Run::scaffold(graph);
+    for step in steps {
+        let Step::One(edit) = step else {
+            unreachable!("pinned histories are single edits")
+        };
+        let planned = run.plan(edit).expect("applicable");
+        let receipt = run.submit(&[planned.op], &[]).expect("accepted");
+        run.refresh();
+        run.register(&receipt);
+    }
+    let index = FreshnessIndex::build(run.state(), run.case);
+    (run, index, stats)
+}
+
+impl Run {
+    fn by_label(&self, label: &str) -> Id {
+        *self
+            .labels
+            .iter()
+            .find(|(_, name)| name.as_str() == label)
+            .unwrap_or_else(|| panic!("{label} in {:?}", self.labels))
+            .0
+    }
 }
 
 // Targets in `small_graph`: review_subjects() is [conclusion, decision,
@@ -2026,11 +2032,12 @@ fn pinned_divergence(graph: &Graph, steps: &[Step], plain: Readings, expected: &
 // [criterion#0, option#0, option#1].
 const COMPARISON_0: u8 = 3;
 
-/// Open rule question: an objection resolved on the strength of evidence is
-/// not reassessed when that evidence is corrected (the index does not track
-/// `resolution_evidence_refs`).
+/// Rules version 6 (W10.05e): an objection resolved on the strength of
+/// evidence rests on that evidence. Correcting it makes the resolved objection
+/// need review (§14.3: a resolution cites its evidence), with the
+/// `resolution_evidence_refs` edge in the reason chain.
 #[test]
-fn open_question_resolution_evidence_is_not_a_dependency_of_the_objection() {
+fn a_corrected_resolution_evidence_makes_the_objection_need_review() {
     let steps = [
         Step::One(Edit::RaiseObjection {
             target: COMPARISON_0,
@@ -2045,22 +2052,30 @@ fn open_question_resolution_evidence_is_not_a_dependency_of_the_objection() {
             change: ObservationChange::Value(1),
         }),
     ];
-    pinned_divergence(
-        &small_graph(),
-        &steps,
-        Readings {
-            resolution_evidence_is_basis: true,
-            ..Readings::index()
-        },
-        "objection#0",
+    let (run, index, _) = pinned(&small_graph(), &steps);
+    let objection = run.by_label("objection#0");
+    assert_eq!(run.current(objection).body["status"], "resolved");
+    let freshness = index.get(objection).unwrap();
+    assert_eq!(freshness.freshness, Freshness::NeedsReview);
+    assert!(
+        freshness
+            .reasons
+            .iter()
+            .any(|reason| reason.trigger == Trigger::MaterialRevision
+                && reason.path[0].field == "resolution_evidence_refs"),
+        "{:?}",
+        freshness.reasons
     );
 }
 
-/// Open rule question: an option ruled out against a criterion is not
-/// reassessed when that criterion changes (the index treats the option's
-/// `criterion_ref` as disposition metadata), nor are comparisons of it.
+/// Rules version 6 (W10.05e): an option's disposition rests on the
+/// criterion it names. When that criterion changes, the ruled-out option
+/// needs review, and so does a comparison of it against another criterion,
+/// which relies on the option. The promotion closure walks the same edge, so
+/// the gates refuse that comparison's closure until the option is disposed of
+/// against the current criterion, which makes both current again.
 #[test]
-fn open_question_a_ruled_out_option_does_not_rest_on_its_criterion() {
+fn a_ruled_out_option_rests_on_its_criterion() {
     let steps = [
         Step::One(Edit::DisposeOption {
             option: 1,
@@ -2071,15 +2086,47 @@ fn open_question_a_ruled_out_option_does_not_rest_on_its_criterion() {
             change: CriterionChange::Threshold(1),
         }),
     ];
-    pinned_divergence(
-        &small_graph(),
-        &steps,
-        Readings {
-            disposition_criterion_is_basis: true,
-            ..Readings::index()
-        },
-        "option#1",
+    // A second, soft criterion that covers only option#1.
+    let graph = Graph {
+        criteria: vec![(true, Scope::All), (false, Scope::Other)],
+        ..small_graph()
+    };
+    let (mut run, index, _) = pinned(&graph, &steps);
+    let option = run.by_label("option#1");
+    let cell = run.by_label("comparison#2(option#1,criterion#1)");
+    assert_eq!(run.current(option).body["lifecycle"], "ruled_out");
+    let reasons = &index.get(option).unwrap().reasons;
+    assert!(
+        reasons
+            .iter()
+            .any(|reason| reason.trigger == Trigger::MaterialRevision
+                && reason.path[0].field == "criterion_ref"),
+        "{reasons:?}"
     );
+    let cell_freshness = index.get(cell).unwrap();
+    assert_eq!(cell_freshness.freshness, Freshness::NeedsReview);
+    assert_eq!(cell_freshness.reasons[0].path[0].field, "option_ref");
+    assert!(required_read_set(run.state(), run.current(cell)).is_err());
+
+    // Rule the option out again against the current criterion.
+    let criterion = run.by_label("criterion#0");
+    let receipt = run
+        .submit(
+            &[op(
+                "option.disposition",
+                json!({"option_ref":run.cur(option),"lifecycle":"ruled_out",
+                    "reason":"Still too slow.","criterion_ref":exact(run.cur(criterion))}),
+            )],
+            &[],
+        )
+        .expect("accepted");
+    run.refresh();
+    run.register(&receipt);
+    let index = FreshnessIndex::build(run.state(), run.case);
+    assert_eq!(index.get(option).unwrap().freshness, Freshness::Current);
+    assert_eq!(index.get(cell).unwrap().freshness, Freshness::Current);
+    let reads = required_read_set(run.state(), run.current(cell)).unwrap();
+    assert!(reads.contains(&run.cur(criterion)), "{reads:?}");
 }
 
 /// Fixed index gap found by this harness (W10.05d): after a benign revision
@@ -2101,48 +2148,20 @@ fn basis_expansion_is_caught_behind_a_benign_revision() {
             target: COMPARISON_0,
         }),
     ];
-    // The index agrees with the oracle's plain rule 4 on this history (no
-    // open rule question bears on it, so every plain reading agrees too),
-    // and that rule fires.
-    let mut stats = Stats::default();
-    let settings = Settings {
-        readings: Readings::plain(),
-        replay_checks: false,
-        ..Settings::default()
-    };
-    check_history(1, &small_graph(), &steps, settings, &mut stats).unwrap();
-    check_history(1, &small_graph(), &steps, Settings::default(), &mut stats).unwrap();
+    // The index agrees with the oracle's rule 4 on this history, and that
+    // rule fires.
+    let (run, index, stats) = pinned(&small_graph(), &steps);
     assert!(
         stats.rules.contains_key("basis_expanded"),
         "{:?}",
         stats.rules
     );
-
-    // Replay the history and read the index directly.
-    let mut run = Run::scaffold(&small_graph());
-    for step in &steps {
-        let Step::One(edit) = step else {
-            unreachable!()
-        };
-        let planned = run.plan(edit).expect("applicable");
-        let receipt = run.submit(&[planned.op], &[]).expect("accepted");
-        run.refresh();
-        run.register(&receipt);
-    }
-    let by_label = |label: &str| {
-        *run.labels
-            .iter()
-            .find(|(_, name)| name.as_str() == label)
-            .unwrap_or_else(|| panic!("{label} in {:?}", run.labels))
-            .0
-    };
     let (criterion, review, decision) = (
-        by_label("criterion#0"),
-        by_label("review#1(decision)"),
-        by_label("decision"),
+        run.by_label("criterion#0"),
+        run.by_label("review#1(decision)"),
+        run.by_label("decision"),
     );
     assert_eq!(run.current(criterion).header.revision.0, 2, "restated");
-    let index = FreshnessIndex::build(run.state(), run.case);
     let review_freshness = index.get(review).unwrap();
     assert_eq!(review_freshness.freshness, Freshness::NeedsReview);
     let expanded: Vec<_> = review_freshness
@@ -2199,11 +2218,12 @@ fn basis_expansion_is_caught_behind_a_rejected_assumption() {
     assert_eq!(stats.accepted.get("assumption.assess"), Some(&1));
 }
 
-/// Open rule question: once the reviewed subject changes in substance, the
-/// index reports only that change; an objection raised on the reviewed
-/// revision after the review no longer disputes the review.
+/// Rules version 6 (W10.05e): a validation review's membership checks hold
+/// after its subject changes in substance. An objection raised on the
+/// reviewed revision after the review disputes the review; the relinked
+/// subject also makes it need review. A later edit never hides the dispute.
 #[test]
-fn open_question_a_changed_subject_hides_objections_raised_after_its_review() {
+fn a_changed_subject_keeps_objections_raised_after_its_review() {
     let steps = [
         Step::One(Edit::SubmitReview { subject: 2 }),
         Step::One(Edit::RaiseObjection {
@@ -2220,16 +2240,34 @@ fn open_question_a_changed_subject_hides_objections_raised_after_its_review() {
         observations: vec![0, 0],
         ..small_graph()
     };
-    let report = pinned_divergence(
-        &graph,
-        &steps,
-        Readings {
-            review_checks_survive_subject_change: true,
-            ..Readings::index()
-        },
-        "review#2",
+    let (run, index, stats) = pinned(&graph, &steps);
+    assert!(
+        stats.rules.contains_key("objection_raised_after_review"),
+        "{:?}",
+        stats.rules
     );
-    assert!(report.contains("objection_raised_after_review"), "{report}");
+    let (review, objection) = (run.by_label("review#2"), run.by_label("objection#0"));
+    let freshness = index.get(review).unwrap();
+    assert_eq!(freshness.freshness, Freshness::Disputed);
+    assert!(freshness.needs_review(), "{:?}", freshness.reasons);
+    let triggers: Vec<_> = freshness
+        .reasons
+        .iter()
+        .map(|reason| (&reason.trigger, reason.cause.id))
+        .collect();
+    assert!(
+        triggers.contains(&(&Trigger::ObjectionRaisedAfterReview, objection)),
+        "{triggers:?}"
+    );
+    assert!(
+        freshness
+            .reasons
+            .iter()
+            .any(|reason| reason.trigger == Trigger::MaterialRevision
+                && reason.path[0].field == "subject_ref"),
+        "{:?}",
+        freshness.reasons
+    );
 }
 
 /// A stale edit is rejected as a revision conflict and leaves the journal,

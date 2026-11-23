@@ -19,17 +19,30 @@
 //!    *basis* citation, or one whose later revisions are all immaterial, passes
 //!    on the cited record's current effective freshness; subjects and context
 //!    (questions, option scopes) are checked only for change.
+//!    2a. Acknowledgement (§5.7, W06b.16): a use change, meaning a partial
+//!    withdrawal or a newly raised source concern, carries the sequence from
+//!    which it was in effect. A revision accepted at or after it read the
+//!    material with the change in effect: the change does not count for it,
+//!    and a basis citation then passes on as if unchanged. The change still
+//!    reaches every dependent, which judges it against its own acceptance.
+//!    An entire withdrawal is never acknowledged.
 //! 3. An open critical objection disputes its subject.
 //! 4. A submitted validation review is also judged against what it recorded
 //!    it saw (its scoped sets, with each member's substance at the review's
 //!    sequence): an open objection on the subject it did not see disputes it;
 //!    a changed open-objection, material-assumption, eligible-option or
 //!    active-hard-criterion set needs review; and so does a record now
-//!    required to read the subject (its citation closure plus material
-//!    assumptions naming any record in it) that the review did not read.
+//!    required to read the subject (its citation closure, read through later
+//!    revisions that are all immaterial, plus material assumptions naming any
+//!    record in it) that the review did not read. These checks hold whether
+//!    or not the subject changed since the review.
 //!
-//! Where a rule has two defensible readings and the index takes the other one,
-//! the choice is a named [`Readings`] switch; see the tests that pin each one.
+//! Three readings were once open questions where the index differed; rules
+//! version 6 adopted the plain reading of each (W10.05e): an objection's
+//! resolution rests on its `resolution_evidence_refs`, an option's
+//! disposition rests on its `criterion_ref`, and rule 4 survives a change to
+//! the reviewed subject. The tests that pinned the divergences now pin the
+//! agreement.
 
 use std::{
     cell::RefCell,
@@ -43,46 +56,6 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-/// Points where the oracle's plain reading and the index differ: open rule
-/// questions. (The index gap this harness found, a basis expansion missed
-/// when the promotion closure walk failed, is fixed in rules version 5: rule
-/// 4's new-required-read check always applies, as here.) Generated runs use
-/// [`Readings::index`] so that everything else is compared; a pinned test per
-/// field shows the divergence under [`Readings::plain`].
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Readings {
-    /// Plain reading: an objection resolved on the strength of evidence needs
-    /// review when that evidence changes (§14.3: a resolution cites evidence).
-    /// The index does not track `resolution_evidence_refs`. Default: the
-    /// index's reading, so generated runs compare everything else.
-    pub resolution_evidence_is_basis: bool,
-    /// Plain reading: an option ruled out against a criterion needs review
-    /// when that criterion changes (the disposition rests on it). The index
-    /// treats an Option's `criterion_ref` as disposition metadata.
-    pub disposition_criterion_is_basis: bool,
-    /// Plain reading (rule 4): an objection the review did not see disputes
-    /// it even after the reviewed subject changed in substance; the review is
-    /// then both stale and disputed. The index reports only the subject
-    /// change and skips every rule-4 check once the subject's basis differs.
-    pub review_checks_survive_subject_change: bool,
-}
-
-impl Readings {
-    /// The index's current behaviour on every point (the default).
-    pub fn index() -> Self {
-        Self::default()
-    }
-
-    /// The oracle's own reading of every point.
-    pub fn plain() -> Self {
-        Self {
-            resolution_evidence_is_basis: true,
-            disposition_criterion_is_basis: true,
-            review_checks_survive_subject_change: true,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Level {
     Current,
@@ -95,6 +68,14 @@ pub struct Verdict {
     pub level: Level,
     pub needs_review: bool,
     pub disputed_by: BTreeSet<Id>,
+    /// Needs review for a cause no later reading acknowledges.
+    lasting_review: bool,
+    /// Use changes (a partial withdrawal or a newly raised source concern)
+    /// at or upstream of this record: the changed Source or Artifact and the
+    /// sequence from which the change was in effect. Each reader judges them
+    /// against its own acceptance (rule 2a), so they pass on whether or not
+    /// this record acknowledged them.
+    use_changes: BTreeSet<(Id, u64)>,
     /// (rule, detail) for every local cause and inherited state; for
     /// failure reports and coverage counts only.
     pub why: Vec<(&'static str, String)>,
@@ -124,17 +105,15 @@ pub struct Citation {
 pub struct Oracle<'a> {
     state: &'a State,
     case: Id,
-    readings: Readings,
     memo: RefCell<BTreeMap<RevisionRef, Verdict>>,
     visiting: RefCell<BTreeSet<RevisionRef>>,
 }
 
 impl<'a> Oracle<'a> {
-    pub fn new(state: &'a State, case: Id, readings: Readings) -> Self {
+    pub fn new(state: &'a State, case: Id) -> Self {
         Self {
             state,
             case,
-            readings,
             memo: RefCell::default(),
             visiting: RefCell::default(),
         }
@@ -153,7 +132,7 @@ impl<'a> Oracle<'a> {
         found
             .into_iter()
             .map(|(path, target)| {
-                let (role, read) = role(record.header.id.kind(), &path, self.readings);
+                let (role, read) = role(record.header.id.kind(), &path);
                 Citation {
                     path,
                     target,
@@ -186,8 +165,12 @@ impl<'a> Oracle<'a> {
             level: Level::Current,
             needs_review: false,
             disputed_by: BTreeSet::new(),
+            lasting_review: false,
+            use_changes: BTreeSet::new(),
             why: Vec::new(),
         };
+        // When this revision's author read what it cites.
+        let read_at = record.header.acceptance_sequence;
         let mine = own_option(record);
         for citation in self.citations(record) {
             if citation.role == Role::Ignored {
@@ -206,32 +189,32 @@ impl<'a> Oracle<'a> {
             } else {
                 None
             };
-            if let Some(change) = change(cited, now, citation.role, reader_option) {
-                verdict.review(
-                    change,
-                    format!(
-                        "{}: {} r{} -> r{}",
-                        citation.path,
-                        citation.target.id,
-                        citation.target.revision,
-                        now.header.revision.0
-                    ),
-                );
-            } else if citation.role == Role::Basis {
-                let inherited = self.verdict(now.reference());
-                if inherited.needs_review {
-                    verdict.review(
-                        "inherited",
-                        format!("{} -> {} needs review", citation.path, citation.target.id),
-                    );
+            let detail = format!(
+                "{}: {} r{} -> r{}",
+                citation.path, citation.target.id, citation.target.revision, now.header.revision.0
+            );
+            match change(cited, now, citation.role, reader_option) {
+                // Rule 2a: a use change this revision was accepted after is
+                // one its author read with the change in effect.
+                Some((rule, Some(since))) => {
+                    verdict.use_changes.insert((citation.target.id, since));
+                    if since > read_at {
+                        verdict
+                            .why
+                            .push((rule, format!("needs_review: {detail} (since {since})")));
+                    } else {
+                        verdict.why.push((
+                            "acknowledged",
+                            format!("{rule}: {detail} (since {since}, read at {read_at})"),
+                        ));
+                        if citation.role == Role::Basis {
+                            self.inherit(&mut verdict, &citation, now);
+                        }
+                    }
                 }
-                for objection in inherited.disputed_by {
-                    verdict.dispute(
-                        objection,
-                        "inherited",
-                        format!("{} -> {}", citation.path, citation.target.id),
-                    );
-                }
+                Some((rule, None)) => verdict.review(rule, detail),
+                None if citation.role == Role::Basis => self.inherit(&mut verdict, &citation, now),
+                None => {}
             }
         }
         for objection in self.open_objections(record.header.id) {
@@ -245,9 +228,47 @@ impl<'a> Oracle<'a> {
         {
             self.judge_review(record, &mut verdict);
         }
+        let pending: Vec<_> = verdict
+            .use_changes
+            .iter()
+            .filter(|(_, since)| *since > read_at)
+            .copied()
+            .collect();
+        if !pending.is_empty() {
+            verdict.needs_review = true;
+            verdict.level = verdict.level.max(Level::NeedsReview);
+            verdict.why.push((
+                "use_change_after_reading",
+                format!("needs_review: {pending:?} after {read_at}"),
+            ));
+        } else if !verdict.use_changes.is_empty() {
+            verdict.why.push((
+                "acknowledged",
+                format!("use changes {:?} read at {read_at}", verdict.use_changes),
+            ));
+        }
         self.visiting.borrow_mut().remove(&reference);
         self.memo.borrow_mut().insert(reference, verdict.clone());
         verdict
+    }
+
+    /// Rule 2: pass on the cited record's current effective freshness.
+    fn inherit(&self, verdict: &mut Verdict, citation: &Citation, now: &Record) {
+        let inherited = self.verdict(now.reference());
+        if inherited.lasting_review {
+            verdict.review(
+                "inherited",
+                format!("{} -> {} needs review", citation.path, citation.target.id),
+            );
+        }
+        verdict.use_changes.extend(inherited.use_changes);
+        for objection in inherited.disputed_by {
+            verdict.dispute(
+                objection,
+                "inherited",
+                format!("{} -> {}", citation.path, citation.target.id),
+            );
+        }
     }
 
     /// The revision of `id` that was current at `sequence`.
@@ -320,15 +341,6 @@ impl<'a> Oracle<'a> {
         let Some(now_subject) = self.current(subject) else {
             return;
         };
-        let reviewed = serde_json::from_value::<RevisionRef>(review.body["subject_ref"].clone())
-            .ok()
-            .and_then(|reference| self.state.revision(reference))
-            .expect("reviewed revision");
-        if !self.readings.review_checks_survive_subject_change
-            && substance(reviewed, None) != substance(now_subject, None)
-        {
-            return;
-        }
         let seen = |rule: &str| -> BTreeMap<Id, Value> {
             review.body["memberships"]
                 .as_array()
@@ -382,8 +394,10 @@ impl<'a> Oracle<'a> {
     }
 
     /// The records a reviewer of `root` must read: its read citations,
-    /// transitively at the cited revisions, plus current material assumptions
-    /// naming any of them (and what those cite).
+    /// transitively, plus current material assumptions naming any of them
+    /// (and what those cite). A citation is read at the current revision
+    /// when every later revision is immaterial to a plain reader (rule 1),
+    /// else at the cited revision.
     fn required(&self, root: &Record) -> BTreeSet<Id> {
         let mut seen = BTreeSet::new();
         let mut pending = vec![root];
@@ -392,11 +406,17 @@ impl<'a> Oracle<'a> {
                 continue;
             }
             for citation in self.citations(record) {
-                if citation.read
-                    && let Some(cited) = self.state.revision(citation.target)
-                {
-                    pending.push(cited);
+                if !citation.read {
+                    continue;
                 }
+                let Some(cited) = self.state.revision(citation.target) else {
+                    continue;
+                };
+                let read = self
+                    .current(citation.target.id)
+                    .filter(|now| change(cited, now, Role::Basis, None).is_none())
+                    .unwrap_or(cited);
+                pending.push(read);
             }
             for assumption in self.material_assumptions(record.header.id).keys() {
                 pending.extend(self.current(*assumption));
@@ -409,6 +429,7 @@ impl<'a> Oracle<'a> {
 impl Verdict {
     fn review(&mut self, rule: &'static str, detail: String) {
         self.needs_review = true;
+        self.lasting_review = true;
         self.level = self.level.max(Level::NeedsReview);
         self.why.push((rule, format!("needs_review: {detail}")));
     }
@@ -460,7 +481,7 @@ fn find_refs(value: &Value, path: String, out: &mut Vec<(String, RevisionRef)>) 
 
 /// The oracle's own dependency table. An unlisted reference is a harness
 /// error: every reference a generated record can hold must be classified.
-fn role(kind: Kind, path: &str, readings: Readings) -> (Role, bool) {
+fn role(kind: Kind, path: &str) -> (Role, bool) {
     use Role::{Basis, Context, Ignored, Subject};
     let role = match (kind, path) {
         (Kind::Artifact, "source" | "transforms.input") => Basis,
@@ -477,14 +498,8 @@ fn role(kind: Kind, path: &str, readings: Readings) -> (Role, bool) {
         // not something a reviewer of the claim reads.
         (Kind::Conclusion | Kind::Decision, "review_ref") => return (Basis, false),
         (Kind::Option, "question_ref") => Context,
-        (Kind::Option, "criterion_ref") => {
-            let role = if readings.disposition_criterion_is_basis {
-                Basis
-            } else {
-                Ignored
-            };
-            return (role, false);
-        }
+        // A disposition rests on the criterion it names.
+        (Kind::Option, "criterion_ref") => Basis,
         (Kind::Criterion, "question_ref" | "option_refs") => Context,
         // An assumption names what it affects; it does not rely on it.
         (Kind::Assumption, "affected_refs") => Ignored,
@@ -513,14 +528,8 @@ fn role(kind: Kind, path: &str, readings: Readings) -> (Role, bool) {
         (Kind::Objection, "subject_ref") => return (Subject, false),
         (Kind::Objection, "evidence_refs.value") => return (Basis, false),
         (Kind::Objection, "review_ref") => return (Context, false),
-        (Kind::Objection, "resolution_evidence_refs") => {
-            let role = if readings.resolution_evidence_is_basis {
-                Basis
-            } else {
-                Ignored
-            };
-            return (role, false);
-        }
+        // A resolution rests on the evidence it cites (§14.3).
+        (Kind::Objection, "resolution_evidence_refs") => return (Basis, false),
         (Kind::Annotation, "subject_refs" | "content.artifact_ref") => return (Basis, false),
         (Kind::Question, "parent") => Context,
         (Kind::Question, "evidence_refs") => Basis,
@@ -743,27 +752,33 @@ fn own_option(record: &Record) -> Option<Id> {
     }
 }
 
-fn withdrawals(record: &Record) -> usize {
-    record.body["withdrawals"].as_array().map_or(0, Vec::len)
+fn withdrawals(record: &Record) -> &[Value] {
+    record.body["withdrawals"]
+        .as_array()
+        .map_or(&[], Vec::as_slice)
 }
 
-/// Dimensions whose latest source judgment is a concern.
-fn concerns(record: &Record) -> BTreeSet<&'static str> {
-    let mut latest: BTreeMap<&'static str, String> = BTreeMap::new();
+/// Dimensions whose latest source judgment is a concern, with the sequence
+/// at which that judgment was accepted.
+fn concerns(record: &Record) -> BTreeMap<&'static str, u64> {
+    let mut latest: BTreeMap<&'static str, (String, u64)> = BTreeMap::new();
     for judgment in record.body["source_assessment"]["judgments"]
         .as_array()
         .into_iter()
         .flatten()
     {
+        let at = judgment["accepted_at_sequence"]
+            .as_u64()
+            .expect("a judgment records its sequence");
         for dimension in ["authenticity", "reliability", "currency", "origin"] {
             if let Some(value) = judgment[dimension]["judgment"].as_str() {
-                latest.insert(dimension, value.to_owned());
+                latest.insert(dimension, (value.to_owned(), at));
             }
         }
     }
     latest
         .into_iter()
-        .filter(|(dimension, value)| {
+        .filter(|(dimension, (value, _))| {
             matches!(
                 (*dimension, value.as_str()),
                 ("authenticity", "doubtful" | "not_authentic")
@@ -771,41 +786,76 @@ fn concerns(record: &Record) -> BTreeSet<&'static str> {
                     | ("currency", "outdated" | "superseded")
             )
         })
-        .map(|(dimension, _)| dimension)
+        .map(|(dimension, (_, at))| (dimension, at))
         .collect()
 }
 
+/// Rule 2a: a new withdrawal or a newly raised concern between two revisions
+/// of a Source or Artifact, with the sequence from which it was in effect.
+/// The sequence is `None` when no later reading makes the material usable
+/// again: an entire withdrawal, or any withdrawal of entirely withdrawn
+/// material. A partial withdrawal names its part in words, so every reader
+/// before it needs review; a reader after it read it in effect.
+fn use_change(cited: &Record, now: &Record) -> Option<(&'static str, Option<u64>)> {
+    let before = withdrawals(cited);
+    let new = withdrawals(now).get(before.len()..).unwrap_or_default();
+    if !new.is_empty()
+        && (now.body["status"] == "withdrawn"
+            || new
+                .iter()
+                .any(|withdrawal| withdrawal["scope"]["extent"] != "partial"))
+    {
+        return Some(("withdrawal", None));
+    }
+    let withdrawn_at = new
+        .iter()
+        .map(|withdrawal| {
+            withdrawal["accepted_at_sequence"]
+                .as_u64()
+                .expect("a withdrawal records its sequence")
+        })
+        .max();
+    let earlier = concerns(cited);
+    let raised_at = concerns(now)
+        .into_iter()
+        .filter(|(dimension, _)| !earlier.contains_key(dimension))
+        .map(|(_, at)| at)
+        .max();
+    match (withdrawn_at, raised_at) {
+        (None, None) => None,
+        (Some(_), _) => Some(("withdrawal", withdrawn_at.max(raised_at))),
+        (None, Some(_)) => Some(("source_concern", raised_at)),
+    }
+}
+
 /// Rule 1: whether the change from `cited` to `now` matters to the reader,
-/// and under which rule.
+/// under which rule, and (rule 2a) from when a use change was in effect.
 fn change(
     cited: &Record,
     now: &Record,
     role: Role,
     reader_option: Option<Id>,
-) -> Option<&'static str> {
+) -> Option<(&'static str, Option<u64>)> {
     if cited.header.revision == now.header.revision {
         return None;
     }
     if now.header.id.kind() == Kind::Assumption && cited.body["status"] != now.body["status"] {
-        return Some("assumption_disposition");
+        return Some(("assumption_disposition", None));
     }
     if role != Role::Subject {
-        if withdrawals(now) > withdrawals(cited) {
-            return Some("withdrawal");
-        }
-        if !concerns(now).is_subset(&concerns(cited)) {
-            return Some("source_concern");
+        if let Some(found) = use_change(cited, now) {
+            return Some(found);
         }
         if ended(now).is_some() && ended(cited).is_none() {
-            return Some("ended");
+            return Some(("ended", None));
         }
     }
     if now.header.id.kind() == Kind::Observation
         && now.body["validity"] == "invalid"
         && cited.body["validity"] != "invalid"
     {
-        return Some("invalid_measurement");
+        return Some(("invalid_measurement", None));
     }
     (substance(cited, reader_option) != substance(now, reader_option))
-        .then_some("substantive_change")
+        .then_some(("substantive_change", None))
 }
