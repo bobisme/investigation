@@ -1,6 +1,6 @@
 # Investigation v1 contracts
 
-The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`, and completed producer runs use `inv.producer-run.v1`. The published JSON Schemas cover commands, normal, import and producer-run receipts, producer-run envelopes, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
+The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`, and completed producer runs use `inv.producer-run.v1`. The published JSON Schemas cover commands, normal, import and producer-run receipts, producer-run envelopes, structural audit responses, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
 
 ## Using the contract
 
@@ -38,6 +38,27 @@ The core flags recorded measurement conditions under rule version `measurement-f
 `show` and `brief` include `measurement_flags` for Observations and for Assessments, Comparisons, Conclusions and Decisions. For a record that cites Observations, the report covers the exact cited revisions. A report lists at most 32 flags and counts the rest in `omitted`. A receipt adds a warning for each flag about the record it wrote. `next` and `frontier` list each flag as a gap whose `rule_id` is the flag ID.
 
 Put `derived_from` on an ingest manifest when the items are outputs of a transformation of recorded Artifacts, such as a redaction, a text extraction, a plot or an aggregation. Name each exact input revision, the transformation identity and version, and optionally the input digests, the selectors used, the redaction decisions and how the output was reviewed. A supplied input digest must match the recorded one. The output is recorded as a derivative Artifact with role `derivative`; no Source or acquisition is created, and each item reports `derived` with its lineage. A derivative's `source` names the acquisition of its first input. Its `transforms` name every input with the digest the transformation read. The inputs and their bytes are never changed. `source.title` labels the output, and `source.format` gives its format. A derivative is ingested into the existing case that holds its inputs and cannot carry an acquisition key, publisher or identity. Every Artifact records whether it is an `original`, a `derivative` or a `manifest`. `show` follows a derivative, or the Artifact an Observation cites, through derivatives of derivatives to the original acquisitions. It lists the other Artifacts that share those origins: they are views of the same captured bytes, not independent confirmations. It also reports when an original is no longer retained, so the derivation cannot be re-inspected. Classification and freshness follow the same input references.
+
+## Structural blindspot audit
+
+`investigation blindspots` returns an `inv.audit.v1` object, published as the `audit` wire schema. It reads one committed snapshot of one case and writes nothing. It does not call a model and does not record a Review. The fields are:
+
+- `snapshot`, `check_version` (`builtin-blindspot.v1`) and `check_set_digest`. The digest is a SHA-256 hash of each check ID and version that ran, so any change to the check set changes it.
+- `scope`: the case, the optional `--subject` revision with its `subject_read_set`, and the audience that decides what is withheld.
+- `checks[]`: one finding per detected gap. Each finding has its `check_id`, `check_version`, `gap_id`, `state` (`gap_detected_in_recorded_structure`), `severity` with a `severity_reason`, the `subject_refs` and `related_refs` it read, machine-readable `facts`, a fixed `why`, a `suggested_schema` and a `guide` card, and argv to inspect them.
+- `checks_run[]`: every check, with its version, source, subject kinds, the fields it reads, its condition and its number of findings.
+- `outcome`, `statement` and `limits`. A result with no finding reads "No structural gap identified under checks X." The limits state that the result is not proof of completeness.
+
+A `gap_id` is stable for the same check and subject IDs. A check built on a gap rule keeps the `gap:` ID that `next` and `frontier` use, and `rule_id` names that rule. Other checks use `blindspot:CHECK:IDS`. Messages are fixed text for each check and never quote a record. A referenced record that the default audience may not see is listed in `withheld_refs` as an ID only.
+
+Checks of `builtin-blindspot.v1`:
+
+- `promoted.open_critical_objection`: a validated Conclusion or accepted Decision has an open critical Objection on itself or on its promotion basis.
+- `promoted.basis_not_current`: a validated Conclusion or accepted Decision is `needs_review` or `disputed` for a reason that is not an Objection. The facts name each freshness trigger and its cause.
+- `measurement.advisory_flags`: an advisory measurement flag. `rule_id` is the flag ID.
+- `conclusion.causal_claim_without_rival_account`, `decision.accepted_with_unresolved_hard_cell` and `case.ready_to_close_without_retrospective`: the gap rules of the same names.
+
+To add a check, add a `CheckSpec` to a family in `crates/investigation-core/src/blindspot/` and list the family in `FAMILIES`. The module documentation gives the rules, and its tests check every registered spec.
 
 ## Classification
 

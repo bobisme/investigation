@@ -25,6 +25,7 @@ const WIRE_SCHEMAS: &[&str] = &[
     "evidence-selector",
     "producer-run",
     "producer-run-receipt",
+    "audit",
 ];
 const RESERVED_WIRE_SCHEMAS: &[&str] = &["capture"];
 
@@ -60,6 +61,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         "producer-run-receipt" => {
             Some(investigation_store::store::ingest::producer_run::receipt_schema())
         }
+        "audit" => Some(investigation_core::blindspot::audit_schema()),
         _ => wire_schema(name),
     };
     if let Some(schema) = wire {
@@ -80,6 +82,9 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 }
                 "producer-run-receipt" => {
                     "Inspect the Run, retained items and outcomes from a producer-run ingest."
+                }
+                "audit" => {
+                    "Read the response of investigation blindspots, a read-only structural audit."
                 }
                 _ => "Inspect the shape of an error and its repair guidance.",
             };

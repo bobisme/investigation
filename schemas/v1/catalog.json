@@ -180,6 +180,7 @@
     }
   ],
   "wire_schemas": {
+    "audit": "audit.schema.json",
     "error": "error.schema.json",
     "evidence-selector": "evidence-selector.schema.json",
     "ingest": "ingest.schema.json",

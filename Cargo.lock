@@ -569,6 +569,7 @@ dependencies = [
  "investigation-core",
  "investigation-recording",
  "investigation-store",
+ "jsonschema",
  "schemars",
  "serde",
  "serde_json",

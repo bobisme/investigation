@@ -1,5 +1,6 @@
 //! Local command-line frontend.
 
+mod blindspots;
 mod capture;
 mod evidence;
 mod frontier;
@@ -175,6 +176,9 @@ enum Commands {
     /// List every snapshot-bound gap with filters, paging and rule explanations.
     #[command(after_help = frontier::AFTER_HELP)]
     Frontier(frontier::Args),
+    /// Audit recorded structure for gaps; never a completeness certificate.
+    #[command(after_help = blindspots::AFTER_HELP)]
+    Blindspots(blindspots::Args),
     /// Print one method card from the built-in pack or a pinned pack.
     #[command(after_help = guide::GUIDE_AFTER_HELP)]
     Guide(guide::GuideArgs),
@@ -345,6 +349,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 }
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
+                Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
                 Commands::Search(args) => search::run(&mut store, &global, args),
                 Commands::Retrospective(args) => retrospective::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),

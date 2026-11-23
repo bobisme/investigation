@@ -1,0 +1,464 @@
+{
+  "$defs": {
+    "Audience": {
+      "description": "The most sensitive level a reader may see. `internal` is the default\naudience of `show`, `brief` and the projected vault.",
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "AuditOutcome": {
+      "description": "The overall result. Neither value is a completeness or correctness claim.",
+      "enum": [
+        "gaps_identified_in_recorded_structure",
+        "no_structural_gap_identified_under_checks"
+      ],
+      "type": "string"
+    },
+    "AuditScope": {
+      "additionalProperties": false,
+      "properties": {
+        "audience": {
+          "$ref": "#/$defs/Audience",
+          "description": "The audience whose classification decides what is withheld."
+        },
+        "case_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "subject_read_set": {
+          "description": "With `--subject`: the subject and the exact revisions it cites,\ntransitively through inherited dependencies. Findings about any of\nthese records are in scope.",
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "subject_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "With `--subject`: the conclusion, comparison or decision audited."
+        }
+      },
+      "required": [
+        "case_id",
+        "subject_read_set",
+        "audience"
+      ],
+      "type": "object"
+    },
+    "AuditVersion": {
+      "enum": [
+        "inv.audit.v1"
+      ],
+      "type": "string"
+    },
+    "CheckRun": {
+      "additionalProperties": false,
+      "description": "One check that ran, whether or not it found anything.",
+      "properties": {
+        "check_id": {
+          "type": "string"
+        },
+        "check_version": {
+          "type": "string"
+        },
+        "condition": {
+          "type": "string"
+        },
+        "findings": {
+          "description": "Findings of this check within the audited scope.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "guide": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reads": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "source": {
+          "$ref": "#/$defs/CheckSourceView"
+        },
+        "subject_kinds": {
+          "description": "Record kinds the check reports on, by name.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "suggested_schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "check_id",
+        "check_version",
+        "source",
+        "subject_kinds",
+        "reads",
+        "condition",
+        "severity",
+        "findings"
+      ],
+      "type": "object"
+    },
+    "CheckSourceView": {
+      "description": "Where a check's findings come from.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Gaps of the structural gap rules, shared with `next` and `frontier`.",
+          "properties": {
+            "kind": {
+              "const": "gap_rules",
+              "type": "string"
+            },
+            "rule_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "rule_prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "rule_versions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "kind",
+            "rule_ids",
+            "rule_versions"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A blindspot-only check evaluated by this engine.",
+          "properties": {
+            "kind": {
+              "const": "native",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Finding": {
+      "additionalProperties": false,
+      "description": "One structural gap a check detected at the audited snapshot.",
+      "properties": {
+        "check_id": {
+          "type": "string"
+        },
+        "check_version": {
+          "type": "string"
+        },
+        "facts": {
+          "items": {
+            "$ref": "#/$defs/FindingFact"
+          },
+          "type": "array"
+        },
+        "gap_id": {
+          "description": "Stable for the same check and subject ID set. A gap-rule finding keeps\nthe frontier's `gap:` ID; a native one is `blindspot:CHECK:IDS`.",
+          "type": "string"
+        },
+        "guide": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "guide_argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "inspect_argvs": {
+          "description": "Added by the command: inspection, schema and method-card argv.",
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "related_refs": {
+          "description": "Other exact revisions the check read to reach this finding.",
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "rule_id": {
+          "description": "The gap rule that emitted a gap-rule finding.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rule_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema_argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        },
+        "severity_reason": {
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/FindingState"
+        },
+        "subject_refs": {
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "suggested_schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "why": {
+          "type": "string"
+        },
+        "withheld_refs": {
+          "description": "Referenced revisions the default audience may not see. They appear as\nID-only placeholders; no text of theirs is in the response.",
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "check_id",
+        "check_version",
+        "gap_id",
+        "state",
+        "severity",
+        "severity_reason",
+        "subject_refs",
+        "related_refs",
+        "facts",
+        "withheld_refs",
+        "why",
+        "inspect_argvs"
+      ],
+      "type": "object"
+    },
+    "FindingFact": {
+      "additionalProperties": false,
+      "description": "One machine-readable fact behind a finding, such as\n`freshness_trigger:withdrawn`, with the exact revisions it concerns.",
+      "properties": {
+        "fact": {
+          "type": "string"
+        },
+        "refs": {
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "fact",
+        "refs"
+      ],
+      "type": "object"
+    },
+    "FindingState": {
+      "description": "A finding states only what the recorded structure shows.",
+      "enum": [
+        "gap_detected_in_recorded_structure"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "Severity": {
+      "description": "How much a finding bears on reliance. Ordinal, never a score.",
+      "oneOf": [
+        {
+          "const": "critical",
+          "description": "A recorded critical challenge contests a record that is relied on.",
+          "type": "string"
+        },
+        {
+          "const": "material",
+          "description": "The recorded basis of a relied-on or consequential record is incomplete or changed.",
+          "type": "string"
+        },
+        {
+          "const": "advisory",
+          "description": "Worth recording; does not by itself bear on reliance.",
+          "type": "string"
+        }
+      ]
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:audit",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The `inv.audit.v1` response.",
+  "properties": {
+    "check_set_digest": {
+      "$ref": "#/$defs/Digest",
+      "description": "SHA-256 of the sorted `check_id@check_version` lines (gap-rule checks\nappend their rule versions), so any change to the check set shows."
+    },
+    "check_version": {
+      "type": "string"
+    },
+    "checks": {
+      "description": "Findings, in `gap_id` order.",
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "type": "array"
+    },
+    "checks_run": {
+      "description": "Every check that ran, in `check_id` order.",
+      "items": {
+        "$ref": "#/$defs/CheckRun"
+      },
+      "type": "array"
+    },
+    "follow_up_argvs": {
+      "description": "Added by the command: the method card and review schema to continue with.",
+      "items": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "type": "array"
+    },
+    "limits": {
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/AuditOutcome"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/AuditVersion"
+    },
+    "scope": {
+      "$ref": "#/$defs/AuditScope"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/Snapshot"
+    },
+    "statement": {
+      "description": "\"N structural gap(s) identified under checks X\" or \"No structural gap\nidentified under checks X\". Never a statement of completeness.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "snapshot",
+    "check_version",
+    "check_set_digest",
+    "scope",
+    "outcome",
+    "statement",
+    "checks",
+    "checks_run",
+    "limits",
+    "follow_up_argvs"
+  ],
+  "title": "AuditResponse",
+  "type": "object"
+}
