@@ -15,7 +15,7 @@ use std::io::Read;
 
 use crate::selectors::{self, QuoteResult, Selection, SelectorError, TextDerivative};
 
-const MAX_EXCERPT_BYTES: usize = 32 * 1024;
+pub const MAX_EXCERPT_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "availability", rename_all = "snake_case")]

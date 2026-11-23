@@ -12,6 +12,48 @@ The filesystem checks admit recognized local Linux filesystems. The evidence bel
 | Linux cloud-synchronized canonical directories | Unsupported | Unsupported | Local filesystem detection cannot identify a sync agent. Keep canonical state outside synchronized folders. |
 | macOS APFS and Windows NTFS | Unqualified | Unqualified | Publication, locking, and directory synchronization have no platform-specific test evidence. |
 
+## Raw-file limits
+
+Every bound on bytes the build parses from outside is listed in one table, [`investigation_store::limits`](../crates/investigation-store/src/limits.rs). Each entry refers to the constant its parser enforces, and the table serializes for diagnostic reports. A test fails if this section and the table differ.
+
+| Limit | Value | Unit | Applies to | Refusal |
+| --- | --- | --- | --- | --- |
+| `request.bytes` | 512 KiB | bytes | A JSON request: command, ingest manifest, capture call or selector file. | `INVALID_INPUT` |
+| `request.depth` | 32 | levels | Nesting of a JSON request. | `INVALID_INPUT` |
+| `command.operations` | 128 | items | Operations in one command batch. | `INVALID_INPUT` |
+| `ingest.items` | 32 | items | Paths in one ingest manifest. | `INVALID_INPUT` |
+| `ingest.file_bytes` | 64 MiB | bytes | One copied import: a local file or standard input. Checked before reading and again while copying. | `INVALID_INPUT` |
+| `ingest.reference_bytes` | 1 TiB | bytes | One local file hashed in reference mode without copying. | `INVALID_INPUT` |
+| `ingest.metadata_bytes` | 64 KiB | bytes | Serialized opaque source metadata. | `INVALID_INPUT` |
+| `ingest.metadata_depth` | 16 | levels | Nesting of one opaque metadata value. | `INVALID_INPUT` |
+| `ingest.metadata_key_chars` | 128 | characters | One opaque metadata key. | `INVALID_INPUT` |
+| `ingest.probe_bytes` | 1 MiB | bytes | Retained content probed for a producer envelope version. Larger content is retained without a probe; nested values are skipped without being built. | — |
+| `text.buffer_bytes` | 64 KiB | bytes | Memory for the UTF-8 check of a text derivative, whatever the artifact's size. Invalid UTF-8 is reported and yields no derivative. | — |
+| `producer_run.envelope_bytes` | 512 KiB | bytes | One producer-run envelope. | `INVALID_INPUT` |
+| `producer_run.artifacts` | 32 | items | Artifacts in one producer-run envelope. | `INVALID_INPUT` |
+| `producer_run.assertions` | 256 | items | Assertions in one producer-run envelope. | `INVALID_INPUT` |
+| `producer_run.value_bytes` | 16 KiB | bytes | One serialized assertion value. | `INVALID_INPUT` |
+| `capture.event_bytes` | 64 KiB | bytes | One capture event, for handles declared by this build. | `INVALID_INPUT` |
+| `capture.attachment_bytes` | 64 MiB | bytes | One capture attachment, for handles declared by this build. | `INVALID_INPUT` |
+| `capture.items` | 100000 | items | Items accepted by one capture handle declared by this build. | `INVALID_INPUT` |
+| `selector.artifact_bytes` | 64 MiB | bytes | A retained artifact a native selector reads. Larger recorded sizes are refused as an integrity failure. | `INTEGRITY_FAILURE` |
+| `selector.json_bytes` | 16 MiB | bytes | An artifact parsed by the strict json_pointer reader. | `INVALID_INPUT` |
+| `selector.json_depth` | 64 | levels | Nesting of an artifact parsed by the json_pointer reader. | `INVALID_INPUT` |
+| `selector.table_columns` | 4096 | items | Fields in one row of a CSV or TSV table read by table_cell. | `INVALID_INPUT` |
+| `selector.excerpt_bytes` | 32 KiB | bytes | One excerpt returned by an evidence read. | `INVALID_INPUT` |
+| `method_pack.bytes` | 256 KiB | bytes | One method pack file. | `INVALID_INPUT` |
+| `method_pack.depth` | 16 | levels | Nesting of a method pack. | `INVALID_INPUT` |
+| `journal.event_bytes` | 2 MiB | bytes | One canonical journal event read from disk. | `INTEGRITY_FAILURE` |
+| `journal.event_depth` | 64 | levels | Nesting of one canonical journal event. | `INTEGRITY_FAILURE` |
+
+Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound on the work done, which no input can exceed.
+
+**Compressed files and archives.** Compressed files and archives are retained as opaque bytes and never expanded. Entry names inside an archive are never used as paths. No decompressor or archive reader is linked, so there is no expansion ratio, expanded size, entry count or entry size to bound. A compressed file is held to the ordinary import limit at its stored size. A test fails if a decompression, archive or launcher crate enters the dependency graph.
+
+**Paths.** A local import opens beneath a configured import root with `openat2` and `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`. The import refuses `..` components, symlinks at any depth, files with more than one hard link, and anything that is not a regular file. It opens a FIFO non-blocking and refuses it. Standard input names, capture keys and artifact names are labels: staging files are named by position and digest. The capture staging directory is accepted only as `state/staging/<run-id>` for its own Run, even when it is read from the journal.
+
+**Execution.** No code path starts a process, and none chooses a parser from a MIME type or file extension. These values are recorded as hints. A [structural test](../crates/investigation-store/tests/no_execution.rs) scans the core, store, recording, render and CLI sources for process APIs. Each reviewed exception has a recorded reason. The [hardening fixtures](../crates/investigation-store/tests/raw_file_hardening.rs) cover a nested gzip bomb, an archive with traversal, absolute and link entries, deep nesting, path traversal, huge lines and invalid UTF-8. They assert the refusal and measure peak heap use.
+
 ## Evidence and scope
 
 - The [in-memory crash model](../crates/investigation-store/src/crash_tests.rs) exercises restart after faulted I/O and sync calls, lost acknowledgments, attachment-before-event ordering, same-key recovery, and rebuilding derived state. Its volatile and persisted state are a model.

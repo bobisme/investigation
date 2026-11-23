@@ -581,3 +581,76 @@ fn every_acknowledged_attachment_survives_a_crash_with_its_bytes() {
     assert!(injected > 10, "the schedule must reach the attach path");
     assert!(acknowledged_first_try > 0, "the schedule must run past it");
 }
+
+/// Keys and request labels are text, never paths: staging files are named by
+/// position and digest, so a traversal-shaped key or name creates nothing
+/// outside the handle's own staging directory. A FIFO source is refused
+/// without blocking.
+#[test]
+fn traversal_shaped_keys_and_names_stay_inside_staging() {
+    let mut fixture = fixture();
+    let handle = fixture.handle();
+    fixture.write("out.bin", b"bytes");
+    let base = fixture.imports.parent().unwrap().to_owned();
+    let mut before = Vec::new();
+    walk(&base, &mut before);
+    let mut submission = file(handle, "../../../../escape", 1, "out.bin");
+    submission.item.request["name"] = json!("../../../../escape-name");
+    fixture.attach(&submission).unwrap();
+    let mut after = Vec::new();
+    walk(&base, &mut after);
+    let staging = fixture.staging();
+    for path in after.iter().filter(|path| !before.contains(path)) {
+        assert!(path.starts_with(&staging), "{path:?} is outside staging");
+        let name = path.file_name().unwrap().to_string_lossy();
+        assert!(!name.contains("escape"), "{path:?}");
+    }
+
+    rustix::fs::mknodat(
+        rustix::fs::CWD,
+        fixture.imports.join("pipe"),
+        rustix::fs::FileType::Fifo,
+        rustix::fs::Mode::from_raw_mode(0o600),
+        0,
+    )
+    .unwrap();
+    let error = fixture
+        .attach(&file(handle, "pipe", 2, "pipe"))
+        .unwrap_err();
+    assert_eq!(
+        code_and_path(&error),
+        (ErrorCode::InvalidInput, Some("/source/path"))
+    );
+}
+
+/// The staging path comes from the journal. An edited binding that names any
+/// other directory is refused before a staging path is opened or removed.
+#[test]
+fn a_binding_naming_another_staging_directory_is_refused() {
+    let fixture = fixture();
+    let binding = &fixture.declared.binding;
+    let run_id = fixture.declared.run_id;
+    assert!(crate::store::capture::staging_is_own(binding, run_id).is_ok());
+    for staging in [
+        format!("{}/../../outside", binding.staging),
+        "/tmp".to_owned(),
+        "state/staging".to_owned(),
+        format!("state/staging/{}", binding.handle),
+        format!("./{}", binding.staging),
+    ] {
+        let mut edited = binding.clone();
+        edited.staging = staging.clone();
+        let failure = crate::store::capture::staging_is_own(&edited, run_id).unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::IntegrityFailure, "{staging}");
+    }
+}
+
+fn walk(directory: &Path, out: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if fs::symlink_metadata(&path).unwrap().is_dir() {
+            walk(&path, out);
+        }
+        out.push(path);
+    }
+}

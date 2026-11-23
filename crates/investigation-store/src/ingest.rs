@@ -35,7 +35,7 @@ pub mod reference;
 use reference::{ExternalRefRequest, PreparedReference, RetentionMode, ReverifyRequest};
 
 pub const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_ITEMS: usize = 32;
+pub const MAX_ITEMS: usize = 32;
 pub const TEXT_PARSER_VERSION: &str = "inv.text.utf8.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -637,14 +637,13 @@ impl<F: DurableFs> Store<F> {
         extract: bool,
     ) -> Result<PreparedItem, Failure> {
         let text = if extract {
-            let mut data = Vec::new();
-            self.fs
+            // Streamed: memory stays one buffer whatever the artifact's size.
+            let reader = self
+                .fs
                 .read(&staged.temp)
                 .map_err(io_failure)?
-                .take(MAX_IMPORT_BYTES + 1)
-                .read_to_end(&mut data)
-                .map_err(io_failure)?;
-            if std::str::from_utf8(&data).is_ok() {
+                .take(MAX_IMPORT_BYTES + 1);
+            if crate::utf8::is_valid(reader).map_err(io_failure)? {
                 TextStatus::Decoded
             } else {
                 TextStatus::InvalidUtf8
@@ -1259,7 +1258,23 @@ fn stage_input(
 ) -> Result<StagedBlob, Failure> {
     let id = new_id(&mut SystemIdSource, Kind::Import)?;
     let path = Path::new(TMP).join(format!("import-{id}.tmp"));
-    stage(fs, gate, &path, input).map_err(blob_failure)
+    stage(fs, gate, &path, input).map_err(|error| {
+        // The partial copy holds no accepted bytes.
+        let _ = fs.remove(&path);
+        match error {
+            crate::blob::BlobError::Io(error) if error.kind() == io::ErrorKind::FileTooLarge => {
+                Failure::new(
+                    ErrorCode::InvalidInput,
+                    format!(
+                        "The input exceeds the {} MiB import limit, so nothing was retained. Ingest a larger local file with retention reference.",
+                        MAX_IMPORT_BYTES >> 20
+                    ),
+                )
+                .with_schema("ingest")
+            }
+            error => blob_failure(error),
+        }
+    })
 }
 
 fn invalid(message: &str, path: &str) -> Failure {

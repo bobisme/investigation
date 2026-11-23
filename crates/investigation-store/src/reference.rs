@@ -258,7 +258,10 @@ impl<F: DurableFs> Store<F> {
         index: usize,
     ) -> Result<(Digest, u64), Failure> {
         let mut opened = self.open_import(path, index, MAX_REFERENCE_BYTES)?;
-        let (digest, size) = hash(&mut opened.file).map_err(io_failure)?;
+        // One byte past the limit is enough to see a file that grew after open;
+        // the witness check below then refuses it.
+        let (digest, size) =
+            hash((&mut opened.file).take(MAX_REFERENCE_BYTES + 1)).map_err(io_failure)?;
         if !opened
             .witness
             .verify_unchanged(&opened.file)

@@ -9,11 +9,13 @@ pub mod diag;
 pub mod durable;
 pub mod import_paths;
 pub mod journal;
+pub mod limits;
 pub mod opaque;
 pub mod pinned;
 pub mod projection;
 pub mod selectors;
 pub mod store;
+pub mod utf8;
 pub mod workspace;
 
 pub use store::Store;

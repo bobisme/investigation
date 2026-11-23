@@ -624,8 +624,23 @@ pub(crate) fn binding_of(state: &State, run_id: Id) -> Result<CaptureBinding, Fa
         .history(run_id)
         .next()
         .ok_or_else(|| integrity("The declared Run is missing."))?;
-    investigation_core::input::decode(&first.body["capture"])
-        .map_err(|_| integrity("The declared Run has no valid capture binding."))
+    let binding: CaptureBinding = investigation_core::input::decode(&first.body["capture"])
+        .map_err(|_| integrity("The declared Run has no valid capture binding."))?;
+    staging_is_own(&binding, run_id)?;
+    Ok(binding)
+}
+
+/// The staging directory every reader, attach and retirement works in comes
+/// from the journal. Accept only the one this build derives from the Run ID,
+/// so an edited journal cannot point staging work, removal included, at
+/// another path.
+pub(crate) fn staging_is_own(binding: &CaptureBinding, run_id: Id) -> Result<(), Failure> {
+    if binding.staging == format!("{STAGING_ROOT}/{run_id}") {
+        return Ok(());
+    }
+    Err(integrity(format!(
+        "The capture binding of {run_id} names a staging directory other than its own, so no staging path was opened. Run {PROGRAM_NAME} check."
+    )))
 }
 
 /// The read that reports what a handle accepted, for repair guidance on a

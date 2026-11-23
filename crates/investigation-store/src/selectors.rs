@@ -7,6 +7,11 @@ use investigation_core::{
 use crate::delimited::{self, CellQuery, Format};
 use serde_json::Value;
 
+/// Largest retained artifact the strict `json_pointer` reader parses.
+pub const MAX_JSON_BYTES: usize = 16 * 1024 * 1024;
+/// Deepest nesting, in JSON Pointer segments, the `json_pointer` reader accepts.
+pub const MAX_JSON_DEPTH: usize = 64;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextDerivative {
     pub encoding: String,
@@ -176,7 +181,7 @@ pub fn resolve(
                     "requested JSON parser is unavailable",
                 ));
             }
-            let doc = input::parse_json(bytes, 16 * 1024 * 1024, 64)
+            let doc = input::parse_json(bytes, MAX_JSON_BYTES, MAX_JSON_DEPTH)
                 .map_err(|_| invalid("invalid or over-limit strict JSON"))?;
             let value = pointer_value(&doc, pointer)?;
             let size = serde_json::to_vec(value)

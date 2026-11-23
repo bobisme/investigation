@@ -67,16 +67,48 @@ pub enum EnvelopeProbe {
 }
 
 /// Look only at the declared schema version of a producer envelope.
+///
+/// The probe reads a top-level object's keys and skips every value except
+/// `schema_version` without building it, so nesting costs one byte of parser
+/// state per level and no recursion. Any other shape is not an envelope.
 pub fn probe_envelope(bytes: &[u8]) -> EnvelopeProbe {
-    let Ok(Value::Object(map)) = serde_json::from_slice::<Value>(bytes) else {
+    let mut decoder = serde_json::Deserializer::from_slice(bytes);
+    let Ok(version) = serde::Deserializer::deserialize_map(&mut decoder, VersionOnly) else {
         return EnvelopeProbe::NotAnEnvelope;
     };
-    match map.get("schema_version").and_then(Value::as_str) {
+    if decoder.end().is_err() {
+        return EnvelopeProbe::NotAnEnvelope;
+    }
+    match version.as_deref() {
         Some(version) if SUPPORTED_ENVELOPE_VERSIONS.contains(&version) => EnvelopeProbe::Supported,
         Some(version) if version.starts_with(ENVELOPE_FAMILY) => {
             EnvelopeProbe::UnsupportedVersion(version.chars().take(64).collect())
         }
         _ => EnvelopeProbe::NotAnEnvelope,
+    }
+}
+
+/// The last top-level `schema_version` string of a JSON object, if any.
+struct VersionOnly;
+
+impl<'de> serde::de::Visitor<'de> for VersionOnly {
+    type Value = Option<String>;
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a JSON object")
+    }
+
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut version = None;
+        while let Some(key) = map.next_key::<std::borrow::Cow<'de, str>>()? {
+            if key == "schema_version" {
+                // A non-string version is not an envelope, as before.
+                version = Some(map.next_value::<String>()?);
+            } else {
+                map.next_value::<serde::de::IgnoredAny>()?;
+            }
+        }
+        Ok(version)
     }
 }
 
