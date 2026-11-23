@@ -15,8 +15,8 @@
 use investigation_store::Workspace;
 
 use crate::{
-    CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, Publisher, RenderError,
-    RenderState, ViewPolicy,
+    CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, Publisher, Released,
+    RenderError, RenderState, ViewPolicy,
     lock::{self, Probe},
 };
 
@@ -60,6 +60,9 @@ pub struct VaultStatus {
     /// Read from the manifest; the vault is not inspected, so drift that
     /// happened since the last render shows up after the next one.
     pub drift: Vec<Drift>,
+    /// Paths released to a person (`vault reconcile --disposition
+    /// release-path`), with where their projections moved, in path order.
+    pub released: Vec<Released>,
 }
 
 impl VaultStatus {
@@ -113,6 +116,7 @@ pub fn vault_status(workspace: &Workspace) -> Result<VaultStatus, RenderError> {
         state,
         last_complete,
         drift: manifest.drift().cloned().collect(),
+        released: manifest.released().cloned().collect(),
         manifest: loaded.status,
     })
 }
@@ -138,6 +142,6 @@ pub fn foreign_files(workspace: &Workspace) -> Result<Option<Vec<String>>, Rende
     };
     let manifest = Manifest::read(workspace)?.manifest;
     publisher
-        .unknown_files(&|path| manifest.owns(path))
+        .unknown_files(&|path| manifest.claims(path))
         .map(Some)
 }

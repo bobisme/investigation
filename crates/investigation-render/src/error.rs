@@ -27,6 +27,14 @@ pub enum RenderError {
     UnsupportedManifest { version: String },
     /// A filesystem operation failed. `path` is relative to the vault or workspace.
     Io { path: String, error: io::Error },
+    /// `vault reconcile` refused a listed path. `changed` when the path no
+    /// longer holds what the last render diagnosed. Nothing was changed for
+    /// the path; `reason` says what earlier paths of the same request did.
+    Reconcile {
+        path: String,
+        reason: String,
+        changed: bool,
+    },
 }
 
 impl RenderError {
@@ -51,6 +59,12 @@ impl RenderError {
             Self::VaultDisabled => Failure::new(ErrorCode::InvalidInput, self.to_string()),
             Self::UnsafeDirectory(_) | Self::WrongWorkspace | Self::Io { .. } => {
                 Failure::new(ErrorCode::IoFailure, self.to_string())
+            }
+            Self::Reconcile { changed: true, .. } => {
+                Failure::new(ErrorCode::RevisionConflict, self.to_string()).at("/paths")
+            }
+            Self::Reconcile { .. } => {
+                Failure::new(ErrorCode::InvalidInput, self.to_string()).at("/paths")
             }
         }
     }
@@ -93,6 +107,10 @@ impl fmt::Display for RenderError {
                 "local/render-manifest.json has the unsupported format {version:?}; it was left untouched. Render with a build that supports it."
             ),
             Self::Io { path, error } => write!(formatter, "{path}: {error}"),
+            Self::Reconcile { path, reason, .. } if path.is_empty() => {
+                write!(formatter, "vault reconcile: {reason}.")
+            }
+            Self::Reconcile { path, reason, .. } => write!(formatter, "{path}: {reason}."),
         }
     }
 }

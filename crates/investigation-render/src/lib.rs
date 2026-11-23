@@ -137,9 +137,18 @@
 //!   `local/conflicts/<generation>/<path>`, and a [`Drift`] record per path
 //!   is stored in the manifest and reported in [`RenderReport::drift`] and
 //!   [`VaultStatus::drift`] (for `vault status` and `vault conflicts`).
-//!   Reconciling dispositions are a separate seam: they read those records
-//!   and act on one path at a time. The supported contract stays: do not edit
-//!   generated notes directly; use `Notes/` or controlled mutations.
+//!   The supported contract stays: do not edit generated notes directly;
+//!   use `Notes/` or controlled mutations.
+//! - Reconcile ([`reconcile`]): `vault reconcile` resolves listed drifted
+//!   paths with one explicit disposition (`preserve-as-note`,
+//!   `propose-change`, `discard`, `release-path`), checks each against its
+//!   drift record first, keeps every observed byte (a confirmed discard keeps
+//!   them under `local/conflicts/discarded/`), and completes with a render
+//!   under the same lock. Its one write in a human-owned folder is
+//!   `preserve-as-note` adding new files under `Notes/Reconciled/` with a
+//!   no-replace rename; it never replaces or removes anything there. A
+//!   released path is the person's from then on, and the render projects its
+//!   record at a relocated path that every generated link follows.
 //! - Classification-aware projection: notes ask the core `Classifier` per
 //!   field through [`note::NoteContext`]; extend [`ViewPolicy`] (and its
 //!   fingerprint) for further rules. A withheld record appears by ID only:
@@ -183,6 +192,7 @@ pub mod note;
 pub mod plan;
 pub mod policy;
 pub mod publish;
+pub mod reconcile;
 pub(crate) mod records;
 pub mod snapshot;
 pub mod start_here;
@@ -202,7 +212,7 @@ pub use incremental::PublishMode;
 pub use lock::RenderLock;
 pub use manifest::{
     CompletedGeneration, LoadedManifest, MANIFEST_VERSION, Manifest, ManifestStatus, OwnedPath,
-    RENDER_MANIFEST, RenderState,
+    RENDER_MANIFEST, Released, RenderState,
 };
 pub use marker::NoteMarker;
 pub use plan::{
@@ -292,11 +302,29 @@ pub fn render_vault_with<F: DurableFs>(
     observe: &mut dyn FnMut(&PublishStep<'_>),
 ) -> Result<RenderReport, RenderError> {
     let lock = RenderLock::acquire(store.workspace(), RENDER_LOCK_WAIT)?;
+    render_locked(store, &lock, renderer, policy, mode, observe)
+}
+
+/// [`render_vault_with`] under a render lock the caller already holds, so a
+/// reconcile ([`reconcile`]) and the render that completes it are one step.
+pub(crate) fn render_locked<F: DurableFs>(
+    store: &mut Store<F>,
+    lock: &RenderLock,
+    renderer: &impl CaseRenderer,
+    policy: &ViewPolicy,
+    mode: PublishMode,
+    observe: &mut dyn FnMut(&PublishStep<'_>),
+) -> Result<RenderReport, RenderError> {
     let snapshot = VerifiedSnapshot::read(store)?;
+    let workspace = store.workspace();
+    let loaded = Manifest::load(workspace, lock)?;
+    // Released paths are a person's; their projections are planned at the
+    // paths they were relocated to, and every link follows.
+    let renderer = reconcile::Relocated::new(renderer, loaded.manifest.relocations());
+    let renderer = &renderer;
     let planned = renderer.render(&snapshot, policy)?;
     let workspace = store.workspace();
-    let loaded = Manifest::load(workspace, &lock)?;
-    let publisher = Publisher::open(workspace, &lock)?;
+    let publisher = Publisher::open(workspace, lock)?;
     // The entry note announces the drift the last render recorded; it is
     // written again below only when this render finds something else.
     let expected = entry::health(None, loaded.manifest.drift());
@@ -342,7 +370,7 @@ pub fn render_vault_with<F: DurableFs>(
             .and_then(|announced| {
                 entry::publish(
                     workspace,
-                    &lock,
+                    lock,
                     &publisher,
                     &survey,
                     manifest.clone(),
@@ -351,7 +379,7 @@ pub fn render_vault_with<F: DurableFs>(
             })
             .map_or(manifest, |(manifest, _)| manifest)
     };
-    loaded.manifest.begin(&plan).store(workspace, &lock)?;
+    loaded.manifest.begin(&plan).store(workspace, lock)?;
     let mut reached = Vec::new();
     let published = publisher.publish(&plan, &ownership, &mut |step| {
         reached.push(step.outcome.clone());
@@ -369,8 +397,8 @@ pub fn render_vault_with<F: DurableFs>(
             // leaves the `updating` record, whose intent still covers every
             // file this render may have written.
             let manifest = manifest.failed(plan.generation(), error.to_string());
-            let _ = manifest.store(workspace, &lock);
-            let _ = announce_partial(manifest, error.to_string()).store(workspace, &lock);
+            let _ = manifest.store(workspace, lock);
+            let _ = announce_partial(manifest, error.to_string()).store(workspace, lock);
             return Err(error);
         }
     };
@@ -386,8 +414,8 @@ pub fn render_vault_with<F: DurableFs>(
             // Every vault file was processed; only the drift record is
             // incomplete. Earlier drift records are kept.
             let manifest = manifest.failed(plan.generation(), error.to_string());
-            let _ = manifest.store(workspace, &lock);
-            let _ = announce_partial(manifest, error.to_string()).store(workspace, &lock);
+            let _ = manifest.store(workspace, lock);
+            let _ = announce_partial(manifest, error.to_string()).store(workspace, lock);
             return Err(error);
         }
     };
@@ -399,7 +427,7 @@ pub fn render_vault_with<F: DurableFs>(
         let announced = renderer.announce(&planned, &snapshot, policy, &actual)?;
         match entry::publish(
             workspace,
-            &lock,
+            lock,
             &publisher,
             &survey,
             manifest.clone(),
@@ -409,13 +437,13 @@ pub fn render_vault_with<F: DurableFs>(
             Err(error) => {
                 // Every plan entry was processed; only the announcement
                 // failed. The plan's entry note stays, as recorded.
-                manifest.store(workspace, &lock)?;
+                manifest.store(workspace, lock)?;
                 return Err(error);
             }
         }
     };
-    manifest.store(workspace, &lock)?;
-    let unknown = publisher.unknown_files(&|path| manifest.owns(path))?;
+    manifest.store(workspace, lock)?;
+    let unknown = publisher.unknown_files(&|path| manifest.claims(path))?;
     Ok(RenderReport {
         publish,
         manifest: loaded.status,

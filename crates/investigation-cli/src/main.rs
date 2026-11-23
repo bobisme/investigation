@@ -35,6 +35,7 @@ mod shortcuts;
 mod snapshot;
 mod synopsis;
 mod vault;
+mod vault_reconcile;
 mod views;
 
 use std::{

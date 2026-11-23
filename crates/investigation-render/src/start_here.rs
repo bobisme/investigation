@@ -148,6 +148,14 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
                 health.drift.len() - MAX_DRIFT_LISTED
             );
         }
+        out.push_str(
+            "  - Resolve each with `vault reconcile`, the path and one disposition: \
+             `preserve-as-note` moves your edit to `Notes/Reconciled/` and regenerates the \
+             note, `propose-change` records a supported change you state, `discard` drops the \
+             edit (kept under `local/conflicts/discarded/`), and `release-path` makes the file \
+             yours and moves the note beside it. Nothing is read from the edit itself. \
+             `vault conflicts` prints the exact command.\n",
+        );
     }
     out.push_str(
         "- Each case note names the case head its exact content was rendered at, in \
@@ -675,6 +683,7 @@ mod tests {
         )));
         assert!(note.contains("  - `Cases/c/n00.md` (edited)\n"));
         assert!(note.contains("  - and 2 more\n"));
+        assert!(note.contains("  - Resolve each with `vault reconcile`"));
         assert!(!note.contains("n11.md"));
         assert_eq!(
             crate::marker::property(note.as_bytes(), crate::marker::GENERATION_KEY).as_deref(),

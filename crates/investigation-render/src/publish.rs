@@ -445,7 +445,13 @@ impl<'lock> Publisher<'lock> {
             (_, OnDisk::Other) => Action::Refused(Refusal::NotARegularFile),
             (Decision::Refuse(refusal), _) => Action::Refused(refusal),
             (Decision::Remove, OnDisk::Regular { sha256 }) => {
-                match remove_verified(&directory, generation, path, name, sha256)? {
+                match remove_verified(
+                    &directory,
+                    temp_tag(generation),
+                    path.as_str(),
+                    name,
+                    sha256,
+                )? {
                     Removal::Removed => {
                         drop(directory);
                         self.prune_empty_parents(path, parents);
@@ -571,7 +577,17 @@ pub(crate) fn inspect(
     path: &PlanPath,
     name: &str,
 ) -> Result<OnDisk, RenderError> {
-    let io = |error: Errno| RenderError::io(path.as_str(), error);
+    inspect_named(directory, path.as_str(), name)
+}
+
+/// [`inspect`] for a file whose vault-relative path `label` need not be a
+/// plan path (a sync client's conflict copy, a moved note).
+pub(crate) fn inspect_named(
+    directory: &OwnedFd,
+    label: &str,
+    name: &str,
+) -> Result<OnDisk, RenderError> {
+    let io = |error: Errno| RenderError::io(label, error);
     let stat = match statat(directory, name, AtFlags::SYMLINK_NOFOLLOW) {
         Ok(stat) => stat,
         Err(Errno::NOENT) => return Ok(OnDisk::Absent),
@@ -598,7 +614,7 @@ pub(crate) fn inspect(
     let mut bytes = Vec::new();
     File::from(fd)
         .read_to_end(&mut bytes)
-        .map_err(|error| RenderError::io(path.as_str(), error))?;
+        .map_err(|error| RenderError::io(label, error))?;
     Ok(OnDisk::Regular {
         sha256: hash_bytes(&bytes),
     })
@@ -716,7 +732,7 @@ pub(crate) fn write_bytes_atomically(
     Ok(renamed)
 }
 
-enum Removal {
+pub(crate) enum Removal {
     Removed,
     /// The file was gone before it could be moved aside.
     Vanished,
@@ -731,16 +747,14 @@ enum Removal {
 /// racing the deletion. The moved file is hashed again; it is unlinked only
 /// when the hash still matches, and otherwise renamed back without replacing
 /// anything. A file that cannot be put back is reported with its location and
-/// never deleted.
-fn remove_verified(
+/// never deleted. `label` names the file in errors; `tag` its temporary.
+pub(crate) fn remove_verified(
     directory: &OwnedFd,
-    generation: &Generation,
-    path: &PlanPath,
+    tag: &str,
+    label: &str,
     name: &str,
     expected: &Digest,
 ) -> Result<Removal, RenderError> {
-    let label = path.as_str();
-    let tag = temp_tag(generation);
     let mut aside = None;
     for attempt in 0..TEMP_ATTEMPTS {
         let candidate = format!(".{name}.{tag}-{attempt}.inv-del");
@@ -763,7 +777,7 @@ fn remove_verified(
     let Some(aside) = aside else {
         return Err(leftovers(label, "inv-del"));
     };
-    let unchanged = match inspect(directory, path, &aside) {
+    let unchanged = match inspect_named(directory, label, &aside) {
         Ok(OnDisk::Regular { sha256 }) => Ok(&sha256 == expected),
         Ok(_) => Ok(false),
         Err(error) => Err(error),

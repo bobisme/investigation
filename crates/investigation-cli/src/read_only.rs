@@ -79,6 +79,10 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Writes files into a new directory, inside exports/ or outside the
     // workspace; never changes canonical state.
     ("export", Effect::Write),
+    // Moves observed files into Notes/Reconciled/ or local/conflicts/,
+    // updates the manifest and renders; propose-change also records a
+    // change. --dry-run checks and prints only.
+    ("vault reconcile", Effect::WriteUnlessFlag("dry_run")),
     // `doctor bundle` requires --preview and writes no archive.
     ("doctor", Effect::Read),
     ("doctor bundle", Effect::Read),

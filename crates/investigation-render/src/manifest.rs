@@ -55,6 +55,17 @@
 //! owned at that hash (replaced or removed like any owned file) even when the
 //! snapshot moved on meanwhile. Pending hashes accumulate across consecutive
 //! unfinished renders and are dropped per path once a render processes it.
+//!
+//! ## Released paths
+//!
+//! `vault reconcile --disposition release-path` hands an owned path to a
+//! person ([`Released`]). The manifest stops owning it, and a released path
+//! is never written, replaced, removed, adopted or reported as unknown
+//! again. The record it projected is published at `relocated_to` instead,
+//! and every generated link to the old path points there
+//! ([`crate::reconcile`]). A lost manifest forgets the release; the old path
+//! then holds a file nobody owns, which a render refuses as foreign and never
+//! overwrites.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -102,6 +113,19 @@ pub struct OwnedPath {
     /// generation's head when the note did not change (see
     /// [`crate::incremental`]).
     pub basis: Option<Snapshot>,
+}
+
+/// A vault path a person took over from the renderer (`release-path`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Released {
+    /// The path the person now owns.
+    pub path: PlanPath,
+    /// Where the projection it held is published instead.
+    pub relocated_to: PlanPath,
+    /// The record the path projected, when it projected exactly one.
+    pub projects: Option<Id>,
+    /// The last complete generation when the path was released.
+    pub since: String,
 }
 
 /// The case head a note's bytes name, when they name one.
@@ -158,6 +182,8 @@ pub struct Manifest {
     pending: BTreeMap<PlanPath, BTreeSet<Digest>>,
     /// Owned paths diagnosed as drifted by the last render that reached them.
     drifted: BTreeMap<PlanPath, Drift>,
+    /// Paths handed to a person, with where their projection moved.
+    released: BTreeMap<PlanPath, Released>,
 }
 
 /// How [`Manifest::load`] found the manifest.
@@ -235,6 +261,62 @@ impl Manifest {
         }
         let owned = &self.owned;
         self.drifted.retain(|path, _| owned.contains_key(path));
+        self
+    }
+
+    /// Released paths in path order ([`Released`]).
+    pub fn released(&self) -> impl Iterator<Item = &Released> {
+        self.released.values()
+    }
+
+    /// Whether the vault-relative path was released to a person.
+    pub fn is_released(&self, path: &str) -> bool {
+        PlanPath::new(path).is_ok_and(|path| self.released.contains_key(&path))
+    }
+
+    /// Whether the renderer may never touch the path again: it was released.
+    /// Used wherever unowned files are listed or adopted.
+    pub(crate) fn claims(&self, path: &str) -> bool {
+        self.owns(path) || self.is_released(path)
+    }
+
+    /// Where each released path's projection is published instead.
+    pub fn relocations(&self) -> BTreeMap<PlanPath, PlanPath> {
+        self.released
+            .values()
+            .map(|released| (released.path.clone(), released.relocated_to.clone()))
+            .collect()
+    }
+
+    /// The same record without any claim on `path`: not owned, not drifted,
+    /// no pending hash. The next render treats whatever is there as a file
+    /// it does not own: an absent path is created, without replacing.
+    pub(crate) fn forget(mut self, path: &PlanPath) -> Self {
+        self.owned.remove(path);
+        self.drifted.remove(path);
+        self.pending.remove(path);
+        self
+    }
+
+    /// The same record without the drift record for `path`, which stays
+    /// owned: its observed copies were moved away and it holds bytes this
+    /// renderer generated.
+    pub(crate) fn clear_drift(mut self, path: &PlanPath) -> Self {
+        self.drifted.remove(path);
+        self
+    }
+
+    /// The same record with `released` handed to a person: forgotten, and
+    /// its projection relocated. An earlier release that relocated to this
+    /// path now relocates to the new place, so links never chain.
+    pub(crate) fn release(mut self, released: Released) -> Self {
+        self = self.forget(&released.path);
+        for earlier in self.released.values_mut() {
+            if earlier.relocated_to == released.path {
+                earlier.relocated_to = released.relocated_to.clone();
+            }
+        }
+        self.released.insert(released.path.clone(), released);
         self
     }
 
@@ -456,6 +538,7 @@ impl Manifest {
             owned,
             pending: BTreeMap::new(),
             drifted,
+            released: self.released.clone(),
         };
         if !complete {
             let reached: BTreeSet<&PlanPath> = report
@@ -638,6 +721,16 @@ impl Manifest {
                     since: drift.since.clone(),
                 })
                 .collect(),
+            released: self
+                .released
+                .values()
+                .map(|released| WireReleased {
+                    path: released.path.as_str().to_owned(),
+                    relocated_to: released.relocated_to.as_str().to_owned(),
+                    projects: released.projects,
+                    since: released.since.clone(),
+                })
+                .collect(),
         };
         let mut bytes = serde_json::to_vec_pretty(&wire).expect("manifest serializes");
         bytes.push(b'\n');
@@ -728,6 +821,35 @@ impl Manifest {
                 ));
             }
         }
+        // Several released paths relocate to one path when a relocated note
+        // was released in turn; none relocates to a released path.
+        let mut released = BTreeMap::new();
+        for record in wire.released {
+            let path = checked(record.path)?;
+            let relocated_to = checked(record.relocated_to)?;
+            if owned.contains_key(&path) || path == relocated_to || released.contains_key(&path) {
+                return Err(Problem::Invalid(format!(
+                    "the manifest lists a malformed released path {path:?}"
+                )));
+            }
+            released.insert(
+                path.clone(),
+                Released {
+                    path,
+                    relocated_to,
+                    projects: record.projects,
+                    since: record.since,
+                },
+            );
+        }
+        if released
+            .values()
+            .any(|record| released.contains_key(&record.relocated_to))
+        {
+            return Err(Problem::Invalid(
+                "the manifest relocates a path to a released path".to_owned(),
+            ));
+        }
         Ok(Self {
             workspace_id: wire.workspace_id,
             generation: wire.generation.map(|generation| CompletedGeneration {
@@ -750,6 +872,7 @@ impl Manifest {
             owned,
             pending,
             drifted,
+            released,
         })
     }
 }
@@ -804,6 +927,11 @@ fn checked_drift(
 
 impl Ownership for Manifest {
     fn decide(&self, entry: &PlanEntry, on_disk: &OnDisk) -> Decision {
+        // A released path is a person's; the plan relocates its projection,
+        // and nothing is ever written there again.
+        if self.released.contains_key(entry.path()) {
+            return Decision::Refuse(Refusal::HumanOwned);
+        }
         match on_disk {
             // An owned file someone deleted or moved is drift; it is not
             // recreated. A killed render may have removed it itself, so
@@ -884,6 +1012,18 @@ struct Wire {
     /// Absent in manifests written before drift was recorded.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     drifted: Vec<WireDrift>,
+    /// Absent in manifests written before paths could be released.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    released: Vec<WireReleased>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WireReleased {
+    path: String,
+    relocated_to: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    projects: Option<Id>,
+    since: String,
 }
 
 #[derive(Serialize, Deserialize)]

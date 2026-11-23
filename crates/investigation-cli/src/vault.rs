@@ -1,5 +1,6 @@
 //! `vault render`, `vault status` and `vault conflicts`: publish the working
-//! vault and inspect its health.
+//! vault and inspect its health. `vault reconcile` resolves drift
+//! ([`crate::vault_reconcile`]).
 //!
 //! Rendering is explicit and separate from committing. A render never changes
 //! canonical state and never fails because a generated note was edited: drift
@@ -38,11 +39,13 @@ pub(crate) const AFTER_HELP: &str = "\
 render publishes the vault from the current verified snapshot. Files edited,
 moved or deleted outside the renderer are left as found and reported as drift;
 drift never fails a render. status and conflicts read the render record only
-and write nothing. Nothing here opens a viewer.
+and write nothing. reconcile resolves listed drifted paths with one explicit
+disposition. Nothing here opens a viewer.
 Examples:
   investigation vault render --format json
   investigation vault status --format json
-  investigation vault conflicts --format json";
+  investigation vault conflicts --format json
+  investigation vault reconcile PATH --disposition preserve-as-note --dry-run --format json";
 
 #[derive(clap::Subcommand)]
 pub(crate) enum VaultCommand {
@@ -53,8 +56,13 @@ pub(crate) enum VaultCommand {
     #[command(after_help = "Example: investigation vault status --format json")]
     Status,
     /// List drifted generated files and where each withheld version is kept.
-    #[command(after_help = "Example: investigation vault conflicts --format json")]
+    #[command(
+        after_help = "Example: investigation vault conflicts --format json\nNext: investigation vault reconcile PATH --disposition preserve-as-note --dry-run --format json"
+    )]
     Conflicts,
+    /// Resolve listed drifted files: preserve-as-note, propose-change, discard or release-path.
+    #[command(after_help = crate::vault_reconcile::AFTER_HELP)]
+    Reconcile(crate::vault_reconcile::ReconcileArgs),
 }
 
 pub(crate) fn run(
@@ -67,6 +75,7 @@ pub(crate) fn run(
         VaultCommand::Render => render(store, &scope),
         VaultCommand::Status => status(store, &scope),
         VaultCommand::Conflicts => conflicts(store.workspace(), &scope),
+        VaultCommand::Reconcile(args) => crate::vault_reconcile::run(store, global, args),
     }
 }
 
@@ -125,7 +134,7 @@ fn render_failure(workspace: &Workspace, error: &RenderError) -> Failure {
     }
 }
 
-fn argv(workspace: &Workspace, tail: &[&str]) -> Vec<String> {
+pub(crate) fn argv(workspace: &Workspace, tail: &[&str]) -> Vec<String> {
     let mut argv = workspace_argv(workspace);
     argv.extend(tail.iter().map(|part| (*part).to_owned()));
     argv.extend(["--format".to_owned(), "json".to_owned()]);
@@ -177,24 +186,32 @@ const fn swept(action: SweptAction) -> &'static str {
     }
 }
 
-/// What to do about one drifted path by hand until explicit reconciling
-/// dispositions exist. Nothing here acts on the vault.
+/// What to do about one drifted path. Nothing here acts on the vault.
 const fn restore(kind: DriftKind) -> &'static str {
     match kind {
         DriftKind::Edited => {
-            "Keep any edit worth keeping in Notes/, then put the retained version back at the path."
+            "vault reconcile PATH with --disposition preserve-as-note keeps the edited file in \
+             Notes/Reconciled/ and regenerates the path; propose-change records a supported \
+             change you state; discard (with --discard-observed) drops the edit; release-path \
+             makes the file yours and moves the projection."
         }
-        DriftKind::Missing => "Put the retained version back at the path.",
+        DriftKind::Missing => {
+            "vault reconcile PATH with --disposition discard --discard-observed regenerates the \
+             deleted file; release-path gives up the path and projects the record beside it."
+        }
         DriftKind::Renamed => {
-            "Put the retained version back at the path; the moved file is left where it is."
+            "vault reconcile PATH with --disposition preserve-as-note keeps the moved file (in \
+             Notes/Reconciled/ unless it is already in Notes/, Boards/ or Inbox/) and \
+             regenerates the path."
         }
         DriftKind::ConflictCopy => {
-            "Keep anything worth keeping from the copies in Notes/, then remove the copies."
+            "vault reconcile PATH with --disposition preserve-as-note moves the copies into \
+             Notes/Reconciled/; discard (with --discard-observed) sets them aside."
         }
     }
 }
 
-fn drift_json(drift: &Drift) -> Value {
+pub(crate) fn drift_json(drift: &Drift) -> Value {
     let renamed_to: Vec<Value> = drift
         .renamed_to
         .iter()
@@ -483,6 +500,20 @@ fn status(store: &mut Store, scope: &Scope) -> Result<Output, Failure> {
         .iter()
         .filter(|drift| scope.covers(drift.path.as_str()))
         .collect();
+    // Paths handed to a person by `vault reconcile --disposition release-path`.
+    let released: Vec<Value> = status
+        .released
+        .iter()
+        .filter(|released| scope.covers(released.path.as_str()))
+        .map(|released| {
+            json!({
+                "path":released.path.as_str(),
+                "relocated_to":released.relocated_to.as_str(),
+                "projects":released.projects,
+                "since":released.since,
+            })
+        })
+        .collect();
     let foreign: Option<Vec<String>> = foreign.map(|paths| {
         paths
             .into_iter()
@@ -522,6 +553,8 @@ fn status(store: &mut Store, scope: &Scope) -> Result<Output, Failure> {
         "cases":cases,
         "drift_count":drift.len(),
         "drift_kinds":kind_counts(drift.iter().copied()),
+        "released_count":released.len(),
+        "released":released.iter().take(MAX_LISTED).collect::<Vec<_>>(),
         "foreign_count":foreign.as_ref().map(Vec::len),
         "foreign":foreign.as_deref().map(capped),
         "manifest":manifest_json(&status.manifest),
@@ -558,14 +591,21 @@ fn conflicts(workspace: &Workspace, scope: &Scope) -> Result<Output, Failure> {
         .iter()
         .filter(|drift| scope.covers(drift.path.as_str()))
         .collect();
-    let next = next(
-        workspace,
-        Some(if drift.is_empty() {
-            &["vault", "status"]
-        } else {
-            &["vault", "render"]
-        }),
-    );
+    let first = drift.first().map(|drift| drift.path.as_str());
+    let next = match first {
+        None => next(workspace, Some(&["vault", "status"])),
+        Some(path) => next(
+            workspace,
+            Some(&[
+                "vault",
+                "reconcile",
+                path,
+                "--disposition",
+                "preserve-as-note",
+                "--dry-run",
+            ]),
+        ),
+    };
     let value = json!({
         "count":drift.len(),
         "kinds":kind_counts(drift.iter().copied()),
@@ -573,11 +613,14 @@ fn conflicts(workspace: &Workspace, scope: &Scope) -> Result<Output, Failure> {
         "diagnosed_by":"the last render; drift since then appears after the next render",
         "conflicts_area":investigation_render::CONFLICTS_DIR,
         "guidance":"Drifted files stay exactly as found and are diagnosed on every render; \
-            nothing written in the vault changes the workspace. To clear one by hand, follow its \
-            restore step and run vault render: a path is clear once it holds the bytes the \
-            render plans and has no conflict copies beside it. Render first when the vault is \
-            stale, so the retained version is current. Files in Notes/, Boards/ and Inbox/ are \
-            yours and are never changed.",
+            nothing written in the vault changes the workspace. Resolve each with vault \
+            reconcile PATH --disposition preserve-as-note, propose-change, discard or \
+            release-path; add --dry-run to see what it would do. No disposition infers \
+            anything from the edited Markdown, and only discard, confirmed with \
+            --discard-observed, removes observed bytes from the vault (they stay under \
+            local/conflicts/discarded/). Render first when the vault is stale, so the \
+            diagnosis is current. Files in Notes/, Boards/ and Inbox/ are yours; reconcile \
+            only ever adds new files under Notes/Reconciled/.",
         "scope":scope.json(),
         "next":next,
     });

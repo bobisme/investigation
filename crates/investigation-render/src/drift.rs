@@ -217,7 +217,7 @@ pub(crate) fn survey(
             } else {
                 format!("{prefix}/{name}")
             };
-            if manifest.owns(&relative) || planned.contains(relative.as_str()) {
+            if manifest.claims(&relative) || planned.contains(relative.as_str()) {
                 continue;
             }
             let Some(owner) = paths
@@ -377,7 +377,7 @@ fn find_moved(
     let mut found: Vec<(usize, String)> = Vec::new();
     publisher.visit(true, &mut |relative, directory, name, kind| {
         if kind != FileType::RegularFile
-            || manifest.owns(relative)
+            || manifest.claims(relative)
             || planned.contains(relative)
             || !extensions.contains(&extension(relative.rsplit('/').next().unwrap_or(relative)))
         {
@@ -476,7 +476,7 @@ fn retained(local: &OwnedFd, relative: &str) -> Result<Option<Digest>, RenderErr
 /// Open `components` below `local/` without following links, creating
 /// missing folders (mode 0700) when `create`. `None` when a folder is
 /// missing and `create` is false.
-fn conflicts_directory(
+pub(crate) fn conflicts_directory(
     local: &OwnedFd,
     components: &[&str],
     create: bool,

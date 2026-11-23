@@ -56,7 +56,9 @@ use crate::{
 /// notes show reported start and finish times as claims with their clock;
 /// observation notes label `Observed at (claimed)`; the timeline's claimed
 /// time column also shows a Run's reported start (MB.02).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v19";
+/// v20: `Start Here.md` announcing drift says how to resolve it with
+/// `vault reconcile` and its four dispositions (W12.05).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v20";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
