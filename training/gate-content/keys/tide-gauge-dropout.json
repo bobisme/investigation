@@ -1,0 +1,21 @@
+{
+  "schema_version": "gate-content-key.v1",
+  "family": "tide-gauge-dropout",
+  "split": "development",
+  "role": "gate-content-dev",
+  "note": "Development calibration key. Same rivals shape as the sealed release keys: a list of {explanation, distinguishing_prediction}.",
+  "rivals": [
+    {
+      "explanation": "Pump P1's 02:10 start dips the shared supply, a brownout, and the gauge's sensor head stops replying until the supply recovers.",
+      "distinguishing_prediction": "The dropouts stop on nights when pump P1 does not start, for example while it is electrically isolated."
+    },
+    {
+      "explanation": "Modem M-2's scheduled 02:10 firmware check draws current from the shared supply or holds the gauge's serial line, so the gauge stops replying.",
+      "distinguishing_prediction": "The dropouts continue while pump P1 is isolated, and they stop or shorten when the modem firmware check is skipped or moved to another hour."
+    },
+    {
+      "explanation": "A nightly 02:10 scheduled task on the logger or the gauge itself pauses sampling, independent of the pump and the modem.",
+      "distinguishing_prediction": "The dropouts begin at 02:10 even with the pump isolated and the modem check disabled, and the logger's own task log lists a job at 02:10."
+    }
+  ]
+}

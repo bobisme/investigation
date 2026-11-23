@@ -1,0 +1,21 @@
+{
+  "schema_version": "gate-content-key.v1",
+  "family": "proofer-temperature-drift",
+  "split": "development",
+  "role": "gate-content-dev",
+  "note": "Development calibration key. Same rivals shape as the sealed release keys: a list of {explanation, distinguishing_prediction}.",
+  "rivals": [
+    {
+      "explanation": "Cabinet sensor S-A reads high in the afternoon because radiant heat warms its rear-wall bracket, while the cabinet air stays at setpoint.",
+      "distinguishing_prediction": "Moving S-A to shelf height removes the afternoon offset, and the offset follows the rear-wall temperature and not the air temperature."
+    },
+    {
+      "explanation": "The cabinet air really is warm in the afternoon and reference probe R-1 reads low because of a probe fault or its placement.",
+      "distinguishing_prediction": "A second independently calibrated probe at shelf height also reads about 30 C in the afternoon, and R-1 fails a fresh bath check."
+    },
+    {
+      "explanation": "Sensor S-A has a temperature-dependent calibration or electrical drift in the sensor itself.",
+      "distinguishing_prediction": "S-A reads offset in a reference bath at afternoon ambient temperature, and the offset stays when S-A is moved to shelf height."
+    }
+  ]
+}

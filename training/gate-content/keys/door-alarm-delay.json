@@ -1,0 +1,21 @@
+{
+  "schema_version": "gate-content-key.v1",
+  "family": "door-alarm-delay",
+  "split": "development",
+  "role": "gate-content-dev",
+  "note": "Development calibration key. Same rivals shape as the sealed release keys: a list of {explanation, distinguishing_prediction}.",
+  "rivals": [
+    {
+      "explanation": "Firmware 5.2 uses a 45 second door-open alarm delay, as service bulletin SB-12 says, shortened from 90 seconds in firmware 5.0.",
+      "distinguishing_prediction": "Door-open to alarm gaps logged on firmware 5.x controllers are about 45 seconds."
+    },
+    {
+      "explanation": "Firmware 5.2 still uses a 90 second door-open alarm delay, as datasheet revision C states.",
+      "distinguishing_prediction": "Door-open to alarm gaps logged on a firmware 5.2 controller are about 90 seconds, so SB-12 would not apply."
+    },
+    {
+      "explanation": "The alarm delay is a site configuration setting, so the observed 45 seconds is a local setting and not the firmware default.",
+      "distinguishing_prediction": "Controllers in other rooms or after a settings reset show a different delay, and the controller's settings screen lists a delay parameter."
+    }
+  ]
+}
