@@ -30,7 +30,10 @@ use crate::{
 /// rather than an imperative sentence around authored text (W05b.13).
 /// v10: the option-by-criterion comparison matrix on question and decision
 /// notes (W08.17).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v10";
+/// v11: withheld objections, reviews and assessments of a visible record stay
+/// as ID-only placeholders, measurement flags that read a withheld record
+/// name only their rule, and `Start Here.md` counts withheld records (W08.13).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v11";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

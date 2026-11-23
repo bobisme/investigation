@@ -3,7 +3,10 @@
 
 use std::fmt::Write as _;
 
-use investigation_core::{identity::Kind, state::Record};
+use investigation_core::{
+    identity::{Id, Kind},
+    state::Record,
+};
 
 use super::{Facts, citing, naming, refs, status_note};
 use crate::{
@@ -143,7 +146,8 @@ fn assessments(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         .into_iter()
         .filter(|(record, _)| record.header.id.kind() == Kind::Assessment)
         .collect();
-    if assessed.is_empty() {
+    let withheld = withheld_assessments(f);
+    if assessed.is_empty() && withheld.is_empty() {
         f.out
             .push_str("No assessment relates any evidence to this hypothesis yet.\n");
     }
@@ -177,16 +181,25 @@ fn assessments(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         })?;
         f.out.push('\n');
     }
-    let withheld = assessed
-        .iter()
-        .filter(|(record, _)| !f.notes.visible(record))
-        .count();
-    if withheld > 0 {
-        let _ = writeln!(
+    // Withheld assessments may contradict it: they stay as ID-only
+    // placeholders so filtering never makes the hypothesis read stronger.
+    if !withheld.is_empty() {
+        let links: Vec<String> = withheld
+            .iter()
+            .take(MAX_LISTED)
+            .map(|id| f.notes.link(*id))
+            .collect::<Result<_, _>>()?;
+        let _ = write!(
             f.out,
-            "{withheld} further assessment{} withheld by the view policy.",
-            if withheld == 1 { " is" } else { "s are" }
+            "{} further assessment{} withheld by the view policy: {}",
+            withheld.len(),
+            if withheld.len() == 1 { " is" } else { "s are" },
+            links.join(", ")
         );
+        if withheld.len() > MAX_LISTED {
+            let _ = write!(f.out, " and {} more", withheld.len() - MAX_LISTED);
+        }
+        f.out.push_str(".\n");
     }
     let weighed = naming(
         f.notes,
@@ -228,4 +241,26 @@ fn assessments(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         }
     }
     Ok(())
+}
+
+/// Withheld assessments of this hypothesis that may appear as placeholders,
+/// in record order, each once.
+fn withheld_assessments(f: &Facts<'_, '_, '_>) -> Vec<Id> {
+    let state = f.notes.case().state();
+    let mut found: Vec<Id> = Vec::new();
+    for citation in f.notes.citations(f.record.header.id) {
+        if citation.by.kind() != Kind::Assessment
+            || citation.field != "subject_ref"
+            || found.contains(&citation.by)
+        {
+            continue;
+        }
+        if state
+            .current(citation.by)
+            .is_some_and(|assessment| f.notes.placeholder(assessment))
+        {
+            found.push(citation.by);
+        }
+    }
+    found
 }

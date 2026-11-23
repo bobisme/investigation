@@ -63,7 +63,8 @@ pub(crate) fn freshness_word(notes: &NoteContext<'_>, record: &Record) -> &'stat
 }
 
 /// Current reviews (or objections) whose subject is `id`, in record order.
-/// Records whose references are withheld are left out.
+/// Withheld ones stay as ID-only placeholders when the policy allows them,
+/// since they bear on the subject's standing; otherwise they are left out.
 fn naming_subject<'a>(notes: &NoteContext<'a>, id: Id, kind: Kind) -> Vec<&'a Record> {
     let target = id.to_string();
     notes
@@ -74,7 +75,7 @@ fn naming_subject<'a>(notes: &NoteContext<'a>, id: Id, kind: Kind) -> Vec<&'a Re
             record.header.id.kind() == kind
                 && record.header.case_id == notes.case().case_id()
                 && text_at(&record.body, "subject_ref.id") == Some(target.as_str())
-                && notes.may_show(record, Field::Lineage)
+                && (notes.may_show(record, Field::Lineage) || notes.placeholder(record))
         })
         .collect()
 }
@@ -150,6 +151,8 @@ pub(crate) fn section(
             {
                 let _ = write!(out, ", raised against revision {revision}");
             }
+        } else {
+            out.push_str(": details withheld by the view policy");
         }
         out.push('\n');
     }

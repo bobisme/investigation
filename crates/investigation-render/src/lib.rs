@@ -132,7 +132,15 @@
 //!   generated notes directly; use `Notes/` or controlled mutations.
 //! - Classification-aware projection: notes ask the core `Classifier` per
 //!   field through [`note::NoteContext`]; extend [`ViewPolicy`] (and its
-//!   fingerprint) for further rules.
+//!   fingerprint) for further rules. A withheld record appears by ID only:
+//!   its note keeps the frame, its file name is its ID, and links to it show
+//!   the ID. Effective state is computed on the full snapshot first, so a
+//!   visible record never reads stronger than it is: withheld objections,
+//!   reviews and assessments of it stay as ID-only placeholders and are
+//!   counted, and `Start Here.md` says how many records its lists leave out.
+//!   A gap, `next` step or measurement flag whose rule read a withheld record
+//!   names only the rule, since its reason can quote that record's fields.
+//!   `tests/audience_policy.rs` scans every planned byte per audience.
 //! - Incremental render: the planner still produces the full plan;
 //!   [`Ownership`] and the on-disk hash decide what to skip.
 //! - Exports: implement [`CaseRenderer`] for another layout and publish into a

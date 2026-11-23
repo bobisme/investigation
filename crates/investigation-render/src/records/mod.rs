@@ -693,13 +693,34 @@ fn flags_section(
         "\n## Measurement flags\n\nAdvisory, rule version {}: a flag never blocks recording or changes validity.\n\n",
         inline_code(&report.rule_version)
     );
+    let state = notes.case().state();
     for flag in &report.flags {
-        let _ = write!(
-            out,
-            "- {}: {}",
-            inline_code(&flag.flag_id),
-            prose(&flag.reason)
-        );
+        // A flag's reason quotes the fields it read; when any of them belongs
+        // to a record the audience may not see, only the rule is named.
+        let readable = flag
+            .fields
+            .iter()
+            .map(|field| field.record_ref)
+            .chain(flag.related_refs.iter().copied())
+            .all(|reference| {
+                state
+                    .revision(reference)
+                    .is_some_and(|read| notes.may_show(read, Field::Content))
+            });
+        if !readable {
+            let _ = write!(
+                out,
+                "- {}: details withheld by the view policy; the rule read a withheld record.",
+                inline_code(&flag.flag_id)
+            );
+        } else {
+            let _ = write!(
+                out,
+                "- {}: {}",
+                inline_code(&flag.flag_id),
+                prose(&flag.reason)
+            );
+        }
         for related in &flag.related_refs {
             let _ = write!(out, " See {}.", revision_link(notes, *related)?);
         }

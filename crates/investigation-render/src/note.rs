@@ -18,7 +18,10 @@
 //! file or breaks a link. Withheld records keep the frame with ID-only
 //! content; their titles, summaries, metadata and lineage never appear.
 
-use std::{collections::BTreeMap, fmt::Write as _};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
+};
 
 use investigation_core::{
     classification::{AudiencePolicy, Classifier, Field},
@@ -230,6 +233,9 @@ pub struct NoteContext<'a> {
     mentioned_by: BTreeMap<Id, Vec<Mention>>,
     /// Open gaps by subject ID, or `None` when the inventory failed.
     gaps: Option<BTreeMap<Id, Vec<Gap>>>,
+    /// Gaps whose reason was computed from a record the audience may not
+    /// see. Their reasons can quote its fields, so only the rule is named.
+    withheld_gaps: BTreeSet<String>,
 }
 
 impl<'a> NoteContext<'a> {
@@ -253,11 +259,22 @@ impl<'a> NoteContext<'a> {
                 });
             }
         }
+        let audience = policy.audience_policy();
+        let classifier = Classifier::new(state);
+        let mut withheld_gaps = BTreeSet::new();
         let gaps = enumerate_gaps(state, case.head(), case.case_id())
             .ok()
             .map(|inventory| {
                 let mut by_subject: BTreeMap<Id, Vec<Gap>> = BTreeMap::new();
                 for gap in inventory.gaps {
+                    let read = gap
+                        .subject_refs
+                        .iter()
+                        .chain(&gap.read_set)
+                        .chain(gap.prerequisites.iter().flat_map(|p| &p.subject_refs));
+                    if !reads_only_visible(&classifier, &audience, read) {
+                        withheld_gaps.insert(gap.gap_id.clone());
+                    }
                     if gap.status == GapStatus::Resolved {
                         continue;
                     }
@@ -271,13 +288,20 @@ impl<'a> NoteContext<'a> {
             case,
             policy,
             generation,
-            audience: policy.audience_policy(),
-            classifier: Classifier::new(state),
+            audience,
+            classifier,
             freshness: FreshnessIndex::build(state, case.case_id()),
             cited_by,
             mentioned_by,
             gaps,
+            withheld_gaps,
         }
+    }
+
+    /// Whether a gap's (or a `next` step's) reason must not be shown because
+    /// it was computed from a record the audience may not see.
+    pub(crate) fn gap_withheld(&self, gap_id: &str) -> bool {
+        self.withheld_gaps.contains(gap_id)
     }
 
     pub const fn case(&self) -> &'a CaseSnapshot {
@@ -321,6 +345,15 @@ impl<'a> NoteContext<'a> {
     /// Whether one channel of this record may appear.
     pub(crate) fn may_show(&self, record: &Record, field: Field) -> bool {
         self.classifier.may_show(record, field, &self.audience)
+    }
+
+    /// Whether this record is withheld but may still appear as an ID-only
+    /// placeholder. Challenges to a visible record (objections, reviews and
+    /// assessments of it) are listed this way: its standing is computed on
+    /// the full snapshot, so hiding them outright would make it read
+    /// stronger than it is. A policy without placeholders omits them.
+    pub(crate) fn placeholder(&self, record: &Record) -> bool {
+        !self.visible(record) && self.may_show(record, Field::Identity)
     }
 
     /// Safe display title, or `None` when withheld or nothing displayable.
@@ -718,6 +751,16 @@ impl<'a> NoteContext<'a> {
             Some(gaps) => {
                 for gap in gaps.get(&record.header.id).into_iter().flatten() {
                     any = true;
+                    if self.gap_withheld(&gap.gap_id) {
+                        let _ = writeln!(
+                            out,
+                            "- Gap {}: details withheld by the view policy; the rule read a \
+                             withheld record. Rule {}.",
+                            inline_code(&wire_word(&gap.status)),
+                            inline_code(&gap.rule_id)
+                        );
+                        continue;
+                    }
                     let _ = write!(
                         out,
                         "- Gap {}: {}",
@@ -746,6 +789,22 @@ impl<'a> NoteContext<'a> {
         }
         Ok(())
     }
+}
+
+/// Whether every record a rule read may be shown in full to the audience.
+/// A reference to a revision this snapshot does not hold reads nothing.
+fn reads_only_visible<'r>(
+    classifier: &Classifier<'_>,
+    audience: &AudiencePolicy,
+    mut read: impl Iterator<Item = &'r RevisionRef>,
+) -> bool {
+    let state = classifier.state();
+    read.all(|reference| {
+        state
+            .revision(*reference)
+            .or_else(|| state.current(reference.id))
+            .is_none_or(|record| classifier.may_show(record, Field::Content, audience))
+    })
 }
 
 /// Every accepted evidence selector in a record body, by field path, in a

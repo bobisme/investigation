@@ -256,6 +256,20 @@ fn case_block(out: &mut String, notes: &NoteContext<'_>) -> Result<(), RenderErr
                 inline_code(overview::case_freshness(notes, record)),
                 overview::focus(record, state).word(),
             );
+            // The lists below show visible records only; say what they omit
+            // so a withheld review or question never reads as none.
+            let withheld = state
+                .records()
+                .filter(|record| notes.placeholder(record))
+                .count();
+            if withheld > 0 {
+                let _ = writeln!(
+                    out,
+                    "  - Withheld by the view policy: {withheld} record{}, listed by ID in \
+                     {overview_link}; the lists below leave them out",
+                    if withheld == 1 { "" } else { "s" }
+                );
+            }
         }
         _ => out.push_str("  - Current answer: withheld\n"),
     }

@@ -531,10 +531,17 @@ impl<'a> Overview<'_, 'a> {
         let Some(first) = next.recommendations.first() else {
             return Ok("(no ranked next step)".to_owned());
         };
-        let mut text = format!(
-            "what `next` ranks first: {}",
-            prose(first.purpose.trim_end_matches('.'))
-        );
+        let mut text = if self.notes.gap_withheld(&first.gap_id) {
+            format!(
+                "what `next` ranks first: rule {}, its details withheld by the view policy",
+                inline_code(&first.rule_id)
+            )
+        } else {
+            format!(
+                "what `next` ranks first: {}",
+                prose(first.purpose.trim_end_matches('.'))
+            )
+        };
         let subjects: Vec<String> = first
             .subject_refs
             .iter()
@@ -1046,12 +1053,24 @@ impl<'a> Overview<'_, 'a> {
                         })
                         .count()
                 };
-                Ok(format!(
+                let mut text = format!(
                     "; assessments: {} contradicting, {} supporting, {} non-diagnostic",
                     count("contradicts"),
                     count("supports"),
                     count("non_diagnostic")
-                ))
+                );
+                // Withheld assessments may contradict it: counted, not hidden.
+                let withheld = assessments
+                    .iter()
+                    .filter(|assessment| {
+                        self.notes.placeholder(assessment)
+                            && text_at(&assessment.body, "subject_ref.id") == Some(id.as_str())
+                    })
+                    .count();
+                if withheld > 0 {
+                    let _ = write!(text, ", {withheld} withheld by the view policy");
+                }
+                Ok(text)
             },
         )?;
 
@@ -1071,7 +1090,12 @@ impl<'a> Overview<'_, 'a> {
                 &["non_diagnostic", "inconclusive"],
             ),
         ];
-        if visible.is_empty() {
+        let withheld: Vec<&Record> = assessments
+            .iter()
+            .copied()
+            .filter(|assessment| self.notes.placeholder(assessment))
+            .collect();
+        if visible.is_empty() && withheld.is_empty() {
             out.push_str("No assessment relates evidence to a hypothesis yet.\n");
         }
         for (label, relations) in groups {
@@ -1106,6 +1130,12 @@ impl<'a> Overview<'_, 'a> {
                 }
                 Ok(text)
             })?;
+            out.push('\n');
+        }
+        if !withheld.is_empty() {
+            // Their relation is withheld too, so they may be decisive.
+            out.push_str("Withheld by the view policy (relation not shown):\n\n");
+            self.list(out, &withheld, "", |_| Ok(String::new()))?;
             out.push('\n');
         }
 
@@ -1340,8 +1370,10 @@ impl<'a> Overview<'_, 'a> {
             .of_kind(Kind::Assessment)
             .into_iter()
             .filter(|assessment| {
-                self.notes.visible(assessment)
-                    && text_at(&assessment.body, "relation") == Some("contradicts")
+                // A withheld assessment may be a contradicting account.
+                self.notes.placeholder(assessment)
+                    || (self.notes.visible(assessment)
+                        && text_at(&assessment.body, "relation") == Some("contradicts"))
             })
             .collect();
         self.list(
