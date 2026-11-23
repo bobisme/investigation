@@ -719,3 +719,187 @@ pub fn choice(directory: &Path, name: &str, shape: ChoiceShape) -> Result<Fixtur
     });
     Ok(fixture)
 }
+
+/// Sizes of the vault load workspace: many small cases, so the vault holds
+/// tens of thousands of owned notes the way a long-lived workspace does.
+#[derive(Clone, Copy, Debug)]
+pub struct LoadShape {
+    pub cases: usize,
+    pub observations_per_case: usize,
+    pub questions_per_case: usize,
+    pub assumptions_per_question: usize,
+    pub hypotheses_per_question: usize,
+    pub assessments_per_question: usize,
+    pub options_per_question: usize,
+    pub criteria_per_question: usize,
+    pub comparisons_per_question: usize,
+}
+
+impl LoadShape {
+    /// Records created per case, excluding the case and its artifact.
+    pub fn records_per_case(&self) -> usize {
+        self.observations_per_case
+            + self.questions_per_case
+                * (1 + self.assumptions_per_question
+                    + self.hypotheses_per_question
+                    + self.assessments_per_question
+                    + self.options_per_question
+                    + self.criteria_per_question
+                    + self.comparisons_per_question)
+    }
+
+    /// A case's records plus the case and its artifact.
+    pub fn objects(&self) -> usize {
+        self.cases * (self.records_per_case() + 2)
+    }
+
+    /// About 50,000 vault notes: 650 cases of 64 records, plus each case's
+    /// overview and views (about 76 notes per case, 88 with Bases and Map).
+    pub fn target() -> Self {
+        Self {
+            cases: 650,
+            ..Self::case_shape()
+        }
+    }
+
+    pub fn smoke() -> Self {
+        Self {
+            cases: 6,
+            ..Self::case_shape()
+        }
+    }
+
+    fn case_shape() -> Self {
+        Self {
+            cases: 0,
+            observations_per_case: 12,
+            questions_per_case: 2,
+            assumptions_per_question: 4,
+            hypotheses_per_question: 6,
+            assessments_per_question: 5,
+            options_per_question: 4,
+            criteria_per_question: 2,
+            comparisons_per_question: 3,
+        }
+    }
+}
+
+/// Facts about the load workspace the measurements need.
+#[derive(Debug)]
+pub struct LoadWorkspace {
+    pub root: PathBuf,
+    pub cases: Vec<Id>,
+    pub objects: usize,
+    pub commands: usize,
+    pub generation_ms: f64,
+    /// One question and its case, for single-record mutations.
+    pub mutation_target: (Id, Id),
+    pub revisions: BTreeMap<Id, u64>,
+}
+
+/// Many cases, each a small mixed workspace, from one seed. The same shape
+/// and seed give the same records (IDs and clock aside).
+pub fn load(directory: &Path, shape: LoadShape, seed: u64) -> Result<LoadWorkspace, String> {
+    let started = Instant::now();
+    let mut b = Builder::new(directory, true)?;
+    let mut rng = Lcg(seed ^ 0x10AD_7E57_0000);
+    let mut cases = Vec::with_capacity(shape.cases);
+    let mut target = None;
+    let mut objects = 0usize;
+    for case_index in 0..shape.cases {
+        b.case = None;
+        let case = b.create_case(&format!("Synthetic load case {case_index}"))?;
+        cases.push(case);
+        let artifact = b.ingest(1)?[0];
+        let values: Vec<String> = (0..shape.observations_per_case)
+            .map(|index| format!("{}", 10 + (index + rng.next(90)) % 90))
+            .collect();
+        let ops = values
+            .iter()
+            .map(|value| b.observation(artifact, value))
+            .collect();
+        let observations: Vec<(Id, String)> = b.submit_all(ops)?.into_iter().zip(values).collect();
+        let ops = (0..shape.questions_per_case)
+            .map(|index| {
+                op(
+                    "question.create",
+                    json!({"wording": format!("Load question {case_index}.{index}?"), "importance": "normal"}),
+                )
+            })
+            .collect();
+        let questions = b.submit_all(ops)?;
+        target.get_or_insert((questions[0], case));
+        for question in &questions {
+            let ops = (0..shape.assumptions_per_question)
+                .map(|index| {
+                    op(
+                        "assumption.create",
+                        json!({"affected_refs": [b.r(*question)],
+                            "claim": format!("Load assumption {index}."),
+                            "consequence": "Results transfer.", "materiality": "nonmaterial"}),
+                    )
+                })
+                .collect();
+            let assumptions = b.submit_all(ops)?;
+            let mut ops = Vec::new();
+            for index in 0..shape.hypotheses_per_question {
+                let mut operation = op(
+                    "hypothesis.create",
+                    json!({"question_ref": b.r(*question), "statement": format!("Load hypothesis {index}."),
+                        "possible_falsifiers": [], "rival_refs": [],
+                        "assumption_refs": [b.r(assumptions[index % assumptions.len()])]}),
+                );
+                operation["client_ref"] = json!(format!("h{index}"));
+                ops.push(operation);
+            }
+            let hypotheses = b.submit_all(ops)?;
+            let ops = (0..shape.assessments_per_question)
+                .map(|index| {
+                    let first = observations[rng.next(observations.len())].0;
+                    let second = observations[rng.next(observations.len())].0;
+                    let evidence: BTreeSet<Id> = [first, second].into_iter().collect();
+                    op(
+                        "assessment.add",
+                        json!({"subject_ref": b.r(hypotheses[index % hypotheses.len()]),
+                            "evidence_refs": evidence.into_iter().map(|id| b.r(id)).collect::<Vec<_>>(),
+                            "assumption_refs": [b.r(assumptions[index % assumptions.len()])],
+                            "rival_expectations": [],
+                            "relation": "supports", "rationale": "Load assessment."}),
+                    )
+                })
+                .collect();
+            b.submit_all(ops)?;
+            let options = b.options(*question, shape.options_per_question)?;
+            let ops = (0..shape.criteria_per_question)
+                .map(|index| b.criterion(*question, index, false))
+                .collect();
+            let criteria = b.submit_all(ops)?;
+            let mut cells = BTreeSet::new();
+            while cells.len()
+                < shape
+                    .comparisons_per_question
+                    .min(options.len() * criteria.len())
+            {
+                cells.insert((rng.next(options.len()), rng.next(criteria.len())));
+            }
+            let ops = cells
+                .into_iter()
+                .map(|(option, criterion)| {
+                    let evidence = observations[rng.next(observations.len())].clone();
+                    b.comparison(options[option], criteria[criterion], "meets", &[evidence])
+                })
+                .collect();
+            b.submit_all(ops)?;
+        }
+        objects += shape.records_per_case() + 2;
+    }
+    Ok(LoadWorkspace {
+        root: b.root.clone(),
+        cases,
+        objects,
+        commands: b.commands,
+        generation_ms: started.elapsed().as_secs_f64() * 1e3,
+        mutation_target: target.ok_or("a load workspace needs at least one case")?,
+        revisions: b.revisions,
+    })
+}

@@ -10,6 +10,7 @@
 
 pub mod completeness;
 pub mod fixtures;
+pub mod load;
 pub mod measure;
 pub mod profile;
 

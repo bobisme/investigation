@@ -26,6 +26,14 @@ Options:
                         work once it has its minimum samples [default: 60]
   --min-samples <N>     fewest timed samples per read and mutation [default: 5]
   --skip-render         do not time vault renders
+  --load                run the vault load test (plan §12.5) instead: about 50,000
+                        notes over many cases, with and without the viewer
+                        features; needs --fixtures DIR, writes
+                        target/bench/load-report.json, and uses --smoke for a
+                        tiny run, --samples for repetitions [default: 5 here]
+                        and --seed
+  --seed <N>            load-test generator seed [default: 20261123]
+  --cases <N>           load-test case count [default: 650, about 50,000 notes]
   -h, --help            print this help
 ";
 
@@ -57,15 +65,29 @@ fn main_inner() -> Result<ExitCode, String> {
     let mut skip_render = false;
     let mut budget_seconds = 60.0;
     let mut min_samples = 5;
+    let mut load = false;
+    let mut cases = None;
+    let mut seed = 20_261_123u64;
+    let mut samples_given = false;
+    let mut out_given = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--bin" => binary = Some(PathBuf::from(args.next().ok_or("--bin needs a path")?)),
-            "--out" => out = PathBuf::from(args.next().ok_or("--out needs a path")?),
+            "--out" => {
+                out = PathBuf::from(args.next().ok_or("--out needs a path")?);
+                out_given = true;
+            }
+            "--load" => load = true,
+            "--cases" => cases = Some(number(args.next(), "--cases")?),
+            "--seed" => seed = number(args.next(), "--seed")? as u64,
             "--fixtures" => {
                 fixtures = Some(PathBuf::from(args.next().ok_or("--fixtures needs a path")?));
             }
-            "--samples" => samples = number(args.next(), "--samples")?,
+            "--samples" => {
+                samples = number(args.next(), "--samples")?;
+                samples_given = true;
+            }
             "--warmup" => warmup = number(args.next(), "--warmup")?,
             "--slow-samples" => slow_samples = number(args.next(), "--slow-samples")?,
             "--smoke" => smoke = true,
@@ -96,6 +118,34 @@ fn main_inner() -> Result<ExitCode, String> {
             "{} does not exist; build it (just bench does) or pass --bin",
             binary.display()
         ));
+    }
+    if load {
+        let directory =
+            fixtures.ok_or("--load needs --fixtures DIR for the generated workspaces")?;
+        let repetitions = if samples_given { samples } else { 5 };
+        let report = investigation_bench::load::run_load(&investigation_bench::load::LoadConfig {
+            binary,
+            directory,
+            shape: {
+                let mut shape = if smoke {
+                    investigation_bench::fixtures::LoadShape::smoke()
+                } else {
+                    investigation_bench::fixtures::LoadShape::target()
+                };
+                if let Some(cases) = cases {
+                    shape.cases = cases;
+                }
+                shape
+            },
+            seed,
+            repetitions,
+        })?;
+        let out = if out_given {
+            out
+        } else {
+            PathBuf::from("target/bench/load-report.json")
+        };
+        return write_load_report(&report, &out);
     }
     let temporary;
     let fixtures_dir = match fixtures {
@@ -166,6 +216,48 @@ fn main_inner() -> Result<ExitCode, String> {
     if report["complete"] != true {
         eprintln!("completeness FAILED: {}", report["completeness"]);
         return Ok(ExitCode::from(1));
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+fn write_load_report(
+    report: &serde_json::Value,
+    out: &std::path::Path,
+) -> Result<ExitCode, String> {
+    let text = serde_json::to_string_pretty(report).map_err(|error| error.to_string())? + "\n";
+    if out.as_os_str() == "-" {
+        print!("{text}");
+    } else {
+        if let Some(parent) = out.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::write(out, &text).map_err(|error| format!("{}: {error}", out.display()))?;
+        eprintln!("report: {}", out.display());
+    }
+    eprintln!(
+        "{} objects over {} cases",
+        report["workspace"]["objects"], report["workspace"]["cases"]
+    );
+    for variant in report["variants"].as_array().into_iter().flatten() {
+        let files = variant["measurements"][0]["extra"]["vault"]["files"].clone();
+        eprintln!("== {} ({files} vault files)", variant["variant"]);
+        for item in variant["measurements"].as_array().into_iter().flatten() {
+            eprintln!(
+                "{:<36} n={:<2} p50={:>10.1} ms  max={:>10.1} ms  rss={} MiB  {}",
+                item["measurement"].as_str().unwrap_or_default(),
+                item["stats"]["n"],
+                item["stats"]["p50_ms"].as_f64().unwrap_or(f64::NAN),
+                item["stats"]["max_ms"].as_f64().unwrap_or(f64::NAN),
+                item["peak_rss_mib_max"],
+                match item["target_ms"].as_f64() {
+                    Some(target) => format!(
+                        "{} (target {target} ms)",
+                        item["verdict"].as_str().unwrap_or_default()
+                    ),
+                    None => String::new(),
+                }
+            );
+        }
     }
     Ok(ExitCode::SUCCESS)
 }

@@ -53,6 +53,8 @@ sample counts, warmup, trial order and nearest-rank percentiles with their
 n. `just check` runs only a smoke run on tiny fixtures; timings on a shared
 or loaded machine are noisy, so compare runs at similar load.
 
+`just load-test DIR` runs the plan §12.5 vault load test (about 50,000 notes, with and without the viewer features, hours long, not part of `just check`). An ignored test, `cargo test -p investigation-cli --test vault_load_smoke -- --ignored`, checks the harness on a tiny workspace. See [vault-load.md](vault-load.md) for the method, observations and limits.
+
 The neutrality check reads the actual CLI help, published schemas, the
 `docs/agent/` pages, and `methods/general.toml` or files under
 `methods/general/`. Once `init` appears

@@ -23,3 +23,13 @@ audit *options:
 bench *options:
     cargo build --release --locked -p investigation-cli -p investigation-bench
     target/release/investigation-bench {{options}}
+
+# Plan §12.5 vault load test: about 50,000 notes over 650 cases, with and
+# without the viewer features. Slow (tens of minutes to hours) and writes
+# several GiB under DIR, which must be absent or empty and is left in place.
+# Not part of `check`. Needs GNU `time` for peak memory. Writes
+# target/bench/load-report.json; add `--smoke` for a seconds-long harness check.
+# e.g. `TMPDIR=/var/tmp just load-test /var/tmp/vault-load --samples 5`.
+load-test dir *options:
+    cargo build --release --locked -p investigation-cli -p investigation-bench
+    target/release/investigation-bench --load --fixtures {{dir}} {{options}}
