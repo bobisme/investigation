@@ -112,6 +112,17 @@ impl Command {
     /// All entry points share these semantic envelope requirements. The catalog
     /// separately validates operation-specific payloads and cross-record rules.
     pub fn validate_shape(&self) -> Result<(), Failure> {
+        self.validate_envelope(false)
+    }
+
+    /// Shape of a transaction that a store pipeline composes itself, never one
+    /// read from a frontend: it may open with `case.create` and then record into
+    /// that case atomically, as `ingest` does for a new case.
+    pub fn validate_composed_shape(&self) -> Result<(), Failure> {
+        self.validate_envelope(true)
+    }
+
+    fn validate_envelope(&self, composed: bool) -> Result<(), Failure> {
         if !valid_token(&self.command_id) {
             return Err(field(
                 "/command_id",
@@ -132,7 +143,8 @@ impl Command {
                 "Submit at most 128 operations per transaction.",
             ));
         }
-        let creates_case = self.operations.len() == 1 && self.operations[0].op == "case.create";
+        let creates_case =
+            (composed || self.operations.len() == 1) && self.operations[0].op == "case.create";
         match self.case_id {
             None if creates_case && self.preconditions.is_empty() => {}
             Some(id) if id.kind() == Kind::Case && !creates_case => {}
@@ -152,7 +164,7 @@ impl Command {
             }
         }
         for (index, operation) in self.operations.iter().enumerate() {
-            if operation.op == "case.create" && !creates_case {
+            if operation.op == "case.create" && (!creates_case || index > 0) {
                 return Err(field(
                     format!("/operations/{index}/op"),
                     "Submit case.create as a standalone transaction.",
@@ -223,6 +235,42 @@ mod tests {
 
     fn parse(value: &Value) -> Result<(Command, SemanticRequest), Failure> {
         Command::parse(&serde_json::to_vec(value).unwrap())
+    }
+
+    #[test]
+    fn only_composed_transactions_may_create_a_case_and_record_into_it() {
+        let mut request = request();
+        request["case_id"] = Value::Null;
+        request["operations"] = json!([
+            {"op": "case.create", "payload": {"title": "Runs", "mode": "record"}},
+            {"op": "run.start", "payload": {}},
+        ]);
+        let command: Command = serde_json::from_value(request.clone()).unwrap();
+        assert_eq!(
+            command.validate_shape().unwrap_err().error.path.as_deref(),
+            Some("/case_id")
+        );
+        assert!(command.validate_composed_shape().is_ok());
+
+        request["operations"] = json!([
+            {"op": "case.create", "payload": {"title": "Runs"}},
+            {"op": "case.create", "payload": {"title": "Again"}},
+        ]);
+        let command: Command = serde_json::from_value(request.clone()).unwrap();
+        assert_eq!(
+            command
+                .validate_composed_shape()
+                .unwrap_err()
+                .error
+                .path
+                .as_deref(),
+            Some("/operations/1/op")
+        );
+        request["case_id"] = json!(CASE_ID);
+        request["operations"] = json!([{"op": "run.start", "payload": {}}]);
+        let command: Command = serde_json::from_value(request).unwrap();
+        assert!(command.validate_composed_shape().is_ok());
+        assert!(command.validate_shape().is_ok());
     }
 
     #[test]

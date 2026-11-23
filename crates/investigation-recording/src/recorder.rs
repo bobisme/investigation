@@ -177,8 +177,8 @@ impl LocalRecorder {
 // Each operation lands with its own durable implementation. Until then the
 // call reports `Unsupported` and records nothing, rather than pretending.
 impl Recorder for LocalRecorder {
-    fn begin(&self, _request: &BeginCapture) -> Result<BeginReceipt, RecordingError> {
-        Err(unsupported(Operation::Begin))
+    fn begin(&self, request: &BeginCapture) -> Result<BeginReceipt, RecordingError> {
+        crate::begin::declare(&self.workspace, request)
     }
 
     fn append(&self, _event: &CaptureEvent) -> Result<ItemReceipt, RecordingError> {

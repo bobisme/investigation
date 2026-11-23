@@ -1,5 +1,6 @@
 //! Local command-line frontend.
 
+mod capture;
 mod evidence;
 mod frontier;
 mod next;
@@ -151,6 +152,9 @@ enum Commands {
     /// Inspect retained source material explicitly.
     #[command(subcommand)]
     Evidence(evidence::EvidenceCommand),
+    /// Record an external producer's run through the inv.capture.v1 protocol.
+    #[command(subcommand)]
+    Capture(capture::CaptureCommand),
     /// Discover operation schemas, examples, and repairs.
     #[command(
         after_help = "Examples:\n  investigation schema --list --format json\n  investigation schema case.create --format json\n  investigation schema record --schema-only --format json"
@@ -287,6 +291,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Record { .. }
                 | Commands::Ingest { .. }
                 | Commands::Start { .. }
+                | Commands::Capture(capture::CaptureCommand::Begin { .. })
                 | Commands::Repair(_)
         )
     {
@@ -311,6 +316,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                     command_id,
                 } => evidence::start(&mut store, &global, &question, &attach, &command_id),
                 Commands::Evidence(command) => evidence::read(&mut store, &global, command),
+                Commands::Capture(command) => capture::run(&mut store, &global, command),
                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),
                 Commands::Show { id, depth, at } => show(&mut store, &global, &id, depth, at),
                 Commands::Brief { level, max_bytes } => {

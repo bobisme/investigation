@@ -50,10 +50,11 @@
 //!
 //! # Implementation status
 //!
-//! This build fixes the public types and signatures. Every [`LocalRecorder`]
-//! operation currently returns [`RecordingError::Unsupported`] and records
-//! nothing; each operation's durable behaviour lands separately without changing
-//! these signatures.
+//! This build fixes the public types and signatures. [`Recorder::begin`] is
+//! durable on [`LocalRecorder`] and is also the `capture begin` CLI command. The
+//! other operations return [`RecordingError::Unsupported`] and record nothing;
+//! each one's durable behaviour lands separately without changing these
+//! signatures. `docs/recording.md` documents the staging layout.
 //!
 //! # Compatibility policy
 //!

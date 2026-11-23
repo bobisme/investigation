@@ -19,7 +19,13 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::{durable::DurableFs, store::ingest::IngestVersion};
+use crate::{
+    durable::DurableFs,
+    store::{
+        capture::{CAPTURE_OPERATIONS, CaptureProtocol, CaptureRequest},
+        ingest::IngestVersion,
+    },
+};
 
 pub const GENESIS_FILENAME: &str = "genesis.json";
 pub const EVENTS_DIRECTORY: &str = "events";
@@ -308,6 +314,23 @@ impl Event {
             {
                 return Err(invalid(
                     "Ingest request disagrees with event metadata or case scope.",
+                ));
+            }
+        } else if input::decode::<CaptureProtocol>(request_version).is_ok() {
+            let request: CaptureRequest = decode(
+                &self.request.input,
+                path,
+                JournalErrorKind::MetadataMismatch,
+            )?;
+            if !CAPTURE_OPERATIONS.contains(&request.operation.as_str())
+                || request.actor != self.actor
+                || request.command_id != self.command_id
+                || request.case_id != ((self.sequence != 1).then_some(self.accepted.case_id))
+                || !self.preconditions.is_empty()
+                || self.manifest_digest.is_some()
+            {
+                return Err(invalid(
+                    "Capture request disagrees with event metadata or case scope.",
                 ));
             }
         } else {

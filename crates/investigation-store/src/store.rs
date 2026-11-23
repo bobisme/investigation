@@ -44,6 +44,9 @@ pub use check::{CheckIssue, CheckReport, Severity};
 #[path = "ingest.rs"]
 pub mod ingest;
 
+#[path = "capture.rs"]
+pub mod capture;
+
 #[path = "evidence_read.rs"]
 pub mod evidence_read;
 

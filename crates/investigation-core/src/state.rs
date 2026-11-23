@@ -223,6 +223,30 @@ pub fn validate_and_apply_with_observations(
     observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
 ) -> Result<AcceptedTransaction, Failure> {
     command.validate_shape()?;
+    apply_operations(state, command, catalog, acceptance, observations)
+}
+
+/// Validate a transaction composed by a store pipeline rather than read from a
+/// frontend. It may create its case and then record into it atomically; see
+/// [`Command::validate_composed_shape`]. Every operation still runs through the
+/// catalog with the same rules as a submitted command.
+pub fn validate_and_apply_composed(
+    state: &State,
+    command: &Command,
+    catalog: &Catalog,
+    acceptance: Acceptance<'_>,
+) -> Result<AcceptedTransaction, Failure> {
+    command.validate_composed_shape()?;
+    apply_operations(state, command, catalog, acceptance, &BTreeMap::new())
+}
+
+fn apply_operations(
+    state: &State,
+    command: &Command,
+    catalog: &Catalog,
+    acceptance: Acceptance<'_>,
+    observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
+) -> Result<AcceptedTransaction, Failure> {
     if acceptance.sequence <= state.sequence {
         return Err(Failure::new(
             ErrorCode::IntegrityFailure,

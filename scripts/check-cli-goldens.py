@@ -15,7 +15,7 @@ GOLDEN = ROOT / "fixtures/development/cli-goldens.json"
 SCOPES = (
     ("init",), ("schema",), ("record",), ("ingest",), ("start",), ("receipt",), ("show",),
     ("brief",), ("next",), ("frontier",), ("onboard",), ("check",), ("repair", "index"), ("evidence", "read"),
-    ("case", "new"), ("source", "add"), ("observe",), ("note",),
+    ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
 )
 
 

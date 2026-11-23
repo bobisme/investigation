@@ -968,6 +968,8 @@ const RUN_META: &[&str] = &[
     "retrospective_plan_ref",
     "reconciliation_reason",
     "ordering_receipt",
+    // Capture binding (handle, producer identity, staging) set by `capture.begin`.
+    "capture",
 ];
 
 fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {

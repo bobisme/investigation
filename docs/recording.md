@@ -14,7 +14,55 @@ A producer is an external program that runs something under its own authority an
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
-**Status.** The types and signatures are fixed. In this build every `LocalRecorder` call returns `RecordingError::Unsupported` and records nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+**Status.** The types and signatures are fixed. `begin` is durable and has its CLI command, `capture begin`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+
+## `capture begin`
+
+```sh
+investigation --workspace ./cases capture begin --input begin.json --format json
+```
+
+`--input` takes a file, or `-` for stdin. The request is the JSON form of `BeginCapture`:
+
+```json
+{
+  "key": "run-0001/begin",
+  "actor": "agent:example-producer",
+  "producer": {"name": "example-producer", "version": "0.1.0"},
+  "external_run_id": "run-0001",
+  "intent": {"label": "synthetic run"},
+  "case": {"kind": "new_record_case", "title": "Synthetic runs"},
+  "classification": "internal",
+  "metadata": {"example-org.fixture": {"seed": 7}}
+}
+```
+
+- `case` is `{"kind": "new_record_case", "title": …}` or `{"kind": "existing", "case_id": …}`. A new case has mode `record` and is created in the same transaction as the Run.
+- `intent.inquiry_plan` pins an exact frozen InquiryPlan revision in an existing case. The Run then records the plan digest and its chronology. `intent.external_plan_digest` records the digest of a plan held outside Investigation.
+- `classification` defaults to `internal`. `restricted` also applies to the Run record.
+
+Stdout is the `BeginReceipt` (`handle`, `run_id`, `case_id`, `protocol`, `limits`, `staging_dir`, `commit`), the same value `Recorder::begin` returns. A rejection prints the structured `inv.response.v1` error with `ok: false`. The Run is `declared`, with evidence completeness and measurement validity `unknown`. Begin records a declaration only: it does not authorize, approve or start anything.
+
+Idempotency:
+
+- The key is the journal command ID. Resending the identical request returns the original receipt with `commit.result` `already_committed` and the same Run, handle and staging. Fields that take a default compare equal whether or not they are spelled out.
+- The same key and actor with a different request is refused with `IDEMPOTENCY_KEY_REUSED` at `/command_id`.
+- The producer name and external run ID identify one logical attempt. A second `begin` for that pair under another key or actor is refused with `IDEMPOTENCY_KEY_REUSED` at `/external_run_id`. The error names the original command ID, Run and handle, and its repair argv looks up the original receipt.
+
+The limits are fixed when the handle is declared: 65536 bytes per appended event, 67108864 bytes per attachment and 100000 positions. A later build with other defaults returns the original limits on a retry.
+
+## Staging
+
+```text
+state/staging/<run-id>/          0700
+  handle.json                    0400, binds the directory to its handle
+```
+
+`staging_dir` in the receipt is this directory, relative to the workspace root. Begin commits the declaration first and then allocates the directory, under the workspace commit lock and with every file and directory synced. `handle.json` holds `schema_version` (`inv.capture-staging.v1`), `handle`, `run_id`, `case_id`, `transaction_id`, `command_id`, `actor`, `producer` and `external_run_id`. Its bytes are a function of the committed declaration only. A retry verifies them, and refuses to overwrite a file bound to another declaration.
+
+Later capture operations add their own entries beside `handle.json` and never rewrite it. A transient `handle.json.tmp` exists only while the binding is published.
+
+Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. Recovery reports that state, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
 
 ## Rules every producer follows
 

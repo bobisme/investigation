@@ -189,6 +189,18 @@ fn tree(root: &Path) -> Vec<(PathBuf, u64)> {
     entries
 }
 
+/// The tree minus the disposable index, whose page files vary between reads.
+fn tree_without_index(root: &Path) -> Vec<(PathBuf, u64)> {
+    tree_without_index_of(tree(root))
+}
+
+fn tree_without_index_of(entries: Vec<(PathBuf, u64)>) -> Vec<(PathBuf, u64)> {
+    entries
+        .into_iter()
+        .filter(|(path, _)| !path.starts_with("cache"))
+        .collect()
+}
+
 fn assert_unsupported<T: std::fmt::Debug>(result: Result<T, RecordingError>, operation: Operation) {
     let error = result.unwrap_err();
     assert_eq!(error, RecordingError::Unsupported { operation });
@@ -212,34 +224,31 @@ fn external_producer_runs_against_every_recorder_form() {
     let shared = Arc::new(local.clone());
     let as_dyn: &dyn Recorder = &local;
 
-    // The durable operations land separately. Until then the honest outcome is
-    // an unsupported begin that records nothing, for every way of holding one.
-    assert_unsupported(record_synthetic(&local, &output), Operation::Begin);
-    assert_unsupported(record_synthetic(as_dyn, &output), Operation::Begin);
-    assert_unsupported(record_synthetic(&boxed, &output), Operation::Begin);
-    assert_unsupported(record_synthetic(&shared, &output), Operation::Begin);
-    assert_unsupported(record_synthetic(&counting, &output), Operation::Begin);
-    assert_eq!(counting.calls.load(Ordering::Relaxed), 1);
-    assert_eq!(tree(&root), before);
+    // `begin` is durable; the later operations land separately. Until then the
+    // honest outcome is a declared Run followed by an unsupported `recover`, for
+    // every way of holding a recorder. Each later flow resends the identical
+    // begin, so it resumes the same Run instead of declaring another.
+    assert_unsupported(record_synthetic(&local, &output), Operation::Recover);
+    let declared = tree(&root);
+    assert_ne!(declared, before);
+    assert_unsupported(record_synthetic(as_dyn, &output), Operation::Recover);
+    assert_unsupported(record_synthetic(&boxed, &output), Operation::Recover);
+    assert_unsupported(record_synthetic(&shared, &output), Operation::Recover);
+    assert_unsupported(record_synthetic(&counting, &output), Operation::Recover);
+    assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
+    assert_eq!(tree_without_index(&root), tree_without_index_of(declared));
+    let mut store =
+        investigation_store::Store::open(investigation_store::Workspace::open(&root).unwrap());
+    assert_eq!(store.list_cases().unwrap().len(), 1);
+    assert_eq!(store.capture_handles().unwrap().len(), 1);
 }
 
 #[test]
-fn every_local_operation_reports_unsupported_and_records_nothing() {
+fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing() {
     let (_temporary, root) = workspace();
     let before = tree(&root);
     let recorder = LocalRecorder::open(&root).unwrap();
     let handle: CaptureHandle = HANDLE.parse().unwrap();
-    let begin = BeginCapture::new(
-        key("begin"),
-        "agent:example-producer".parse().unwrap(),
-        ProducerIdentity::new(ProducerName::new("example-producer").unwrap()),
-        ExternalRunId::new("run-1").unwrap(),
-        CaptureIntent::new("inspect"),
-        CaseTarget::NewRecordCase {
-            title: "Runs".into(),
-        },
-    );
-    assert_unsupported(recorder.begin(&begin), Operation::Begin);
     let event = CaptureEvent::new(handle, key("e1"), Position::FIRST, LifecycleFact::Started);
     assert_unsupported(recorder.append(&event), Operation::Append);
     let artifact = StableArtifact::file(
