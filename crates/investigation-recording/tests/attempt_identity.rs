@@ -386,8 +386,26 @@ fn legacy_workspace() -> (tempfile::TempDir, PathBuf) {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("workspace");
     copy(&Path::new(LEGACY).join("workspace"), &root);
-    // Git keeps no empty directories; the rebuildable cache starts empty.
-    fs::create_dir(root.join("cache")).unwrap();
+    // Git keeps no empty directories, so recreate the workspace layout's empty
+    // ones (the journal, scratch and cache directories start empty).
+    for relative in [
+        "state/cases",
+        "state/events",
+        "state/blobs/sha256",
+        "state/checkpoints",
+        "state/staging",
+        "state/locks",
+        "state/tmp",
+        "cache",
+        "local",
+        "exports",
+    ] {
+        let directory = root.join(relative);
+        if !directory.exists() {
+            fs::create_dir_all(&directory).unwrap();
+            fs::set_permissions(&directory, fs::Permissions::from_mode(0o700)).unwrap();
+        }
+    }
     (temporary, root)
 }
 
