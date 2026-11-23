@@ -1,0 +1,7 @@
+Synthetic blog post: "Sizing my Corvin sender" (personal blog, fictional)
+Posted 2026-03-19.
+
+I read the Relay Trade Weekly piece on session limits. Relay Trade Weekly
+reports that the relay accepts a maximum unacknowledged frame window of 64
+frames, so I sized my sender to keep up to 64 frames outstanding. I have not
+tested this against a unit myself.

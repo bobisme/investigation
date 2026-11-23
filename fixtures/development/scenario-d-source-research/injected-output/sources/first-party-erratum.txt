@@ -1,0 +1,9 @@
+Synthetic first-party erratum: Corvin Relay Working Group
+Erratum E-3.1-004, issued 2026-04-02. Status: in effect.
+
+Affected edition: Edition 3.1 (firmware builds numbered 3.1.x).
+Affected text: Section 5.2 and Table 7 row 4.
+
+Correction: the maximum unacknowledged frame window for Edition 3.1 is 48
+frames. The printed value of 64 frames was carried over from a draft and is
+withdrawn. Implementations built to Edition 3.1 shall use 48 frames.

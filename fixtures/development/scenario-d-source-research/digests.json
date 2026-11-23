@@ -1,0 +1,132 @@
+{
+  "schema_version": "inv.fixture.digests.v1",
+  "scope": "scenario-d-source-research",
+  "algorithm": "sha256",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "d7e59c6fa3b9163e82db62c5a0997f8da855ea50bd8ce5547c27092706e66a7c",
+      "bytes": 3167
+    },
+    {
+      "path": "baseline/expected.json",
+      "sha256": "66c25f1508dfe562a264bfa75f41bd6d90f5fa208af3f408fd698f5d9aac8861",
+      "bytes": 4669
+    },
+    {
+      "path": "baseline/manifest.json",
+      "sha256": "404ed8d2b30d40db7685b4a7fd728d1582fcccbe850cb30038347e6d095f759f",
+      "bytes": 5454
+    },
+    {
+      "path": "baseline/sources/blog-post.txt",
+      "sha256": "92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03",
+      "bytes": 355
+    },
+    {
+      "path": "baseline/sources/first-party-erratum.txt",
+      "sha256": "e09cdd7d9dea13c84c43e278c7b2d7de47e38f289d106219c2800ca87d6e62c4",
+      "bytes": 446
+    },
+    {
+      "path": "baseline/sources/primary-specification.txt",
+      "sha256": "50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587",
+      "bytes": 692
+    },
+    {
+      "path": "baseline/sources/search-coverage-input.json",
+      "sha256": "ed8f73dd46d8083b041394322c40a5cefa6caea0ad1fb261be163dd331a060af",
+      "bytes": 1220
+    },
+    {
+      "path": "baseline/sources/trade-article.txt",
+      "sha256": "61b7f0969528e5236078ef9db4b89a5f3efaee8a994319c96a449aa1f5691775",
+      "bytes": 815
+    },
+    {
+      "path": "injected-output/expected.json",
+      "sha256": "ba7a7cfd5b641d84a7ffcd9d9222624022ef1fe430ce12a2cff3d8738294680b",
+      "bytes": 5742
+    },
+    {
+      "path": "injected-output/manifest.json",
+      "sha256": "181d8d485c713077b9d3013a6fe30a90abe13f1164ff604d6df7b1c8ee38e104",
+      "bytes": 6569
+    },
+    {
+      "path": "injected-output/sources/blog-post.txt",
+      "sha256": "92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03",
+      "bytes": 355
+    },
+    {
+      "path": "injected-output/sources/crawl-output-forum-sweep.txt",
+      "sha256": "c7a37da35ca923c9a82784387be97ad03b3edfeb496d5cdc1b8e260594c2517f",
+      "bytes": 994
+    },
+    {
+      "path": "injected-output/sources/first-party-erratum.txt",
+      "sha256": "e09cdd7d9dea13c84c43e278c7b2d7de47e38f289d106219c2800ca87d6e62c4",
+      "bytes": 446
+    },
+    {
+      "path": "injected-output/sources/primary-specification.txt",
+      "sha256": "50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587",
+      "bytes": 692
+    },
+    {
+      "path": "injected-output/sources/search-coverage-input.json",
+      "sha256": "96e109e8fc37d4b5009f275c79a992faf91d04547820979fb5646b0998070054",
+      "bytes": 1543
+    },
+    {
+      "path": "injected-output/sources/trade-article.txt",
+      "sha256": "61b7f0969528e5236078ef9db4b89a5f3efaee8a994319c96a449aa1f5691775",
+      "bytes": 815
+    },
+    {
+      "path": "later-edition-twin/expected.json",
+      "sha256": "edbe1e09052031826e46d702b33b118754c56527776aa8cad4407645628e36fe",
+      "bytes": 4539
+    },
+    {
+      "path": "later-edition-twin/manifest.json",
+      "sha256": "f461d98ae4fc224438190039284c3ef14d6b4dd25bf7b3a0ffb6787bcfc4b4cb",
+      "bytes": 5466
+    },
+    {
+      "path": "later-edition-twin/sources/blog-post.txt",
+      "sha256": "92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03",
+      "bytes": 355
+    },
+    {
+      "path": "later-edition-twin/sources/first-party-erratum.txt",
+      "sha256": "68f62245ec8876714791062e1a6f753ee9b1be979722f548d97d15fd8117f5b5",
+      "bytes": 424
+    },
+    {
+      "path": "later-edition-twin/sources/primary-specification.txt",
+      "sha256": "50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587",
+      "bytes": 692
+    },
+    {
+      "path": "later-edition-twin/sources/search-coverage-input.json",
+      "sha256": "7880c063c2bf284046e5b5f4c66af1ec016b5973a234e13047d8b4c059134c8c",
+      "bytes": 1427
+    },
+    {
+      "path": "later-edition-twin/sources/trade-article.txt",
+      "sha256": "8b353b4fea108e20290242246c860e71909881b8fd9b900c9c6797820054ec93",
+      "bytes": 827
+    },
+    {
+      "path": "roles/investigator.md",
+      "sha256": "3ad60a127fa418ee3b2a46e4165f0f70cdd3607ad086a8d9abac3bde609ce2e7",
+      "bytes": 758
+    },
+    {
+      "path": "roles/reviewer.md",
+      "sha256": "b2d6c81d29a99e673ad2915234ec77145c93d9c182530d80a4ba899c7fab9ebf",
+      "bytes": 587
+    }
+  ]
+}

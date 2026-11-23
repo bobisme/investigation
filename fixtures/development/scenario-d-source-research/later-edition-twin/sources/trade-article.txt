@@ -1,0 +1,15 @@
+Synthetic trade article: Relay Trade Weekly (fictional), "Corvin relay window sizes explained"
+Published 2026-03-05. Staff writer.
+
+Paragraph 1. Corvin relays have become common in small message pipelines. This
+piece covers the session limits that matter when sizing a sender.
+
+Paragraph 3. The figure is taken from the published specification. According to
+the Edition 3.1 specification, the relay accepts a maximum unacknowledged frame
+window of 64 frames. We did not verify this figure ourselves.
+
+Paragraph 6. Separately, we ran our own bench test of one relay unit running
+build 3.2.0-rc1. Over 40 runs the sender stalled in every run once 56 frames were
+outstanding, and in none at 48 frames. The unit was a pre-release candidate for the next edition.
+
+Paragraph 7. Readers should size senders to their own measurements.

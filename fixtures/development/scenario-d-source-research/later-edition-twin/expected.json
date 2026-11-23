@@ -1,0 +1,129 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "D",
+  "variant": "later-edition-twin",
+  "question": "What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent references actually corroborate that value?",
+  "named_build": "3.1.4",
+  "properties": [
+    {
+      "id": "one_origin_for_disputed_value",
+      "assert": "claim_origin_count",
+      "claim_origin": "O1-spec-table-7-value",
+      "origin_count": 1,
+      "acquisition_sources": [
+        "primary-specification.txt",
+        "trade-article.txt",
+        "blog-post.txt"
+      ],
+      "acquisitions_kept_as_separate_records": 3
+    },
+    {
+      "id": "bench_test_separate_origin",
+      "assert": "distinct_origin",
+      "claim_origin": "O2-article-bench-test",
+      "different_from": "O1-spec-table-7-value",
+      "same_source_record_as": "trade-article.txt"
+    },
+    {
+      "id": "erratum_currency",
+      "assert": "erratum_applies_to_named_build",
+      "erratum": "first-party-erratum.txt",
+      "named_build": "3.1.4",
+      "named_build_edition": "3.1",
+      "applies": false,
+      "effective_value": {
+        "value": 64,
+        "unit": "frames"
+      }
+    },
+    {
+      "id": "bench_test_build_caveat",
+      "assert": "limitation_visible",
+      "limitation": "bench unit is a pre-release candidate of a different edition than the named build"
+    },
+    {
+      "id": "every_original_selector_kept",
+      "assert": "quotes_present_in_sources",
+      "quotes": [
+        {
+          "source": "primary-specification.txt",
+          "quote": "A sender shall not have more than 64 frames outstanding."
+        },
+        {
+          "source": "primary-specification.txt",
+          "quote": "row 4  Maximum unacknowledged frame window .......... 64 frames"
+        },
+        {
+          "source": "primary-specification.txt",
+          "quote": "Firmware builds numbered 3.1.x implement Edition 3.1."
+        },
+        {
+          "source": "blog-post.txt",
+          "quote": "reports that the relay accepts a maximum unacknowledged frame window of 64 frames"
+        },
+        {
+          "source": "trade-article.txt",
+          "quote": "the relay accepts a maximum unacknowledged frame window of 64 frames"
+        },
+        {
+          "source": "trade-article.txt",
+          "quote": "the sender stalled in every run once 56 frames were"
+        },
+        {
+          "source": "trade-article.txt",
+          "quote": "build 3.2.0-rc1"
+        },
+        {
+          "source": "first-party-erratum.txt",
+          "quote": "Affected edition: Edition 3.2 only (firmware builds numbered 3.2.x)."
+        },
+        {
+          "source": "first-party-erratum.txt",
+          "quote": "This value applies only to Edition 3.2."
+        },
+        {
+          "source": "first-party-erratum.txt",
+          "quote": "Edition 3.1 Table 7 row 4 remains 64 frames."
+        }
+      ]
+    },
+    {
+      "id": "search_coverage_includes_empty_results",
+      "assert": "search_coverage_run_lists_registries",
+      "source": "search-coverage-input.json",
+      "registries": [
+        "Corvin errata register",
+        "Corvin edition index",
+        "Interoperability lab results registry",
+        "Vendor advisory archive",
+        "Standards cross-reference index"
+      ],
+      "zero_result_registries": [
+        "Corvin edition index",
+        "Interoperability lab results registry",
+        "Vendor advisory archive",
+        "Standards cross-reference index"
+      ],
+      "zero_result_searches_in_errata_register": [
+        "S1"
+      ],
+      "selector_whitespace": "quotes are compared after collapsing line breaks to single spaces"
+    }
+  ],
+  "acceptable_outcomes": [
+    "conditional: 64 frames for build 3.1.4 if the Edition 3.1 mapping holds, resting on one specification origin with no independent measurement for that edition",
+    "explicit insufficient-evidence result on independent corroboration"
+  ],
+  "required_visible_limits": [
+    "erratum applicability tied to edition",
+    "build to edition mapping",
+    "dependence of article and blog on the specification origin",
+    "empty registry searches are not proof of absence"
+  ],
+  "prohibited_promotions": [
+    "three independent references corroborate 64",
+    "erratum E-3.2-001 treated as correcting Edition 3.1",
+    "bench test of the pre-release candidate treated as contradicting or confirming Edition 3.1",
+    "empty registry search treated as proof that no erratum exists"
+  ]
+}

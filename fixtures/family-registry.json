@@ -28,6 +28,16 @@
       ]
     },
     {
+      "id": "scenario-d-source-research",
+      "split": "development",
+      "domain": "source-research",
+      "variants": [
+        {"id": "baseline", "split": "development", "directory": "development/scenario-d-source-research/baseline"},
+        {"id": "later-edition-twin", "split": "development", "directory": "development/scenario-d-source-research/later-edition-twin"},
+        {"id": "injected-output", "split": "development", "directory": "development/scenario-d-source-research/injected-output"}
+      ]
+    },
+    {
       "id": "w01-handoff",
       "split": "development",
       "domain": "debugging",

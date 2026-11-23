@@ -1,0 +1,139 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "D",
+  "variant": "later-edition-twin",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "derived_from": "baseline",
+  "question": "What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent references actually corroborate that value?",
+  "named_build": "3.1.4",
+  "build_to_edition": {
+    "rule": "builds 3.1.x implement Edition 3.1 (primary-specification.txt, Section 2.3)",
+    "named_build_edition": "3.1"
+  },
+  "claim_origins": [
+    {
+      "id": "O1-spec-table-7-value",
+      "claim": "Edition 3.1 maximum unacknowledged frame window is 64 frames",
+      "originating_source": "primary-specification.txt",
+      "kind": "specification_claim",
+      "passages": [
+        {
+          "source": "primary-specification.txt",
+          "selector": "row 4  Maximum unacknowledged frame window .......... 64 frames",
+          "role": "original"
+        },
+        {
+          "source": "trade-article.txt",
+          "selector": "the relay accepts a maximum unacknowledged frame window of 64 frames",
+          "role": "derived_restatement"
+        },
+        {
+          "source": "blog-post.txt",
+          "selector": "reports that the relay accepts a maximum unacknowledged frame window of 64\nframes",
+          "role": "derived_restatement_of_article"
+        }
+      ]
+    },
+    {
+      "id": "O2-article-bench-test",
+      "claim": "bench stall observed above 48 outstanding frames on one unit of build 3.2.0-rc1",
+      "originating_source": "trade-article.txt",
+      "kind": "own_measurement",
+      "passages": [
+        {
+          "source": "trade-article.txt",
+          "selector": "the sender stalled in every run once 56 frames were",
+          "role": "original"
+        }
+      ]
+    },
+    {
+      "id": "O3-erratum",
+      "claim": "Edition 3.2 window is 48 frames; Edition 3.1 stays 64",
+      "originating_source": "first-party-erratum.txt",
+      "kind": "first_party_correction",
+      "passages": [
+        {
+          "source": "first-party-erratum.txt",
+          "selector": "This value applies only to Edition 3.2.",
+          "role": "original"
+        }
+      ]
+    }
+  ],
+  "source_files": [
+    {
+      "path": "sources/blog-post.txt",
+      "role": "blog_post_repeating_article",
+      "sha256": "92b6ba80e9389f9505f0fa74cf3de2ee6073f44b94aa255b170da8ecc02e3c03",
+      "bytes": 355,
+      "origin_revision": "later-edition-twin:blog-post.txt:v1",
+      "provenance_group": "synthetic-personal-blog",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "reports that the relay accepts a maximum unacknowledged frame window of 64 frames"
+      ]
+    },
+    {
+      "path": "sources/first-party-erratum.txt",
+      "role": "first_party_erratum",
+      "sha256": "68f62245ec8876714791062e1a6f753ee9b1be979722f548d97d15fd8117f5b5",
+      "bytes": 424,
+      "origin_revision": "later-edition-twin:first-party-erratum.txt:v1",
+      "provenance_group": "synthetic-corvin-working-group-publications",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "Affected edition: Edition 3.2 only (firmware builds numbered 3.2.x).",
+        "This value applies only to Edition 3.2.",
+        "Edition 3.1 Table 7 row 4 remains 64 frames."
+      ]
+    },
+    {
+      "path": "sources/primary-specification.txt",
+      "role": "primary_specification",
+      "sha256": "50996abbec8177f12b4d4c7b326a7cdba3e5def484c90315d46890d43168b587",
+      "bytes": 692,
+      "origin_revision": "later-edition-twin:primary-specification.txt:v1",
+      "provenance_group": "synthetic-corvin-working-group-publications",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "A sender shall not have more than 64 frames outstanding.",
+        "row 4  Maximum unacknowledged frame window .......... 64 frames",
+        "Firmware builds numbered 3.1.x implement Edition 3.1."
+      ]
+    },
+    {
+      "path": "sources/search-coverage-input.json",
+      "role": "search_coverage_input",
+      "sha256": "7880c063c2bf284046e5b5f4c66af1ec016b5973a234e13047d8b4c059134c8c",
+      "bytes": 1427,
+      "origin_revision": "later-edition-twin:search-coverage-input.json:v1",
+      "provenance_group": "synthetic-search-log",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true
+    },
+    {
+      "path": "sources/trade-article.txt",
+      "role": "trade_article_with_own_bench_test",
+      "sha256": "8b353b4fea108e20290242246c860e71909881b8fd9b900c9c6797820054ec93",
+      "bytes": 827,
+      "origin_revision": "later-edition-twin:trade-article.txt:v1",
+      "provenance_group": "synthetic-trade-press",
+      "acquisition": "synthetic bytes committed with this development fixture",
+      "immutable": true,
+      "selector_examples": [
+        "the relay accepts a maximum unacknowledged frame window of 64 frames",
+        "the sender stalled in every run once 56 frames were",
+        "build 3.2.0-rc1"
+      ]
+    }
+  ]
+}

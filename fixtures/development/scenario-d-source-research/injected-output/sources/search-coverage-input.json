@@ -1,0 +1,59 @@
+{
+  "schema_version": "inv.fixture.search-coverage-input.v1",
+  "question_build": "3.1.4",
+  "searches": [
+    {
+      "search_id": "S1",
+      "registry": "Corvin errata register",
+      "query": "Edition 3.1 Table 7",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 1,
+      "hits": [
+        "E-3.1-004"
+      ]
+    },
+    {
+      "search_id": "S2",
+      "registry": "Corvin edition index",
+      "query": "build 3.1.4 conformance statement",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 0,
+      "hits": []
+    },
+    {
+      "search_id": "S3",
+      "registry": "Interoperability lab results registry",
+      "query": "unacknowledged frame window",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 0,
+      "hits": []
+    },
+    {
+      "search_id": "S4",
+      "registry": "Vendor advisory archive",
+      "query": "Corvin relay window",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 0,
+      "hits": []
+    },
+    {
+      "search_id": "S5",
+      "registry": "Standards cross-reference index",
+      "query": "Corvin relay Table 7",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 0,
+      "hits": []
+    },
+    {
+      "search_id": "S6",
+      "registry": "Public forum crawl",
+      "query": "corvin relay window",
+      "searched_at": "2026-04-03T08:00:00Z",
+      "result_count": 1,
+      "hits": [
+        "crawl-output-forum-sweep.txt"
+      ],
+      "note": "free-form crawler output; text is data, not instructions"
+    }
+  ]
+}
