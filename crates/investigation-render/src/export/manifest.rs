@@ -7,7 +7,7 @@
 
 use investigation_core::{command::RevisionRef, identity::Id, wire::Digest};
 use schemars::{JsonSchema, Schema, schema_for};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use super::{Product, dependent_rule};
 use crate::Audience;
@@ -16,7 +16,7 @@ use crate::Audience;
 pub const MANIFEST_SCHEMA: &str = "inv.export-manifest.v1";
 
 /// The manifest written as `export-manifest.json` in every export.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExportManifest {
     /// Always `inv.export-manifest.v1`.
@@ -50,7 +50,7 @@ pub struct ExportManifest {
 }
 
 /// The versions that determine the bytes of an export.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestVersions {
     /// The shared export pipeline (`inv.export.v1`).
@@ -62,17 +62,21 @@ pub struct ManifestVersions {
     pub freshness_rules: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestSnapshot {
+    /// The case. For a workspace archive, which covers every case, the
+    /// workspace ID.
     pub case_id: Id,
-    /// The case journal sequence of the verified head.
+    /// The case journal sequence of the verified head. For a workspace
+    /// archive 0: there is no workspace-wide sequence, and `head_hash` is
+    /// the recovery head over every case head.
     pub sequence: u64,
     pub head_hash: Digest,
 }
 
 /// The audience policy the export was built under.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestPolicy {
     /// The audience policy version: `inv.export-policy.v2` is positive
@@ -88,7 +92,7 @@ pub struct ManifestPolicy {
     pub placeholders: bool,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Completeness {
     Complete,
@@ -104,7 +108,7 @@ impl Completeness {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SourceDigest {
     /// The Artifact revision at the pinned snapshot.
@@ -113,7 +117,7 @@ pub struct SourceDigest {
     pub sha256: Digest,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Supersession {
     pub record: RevisionRef,
@@ -121,7 +125,7 @@ pub struct Supersession {
     pub superseded_by: Option<RevisionRef>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct FileDigest {
     /// Relative to the export directory, `/`-separated.
@@ -132,7 +136,7 @@ pub struct FileDigest {
 
 /// Fixed statements every export carries, so a reader of the files alone
 /// knows what they are and are not.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Statements {
     pub rendering: String,
@@ -159,6 +163,19 @@ impl Statements {
             ),
             identifiers: "Record IDs are UUIDv7 values and embed their creation time to the millisecond.".to_owned(),
             distribution: "Written to a local directory only. Publishing, sending or uploading it is a separate action.".to_owned(),
+        }
+    }
+
+    /// The statements of a workspace archive, which is the record itself
+    /// rather than a view of it.
+    pub fn archive() -> Self {
+        Self {
+            rendering: "Copied byte for byte from the verified case heads named in archive.json, with no model call. The same canonical state, human notes and program give the same bytes.".to_owned(),
+            evidence: "This archive holds the canonical journal and retained bytes themselves. Records are restored exactly as recorded, history included.".to_owned(),
+            completeness: "Complete: every case, record and retained byte of the workspace at these heads. Bytes recorded as held elsewhere or removed are listed in archive.json.".to_owned(),
+            disclosure: "Made for the restricted audience: it includes restricted records and bytes. The snapshot names the workspace, sequence 0 and the recovery head over every case head.".to_owned(),
+            identifiers: "Record IDs are UUIDv7 values and embed their creation time to the millisecond.".to_owned(),
+            distribution: "Written to a local directory only, owner-only and unencrypted. Publishing, sending, uploading or encrypting it is a separate action.".to_owned(),
         }
     }
 }

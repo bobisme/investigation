@@ -18,7 +18,10 @@ use investigation_core::wire::{Digest, ErrorCode, Failure};
 use investigation_render::{
     Audience,
     export::{
-        self, ExportError, ExportPlan, ExportSnapshot, KINDS, MANIFEST_FILE, Pin, plan_export,
+        self, ExportError, ExportPlan, ExportSnapshot, KINDS, KindSpec, MANIFEST_FILE, Pin, Scope,
+        archive::{ARCHIVE_AUDIENCE, plan_archive},
+        plan_export,
+        source::read_archive_source,
         write_export,
     },
 };
@@ -86,6 +89,13 @@ are listed only in this command's output, never in the export.
 --require-complete refuses instead. --snapshot pins an earlier verified head;
 disclosure still follows today's classifications.
 
+--kind workspace-archive copies the canonical state of every case instead:
+each journal to its verified head, the blobs they require, the workspace
+identity, investigation.toml, the vault's human folders and the v1 schemas.
+It takes no --case or --snapshot, is made only for --audience restricted
+because it holds every byte, and is refused while capture staging holds
+evidence the journal does not reference. Check it with archive verify.
+
 Kinds:
 ",
     );
@@ -107,6 +117,7 @@ Kinds:
 Examples:
   investigation export --kind case-report --audience internal --case <ID> --format json
   investigation export --kind case-report --audience public --case <ID> --snapshot 12 --out ./report-12 --format json
+  investigation export --kind workspace-archive --audience restricted --out ./backup --format json
 
 Read DIR/export-manifest.json for completeness, versions and file digests, then
 share DIR yourself; the export never leaves this machine on its own.
@@ -117,6 +128,10 @@ Next: investigation brief --case <ID> --format json",
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
+    let spec = export::kind(&args.kind).expect("clap accepts registered kinds only");
+    if spec.scope() == Scope::All {
+        return run_archive(store, global, spec, &args);
+    }
     let case = select_case(store, global.case.as_deref())?;
     let mut prefix = workspace_argv(store.workspace());
     prefix.extend(["--case".into(), case.to_string()]);
@@ -147,7 +162,6 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     };
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
-    let spec = export::kind(&args.kind).expect("clap accepts registered kinds only");
     let plan = plan_export(spec, &snapshot, audience).map_err(|error| {
         let failure = error.to_failure();
         match error {
@@ -167,29 +181,8 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         failure.error.actual = Some(exclusions_json(&plan));
         return Err(failure);
     }
-    let workspace = store.workspace();
-    let (out, shown) = match &args.out {
-        Some(out) => (out.clone(), out.to_string_lossy().into_owned()),
-        None => {
-            let name = default_name(&plan);
-            (
-                workspace.root().join("exports").join(&name),
-                format!("exports/{name}"),
-            )
-        }
-    };
-    refuse_workspace_internals(workspace.root(), &out)?;
-    let written = write_export(&plan, &out).map_err(|error| {
-        let failure = error.to_failure().at("--out");
-        match error {
-            ExportError::DestinationNotEmpty | ExportError::DestinationUnsafe(_) => {
-                let mut failure = failure;
-                failure.error.actual = Some(json!({"destination": shown}));
-                failure
-            }
-            _ => failure,
-        }
-    })?;
+    let (out, shown) = destination(store, &args, &plan);
+    let written = write(store, &plan, &out, &shown)?;
 
     let manifest = plan.manifest();
     let mut next_argv = prefix;
@@ -251,6 +244,163 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         display_argv(&next_argv)
     );
     Ok(Output::success("exported", value, text))
+}
+
+/// Where to write `plan`: `--out`, or `exports/<default name>`. Returns the
+/// path and how to show it.
+fn destination(store: &Store, args: &Args, plan: &ExportPlan) -> (PathBuf, String) {
+    match &args.out {
+        Some(out) => (out.clone(), out.to_string_lossy().into_owned()),
+        None => {
+            let name = default_name(plan);
+            (
+                store.workspace().root().join("exports").join(&name),
+                format!("exports/{name}"),
+            )
+        }
+    }
+}
+
+fn write(
+    store: &Store,
+    plan: &ExportPlan,
+    out: &Path,
+    shown: &str,
+) -> Result<export::Written, Failure> {
+    refuse_workspace_internals(store.workspace().root(), out)?;
+    write_export(plan, out).map_err(|error| {
+        let failure = error.to_failure().at("--out");
+        match error {
+            ExportError::DestinationNotEmpty | ExportError::DestinationUnsafe(_) => {
+                let mut failure = failure;
+                failure.error.actual = Some(json!({"destination": shown}));
+                failure
+            }
+            _ => failure,
+        }
+    })
+}
+
+/// `export --kind workspace-archive`: every case at its verified head.
+fn run_archive(
+    store: &mut Store,
+    global: &Global,
+    spec: &'static KindSpec,
+    args: &Args,
+) -> Result<Output, Failure> {
+    let refuse = |path: &str, message: &str| {
+        Failure::new(ErrorCode::InvalidInput, message.to_owned()).at(path)
+    };
+    if global.case.is_some() {
+        return Err(refuse(
+            "--case",
+            "A workspace archive holds every case of the workspace; omit --case.",
+        ));
+    }
+    if args.snapshot.snapshot.is_some() {
+        return Err(refuse(
+            "--snapshot",
+            "A workspace archive copies every case to its current verified head; omit --snapshot.",
+        ));
+    }
+    let audience = args.audience.audience();
+    if audience != ARCHIVE_AUDIENCE {
+        let mut failure = ExportError::ArchiveAudience {
+            required: ARCHIVE_AUDIENCE.as_str(),
+        }
+        .to_failure()
+        .at("--audience");
+        failure.error.expected = Some(json!({"audience": ARCHIVE_AUDIENCE.as_str()}));
+        return Err(failure);
+    }
+    let source = read_archive_source(store, crate::schema::published_documents())?;
+    let plan = plan_archive(spec, &source, audience).map_err(|error| {
+        let failure = error.to_failure();
+        match &error {
+            ExportError::Incomplete { .. } | ExportError::Caveated { .. } => {
+                let mut failure = failure.at("--audience");
+                failure.error.actual = Some(exclusions_json_of(&error));
+                failure
+            }
+            _ => failure,
+        }
+    })?;
+    let (out, shown) = destination(store, args, &plan);
+    let written = write(store, &plan, &out, &shown)?;
+    let manifest = plan.manifest();
+    let canonical = &source.canonical;
+    let verify_argv: Vec<String> = [
+        investigation_core::PROGRAM_NAME,
+        "archive",
+        "verify",
+        &out.to_string_lossy(),
+        "--format",
+        "json",
+    ]
+    .map(str::to_owned)
+    .to_vec();
+    let value = json!({
+        "export_id": manifest.export_id,
+        "kind": manifest.kind,
+        "product": manifest.product,
+        "audience": audience.as_str(),
+        "destination": shown,
+        "created_directory": written.created_directory,
+        "manifest": MANIFEST_FILE,
+        "index": export::archive::INDEX_FILE,
+        "files_written": written.files,
+        "bytes_written": written.bytes,
+        "completeness": manifest.completeness,
+        "snapshot": manifest.snapshot,
+        "recovery_head": manifest.snapshot.head_hash,
+        "cases": canonical.heads(),
+        "blobs": canonical.blobs.len(),
+        "not_retained": canonical.not_retained.len(),
+        "human_notes": source.human_notes.len(),
+        "human_notes_skipped": source.skipped_notes,
+        "next": [{"kind": "local_read", "argv": verify_argv}],
+    });
+    let mut text = format!(
+        "exported  {}  complete  {}\n{} case(s)  {} blob(s)  {} human note(s)  {} file(s)\nrecovery head {}",
+        manifest.kind,
+        shown,
+        canonical.cases.len(),
+        canonical.blobs.len(),
+        source.human_notes.len(),
+        written.files,
+        manifest.snapshot.head_hash,
+    );
+    if !source.skipped_notes.is_empty() {
+        let _ = write!(
+            text,
+            "\nskipped {} human-folder entr(ies); they are listed in --format json output",
+            source.skipped_notes.len()
+        );
+    }
+    let _ = write!(
+        text,
+        "\nThe archive holds restricted records and bytes and is not encrypted.\nNext: {}",
+        display_argv(&verify_argv)
+    );
+    Ok(Output::success("exported", value, text))
+}
+
+fn exclusions_json_of(error: &ExportError) -> Value {
+    if let ExportError::Caveated { caveated } = error {
+        return json!({
+            "caveated_count": caveated.len(),
+            "caveated": caveated.iter().take(MAX_LISTED).collect::<Vec<_>>(),
+            "lists_capped_at": MAX_LISTED,
+        });
+    }
+    let ExportError::Incomplete { exclusions } = error else {
+        return Value::Null;
+    };
+    json!({
+        "exclusion_count": exclusions.len(),
+        "exclusions": exclusions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
+        "lists_capped_at": MAX_LISTED,
+    })
 }
 
 /// The publisher-only list of withheld and caveated records.

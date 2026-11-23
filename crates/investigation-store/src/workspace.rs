@@ -672,7 +672,7 @@ impl Workspace {
     }
 }
 
-fn required_directories(vault: bool) -> Vec<&'static str> {
+pub(crate) fn required_directories(vault: bool) -> Vec<&'static str> {
     let mut directories = vec![
         "state",
         "state/cases",
@@ -1032,7 +1032,7 @@ fn read_text(path: &Path) -> Result<String, WorkspaceError> {
     fs::read_to_string(path).map_err(|source| io_at(path, source))
 }
 
-fn io_at(path: &Path, source: io::Error) -> WorkspaceError {
+pub(crate) fn io_at(path: &Path, source: io::Error) -> WorkspaceError {
     WorkspaceError::Io {
         path: path.to_path_buf(),
         source,

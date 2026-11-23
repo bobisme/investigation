@@ -66,13 +66,14 @@
       "additionalProperties": false,
       "properties": {
         "case_id": {
-          "$ref": "#/$defs/Id"
+          "$ref": "#/$defs/Id",
+          "description": "The case. For a workspace archive, which covers every case, the\nworkspace ID."
         },
         "head_hash": {
           "$ref": "#/$defs/Digest"
         },
         "sequence": {
-          "description": "The case journal sequence of the verified head.",
+          "description": "The case journal sequence of the verified head. For a workspace\narchive 0: there is no workspace-wide sequence, and `head_hash` is\nthe recovery head over every case head.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"

@@ -97,6 +97,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Writes files into a new directory, inside exports/ or outside the
     // workspace; never changes canonical state.
     ("export", Effect::Write),
+    // Reads an export directory; writes only a private restored copy below
+    // --scratch, outside any workspace, and removes it.
+    ("archive verify", Effect::Read),
     // Moves observed files into Notes/Reconciled/ or local/conflicts/,
     // updates the manifest and renders; propose-change also records a
     // change. --dry-run checks and prints only.

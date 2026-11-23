@@ -71,6 +71,9 @@ pub mod exposure;
 #[path = "journal_heads.rs"]
 mod journal_heads;
 
+#[path = "archive.rs"]
+pub mod archive;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;

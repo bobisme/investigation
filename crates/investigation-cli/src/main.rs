@@ -1,5 +1,6 @@
 //! Local command-line frontend.
 
+mod archive;
 mod blindspots;
 mod brief;
 mod brief_delta;
@@ -323,6 +324,9 @@ enum Commands {
     /// Read the effective workspace settings and where each value comes from; never writes.
     #[command(subcommand, after_help = config::AFTER_HELP)]
     Config(config::ConfigCommand),
+    /// Verify an export or workspace archive offline; needs no workspace.
+    #[command(subcommand, after_help = archive::AFTER_HELP)]
+    Archive(archive::ArchiveCommand),
     /// Report versions, capabilities, limits, filesystem support and workspace health.
     #[command(after_help = doctor::AFTER_HELP)]
     Doctor(doctor::Args),
@@ -440,6 +444,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Doctor(args) => doctor::run(args, &global),
         Commands::Config(command) => config::run(&global, command),
         Commands::Integration(command) => integration::run(command),
+        Commands::Archive(command) => archive::run(command),
         Commands::Version => Ok(version_output(format!(
             "{PROGRAM_NAME} {}",
             env!("CARGO_PKG_VERSION")
@@ -504,6 +509,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Doctor(_)
                 | Commands::Config(_)
                 | Commands::Integration(_)
+                | Commands::Archive(_)
                 | Commands::Version => {
                     unreachable!("workspace-independent command")
                 }

@@ -60,6 +60,21 @@ impl VerifiedSnapshot {
         }
     }
 
+    /// A snapshot of `replays`, which the caller read from one verified
+    /// store load (a workspace archive's canonical read).
+    pub(crate) fn from_replays(
+        workspace_id: Id,
+        replays: impl IntoIterator<Item = (Id, CaseReplay)>,
+    ) -> Self {
+        Self {
+            workspace_id,
+            cases: replays
+                .into_iter()
+                .map(|(case_id, replay)| (case_id, CaseSnapshot::from_replay(case_id, replay)))
+                .collect(),
+        }
+    }
+
     pub const fn workspace_id(&self) -> Id {
         self.workspace_id
     }

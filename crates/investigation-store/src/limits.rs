@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use crate::{
     delimited, journal, opaque, owned_file, selectors,
-    store::{capture::HandleLimits, evidence_read, exposure, ingest},
+    store::{archive, capture::HandleLimits, evidence_read, exposure, ingest},
     utf8,
 };
 
@@ -333,6 +333,27 @@ pub const LIMITS: &[Limit] = &[
         journal::MAX_EVENT_DEPTH as u64,
         Levels,
         "Nesting of one canonical journal event.",
+        INTEGRITY_FAILURE,
+    ),
+    limit(
+        "archive.human_note_bytes",
+        archive::MAX_HUMAN_NOTE_BYTES,
+        Bytes,
+        "One human note a workspace archive copies from the vault's human folders. A larger note is left out and listed as skipped.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "archive.human_notes",
+        archive::MAX_HUMAN_NOTES as u64,
+        Items,
+        "Human notes one workspace archive copies; the rest are left out and listed as skipped.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "archive.index_bytes",
+        archive::MAX_INDEX_BYTES,
+        Bytes,
+        "export-manifest.json or archive.json read by archive verify.",
         INTEGRITY_FAILURE,
     ),
 ];

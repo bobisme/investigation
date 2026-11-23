@@ -58,6 +58,9 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `exposure.text_bytes` | 4 KiB | bytes | The exposed text that exposure searches the workspace for, read from a file or standard input. | `INVALID_INPUT` |
 | `journal.event_bytes` | 2 MiB | bytes | One canonical journal event read from disk. | `INTEGRITY_FAILURE` |
 | `journal.event_depth` | 64 | levels | Nesting of one canonical journal event. | `INTEGRITY_FAILURE` |
+| `archive.human_note_bytes` | 16 MiB | bytes | One human note a workspace archive copies from the vault's human folders. A larger note is left out and listed as skipped. | — |
+| `archive.human_notes` | 10000 | items | Human notes one workspace archive copies; the rest are left out and listed as skipped. | — |
+| `archive.index_bytes` | 64 MiB | bytes | export-manifest.json or archive.json read by archive verify. | `INTEGRITY_FAILURE` |
 
 Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound that refuses nothing: a bound on the work done, which no input can exceed, or a parse bound past which content stays retained and unparsed.
 

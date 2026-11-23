@@ -15,6 +15,8 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
             "export/decision_record.rs",
             include_str!("decision_record.rs"),
         ),
+        ("export/archive.rs", include_str!("archive.rs")),
+        ("export/retained.rs", include_str!("retained.rs")),
     ];
     let forbidden = [
         ["std", "::fs"].concat(),
@@ -52,6 +54,10 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
         ("export/case_report.rs", include_str!("case_report.rs")),
         ("export/snapshot.rs", include_str!("snapshot.rs")),
         ("export/write.rs", include_str!("write.rs")),
+        ("export/archive.rs", include_str!("archive.rs")),
+        ("export/retained.rs", include_str!("retained.rs")),
+        ("export/source.rs", include_str!("source.rs")),
+        ("export/verify.rs", include_str!("verify.rs")),
     ];
     let forbidden = [
         ["std", "::net"].concat(),
@@ -85,7 +91,15 @@ fn the_registry_lists_every_section_15_4_kind_once() {
             "producer-bundle",
         ]
     );
-    assert_eq!(available_kinds(), ["case-report", "decision-record"]);
+    assert_eq!(
+        available_kinds(),
+        ["case-report", "decision-record", "workspace-archive"]
+    );
+    assert_eq!(
+        kind("workspace-archive").map(KindSpec::scope),
+        Some(Scope::All)
+    );
+    assert_eq!(kind("case-report").map(KindSpec::scope), Some(Scope::Case));
     assert!(kind("case-report").is_some_and(KindSpec::available));
     assert!(kind("handoff").is_some_and(|spec| !spec.available()));
     assert!(kind("vault").is_none());
@@ -139,4 +153,33 @@ fn an_unavailable_kind_is_refused_by_name() {
     assert_eq!(failure.error.code, ErrorCode::InvalidInput);
     assert!(failure.error.message.contains("handoff"));
     assert!(failure.error.message.contains("case-report"));
+}
+
+#[test]
+fn retained_bytes_are_admitted_only_under_their_own_digest() {
+    let bytes = b"retained bytes".to_vec();
+    let digest = hash_bytes(&bytes);
+    let mut retained = Retained::none();
+    let other = hash_bytes(b"other bytes");
+    let refused = retained.insert(other.clone(), bytes.clone()).unwrap_err();
+    assert_eq!(refused.expected, other);
+    assert_eq!(refused.actual, digest);
+    assert!(retained.is_empty());
+    retained.insert(digest.clone(), bytes.clone()).unwrap();
+    assert_eq!(retained.get(&digest), Some(bytes.as_slice()));
+    assert_eq!(retained.get(&other), None);
+}
+
+#[test]
+fn a_kind_that_covers_every_case_is_refused_by_the_case_planner() {
+    let spec = kind("workspace-archive").unwrap();
+    assert!(spec.available());
+    assert_eq!(spec.product, Product::Archive);
+    assert!(matches!(
+        ExportError::AllCases { kind: spec.name }
+            .to_failure()
+            .error
+            .code,
+        investigation_core::wire::ErrorCode::InvalidInput
+    ));
 }

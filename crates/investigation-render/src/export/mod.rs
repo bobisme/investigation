@@ -62,13 +62,27 @@
 //!
 //! Kinds that need more than records (retained bytes for attachments or an
 //! archive, selected human notes) take them as explicit, digest-checked
-//! inputs on [`ExportInput`], never by reading the workspace while planning.
+//! inputs on [`ExportInput`], never by reading the workspace while planning:
+//! [`Retained`] holds bytes checked against their digests, and
+//! [`ExportInput::retained`] hands them to a case kind through
+//! [`plan_export_with`].
+//!
+//! The workspace archive ([`Scope::All`]) is planned from every case, not
+//! one: [`archive::plan_archive`] reads an [`archive::ArchiveSource`], uses
+//! the same inclusion rule, manifest and writer, and refuses rather than
+//! writes an incomplete archive. `archive verify` ([`verify`]) checks any
+//! export directory against its manifest offline and, for an archive, the
+//! chains and blobs, by restoring a private copy and running `check`.
 
+pub mod archive;
 mod case_report;
 mod decision_record;
 mod inclusion;
 mod manifest;
+mod retained;
 mod snapshot;
+pub mod source;
+pub mod verify;
 mod write;
 
 use std::fmt;
@@ -79,7 +93,7 @@ use investigation_core::{
     derivation,
     identity::Kind,
     state::Record,
-    wire::{ErrorCode, Failure},
+    wire::{Digest, ErrorCode, Failure},
 };
 use investigation_store::journal::hash_bytes;
 use serde_json::Value;
@@ -94,6 +108,7 @@ pub use manifest::{
     Completeness, ExportManifest, FileDigest, MANIFEST_SCHEMA, ManifestPolicy, ManifestSnapshot,
     ManifestVersions, SourceDigest, Statements, Supersession, manifest_schema,
 };
+pub use retained::{DigestMismatch, Retained};
 pub use snapshot::{ExportSnapshot, Pin};
 pub use write::{Written, write_export};
 
@@ -115,7 +130,9 @@ pub const MANIFEST_FILE: &str = "export-manifest.json";
 
 /// What an export is for. Review exports and recovery archives have
 /// different completeness and security guarantees (§16.3).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum Product {
     /// A rendered document about the case for a reader.
@@ -144,12 +161,26 @@ impl Product {
     }
 }
 
+/// What one export of a kind covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// One case at one verified snapshot ([`plan_export`]).
+    Case,
+    /// Every case, each at its verified head ([`archive::plan_archive`]).
+    All,
+}
+
 /// Plans one kind's files. Implementations must be pure: no filesystem,
 /// clock, randomness, network or model call, and no hash-order iteration.
 pub trait ExportRenderer: Sync {
     /// Identifies this kind's output format. Bump it whenever the bytes
     /// planned for the same input change.
     fn version(&self) -> &'static str;
+
+    /// What one export covers; a case unless the kind says otherwise.
+    fn scope(&self) -> Scope {
+        Scope::Case
+    }
 
     /// Add this kind's files to `files`. Show a record's content only when
     /// [`ExportInput::includes`] admits it, and always with its
@@ -173,6 +204,12 @@ impl KindSpec {
     /// Whether this build can produce the kind.
     pub const fn available(&self) -> bool {
         self.renderer.is_some()
+    }
+
+    /// What one export of the kind covers.
+    pub fn scope(&self) -> Scope {
+        self.renderer
+            .map_or(Scope::Case, |renderer| renderer.scope())
     }
 }
 
@@ -236,7 +273,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Archive,
         purpose: "Recover canonical state in full.",
         contains: "Journal, retained blobs, schemas, owner configuration and selected human notes, with an integrity manifest.",
-        renderer: None,
+        renderer: Some(&archive::ArchiveRenderer),
     },
     KindSpec {
         name: "producer-bundle",
@@ -277,6 +314,10 @@ pub struct ExportInput<'a> {
     /// working-vault policy; ask [`Self::includes`] before showing content.
     pub notes: &'a NoteContext<'a>,
     pub inclusion: &'a Inclusion<'a>,
+    /// Retained bytes the caller read and checked against their digests
+    /// before planning; empty unless given to [`plan_export_with`]. Copy
+    /// bytes only of records [`Self::includes`] admits.
+    pub retained: &'a Retained,
 }
 
 impl ExportInput<'_> {
@@ -366,8 +407,18 @@ pub enum ExportError {
     DestinationUnsafe(&'static str),
     /// A destination file operation failed.
     Destination { path: String, error: std::io::Error },
-    /// `--require-complete` was given and the policy withheld records.
+    /// `--require-complete` was given and the policy withheld records, or
+    /// the kind is never written incomplete (an archive).
     Incomplete { exclusions: Vec<Exclusion> },
+    /// The kind must show every record as recorded (an archive), and the
+    /// policy would show these only with caveats.
+    Caveated { caveated: Vec<Caveated> },
+    /// The kind covers every case and has its own planning entry.
+    AllCases { kind: &'static str },
+    /// An archive holds every byte, so it is made only for this audience.
+    ArchiveAudience { required: &'static str },
+    /// The planner needed retained bytes the caller did not read.
+    MissingRetained { digest: Digest },
 }
 
 impl From<RenderError> for ExportError {
@@ -381,8 +432,11 @@ impl ExportError {
         let code = match self {
             Self::KindNotAvailable { .. }
             | Self::DestinationUnsafe(_)
-            | Self::DestinationNotEmpty => ErrorCode::InvalidInput,
-            Self::Incomplete { .. } => ErrorCode::GateFailed,
+            | Self::DestinationNotEmpty
+            | Self::AllCases { .. }
+            | Self::ArchiveAudience { .. } => ErrorCode::InvalidInput,
+            Self::Incomplete { .. } | Self::Caveated { .. } => ErrorCode::GateFailed,
+            Self::MissingRetained { .. } => ErrorCode::IntegrityFailure,
             Self::Render(error) => return error.to_failure(),
             Self::Destination { .. } => ErrorCode::IoFailure,
         };
@@ -413,9 +467,32 @@ impl fmt::Display for ExportError {
             ),
             Self::Incomplete { exclusions } => write!(
                 formatter,
-                "The audience policy withholds {} record(s) of this case, so the export \
-                 would be incomplete, and --require-complete was given. Nothing was written.",
+                "The audience policy withholds {} record(s), so the export would be \
+                 incomplete, and it must be complete (--require-complete, or an archive). \
+                 Nothing was written.",
                 exclusions.len()
+            ),
+            Self::Caveated { caveated } => write!(
+                formatter,
+                "The audience policy would show {} record(s) only with caveats, and an archive \
+                 copies every record as recorded. Nothing was written.",
+                caveated.len()
+            ),
+            Self::AllCases { kind } => write!(
+                formatter,
+                "The export kind {kind} covers every case of the workspace and is planned \
+                 by its own entry, not from one case."
+            ),
+            Self::ArchiveAudience { required } => write!(
+                formatter,
+                "A workspace archive copies every journal event and retained byte, and a hash \
+                 chain cannot leave one out, so it is made only for the {required} audience. \
+                 For a copy to share, export a report or review kind instead."
+            ),
+            Self::MissingRetained { digest } => write!(
+                formatter,
+                "The retained bytes of {digest} were not read before planning. Run \
+                 investigation check."
             ),
         }
     }
@@ -430,9 +507,23 @@ pub fn plan_export(
     snapshot: &ExportSnapshot,
     audience: Audience,
 ) -> Result<ExportPlan, ExportError> {
+    plan_export_with(kind, snapshot, audience, &Retained::none())
+}
+
+/// [`plan_export`] with retained bytes the kind may copy, read and checked
+/// against their digests by the caller.
+pub fn plan_export_with(
+    kind: &'static KindSpec,
+    snapshot: &ExportSnapshot,
+    audience: Audience,
+    retained: &Retained,
+) -> Result<ExportPlan, ExportError> {
     let renderer = kind
         .renderer
         .ok_or(ExportError::KindNotAvailable { kind: kind.name })?;
+    if renderer.scope() != Scope::Case {
+        return Err(ExportError::AllCases { kind: kind.name });
+    }
     let policy = ViewPolicy::for_audience(audience);
     let pinned = snapshot.pinned();
     let case = snapshot.case();
@@ -445,6 +536,7 @@ pub fn plan_export(
         case,
         notes: &notes,
         inclusion: &inclusion,
+        retained,
     };
     let mut files = PlanBuilder::new(generation.clone());
     renderer.plan(&input, &mut files)?;
@@ -454,30 +546,41 @@ pub fn plan_export(
     }
     let exclusions = inclusion.exclusions();
     let caveated = inclusion.caveated();
-    let manifest = build_manifest(kind, renderer, &input, &files, exclusions.is_empty());
-    let mut manifest_bytes =
-        serde_json::to_vec_pretty(&manifest).expect("export manifest serializes");
-    manifest_bytes.push(b'\n');
-    Ok(ExportPlan {
+    let completeness = if exclusions.is_empty() {
+        Completeness::Complete
+    } else {
+        Completeness::Incomplete
+    };
+    let snapshot = ManifestSnapshot {
+        case_id: case.case_id(),
+        sequence: case.head().sequence,
+        head_hash: case.head().head_hash.clone(),
+    };
+    Ok(finish_plan(
         kind,
+        renderer,
         files,
-        manifest,
-        manifest_bytes,
+        snapshot,
+        ManifestPolicy {
+            version: POLICY_VERSION.to_owned(),
+            audience: audience.as_str().to_owned(),
+            placeholders: false,
+        },
+        manifest_parts(case.state(), |record| input.includes(record)),
+        completeness,
+        Statements::fixed(completeness, audience),
         exclusions,
         caveated,
-    })
+    ))
 }
 
-fn build_manifest(
-    kind: &'static KindSpec,
-    renderer: &dyn ExportRenderer,
-    input: &ExportInput<'_>,
-    files: &RenderPlan,
-    complete: bool,
-) -> ExportManifest {
-    let case = input.case;
-    let state = case.state();
-    let included = || state.records().filter(|record| input.includes(record));
+/// The manifest's `sources` and `supersession` entries for the records of
+/// `state` that `includes` admits.
+pub(crate) fn manifest_parts(
+    state: &investigation_core::state::State,
+    includes: impl Fn(&Record) -> bool,
+) -> (Vec<SourceDigest>, Vec<Supersession>) {
+    let included = || state.records().filter(|record| includes(record));
     let sources = included()
         .filter(|record| record.header.id.kind() == Kind::Artifact)
         .filter_map(|record| {
@@ -491,11 +594,7 @@ fn build_manifest(
     let supersession = included()
         .filter_map(|record| {
             let visible = |reference: Option<RevisionRef>| {
-                reference.filter(|reference| {
-                    state
-                        .current(reference.id)
-                        .is_some_and(|target| input.includes(target))
-                })
+                reference.filter(|reference| state.current(reference.id).is_some_and(&includes))
             };
             let supersedes = visible(revision_ref(&record.body["supersedes"]));
             let superseded_by = visible(revision_ref(&record.body["superseded_by"]));
@@ -506,6 +605,23 @@ fn build_manifest(
             })
         })
         .collect();
+    (sources, supersession)
+}
+
+/// Build the manifest over planned `files` and wrap both in a plan.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finish_plan(
+    kind: &'static KindSpec,
+    renderer: &dyn ExportRenderer,
+    files: RenderPlan,
+    snapshot: ManifestSnapshot,
+    policy: ManifestPolicy,
+    (sources, supersession): (Vec<SourceDigest>, Vec<Supersession>),
+    completeness: Completeness,
+    statements: Statements,
+    exclusions: Vec<Exclusion>,
+    caveated: Vec<Caveated>,
+) -> ExportPlan {
     let file_digests: Vec<FileDigest> = files
         .entries()
         .iter()
@@ -515,48 +631,46 @@ fn build_manifest(
             bytes: entry.content().len() as u64,
         })
         .collect();
-    let snapshot = ManifestSnapshot {
-        case_id: case.case_id(),
-        sequence: case.head().sequence,
-        head_hash: case.head().head_hash.clone(),
-    };
-    let completeness = if complete {
-        Completeness::Complete
-    } else {
-        Completeness::Incomplete
+    let versions = ManifestVersions {
+        framework: FRAMEWORK_VERSION.to_owned(),
+        renderer: renderer.version().to_owned(),
+        manifest_schema: MANIFEST_SCHEMA.to_owned(),
+        freshness_rules: investigation_core::freshness::FRESHNESS_RULES_VERSION,
     };
     let export_id = export_id(
-        kind,
-        renderer,
-        input.audience,
+        kind.name,
+        &versions,
+        &policy,
         &snapshot,
         &file_digests,
         completeness,
     );
-    ExportManifest {
+    let manifest = ExportManifest {
         schema_version: MANIFEST_SCHEMA.to_owned(),
         export_id,
         kind: kind.name.to_owned(),
         product: kind.product,
         resumable: kind.product.resumable(),
         generator: PROGRAM_NAME.to_owned(),
-        versions: ManifestVersions {
-            framework: FRAMEWORK_VERSION.to_owned(),
-            renderer: renderer.version().to_owned(),
-            manifest_schema: MANIFEST_SCHEMA.to_owned(),
-            freshness_rules: investigation_core::freshness::FRESHNESS_RULES_VERSION,
-        },
+        versions,
         snapshot,
-        policy: ManifestPolicy {
-            version: POLICY_VERSION.to_owned(),
-            audience: input.audience.as_str().to_owned(),
-            placeholders: false,
-        },
+        policy,
         completeness,
         sources,
         supersession,
         files: file_digests,
-        statements: Statements::fixed(completeness, input.audience),
+        statements,
+    };
+    let mut manifest_bytes =
+        serde_json::to_vec_pretty(&manifest).expect("export manifest serializes");
+    manifest_bytes.push(b'\n');
+    ExportPlan {
+        kind,
+        files,
+        manifest,
+        manifest_bytes,
+        exclusions,
+        caveated,
     }
 }
 
@@ -564,21 +678,36 @@ fn revision_ref(value: &Value) -> Option<RevisionRef> {
     serde_json::from_value(value.clone()).ok()
 }
 
+/// The `export_id` a manifest's own fields and file digests give. A
+/// manifest whose `export_id` differs was edited after it was written.
+pub fn expected_export_id(manifest: &ExportManifest) -> String {
+    export_id(
+        &manifest.kind,
+        &manifest.versions,
+        &manifest.policy,
+        &manifest.snapshot,
+        &manifest.files,
+        manifest.completeness,
+    )
+}
+
 /// `exp_<sha256 hex>` over everything the manifest attests: equal exports
 /// share it, and any change to their bytes or completeness changes it.
-fn export_id(
-    kind: &KindSpec,
-    renderer: &dyn ExportRenderer,
-    audience: Audience,
+/// `archive verify` recomputes it from a manifest's own fields.
+pub(crate) fn export_id(
+    kind: &str,
+    versions: &ManifestVersions,
+    policy: &ManifestPolicy,
     snapshot: &ManifestSnapshot,
     files: &[FileDigest],
     completeness: Completeness,
 ) -> String {
     let mut text = format!(
-        "inv.export-id.v1\nkind {}\nframework {FRAMEWORK_VERSION}\nrenderer {}\npolicy {POLICY_VERSION} {}\ncase {} {} {}\ncompleteness {}\n",
-        kind.name,
-        renderer.version(),
-        audience.as_str(),
+        "inv.export-id.v1\nkind {kind}\nframework {}\nrenderer {}\npolicy {} {}\ncase {} {} {}\ncompleteness {}\n",
+        versions.framework,
+        versions.renderer,
+        policy.version,
+        policy.audience,
         snapshot.case_id,
         snapshot.sequence,
         snapshot.head_hash,

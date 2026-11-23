@@ -72,21 +72,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
             crate::capture_schema::describe(name)
         });
     }
-    let wire = match name {
-        "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
-        "ingest-receipt" => Some(investigation_store::store::ingest::receipt_schema()),
-        "producer-run" => Some(investigation_store::store::ingest::producer_run::envelope_schema()),
-        "producer-run-receipt" => {
-            Some(investigation_store::store::ingest::producer_run::receipt_schema())
-        }
-        "audit" => Some(investigation_core::blindspot::audit_schema()),
-        "method-pack" => Some(investigation_core::method_pack::schema()),
-        "export-manifest" => Some(investigation_render::export::manifest_schema()),
-        "dry-run" => Some(crate::dry_run::schema()),
-        _ => wire_schema(name),
-    };
-    if let Some(schema) = wire {
-        let schema = serde_json::to_value(schema).expect("wire schema serializes");
+    if let Some(schema) = wire_value(name) {
         return Ok(if args.schema_only {
             raw(schema)
         } else {
@@ -202,6 +188,91 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         ));
     }
     Ok(Output::success("schema", description, report))
+}
+
+/// A wire schema served by name, other than the capture schemas.
+fn wire_value(name: &str) -> Option<Value> {
+    let wire = match name {
+        "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
+        "ingest-receipt" => Some(investigation_store::store::ingest::receipt_schema()),
+        "producer-run" => Some(investigation_store::store::ingest::producer_run::envelope_schema()),
+        "producer-run-receipt" => {
+            Some(investigation_store::store::ingest::producer_run::receipt_schema())
+        }
+        "audit" => Some(investigation_core::blindspot::audit_schema()),
+        "method-pack" => Some(investigation_core::method_pack::schema()),
+        "export-manifest" => Some(investigation_render::export::manifest_schema()),
+        "dry-run" => Some(crate::dry_run::schema()),
+        _ => wire_schema(name),
+    }?;
+    Some(serde_json::to_value(wire).expect("wire schema serializes"))
+}
+
+/// The published v1 contracts as `scripts/check-v1-schemas.py` lays them out
+/// under `schemas/v1`: file name and JSON bytes, `catalog.json` included. A
+/// workspace archive carries them so its journal can be read without this
+/// program.
+pub(crate) fn published_documents() -> Vec<(String, Vec<u8>)> {
+    let catalog = standard_catalog();
+    let mut documents = BTreeMap::<String, Value>::new();
+    let mut wire = serde_json::Map::new();
+    for name in wire_names() {
+        let file = format!(
+            "{}.schema.json",
+            if name == "record" { "command" } else { name }
+        );
+        let mut schema = crate::capture_schema::schema(name)
+            .or_else(|| wire_value(name))
+            .expect("every wire name has a schema");
+        schema["$id"] = json!(format!("urn:investigation:schema:v1:wire:{name}"));
+        wire.insert(name.to_owned(), json!(file));
+        documents.insert(file, schema);
+    }
+    let mut groups = BTreeMap::<&str, Vec<&str>>::new();
+    for operation in catalog.available() {
+        let info = operation.info();
+        groups.entry(info.stage).or_default().push(info.name);
+    }
+    let mut operations = serde_json::Map::new();
+    for operation in catalog.available() {
+        let name = operation.info().name;
+        let Some(payload) = operation.payload_schema() else {
+            continue;
+        };
+        let file = format!("operations/{name}.schema.json");
+        let mut schema = serde_json::to_value(payload).expect("payload schema serializes");
+        schema["$id"] = json!(format!("urn:investigation:schema:v1:operation:{name}"));
+        operations.insert(name.to_owned(), json!(file));
+        documents.insert(file, schema);
+    }
+    let reserved: Vec<_> = catalog
+        .operations()
+        .filter(|descriptor| descriptor.status() == Status::Deferred)
+        .map(|descriptor| descriptor.info().name)
+        .collect();
+    let stages: Vec<_> = groups
+        .into_iter()
+        .map(|(stage, operations)| json!({"stage": stage, "operations": operations}))
+        .collect();
+    documents.insert(
+        "catalog.json".to_owned(),
+        json!({
+            "schema_version": "inv.catalog.v1",
+            "wire_schemas": wire,
+            "operations": operations,
+            "stages": stages,
+            "reserved_operations": reserved,
+            "reserved_wire_schemas": RESERVED_WIRE_SCHEMAS,
+        }),
+    );
+    documents
+        .into_iter()
+        .map(|(file, value)| {
+            let mut bytes = serde_json::to_vec_pretty(&value).expect("schema serializes");
+            bytes.push(b'\n');
+            (file, bytes)
+        })
+        .collect()
 }
 
 fn list(catalog: &Catalog, include_deferred: bool) -> Output {
