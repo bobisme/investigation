@@ -218,10 +218,7 @@ fn diagnose(global: &Global, detector: &dyn FilesystemDetector) -> Result<Report
     let value = json!({
         "versions": versions(),
         "capabilities": capabilities(),
-        "limits": {
-            "enforced": LIMITS,
-            "expansion": EXPANSION,
-        },
+        "limits": limits(),
         "filesystem": filesystem,
         "workspace": workspace,
         "not_checked": NOT_CHECKED,
@@ -243,7 +240,16 @@ const NOT_CHECKED: &[&str] = &[
     "external tools and viewers are never probed",
 ];
 
-fn versions() -> Value {
+/// The bounds this build enforces; `integration inspect` reports the same.
+pub(crate) fn limits() -> Value {
+    json!({
+        "enforced": LIMITS,
+        "expansion": EXPANSION,
+    })
+}
+
+/// Versions of every contract this build speaks; shared with `integration inspect`.
+pub(crate) fn versions() -> Value {
     let catalog = standard_catalog();
     let operations = catalog.operations().count();
     let available = catalog.available().count();
@@ -276,7 +282,9 @@ fn versions() -> Value {
     })
 }
 
-fn capabilities() -> Value {
+/// Capture support, selector validation, readers and built-in method packs;
+/// shared with `integration inspect`.
+pub(crate) fn capabilities() -> Value {
     let mut readers: Vec<&str> = SELECTOR_SUPPORT
         .iter()
         .flat_map(|support| support.readers.iter().copied())

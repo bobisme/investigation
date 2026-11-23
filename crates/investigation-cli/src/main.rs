@@ -14,6 +14,7 @@ mod first_use;
 mod frontier;
 mod guide;
 mod inherited_trust;
+mod integration;
 mod lessons;
 mod lineage;
 mod logging;
@@ -287,6 +288,9 @@ enum Commands {
     /// Report versions, capabilities, limits, filesystem support and workspace health.
     #[command(after_help = doctor::AFTER_HELP)]
     Doctor(doctor::Args),
+    /// Show, apply or remove the agent instructions in a file you name; never implicit.
+    #[command(subcommand, after_help = integration::AFTER_HELP)]
+    Integration(integration::IntegrationCommand),
 }
 
 #[derive(Subcommand)]
@@ -390,6 +394,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Guide(args) => guide::show(args, &global),
         Commands::Method(command) => guide::method(command, &global),
         Commands::Doctor(args) => doctor::run(args, &global),
+        Commands::Integration(command) => integration::run(command),
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
@@ -444,7 +449,8 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Docs(_)
                 | Commands::Guide(_)
                 | Commands::Method(_)
-                | Commands::Doctor(_) => {
+                | Commands::Doctor(_)
+                | Commands::Integration(_) => {
                     unreachable!("workspace-independent command")
                 }
             }

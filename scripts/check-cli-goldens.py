@@ -18,6 +18,7 @@ SCOPES = (
     ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
     ("capture", "append"), ("capture", "attach"), ("vault", "render"), ("vault", "status"),
     ("vault", "conflicts"), ("doctor",), ("doctor", "bundle"),
+    ("integration", "show"), ("integration", "apply"), ("integration", "remove"), ("integration", "inspect"),
 )
 
 

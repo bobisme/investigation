@@ -32,6 +32,15 @@ they check every operation name against the catalog. A page whose text
 changes needs a new version marker and a new row in `RELEASED`. Then
 `onboard` reports the new version.
 
+`investigation integration apply` writes the same pages into a file the user
+names, and only then: the `agents` page as a managed block between
+`<!-- investigation:begin VERSION -->` and `<!-- investigation:end VERSION -->`
+lines, or the `skill` page as an owned file. Remove takes out exactly the
+bytes apply added. `crates/investigation-store/src/owned_file.rs` does the
+file access: no symbolic links, a temporary file renamed into place only if
+the target is unchanged, and the `integration.file_bytes` limit. A new
+version of a page reaches installed copies on the next explicit apply.
+
 The neutrality check reads the actual CLI help, published schemas, the
 `docs/agent/` pages, and `methods/general.toml` or files under
 `methods/general/`. Once `init` appears

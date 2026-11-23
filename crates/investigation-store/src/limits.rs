@@ -14,7 +14,7 @@ use investigation_core::{
 use serde::Serialize;
 
 use crate::{
-    delimited, journal, opaque, selectors,
+    delimited, journal, opaque, owned_file, selectors,
     store::{capture::HandleLimits, evidence_read, ingest},
     utf8,
 };
@@ -298,6 +298,13 @@ pub const LIMITS: &[Limit] = &[
         method_pack::MAX_PACK_DEPTH as u64,
         Levels,
         "Nesting of a method pack.",
+        INVALID_INPUT,
+    ),
+    limit(
+        "integration.file_bytes",
+        owned_file::MAX_OWNED_FILE_BYTES,
+        Bytes,
+        "An agent instructions file that integration apply or remove reads and rewrites.",
         INVALID_INPUT,
     ),
     limit(

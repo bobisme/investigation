@@ -23,7 +23,8 @@ pub(crate) const ENV: &str = "INVESTIGATION_READ_ONLY";
 pub(crate) enum Effect {
     /// Never writes and never exports.
     Read,
-    /// Writes workspace data or exports files.
+    /// Writes workspace data, exports files or changes a file the user
+    /// names outside the workspace (`integration apply`).
     Write,
     /// A read, except that these flags (clap argument ids) make it write.
     ReadUnlessFlag(&'static [&'static str]),
@@ -73,6 +74,12 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // `doctor bundle` requires --preview and writes no archive.
     ("doctor", Effect::Read),
     ("doctor bundle", Effect::Read),
+    // Apply and remove change one file the user names outside any workspace,
+    // like an export; --dry-run prints the diff and writes nothing.
+    ("integration show", Effect::Read),
+    ("integration inspect", Effect::Read),
+    ("integration apply", Effect::WriteUnlessFlag("dry_run")),
+    ("integration remove", Effect::WriteUnlessFlag("dry_run")),
 ];
 
 fn effect_of(path: &str) -> Option<Effect> {

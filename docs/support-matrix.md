@@ -53,6 +53,7 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `search.candidates` | 5000 | items | Index rows read for one search before the canonical checks. | — |
 | `method_pack.bytes` | 256 KiB | bytes | One method pack file. | `INVALID_INPUT` |
 | `method_pack.depth` | 16 | levels | Nesting of a method pack. | `INVALID_INPUT` |
+| `integration.file_bytes` | 1 MiB | bytes | An agent instructions file that integration apply or remove reads and rewrites. | `INVALID_INPUT` |
 | `journal.event_bytes` | 2 MiB | bytes | One canonical journal event read from disk. | `INTEGRITY_FAILURE` |
 | `journal.event_depth` | 64 | levels | Nesting of one canonical journal event. | `INTEGRITY_FAILURE` |
 
