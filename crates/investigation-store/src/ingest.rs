@@ -177,6 +177,8 @@ pub struct IngestReceipt {
 
 struct PreparedItem {
     label: String,
+    /// Label safe to record in identities and titles: never an absolute local path.
+    display: String,
     digest: Digest,
     size: u64,
     channel: AcquisitionChannel,
@@ -304,6 +306,7 @@ impl<F: DurableFs> Store<F> {
                         locator: label.clone(),
                         basis: investigation_core::external_ref::DigestBasis::ReadAtIngest,
                     }),
+                    display: self.display_label(path),
                     label,
                     digest,
                     size,
@@ -330,6 +333,7 @@ impl<F: DurableFs> Store<F> {
             prepared.push(self.prepare_item(
                 stages.last().expect("just staged"),
                 path.to_string_lossy().into_owned(),
+                self.display_label(path),
                 AcquisitionChannel::LocalFile,
                 manifest.extract_text,
             )?);
@@ -351,6 +355,7 @@ impl<F: DurableFs> Store<F> {
             prepared.push(self.prepare_item(
                 stages.last().expect("just staged"),
                 name.clone(),
+                name.clone(),
                 AcquisitionChannel::Producer,
                 manifest.extract_text,
             )?);
@@ -358,6 +363,7 @@ impl<F: DurableFs> Store<F> {
         for item in &manifest.external_refs {
             prepared.push(PreparedItem {
                 label: item.locator.clone(),
+                display: item.locator.clone(),
                 digest: item.digest.clone(),
                 size: item.size_bytes,
                 channel: AcquisitionChannel::ExternalReference,
@@ -583,10 +589,34 @@ impl<F: DurableFs> Store<F> {
         .with_schema("ingest"))
     }
 
+    /// A label for recorded identities: relative to the matching import root,
+    /// else the basename. A relative input path is already local-neutral.
+    fn display_label(&self, path: &Path) -> String {
+        if !path.is_absolute() {
+            return path.to_string_lossy().into_owned();
+        }
+        for configured in &self.workspace.config().import_roots {
+            let root = if configured.is_absolute() {
+                configured.clone()
+            } else {
+                self.workspace.root().join(configured)
+            };
+            if let Ok(relative) = path.strip_prefix(&root)
+                && !relative.as_os_str().is_empty()
+            {
+                return relative.to_string_lossy().into_owned();
+            }
+        }
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into())
+    }
+
     fn prepare_item(
         &self,
         staged: &StagedBlob,
         label: String,
+        display: String,
         channel: AcquisitionChannel,
         extract: bool,
     ) -> Result<PreparedItem, Failure> {
@@ -623,6 +653,7 @@ impl<F: DurableFs> Store<F> {
         }
         Ok(PreparedItem {
             label,
+            display,
             diagnostics,
             reference: None,
             digest: digest_for(staged)?,
@@ -808,7 +839,7 @@ fn create_records(
                 .source
                 .identity
                 .clone()
-                .or_else(|| Some(format!("{} / {}", manifest.source.title, item.label))),
+                .or_else(|| Some(format!("{} / {}", manifest.source.title, item.display))),
             acquisition: SourceAcquisition {
                 channel: item.channel,
                 acquired_at: acquired_at.clone(),

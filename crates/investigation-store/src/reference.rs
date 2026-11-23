@@ -336,6 +336,7 @@ impl<F: DurableFs> Store<F> {
     ) -> Result<Supplied, Failure> {
         let item = self.prepare_item(
             stages.last().expect("just staged"),
+            label.clone(),
             label,
             investigation_core::evidence::AcquisitionChannel::LocalFile,
             extract,

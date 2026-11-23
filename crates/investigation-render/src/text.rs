@@ -217,7 +217,7 @@ fn display_char(chars: &[char], at: usize) -> char {
 /// emoji and other punctuation are kept. Bounded to `max_chars` characters.
 /// Applying it again to its own output changes nothing.
 pub fn display_text(input: &str, max_chars: usize) -> Option<String> {
-    let mut chars = one_line(input);
+    let mut chars = one_line(&investigation_core::local_path::elide_local_paths(input));
     defang(&mut chars);
     let mut out: String = (0..chars.len())
         .take(max_chars)
@@ -235,7 +235,7 @@ pub fn display_text(input: &str, max_chars: usize) -> Option<String> {
 /// table cell. URL patterns are defanged first, because escaping alone does
 /// not stop a viewer from autolinking the decoded text.
 pub fn inline_text(input: &str, max_chars: usize) -> String {
-    let mut chars = one_line(input);
+    let mut chars = one_line(&investigation_core::local_path::elide_local_paths(input));
     let truncated = chars.len() > max_chars;
     chars.truncate(max_chars);
     while chars.last() == Some(&' ') {

@@ -256,7 +256,7 @@ pub struct RecordHeader {
 
 /// Bounded display text, never an identity. Removes control and common markup delimiters.
 pub fn display_title(input: &str, max_chars: usize) -> String {
-    input
+    crate::local_path::elide_local_paths(input)
         .chars()
         .filter(|c| !matches!(c, '<' | '>' | '[' | ']' | '*' | '_' | '`' | '#'))
         .map(|c| if c.is_control() { ' ' } else { c })

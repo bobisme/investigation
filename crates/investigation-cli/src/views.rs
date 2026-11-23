@@ -811,19 +811,21 @@ pub(crate) fn record_summary(record: &Record) -> String {
         Kind::Workspace => &["description", "status"],
     };
     let mut seen = std::collections::BTreeSet::new();
-    let mut parts = Vec::new();
+    let mut parts: Vec<std::borrow::Cow<'_, str>> = Vec::new();
     let coverage = investigation_core::search_coverage::recorded_coverage(&record.body)
         .filter(|_| record.header.id.kind() == Kind::Run)
         .map(|coverage| investigation_core::search_coverage::summary(&coverage));
     if let Some(line) = &coverage {
-        parts.push(line.as_str());
+        parts.push(line.as_str().into());
     }
     for key in preferred {
         if let Some(text) = value_at(&record.body, key).and_then(Value::as_str)
             && !text.trim().is_empty()
             && seen.insert(text)
         {
-            parts.push(text.trim());
+            parts.push(investigation_core::local_path::elide_local_paths(
+                text.trim(),
+            ));
         }
     }
     // Deterministic UTF-8 field-boundary truncation: a field is included whole
@@ -835,7 +837,7 @@ pub(crate) fn record_summary(record: &Record) -> String {
             break;
         }
         output.push_str(separator);
-        output.push_str(part);
+        output.push_str(&part);
     }
     output
 }

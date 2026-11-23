@@ -252,9 +252,11 @@ impl Store {
                 )
                 .at(format!("/artifacts/{index}/path")));
             }
+            let label = artifact_item(artifact);
             let item = self.prepare_item(
                 &blob,
-                artifact_item(artifact),
+                label.clone(),
+                label,
                 AcquisitionChannel::LocalFile,
                 false,
             )?;

@@ -31,6 +31,7 @@ pub mod guidance;
 pub mod header;
 pub mod identity;
 pub mod input;
+pub mod local_path;
 pub mod measurement_fields;
 pub mod measurement_flags;
 pub mod measurement_ops;
