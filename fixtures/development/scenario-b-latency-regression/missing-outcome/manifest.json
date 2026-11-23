@@ -1,0 +1,38 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "missing-outcome",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "100 started, 95 finish in 10 ms, 5 unfinished at a 1 s timeout.",
+  "mistake_offered": "Answering the '99% within 25 ms' requirement from the completion-only p99 of 10 ms.",
+  "traps": [
+    "missing_outcomes_timeouts"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "timeout-capture",
+      "role": "100 requests started, 95 finish in 10 ms, 5 unfinished at the 1 s timeout.",
+      "envelope": "runs/timeout-capture/envelope.json",
+      "measurement": "runs/timeout-capture/measurement.json",
+      "output": "runs/timeout-capture/output.json",
+      "sha256": {
+        "envelope": "46be5ec3aaa8e8a1889ac4d3e02aac4bfc90b36577e1fcf8270052dad9deae97",
+        "measurement": "68b38871e19461746741ffb28bc22af1175c4886526eee4605b17bb689617da3",
+        "output": "b760404f6f9505742e8c64d6847ca73cf6f1184a5be3bc18b8e15674a66dbff1"
+      }
+    }
+  ]
+}

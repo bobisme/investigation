@@ -1,0 +1,55 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {
+    "name": "tidepool-bench",
+    "version": "0.4.0",
+    "instance": "fixture-a"
+  },
+  "external_run_id": "closed-loop-omission-closed-loop-capture",
+  "intent": {
+    "label": "closed-loop-capture latency capture",
+    "external_plan_digest": null
+  },
+  "execution": {
+    "state": "completed",
+    "exit_code": 0,
+    "started_at": null,
+    "ended_at": null,
+    "clock_quality": "unverified"
+  },
+  "environment": {
+    "revision": "marlin-1.9",
+    "workload": "ledgerd-mixed-requests",
+    "workload_mix": "read90-write10",
+    "warmup_s": "30",
+    "machine": "fixture-host-1"
+  },
+  "artifacts": [
+    {
+      "role": "original-output",
+      "path": "./output.json",
+      "expected_sha256": "76448806e9d31a72e2fc70135389e9bd73f5e60e22ed420c65bd85d70e3fce20",
+      "media_type": "application/json",
+      "classification": "internal"
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "reported_metric",
+      "name": "latency.p99",
+      "value": "10.0",
+      "unit": "ms",
+      "validity_claim": "producer_reported"
+    }
+  ],
+  "controls": [
+    {
+      "name": "steady-load",
+      "producer_result": "reported_pass"
+    }
+  ],
+  "receipts": [],
+  "limitations": [
+    "Latency measured from actual send time."
+  ]
+}

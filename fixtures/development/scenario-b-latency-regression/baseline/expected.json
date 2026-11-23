@@ -1,0 +1,157 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "baseline",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "p99_values_recomputable",
+      "assert": "nearest_rank_p99",
+      "unit": "ms",
+      "per_run": {
+        "control": "28.8",
+        "treatment": "55.3",
+        "treatment-debug-logging": "79.1",
+        "optimization-a": "40.4"
+      }
+    },
+    {
+      "id": "control_treatment_comparable",
+      "assert": "comparable_pair",
+      "runs": [
+        "control",
+        "treatment"
+      ],
+      "same": [
+        "workload",
+        "workload_mix",
+        "warmup",
+        "observation_window",
+        "load_model",
+        "trial_order",
+        "tool_identity"
+      ],
+      "differs": [
+        "runtime",
+        "allocator"
+      ]
+    },
+    {
+      "id": "regression_visible_in_comparable_pair",
+      "assert": "p99_greater",
+      "greater": "treatment",
+      "lesser": "control",
+      "min_difference_ms": "5.0",
+      "scope": "this workload and these builds only"
+    },
+    {
+      "id": "confounded_run_not_pooled",
+      "assert": "run_confounded",
+      "run": "treatment-debug-logging",
+      "reason": "measurement.instrumentation_changed",
+      "must_not_pool_with": [
+        "treatment"
+      ],
+      "same_build_as": "treatment",
+      "p99_higher_than": "treatment"
+    },
+    {
+      "id": "warmup_difference_noticeable",
+      "assert": "recorded_field_differs",
+      "runs": [
+        "treatment",
+        "optimization-a"
+      ],
+      "field": "warmup",
+      "values_s": [
+        30,
+        5
+      ]
+    },
+    {
+      "id": "workload_mix_difference_noticeable",
+      "assert": "environment_differs",
+      "runs": [
+        "treatment",
+        "optimization-a"
+      ],
+      "field": "workload_mix",
+      "values": [
+        "read90-write10",
+        "read70-write30"
+      ]
+    },
+    {
+      "id": "optimization_a_not_comparable_to_treatment",
+      "assert": "comparability_limits_conclusion",
+      "runs": [
+        "treatment",
+        "optimization-a"
+      ],
+      "reasons": [
+        "warmup",
+        "workload_mix"
+      ],
+      "conclusion_ceiling": "bounded_to_workload_and_unresolved_for_effect"
+    },
+    {
+      "id": "exit_zero_is_not_validity",
+      "assert": "exit_does_not_imply_validity",
+      "runs_exit_zero": [
+        "control",
+        "optimization-a",
+        "treatment",
+        "treatment-debug-logging"
+      ],
+      "run_not_valid": "treatment-debug-logging"
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "control": [],
+        "treatment": [],
+        "treatment-debug-logging": [
+          "measurement.instrumentation_changed"
+        ],
+        "optimization-a": []
+      }
+    },
+    {
+      "id": "pair_flags",
+      "assert": "derived_pair_flags_equal",
+      "pairs": [
+        {
+          "runs": [
+            "control",
+            "treatment"
+          ],
+          "flags": []
+        },
+        {
+          "runs": [
+            "treatment",
+            "optimization-a"
+          ],
+          "flags": [
+            "measurement.compared_warmup_differs"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "statistic_recorded",
+      "assert": "statistic_recorded",
+      "kind": "quantile",
+      "quantile": "0.99",
+      "population": "all_attempts",
+      "runs": [
+        "control",
+        "optimization-a",
+        "treatment",
+        "treatment-debug-logging"
+      ],
+      "note": "Samples per run meet the order-statistic minimum, so no quantile flag fires."
+    }
+  ]
+}

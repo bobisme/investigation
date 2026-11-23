@@ -1,0 +1,67 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "negative-short-window",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "p99_values_recomputable",
+      "assert": "nearest_rank_p99",
+      "unit": "ms",
+      "per_run": {
+        "control-short": "22.6",
+        "optimization-a-short": "21.4"
+      }
+    },
+    {
+      "id": "no_improvement_is_not_equality",
+      "assert": "equality_claim_forbidden",
+      "runs": [
+        "control-short",
+        "optimization-a-short"
+      ],
+      "reasons": [
+        "fixture.monitor_self_check_failed",
+        "fixture.observation_window_below_intended",
+        "measurement.quantile_below_order_statistic_bound"
+      ],
+      "conclusion_ceiling": "inconclusive"
+    },
+    {
+      "id": "no_fabricated_test_statistic",
+      "assert": "inputs_contain_no_key",
+      "keys": [
+        "p_value",
+        "power",
+        "confidence_interval"
+      ],
+      "note": "The core must not invent a p-value, power or interval; the fixture supplies none."
+    },
+    {
+      "id": "negative_trial_preserved",
+      "assert": "negative_result_retained",
+      "runs": [
+        "control-short",
+        "optimization-a-short"
+      ]
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "control-short": [
+          "measurement.flat_samples",
+          "fixture.monitor_self_check_failed",
+          "fixture.observation_window_below_intended",
+          "measurement.quantile_below_order_statistic_bound"
+        ],
+        "optimization-a-short": [
+          "measurement.flat_samples",
+          "fixture.monitor_self_check_failed",
+          "fixture.observation_window_below_intended",
+          "measurement.quantile_below_order_statistic_bound"
+        ]
+      }
+    }
+  ]
+}

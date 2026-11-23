@@ -1,0 +1,58 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "sequential-order",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "p99_values_recomputable",
+      "assert": "nearest_rank_p99",
+      "unit": "ms",
+      "per_run": {
+        "a-first-control": "49.1",
+        "b-second-treatment": "55.1"
+      }
+    },
+    {
+      "id": "sequential_order_flagged",
+      "assert": "flag_present",
+      "runs": [
+        "a-first-control",
+        "b-second-treatment"
+      ],
+      "flag": "measurement.sequential_trial_order"
+    },
+    {
+      "id": "order_confounds_difference",
+      "assert": "order_effect_visible",
+      "run": "a-first-control",
+      "quarters": {
+        "first_quarter_mean_t10": 232,
+        "last_quarter_mean_t10": 190
+      },
+      "first_quarter_mean_exceeds_last_by_at_least_t10": 30,
+      "meaning": "Early samples of the first run are slower, so any A-versus-B difference includes run order."
+    },
+    {
+      "id": "no_paired_claim",
+      "assert": "conclusion_ceiling",
+      "runs": [
+        "a-first-control",
+        "b-second-treatment"
+      ],
+      "ceiling": "order_confounded_not_paired_evidence"
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "a-first-control": [
+          "measurement.sequential_trial_order"
+        ],
+        "b-second-treatment": [
+          "measurement.sequential_trial_order"
+        ]
+      }
+    }
+  ]
+}

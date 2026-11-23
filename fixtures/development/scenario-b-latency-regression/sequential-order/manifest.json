@@ -1,0 +1,50 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "sequential-order",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "One comparison executed A then B sequentially.",
+  "mistake_offered": "Treating a single A-then-B comparison as paired or interleaved evidence of a regression.",
+  "traps": [
+    "measurement.sequential_trial_order"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "a-first-control",
+      "role": "Run A (control), executed first; cold effects decay over its first 60 samples.",
+      "envelope": "runs/a-first-control/envelope.json",
+      "measurement": "runs/a-first-control/measurement.json",
+      "output": "runs/a-first-control/output.json",
+      "sha256": {
+        "envelope": "386bbb37c84d89d2cebba842955ba9ff98f0ab64e2cf12d2df51e49dea965c47",
+        "measurement": "e5376d513b0c1a23ea33329ac84da1cccdf36f7952ff6bab95452544a0424b8e",
+        "output": "7a7125ae1959df52c79db35a93e05c6c9b6ea64fc95679ff917fa97756fd9924"
+      }
+    },
+    {
+      "id": "b-second-treatment",
+      "role": "Run B (treatment), executed immediately after A on the same host.",
+      "envelope": "runs/b-second-treatment/envelope.json",
+      "measurement": "runs/b-second-treatment/measurement.json",
+      "output": "runs/b-second-treatment/output.json",
+      "sha256": {
+        "envelope": "4ddd818ff9459b01ab9488c6cd58c1624780962ad0547b666096700def1b56a1",
+        "measurement": "581335bfe67407cb1c06fe7e280fdb7194e0b00d76a70692c8ba1c49a656cadb",
+        "output": "f87cf5736f570e242a639bcbe2609e9a3ad4fe45fe947f6e5529576c63701b53"
+      }
+    }
+  ]
+}

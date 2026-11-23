@@ -1,0 +1,38 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "closed-loop-omission",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "Closed-loop capture measured from actual send time.",
+  "mistake_offered": "Reporting the actual-send p99 of a closed-loop capture as the latency users would see.",
+  "traps": [
+    "coordinated_omission"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "closed-loop-capture",
+      "role": "Closed-loop capture, latency from actual send time; one 600 ms stall at request 200 delays the schedule.",
+      "envelope": "runs/closed-loop-capture/envelope.json",
+      "measurement": "runs/closed-loop-capture/measurement.json",
+      "output": "runs/closed-loop-capture/output.json",
+      "sha256": {
+        "envelope": "491c80204379410116ce26537759b047ce0386cc01acb7fdc86713bda9094259",
+        "measurement": "8b2550731b1d930d593882b5734b0e80d3e261557a31fcb19d8f6e687fa17044",
+        "output": "76448806e9d31a72e2fc70135389e9bd73f5e60e22ed420c65bd85d70e3fce20"
+      }
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "baseline",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "Control and treatment comparable; one confounded debug-logging run; an optimization run with mismatched warm-up and workload mix.",
+  "mistake_offered": "Treating the debug-logging run as an ordinary treatment sample, or comparing optimization A with the treatment as if warm-up and workload mix matched.",
+  "traps": [
+    "confounded_measurement",
+    "warmup_mismatch",
+    "workload_mix_mismatch",
+    "process_exit_is_not_validity"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "control",
+      "role": "Control: runtime 1.8, old allocator. Comparable to treatment.",
+      "envelope": "runs/control/envelope.json",
+      "measurement": "runs/control/measurement.json",
+      "output": "runs/control/output.json",
+      "sha256": {
+        "envelope": "27d51ae18a19db0191853f58c424ee4325e4651eaa1d0cef5a6b1a2ccd4b1305",
+        "measurement": "557dc3540ee39f99c125189b8d997c02a335842c4600cd3233008281eaca5121",
+        "output": "f4692a388249e645e57b9f42d0cd2d5b3fc2a08c0e5f602169a6e010dcb13146"
+      }
+    },
+    {
+      "id": "treatment",
+      "role": "Treatment: runtime 1.9, new allocator. The comparable partner of control.",
+      "envelope": "runs/treatment/envelope.json",
+      "measurement": "runs/treatment/measurement.json",
+      "output": "runs/treatment/output.json",
+      "sha256": {
+        "envelope": "e264e7a6589295f0beb179025bc6572b981a549f642683c0608e2b6d2914cf5f",
+        "measurement": "deedca7b21abde81046d699b5f791e2ddfc2e5cd48b565e4ee9e6c27a557af27",
+        "output": "80f2f4e4dc5fb62e8c1ee1e55bfc5301d601d95499a5d22d39636ee68c80dfc9"
+      }
+    },
+    {
+      "id": "treatment-debug-logging",
+      "role": "Confounded treatment: same build as treatment with extra debug logging switched on.",
+      "envelope": "runs/treatment-debug-logging/envelope.json",
+      "measurement": "runs/treatment-debug-logging/measurement.json",
+      "output": "runs/treatment-debug-logging/output.json",
+      "sha256": {
+        "envelope": "67ecdf55174ff172d272f8df1a53a23dcd810b98f688c1c03b6608e740e1d2ed",
+        "measurement": "f29a44eac6493b9443dc54d5ed8e86f367f8b4991f1c17d71c58f67375c56b39",
+        "output": "84e4cc6e5c4364551f96a958ff7f8360784e4dd56461c862d9328bdded0d5099"
+      }
+    },
+    {
+      "id": "optimization-a",
+      "role": "Optimization A on the new runtime. Short warm-up and a different workload mix.",
+      "envelope": "runs/optimization-a/envelope.json",
+      "measurement": "runs/optimization-a/measurement.json",
+      "output": "runs/optimization-a/output.json",
+      "sha256": {
+        "envelope": "373ac12055f1dda971388d1ec8cd6c8df2f23a03b2cd853b6bc517102dfc120c",
+        "measurement": "2951486455a93749cc32f8240f8e4fc696fb264de229664ab392e5b9f1b9f204",
+        "output": "575afdb9d7664a8d1a7fabecc09b190d00464a7b66398c5b985e5569ca856706"
+      }
+    }
+  ]
+}

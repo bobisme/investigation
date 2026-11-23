@@ -12,7 +12,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SPLITS = {"development", "pilot", "sealed"}
-DOMAINS = {"debugging", "architecture", "lookup", "source-research"}
+DOMAINS = {"debugging", "architecture", "lookup", "source-research", "measurement"}
 KEY = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 EXPOSED_NAMES = {"source.txt", "update.txt"}
 

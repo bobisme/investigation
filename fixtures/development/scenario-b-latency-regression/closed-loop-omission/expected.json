@@ -1,0 +1,50 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "closed-loop-omission",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "closed_loop_actual_send_flagged",
+      "assert": "flag_present",
+      "runs": [
+        "closed-loop-capture"
+      ],
+      "flag": "measurement.closed_loop_without_intended_send_timing"
+    },
+    {
+      "id": "reported_p99_from_actual_send",
+      "assert": "nearest_rank_p99",
+      "unit": "ms",
+      "per_run": {
+        "closed-loop-capture": "10.0"
+      }
+    },
+    {
+      "id": "intended_send_p99_recomputable",
+      "assert": "p99_from_intended_send",
+      "run": "closed-loop-capture",
+      "value_ms": "590.0",
+      "at_least_times_reported": 5,
+      "meaning": "Measured from the intended schedule in output.json the tail is far larger; the reported p99 omits the delayed requests."
+    },
+    {
+      "id": "reported_p99_not_a_tail_bound",
+      "assert": "conclusion_ceiling",
+      "runs": [
+        "closed-loop-capture"
+      ],
+      "ceiling": "understates_tail_latency"
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "closed-loop-capture": [
+          "measurement.closed_loop_without_intended_send_timing",
+          "measurement.flat_samples"
+        ]
+      }
+    }
+  ]
+}

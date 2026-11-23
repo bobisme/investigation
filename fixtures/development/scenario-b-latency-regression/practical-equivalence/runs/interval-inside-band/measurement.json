@@ -1,0 +1,16 @@
+{
+  "unit": {
+    "state": "known",
+    "value": "ms"
+  },
+  "workload": {
+    "state": "known",
+    "value": "ledgerd-mixed-requests"
+  },
+  "sample_count": {
+    "state": "unknown"
+  },
+  "limitations": [
+    "Only the supplied interval is recorded; no raw samples accompany it."
+  ]
+}

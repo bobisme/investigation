@@ -1,0 +1,63 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "missing-outcome",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "attempt_counts_preserved",
+      "assert": "attempt_counts",
+      "run": "timeout-capture",
+      "started": 100,
+      "observed": 95,
+      "timed_out": 5,
+      "excluded": 0
+    },
+    {
+      "id": "completion_only_p99",
+      "assert": "nearest_rank_p99",
+      "unit": "ms",
+      "per_run": {
+        "timeout-capture": "10.0"
+      }
+    },
+    {
+      "id": "all_attempt_criterion_not_met",
+      "assert": "fraction_within_threshold",
+      "run": "timeout-capture",
+      "threshold_ms": "25.0",
+      "denominator": "started",
+      "within": 95,
+      "of": 100,
+      "required_fraction": "0.99",
+      "met": false
+    },
+    {
+      "id": "completion_only_percentile_cannot_satisfy_criterion",
+      "assert": "conclusion_ceiling",
+      "runs": [
+        "timeout-capture"
+      ],
+      "ceiling": "criterion_unmet_or_unresolved_never_satisfied",
+      "forbidden_claim": "99% of requests complete within 25 ms"
+    },
+    {
+      "id": "all_attempt_p99_is_censored",
+      "assert": "all_attempt_p99_at_least",
+      "run": "timeout-capture",
+      "treat_unfinished_as_ms": "1000.0",
+      "value_ms": "1000.0"
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "timeout-capture": [
+          "measurement.completion_only_statistic",
+          "measurement.flat_samples",
+          "measurement.quantile_below_order_statistic_bound"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,240 @@
+{
+  "unit": {
+    "state": "known",
+    "value": "ms"
+  },
+  "workload": {
+    "state": "known",
+    "value": "ledgerd-mixed-requests"
+  },
+  "observation_window": {
+    "state": "known",
+    "value": {
+      "value": "60",
+      "unit": "s"
+    }
+  },
+  "warmup": {
+    "state": "known",
+    "value": {
+      "value": "30",
+      "unit": "s"
+    }
+  },
+  "sample_count": {
+    "state": "known",
+    "value": 95
+  },
+  "statistic": {
+    "state": "known",
+    "value": {
+      "kind": "quantile",
+      "quantile": "0.99",
+      "population": {
+        "state": "known",
+        "value": "completed_attempts"
+      },
+      "combination": {
+        "state": "known",
+        "value": "single_run"
+      }
+    }
+  },
+  "samples": {
+    "shape": "flat",
+    "unit": "ms",
+    "values": [
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0",
+      "10.0"
+    ]
+  },
+  "trial_order": {
+    "state": "known",
+    "value": "interleaved"
+  },
+  "load_model": {
+    "state": "known",
+    "value": {
+      "loop": {
+        "state": "known",
+        "value": "open"
+      },
+      "timed_from_intended_send": {
+        "state": "known",
+        "value": true
+      }
+    }
+  },
+  "environment_identity": {
+    "state": "known",
+    "value": {
+      "runtime": {
+        "state": "known",
+        "value": "marlin-1.9"
+      },
+      "allocator": {
+        "state": "known",
+        "value": "slab-v2"
+      },
+      "host": {
+        "state": "known",
+        "value": "fixture-host-1"
+      }
+    }
+  },
+  "tool_identity": {
+    "state": "known",
+    "value": {
+      "harness": {
+        "state": "known",
+        "value": "tidepool-bench 0.4.0"
+      },
+      "monitor": {
+        "state": "known",
+        "value": "tidepool-monitor 0.3.1"
+      }
+    }
+  },
+  "instrumentation_changed": {
+    "state": "known",
+    "value": false
+  },
+  "attempts": {
+    "started": {
+      "count": {
+        "state": "known",
+        "value": 100
+      },
+      "definition": {
+        "state": "known",
+        "value": "requests sent during the observation window"
+      }
+    },
+    "observed": {
+      "count": {
+        "state": "known",
+        "value": 95
+      },
+      "definition": {
+        "state": "known",
+        "value": "requests with a completion before the timeout"
+      }
+    },
+    "timed_out": {
+      "count": {
+        "state": "known",
+        "value": 5
+      },
+      "definition": {
+        "state": "known",
+        "value": "requests with no completion at the 1000 ms timeout"
+      }
+    },
+    "excluded": {
+      "count": {
+        "state": "known",
+        "value": 0
+      },
+      "definition": {
+        "state": "known",
+        "value": "requests removed from analysis by the producer"
+      }
+    }
+  },
+  "limitations": [
+    "Unfinished requests carry no latency value; the timeout is 1000 ms."
+  ]
+}

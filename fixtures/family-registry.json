@@ -38,6 +38,19 @@
       ]
     },
     {
+      "id": "scenario-b-latency-regression",
+      "split": "development",
+      "domain": "measurement",
+      "variants": [
+        {"id": "baseline", "split": "development", "directory": "development/scenario-b-latency-regression/baseline"},
+        {"id": "negative-short-window", "split": "development", "directory": "development/scenario-b-latency-regression/negative-short-window"},
+        {"id": "sequential-order", "split": "development", "directory": "development/scenario-b-latency-regression/sequential-order"},
+        {"id": "closed-loop-omission", "split": "development", "directory": "development/scenario-b-latency-regression/closed-loop-omission"},
+        {"id": "missing-outcome", "split": "development", "directory": "development/scenario-b-latency-regression/missing-outcome"},
+        {"id": "practical-equivalence", "split": "development", "directory": "development/scenario-b-latency-regression/practical-equivalence"}
+      ]
+    },
+    {
       "id": "w01-handoff",
       "split": "development",
       "domain": "debugging",

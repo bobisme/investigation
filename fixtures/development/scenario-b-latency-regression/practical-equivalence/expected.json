@@ -1,0 +1,55 @@
+{
+  "schema_version": "inv.fixture.expected.v1",
+  "scenario": "B",
+  "variant": "practical-equivalence",
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "properties": [
+    {
+      "id": "frozen_inquiry_precedes_results",
+      "assert": "inquiry_frozen_before_results",
+      "fields": [
+        "population",
+        "unit",
+        "aggregation",
+        "replication_unit",
+        "timeout_exclusion_policy",
+        "margin"
+      ]
+    },
+    {
+      "id": "inside_band_supports_bounded_equivalence",
+      "assert": "interval_within_margin",
+      "run": "interval-inside-band",
+      "lower_ms": -2,
+      "upper_ms": 3,
+      "margin_ms": 5,
+      "outcome": "bounded_equivalence_supported"
+    },
+    {
+      "id": "crossing_band_leaves_equivalence_unresolved",
+      "assert": "interval_within_margin",
+      "run": "interval-crosses-band",
+      "lower_ms": -8,
+      "upper_ms": 3,
+      "margin_ms": 5,
+      "outcome": "equivalence_unresolved"
+    },
+    {
+      "id": "no_invented_interval",
+      "assert": "inputs_contain_no_key",
+      "keys": [
+        "p_value",
+        "power"
+      ],
+      "note": "The core invents neither interval; both intervals arrive in producer envelopes."
+    },
+    {
+      "id": "advisory_flags",
+      "assert": "derived_flags_equal",
+      "per_run": {
+        "interval-inside-band": [],
+        "interval-crosses-band": []
+      }
+    }
+  ]
+}

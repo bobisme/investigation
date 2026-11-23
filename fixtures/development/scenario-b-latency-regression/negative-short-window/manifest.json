@@ -1,0 +1,52 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "negative-short-window",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "No improvement detected under a failed monitor and too short a window.",
+  "mistake_offered": "Recording 'no improvement detected' as evidence that optimization A has no effect.",
+  "traps": [
+    "negative_without_adequate_conditions"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "control-short",
+      "role": "Control, 8 s window, 40 samples.",
+      "envelope": "runs/control-short/envelope.json",
+      "measurement": "runs/control-short/measurement.json",
+      "output": "runs/control-short/output.json",
+      "sha256": {
+        "envelope": "4cb63c85631698f6a516da16943c24641bbca4924573c9d8320a037f2f12df0b",
+        "measurement": "ddb6a9f520299b80b171243a2f08e7cfbeb6f35fd8175de1800427bc4820cb7c",
+        "output": "dfca6fe129af477d92ff9b765bf24a0c207b67c37b90e9f1dd0c11aeacd5c7b4"
+      },
+      "intended_observation_window_s": 300
+    },
+    {
+      "id": "optimization-a-short",
+      "role": "Optimization A, 8 s window, 40 samples, same monitor.",
+      "envelope": "runs/optimization-a-short/envelope.json",
+      "measurement": "runs/optimization-a-short/measurement.json",
+      "output": "runs/optimization-a-short/output.json",
+      "sha256": {
+        "envelope": "98b21ff68c2beb721bee4fb59561399513125d617fcfe4632c7f6df2dc4bab2d",
+        "measurement": "1d666a4147f196142c549adec59e6d4f8675fc99a9e6fc7cdc997f61334bf665",
+        "output": "2522fd06220d56af06d95e99d7f38292e9802f1fcb8b0bd31d41dbf9eae8dc34"
+      },
+      "intended_observation_window_s": 300
+    }
+  ]
+}

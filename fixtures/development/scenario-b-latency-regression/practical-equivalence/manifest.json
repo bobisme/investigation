@@ -1,0 +1,62 @@
+{
+  "schema_version": "inv.fixture.manifest.v1",
+  "scenario": "B",
+  "variant": "practical-equivalence",
+  "split": "development",
+  "synthetic": true,
+  "offline": true,
+  "provider_specific_inputs": false,
+  "immutable_sources": true,
+  "fixture_environment": "deterministic offline synthetic records; no external service or real producer",
+  "generator": {
+    "script": "scripts/generate-scenario-b-fixture.py",
+    "seed": 20261122,
+    "algorithm": "xorshift64*, integer arithmetic only",
+    "note": "synthetic bytes generated from a fixed seed with integer arithmetic"
+  },
+  "question": "After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression, and does optimization A (arena reuse) improve p99 meaningfully?",
+  "summary": "Prespecified +-5 ms band with supplied intervals [-2, +3] and [-8, +3].",
+  "mistake_offered": "Treating 'no significant difference' as equivalence, or accepting the wider interval as inside the band.",
+  "traps": [
+    "practical_equivalence_margin"
+  ],
+  "input_format": "inv.producer-run.v1 envelope per run, with the raw output as its artifact; measurement.json holds the typed measurement fields an investigator records for the run",
+  "runs": [
+    {
+      "id": "interval-inside-band",
+      "role": "Externally supplied compatible interval for the p99 difference: [-2, +3] ms.",
+      "envelope": "runs/interval-inside-band/envelope.json",
+      "measurement": "runs/interval-inside-band/measurement.json",
+      "output": "runs/interval-inside-band/output.json",
+      "sha256": {
+        "envelope": "60a6162300f92d7ccf258c5fa1ab25e5025000d0fdd735de62256736a3a3a61f",
+        "measurement": "685ad07b693e89fcbddcf3f6c87faef857b4829c88a64dd50bfbd2023e20cdb3",
+        "output": "1e5bc2d88ceb3f7ad3fe5bce4611cdc16a3165821eeb99141a8216c28914acaf"
+      }
+    },
+    {
+      "id": "interval-crosses-band",
+      "role": "Externally supplied compatible interval for the p99 difference: [-8, +3] ms.",
+      "envelope": "runs/interval-crosses-band/envelope.json",
+      "measurement": "runs/interval-crosses-band/measurement.json",
+      "output": "runs/interval-crosses-band/output.json",
+      "sha256": {
+        "envelope": "a3d55df609a52207f472097ee38a9acb29c6ab7eaef67aac0939397c61a73b52",
+        "measurement": "685ad07b693e89fcbddcf3f6c87faef857b4829c88a64dd50bfbd2023e20cdb3",
+        "output": "cc793e10879f0ee0be16cc3078e43d0e9ab8bfd6d3e7c5a1b51bc513d4fdb979"
+      }
+    }
+  ],
+  "frozen_inquiry": {
+    "frozen_before_results": true,
+    "population": "ledgerd mixed requests on fixture-host-1 at the steady-load level",
+    "unit": "ms",
+    "aggregation": "p99 per capture, nearest rank",
+    "replication_unit": "one capture (process level)",
+    "timeout_exclusion_policy": "requests unfinished at 1000 ms are counted as attempts and never dropped",
+    "margin": {
+      "lower_ms": -5,
+      "upper_ms": 5
+    }
+  }
+}
