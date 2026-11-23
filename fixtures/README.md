@@ -76,3 +76,7 @@ The test requires the compact brief to be at most a fifth of the full traversal 
 - `drill-4-explanatory.json` and `drill-4-evaluative.json` build small cases whose audit is clean. A scripted fresh reviewer then adds a rival Hypothesis or Option and a material Objection through a blindspot review. `next` and `frontier` show the rival, the subject reads as disputed, and the clean audit replays byte for byte at its own snapshot.
 
 The responses are scripted transactions, not model runs. MCP parity (W13.05) and W14 can replay the same files.
+
+## Trial tasks 5 to 7
+
+`development/trial-tasks/` holds the source bytes for release-trial tasks 5 to 7 (plan §20.5), one directory per registered variant: `tide-gauge-dropout/stale-resume`, `proofer-temperature-drift/lost-response-conflict`, and `door-alarm-delay/stage-1` (a support-folder export with a planted `AGENTS.md`, imperative text and a schema-valid record payload, all inside `source.txt`) and `stage-2` (the notes-arm handoff). Setup, faults, journal checks and rubric keys live in [training/trial-tasks](../training/trial-tasks/protocol.md); `crates/investigation-cli/tests/trial_tasks.rs` replays them against the built binary.

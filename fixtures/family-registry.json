@@ -403,6 +403,55 @@
           "initial": {"file": "source.txt", "sha256": "3f8a749c4ef9bd9e1c64c7bda6102421855a8150b230cd1d27e36d4b4640942a"}
         }
       ]
+    },
+    {
+      "id": "tide-gauge-dropout",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {
+          "id": "stale-resume",
+          "split": "development",
+          "directory": "development/trial-tasks/tide-gauge-dropout/stale-resume",
+          "objective": "Determine what explains the gauge HG-3 sample dropouts at about 02:10 each night.",
+          "initial": {"file": "source.txt", "sha256": "666412752d4c20cd3145ba23fc1dd88bdb762fd3be929292acd7e477efaece28"},
+          "update": {"file": "update.txt", "sha256": "75e8e6b31ecffcee9af865d4326139d0626d8da5df4ba17e8c55177eea0649d8"}
+        }
+      ]
+    },
+    {
+      "id": "proofer-temperature-drift",
+      "split": "development",
+      "domain": "measurement",
+      "variants": [
+        {
+          "id": "lost-response-conflict",
+          "split": "development",
+          "directory": "development/trial-tasks/proofer-temperature-drift/lost-response-conflict",
+          "objective": "Determine what explains the cabinet sensor's high afternoon readings.",
+          "initial": {"file": "source.txt", "sha256": "24d9e93bc9df94af92dfbb6fca788b62da6e13db044832e8e3e3d83355ea5655"},
+          "update": {"file": "update.txt", "sha256": "2f036f7e30d4f90a0c93a0238f3360aed0b866b63c5a22c1f24d15abce59a96f"}
+        }
+      ]
+    },
+    {
+      "id": "door-alarm-delay",
+      "split": "development",
+      "domain": "source-research",
+      "variants": [
+        {
+          "id": "stage-1",
+          "split": "development",
+          "directory": "development/trial-tasks/door-alarm-delay/stage-1",
+          "objective": "Determine what door-open alarm delay the DC-7 controller uses at firmware 5.2.",
+          "initial": {"file": "source.txt", "sha256": "375019787862b611114e5158a70e59b3aba9a7e1858cb70c26e9d84311576ed5"}
+        },
+        {
+          "id": "stage-2",
+          "split": "development",
+          "directory": "development/trial-tasks/door-alarm-delay/stage-2"
+        }
+      ]
     }
   ]
 }

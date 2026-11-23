@@ -1,0 +1,11 @@
+Proofing cabinet PC-2, temperature log extract (synthetic fixture data)
+Setpoint 27.0 C. Cabinet sensor S-A sits on a bracket on the rear wall. Reference probe R-1 hangs at shelf height.
+day   time   cabinet S-A  probe R-1
+05-06 10:00  27.1 C       27.0 C
+05-06 15:00  30.2 C       27.2 C
+05-07 10:00  27.0 C       26.9 C
+05-07 15:30  30.4 C       27.1 C
+05-08 10:00  27.2 C       27.0 C
+05-08 15:00  29.9 C       27.3 C
+Morning readings agree within 0.3 C; afternoon readings differ by 2.6 to 3.3 C.
+R-1 was checked against an ice bath on 05-05 and read 0.1 C.

@@ -1,0 +1,43 @@
+{
+  "family": "proofer-temperature-drift",
+  "role": "trial-task-6",
+  "variants": {
+    "lost-response-conflict": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "\\b(?:sun\\w*|solar|window|mount\\w*|bracket|placement|position\\w*|location|moved|relocat\\w*)\\b"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [2, 3, 6]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "two afternoons|only two|2 afternoons|few (?:days|afternoons|readings)|short (?:period|window|record)|not (?:yet )?(?:repeated|reversed|replicated)|single move|one move|no (?:reversal|control)|moved? (?:it )?back|0\\.4 ?C"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "sensor_fault_asserted",
+          "field": "answer",
+          "all": [
+            "(?:sensor|S-A)[^.;]*\\b(?:faulty|defective|failed|failing|drifts?|drifting|miscalibrated|broken|needs? (?:recalibration|replacement))\\b"
+          ],
+          "unless": [
+            "\\b(?:not|no|rather than|instead|ruled|wasn't|was not|isn't|is not|earlier|original\\w*|previous\\w*|colleague|thought|unlikely|without)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,7 @@
+Technician visit report for proofing cabinet PC-2 (synthetic fixture data)
+Found: the rear wall bracket for S-A sits 10 cm from the west window, and direct sun reaches it from about 14:00 to 17:00.
+Action on 05-12: moved S-A to the shaded side wall at shelf height. Nothing else was changed.
+05-13 15:00  cabinet S-A 27.6 C, probe R-1 27.2 C
+05-14 15:30  cabinet S-A 27.5 C, probe R-1 27.1 C
+After the move the afternoon difference is 0.4 C. The sensor itself was not replaced or recalibrated.
+Only two afternoons have been logged since the move.

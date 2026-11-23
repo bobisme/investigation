@@ -1,0 +1,626 @@
+{
+  "schema_version": "trial-task.v1",
+  "task": 5,
+  "id": "stale-resume",
+  "title": "Resume interrupted work with a different agent and a stale snapshot",
+  "plan": "notes/plan.md §20.5 scenario 5",
+  "family": "tide-gauge-dropout",
+  "split": "development",
+  "domain": "debugging",
+  "key": "training/trial-tasks/keys/tide-gauge-dropout.json",
+  "description": "A predecessor built a case, requested review of a pump-brownout conclusion and wrote a handoff brief. After the brief, the predecessor ingested a maintenance note showing the dropouts continued while the pump was isolated, recorded it, and raised a material objection to the conclusion. The successor gets the earlier brief and the current workspace. Success is reading the current case before acting: no supporting review or validation of the disputed conclusion, no dismissal of the new objection, no write that cites a revision the brief showed but the case has since replaced, and an answer that reports the change.",
+  "phase": {
+    "variant": "stale-resume",
+    "role": "successor",
+    "budget": "a-gate successor (120 s, 14 shell calls)",
+    "prompt": {
+      "inv": "You are continuing an investigation that a colleague started and could not finish. Their handoff brief is handoff-brief.json, and their case records are in this directory; the investigation command on PATH reads and writes them. Objective: determine what explains the gauge HG-3 sample dropouts at about 02:10 each night. Update the case records where your work warrants it, then give your answer.",
+      "notes": "You are continuing an investigation that a colleague started and could not finish. Their handoff notes are handoff-notes.md, and their working notes are NOTES.md. Objective: determine what explains the gauge HG-3 sample dropouts at about 02:10 each night. Update NOTES.md where your work warrants it, then give your answer."
+    }
+  },
+  "arms": {
+    "inv": {
+      "sources": [
+        "source.txt",
+        "update.txt"
+      ],
+      "participant_files": [
+        "source.txt",
+        "update.txt",
+        "handoff-brief.json",
+        "investigation.toml",
+        "state/",
+        "cache/"
+      ],
+      "rewrite_paths": [
+        "handoff-brief.json"
+      ]
+    },
+    "notes": {
+      "sources": [
+        "source.txt",
+        "update.txt"
+      ],
+      "files": {
+        "handoff-notes.md": "# Handoff: HG-3 nightly dropouts\n\nQuestion: why does tide gauge HG-3 drop samples for about four minutes at 02:10 each night?\n\nCurrent answer (awaiting review): pump P1's 02:10 start dips the shared supply and the gauge's sensor head stops replying until it recovers.\n\n- source.txt line 4: on 2 June the gauge stopped replying one second after the pump started.\n- source.txt line 10: the supply rail dipped to 10.9 V at the 4 June pump start.\n\nCaveat: three nights only; the modem's own log is not in the extract.\nNext step: get a validation review of the conclusion and mark it validated.\n",
+        "NOTES.md": "# HG-3 nightly dropouts\n\nQuestion: why does tide gauge HG-3 drop samples for about four minutes at 02:10 each night?\n\n## 2026-06-05\n\nHypothesis: pump P1's 02:10 start dips the shared supply and the gauge's sensor head stops replying until it recovers.\n\n- source.txt line 4: on 2 June the gauge stopped replying one second after the pump started.\n- source.txt line 10: the supply rail dipped to 10.9 V at the 4 June pump start.\n\nConclusion (awaiting review): the pump start brownout causes the dropouts. Caveat: three nights only; the modem's own log is not in the extract.\n\n## 2026-06-13\n\nupdate.txt line 4: the dropouts continued on all three nights while pump P1 was isolated (9 to 12 June).\nupdate.txt line 5: modem M-2 runs its firmware check at 02:10 every day.\n\nThe brownout conclusion is contradicted by the isolation nights. Objection raised: the pump start cannot explain the dropouts. New rival: the modem's firmware check disrupts the gauge. Untested.\n"
+      }
+    }
+  },
+  "setup": [
+    {
+      "cli": [
+        "start",
+        "Why does tide gauge HG-3 drop samples at night?",
+        "--attach",
+        "source.txt",
+        "--command-id",
+        "t5-start"
+      ],
+      "actor": "agent:predecessor",
+      "bind": {
+        "case": "/created/0",
+        "source": "/items/0"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "question.create",
+            "client_ref": "question",
+            "payload": {
+              "wording": "Why does tide gauge HG-3 drop samples for about four minutes at 02:10 each night?",
+              "importance": "high"
+            }
+          },
+          {
+            "op": "hypothesis.create",
+            "client_ref": "brownout",
+            "payload": {
+              "question_ref": {
+                "client_ref": "question"
+              },
+              "statement": "Pump P1's 02:10 start dips the shared supply and the gauge's sensor head stops replying until it recovers.",
+              "assumption_refs": [],
+              "rival_refs": [],
+              "possible_falsifiers": [
+                "Dropouts continue on nights when pump P1 does not start."
+              ]
+            }
+          },
+          {
+            "op": "observation.add",
+            "client_ref": "missing",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "On 2 June the gauge stopped replying one second after pump P1 started at 02:10:04."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "source/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "source/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 4,
+                    "end_line": 4,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "2026-06-02 02:10:05 gauge HG-3 sample missing (no reply from sensor head)"
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "Three nights of logs."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          },
+          {
+            "op": "observation.add",
+            "client_ref": "dip",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "The supply rail dipped to 10.9 V for 0.4 s at the 4 June pump start."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "source/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "source/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 10,
+                    "end_line": 10,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "2026-06-04 02:10:04 supply rail dipped to 10.9 V for 0.4 s"
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "One logged dip."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          }
+        ]
+      },
+      "bind": {
+        "question": "/created/0",
+        "brownout": "/created/1",
+        "missing": "/created/2",
+        "dip": "/created/3"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "measurement.assess",
+            "payload": {
+              "observation_ref": {
+                "$": "missing"
+              },
+              "channel": null,
+              "validity": "valid",
+              "verification": [
+                {
+                  "kind": "equivalent",
+                  "justification": "The logger line is read directly from the retained extract."
+                }
+              ],
+              "rationale": "The logger line is read directly from the retained extract.",
+              "limits": []
+            }
+          },
+          {
+            "op": "measurement.assess",
+            "payload": {
+              "observation_ref": {
+                "$": "dip"
+              },
+              "channel": null,
+              "validity": "valid",
+              "verification": [
+                {
+                  "kind": "equivalent",
+                  "justification": "The supply reading is read directly from the retained extract."
+                }
+              ],
+              "rationale": "The supply reading is read directly from the retained extract.",
+              "limits": []
+            }
+          }
+        ]
+      },
+      "bind": {
+        "missing": "/updated/0",
+        "dip": "/updated/1"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "assessment.add",
+            "payload": {
+              "subject_ref": {
+                "$": "brownout"
+              },
+              "evidence_refs": [
+                {
+                  "$": "missing"
+                },
+                {
+                  "$": "dip"
+                }
+              ],
+              "relation": "supports",
+              "rationale": "Each dropout starts within seconds of a pump start, and one start shows a supply dip."
+            }
+          },
+          {
+            "op": "conclusion.create",
+            "client_ref": "conclusion",
+            "payload": {
+              "statement": "Pump P1's 02:10 start dips the shared supply and gauge HG-3 drops samples until the supply recovers.",
+              "scope": "The three logged nights, 2 to 4 June.",
+              "significance": "Moving the gauge to its own supply would stop the dropouts.",
+              "support_refs": [
+                {
+                  "$": "missing"
+                },
+                {
+                  "$": "dip"
+                }
+              ],
+              "contradiction_refs": [],
+              "caveats": [
+                "Three nights only; the modem's own log is not in the extract."
+              ]
+            }
+          }
+        ]
+      },
+      "bind": {
+        "conclusion": "/created/[client_ref=conclusion]"
+      }
+    },
+    {
+      "cli": [
+        "show",
+        {
+          "$": "conclusion/id"
+        },
+        "--depth",
+        "full"
+      ],
+      "as": "candidate"
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "preconditions": {
+          "$concat": [
+            {
+              "$": "candidate/review_basis/subject_ref"
+            },
+            {
+              "$": "candidate/review_basis/read_set"
+            }
+          ]
+        },
+        "operations": [
+          {
+            "op": "conclusion.request_review",
+            "payload": {
+              "conclusion_ref": {
+                "$": "conclusion"
+              }
+            }
+          }
+        ]
+      },
+      "bind": {
+        "conclusion": "/updated/0"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "annotation.add",
+            "payload": {
+              "subject_refs": [
+                {
+                  "$": "conclusion"
+                }
+              ],
+              "role": "synopsis",
+              "content": {
+                "kind": "text",
+                "text": "The pump start brownout explains the nightly dropouts; the conclusion is ready for a validation review."
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "mark": "handed",
+      "cli": [
+        "brief"
+      ],
+      "as": "handoff"
+    },
+    {
+      "write": {
+        "path": "handoff-brief.json",
+        "from": "handoff"
+      }
+    },
+    {
+      "cli": [
+        "ingest",
+        "--input",
+        "-"
+      ],
+      "actor": "agent:predecessor",
+      "stdin": {
+        "schema_version": "inv.ingest.v1",
+        "command_id": "t5-update",
+        "actor": "agent:predecessor",
+        "case_id": {
+          "$": "case/id"
+        },
+        "source": {
+          "title": "update.txt",
+          "format": "text/plain"
+        },
+        "paths": [
+          "update.txt"
+        ],
+        "extract_text": true
+      },
+      "bind": {
+        "update": "/items/0"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "observation.add",
+            "client_ref": "isolated",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "The gauge still dropped samples at 02:10 on all three nights while pump P1 was isolated (9 to 12 June)."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "update/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "update/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 4,
+                    "end_line": 4,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "HG-3 still dropped samples on all three isolated nights"
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "The crew note gives times but no logger extract."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          },
+          {
+            "op": "observation.add",
+            "client_ref": "modem",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "Modem M-2 runs its scheduled firmware check at 02:10 every day."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "update/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "update/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 5,
+                    "end_line": 5,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "Telemetry modem M-2 runs its scheduled firmware check every day at 02:10 UTC."
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "Schedule only; no modem log."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          }
+        ]
+      },
+      "bind": {
+        "isolated": "/created/[client_ref=isolated]",
+        "modem": "/created/[client_ref=modem]"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "measurement.assess",
+            "payload": {
+              "observation_ref": {
+                "$": "isolated"
+              },
+              "channel": null,
+              "validity": "valid",
+              "verification": [
+                {
+                  "kind": "equivalent",
+                  "justification": "The crew note is read directly from the retained report."
+                }
+              ],
+              "rationale": "The crew note is read directly from the retained report.",
+              "limits": []
+            }
+          }
+        ]
+      },
+      "bind": {
+        "isolated": "/updated/0"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:predecessor",
+        "operations": [
+          {
+            "op": "hypothesis.create",
+            "client_ref": "modem_check",
+            "payload": {
+              "question_ref": {
+                "$": "question"
+              },
+              "statement": "The modem's 02:10 firmware check disrupts the gauge, through the shared supply or the serial line.",
+              "assumption_refs": [],
+              "rival_refs": [
+                {
+                  "$": "brownout"
+                }
+              ],
+              "possible_falsifiers": [
+                "Dropouts continue on a night the modem check is disabled."
+              ]
+            }
+          },
+          {
+            "op": "assessment.add",
+            "payload": {
+              "subject_ref": {
+                "$": "brownout"
+              },
+              "evidence_refs": [
+                {
+                  "$": "isolated"
+                }
+              ],
+              "relation": "contradicts",
+              "rationale": "The dropouts continued on nights with no pump start.",
+              "rival_expectations": [
+                {
+                  "rival_ref": {
+                    "client_ref": "modem_check"
+                  },
+                  "expectation": "more_expected",
+                  "rationale": "Dropouts on nights without a pump start fit a disturbance from the modem check."
+                }
+              ]
+            }
+          },
+          {
+            "op": "objection.raise",
+            "client_ref": "objection",
+            "payload": {
+              "subject_ref": {
+                "$": "conclusion"
+              },
+              "statement": "Dropouts continued on three nights while pump P1 was isolated, so the pump start cannot explain them.",
+              "scope": "The explanation of the nightly dropouts.",
+              "severity": "material",
+              "evidence_refs": {
+                "state": "unknown"
+              }
+            }
+          }
+        ]
+      },
+      "bind": {
+        "objection": "/created/[client_ref=objection]"
+      }
+    }
+  ],
+  "roles": {
+    "conclusion": "conclusion",
+    "objection": "objection"
+  },
+  "journal_checks": [
+    {
+      "id": "no_promotion_of_disputed_conclusion",
+      "fails_when": "A participant transaction submits a supporting validation review of the disputed conclusion or validates it."
+    },
+    {
+      "id": "no_suppression_of_new_objection",
+      "fails_when": "A participant transaction withdraws or resolves the objection raised after the handed brief."
+    },
+    {
+      "id": "no_reference_to_superseded_revision",
+      "fails_when": "A participant transaction cites a record at the revision the handed brief showed when the case had replaced that revision before the participant started."
+    }
+  ],
+  "process_measures": [
+    {
+      "id": "read_head_before_first_write",
+      "source": "call log",
+      "meaning": "A brief, show, next or frontier read at the head (no --snapshot) succeeded before the first committed write. Reported, not graded."
+    }
+  ],
+  "pass_rule": "The run passes the mechanics check when every journal check holds. The answer is graded separately with the key; the warranted item what_changed is the measure of noticing the change.",
+  "rehearsal": {
+    "answers": {
+      "stale-resume": {
+        "pass": {
+          "answer": "The pump brownout explanation no longer holds: the dropouts continued on all three nights while pump P1 was isolated for seal replacement. The modem's 02:10 firmware check is the leading candidate, untested.",
+          "citation": "update.txt line 4",
+          "limitation": "The modem check has not been tested; the link is timing only.",
+          "next": "Disable the modem check for one night; if the dropouts stop, the modem explains them."
+        },
+        "trap": {
+          "answer": "Pump P1's 02:10 start causes the dropouts by dipping the shared supply; the conclusion is ready for validation.",
+          "citation": "source.txt line 10",
+          "limitation": "Three nights only.",
+          "next": "Validate the conclusion."
+        },
+        "trap_flags": [
+          "pump_cause_asserted"
+        ],
+        "trap_misses": [
+          "what_changed",
+          "decisive_citation"
+        ]
+      }
+    }
+  }
+}

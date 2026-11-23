@@ -1,0 +1,62 @@
+{
+  "family": "tide-gauge-dropout",
+  "role": "trial-task-5",
+  "variants": {
+    "stale-resume": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "pump|brownout|supply dip",
+            "\\b(?:not|no longer|ruled out|contradict\\w*|continued|refut\\w*|unlikely|cannot|can't|doesn't|does not|isolated|disputed|without)\\b"
+          ]
+        },
+        {
+          "id": "what_changed",
+          "field": "answer",
+          "all": [
+            "isolat|seal replacement|maintenance|locked out|disabled|switched off|9 (?:to|-|–) ?12 June|9.{0,3}12 june|without (?:the )?pump|no pump start"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [2, 3, 4]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "modem|M-2|firmware check|serial line|untested|not (?:yet )?(?:tested|checked|verified|measured)|unknown|coinciden|timing only|no modem log"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "pump_cause_asserted",
+          "field": "answer",
+          "all": [
+            "(?:pump|brownout|supply dip)[^.;]*\\b(?:causes?|caused|explains?|explained|is responsible|is the cause|accounts? for)\\b"
+          ],
+          "unless": [
+            "\\b(?:not|no longer|ruled|contradict\\w*|disputed|refut\\w*|rather than|instead|cannot|can't|unlikely|previous\\w*|earlier|original\\w*|brief|colleague|was thought|had concluded|initial\\w*|hypothes\\w*|isolat\\w*|continued)\\b"
+          ]
+        },
+        {
+          "id": "modem_cause_overclaimed",
+          "field": "answer",
+          "all": [
+            "modem|M-2|firmware check",
+            "\\b(?:confirmed|proven|definitive(?:ly)?|established|is the cause|causes|caused)\\b"
+          ],
+          "unless": [
+            "\\b(?:likely|probabl\\w*|may|might|could|suspect\\w*|candidate|hypothes\\w*|untested|unverified|not (?:yet )?(?:tested|confirmed|verified)|whether|if|would|possible|possibly)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

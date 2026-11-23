@@ -1,0 +1,14 @@
+Harbor tide gauge HG-3, overnight telemetry extract (synthetic fixture data)
+Station: north pier, east berth. Logger clock: UTC.
+2026-06-02 02:10:04 pump P1 start (bilge cycle)
+2026-06-02 02:10:05 gauge HG-3 sample missing (no reply from sensor head)
+2026-06-02 02:13:51 gauge HG-3 samples resume
+2026-06-03 02:10:03 pump P1 start (bilge cycle)
+2026-06-03 02:10:06 gauge HG-3 sample missing (no reply from sensor head)
+2026-06-03 02:14:10 gauge HG-3 samples resume
+2026-06-04 02:10:04 pump P1 start (bilge cycle)
+2026-06-04 02:10:04 supply rail dipped to 10.9 V for 0.4 s
+2026-06-04 02:10:05 gauge HG-3 sample missing (no reply from sensor head)
+2026-06-04 02:13:58 gauge HG-3 samples resume
+Daytime pump starts at 11:00 and 15:00 were logged on all three days with no missing samples.
+Telemetry modem M-2 shares the north pier supply; its own log is not part of this extract.

@@ -1,0 +1,325 @@
+{
+  "schema_version": "trial-task.v1",
+  "task": 6,
+  "id": "lost-response-conflict",
+  "title": "Retry a write whose response was lost; handle a real revision conflict without clobbering",
+  "plan": "notes/plan.md §20.5 scenario 6",
+  "family": "proofer-temperature-drift",
+  "split": "development",
+  "domain": "measurement",
+  "key": "training/trial-tasks/keys/proofer-temperature-drift.json",
+  "description": "A colleague's case concludes that the cabinet sensor itself reads high in the afternoons. A technician's report, already attached to the case, shows the sensor was in the sun and the offset fell after it moved. The participant records the report and amends the conclusion. Two faults are injected by the proxy: the response of the participant's first committed write is lost (exit 124, only the shortcut's command_id line survives), and just before the participant's first write that names the conclusion, another actor amends it with a caveat. Success is exactly one copy of the lost write, reconciliation through receipt KEY or a read, and a final conclusion that keeps the other actor's caveat.",
+  "phase": {
+    "variant": "lost-response-conflict",
+    "role": "investigator",
+    "budget": "a-gate investigator (210 s, 28 shell calls)",
+    "prompt": {
+      "inv": "A colleague's case about proofing cabinet PC-2 is in this directory; the investigation command on PATH reads and writes it. A technician's visit report has arrived as update.txt and is already attached to the case. Objective: determine what explains the cabinet sensor's high afternoon readings. Record what the report shows, bring the case's conclusion up to date with it, then give your answer.",
+      "notes": "A colleague's notes about proofing cabinet PC-2 are in NOTES.md. A technician's visit report has arrived as update.txt. Objective: determine what explains the cabinet sensor's high afternoon readings. Add what the report shows to NOTES.md, bring the conclusion there up to date with it, then give your answer."
+    }
+  },
+  "arms": {
+    "inv": {
+      "sources": [
+        "source.txt",
+        "update.txt"
+      ],
+      "participant_files": [
+        "source.txt",
+        "update.txt",
+        "investigation.toml",
+        "state/",
+        "cache/"
+      ]
+    },
+    "notes": {
+      "sources": [
+        "source.txt",
+        "update.txt"
+      ],
+      "files": {
+        "NOTES.md": "# PC-2 afternoon readings\n\nQuestion: why does cabinet sensor S-A read high in the afternoons?\n\n- source.txt line 10: morning readings agree within 0.3 C; afternoon readings differ by 2.6 to 3.3 C.\n- source.txt line 11: reference probe R-1 was checked against an ice bath and read 0.1 C.\n\nConclusion: S-A reads about 3 C high in the afternoons while R-1 stays near setpoint, so the offset is in S-A's reading, not the cabinet air.\nCaveats: three days of readings.\n"
+      }
+    }
+  },
+  "setup": [
+    {
+      "cli": [
+        "start",
+        "Why does proofing cabinet PC-2 read high in the afternoons?",
+        "--attach",
+        "source.txt",
+        "--command-id",
+        "t6-start"
+      ],
+      "actor": "agent:first-shift",
+      "bind": {
+        "case": "/created/0",
+        "source": "/items/0"
+      }
+    },
+    {
+      "record": {
+        "actor": "agent:first-shift",
+        "operations": [
+          {
+            "op": "question.create",
+            "client_ref": "question",
+            "payload": {
+              "wording": "Why does cabinet sensor S-A read high in the afternoons?",
+              "importance": "high"
+            }
+          },
+          {
+            "op": "observation.add",
+            "client_ref": "difference",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "Morning readings agree within 0.3 C; afternoon readings differ by 2.6 to 3.3 C."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "source/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "source/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 10,
+                    "end_line": 10,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "Morning readings agree within 0.3 C; afternoon readings differ by 2.6 to 3.3 C."
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "Three days of readings."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          },
+          {
+            "op": "observation.add",
+            "client_ref": "reference",
+            "payload": {
+              "value": {
+                "kind": "text",
+                "statement": "Reference probe R-1 read 0.1 C in an ice bath on 05-05."
+              },
+              "basis": {
+                "kind": "source",
+                "artifact_ref": {
+                  "id": {
+                    "$": "source/derivative_id"
+                  },
+                  "revision": 1
+                },
+                "selector": {
+                  "schema_version": "inv.selector.v1",
+                  "artifact_digest": {
+                    "$": "source/digest"
+                  },
+                  "selector": {
+                    "type": "text_lines",
+                    "start_line": 11,
+                    "end_line": 11,
+                    "encoding": "utf-8",
+                    "parser_version": "inv.text.utf8.v1"
+                  }
+                },
+                "text_quote": {
+                  "exact": "R-1 was checked against an ice bath on 05-05 and read 0.1 C."
+                }
+              },
+              "validity": "unknown",
+              "quality": [],
+              "limitations": [
+                "One ice-bath check."
+              ],
+              "evidence_kind": "observational",
+              "variables_changed": []
+            }
+          },
+          {
+            "op": "conclusion.create",
+            "client_ref": "conclusion",
+            "payload": {
+              "statement": "Sensor S-A reads about 3 C high in the afternoons while reference probe R-1 stays near setpoint, so the offset is in S-A's reading, not the cabinet air.",
+              "scope": "Cabinet PC-2, 05-06 to 05-08.",
+              "significance": "S-A should be recalibrated or replaced.",
+              "support_refs": [
+                {
+                  "client_ref": "difference"
+                },
+                {
+                  "client_ref": "reference"
+                }
+              ],
+              "contradiction_refs": [],
+              "caveats": [
+                "Three days of readings."
+              ]
+            }
+          }
+        ]
+      },
+      "bind": {
+        "conclusion": "/created/[client_ref=conclusion]"
+      }
+    },
+    {
+      "cli": [
+        "ingest",
+        "--input",
+        "-"
+      ],
+      "actor": "agent:first-shift",
+      "stdin": {
+        "schema_version": "inv.ingest.v1",
+        "command_id": "t6-update",
+        "actor": "agent:first-shift",
+        "case_id": {
+          "$": "case/id"
+        },
+        "source": {
+          "title": "update.txt",
+          "format": "text/plain"
+        },
+        "paths": [
+          "update.txt"
+        ],
+        "extract_text": true
+      },
+      "bind": {
+        "update": "/items/0"
+      }
+    }
+  ],
+  "roles": {
+    "conclusion": "conclusion",
+    "update_source": "update"
+  },
+  "faults": {
+    "drop_first_commit": true,
+    "concurrent_change": {
+      "subject_role": "conclusion",
+      "actor": "agent:colleague",
+      "add_caveat": "Readings from 05-09 were left out because the cabinet door was propped open during cleaning.",
+      "reason": "Record why 05-09 is missing from the log.",
+      "kept_tokens": [
+        "05-09",
+        "propped open"
+      ]
+    }
+  },
+  "notes_faults": {
+    "file": "NOTES.md",
+    "colleague_line": "Colleague, 05-15: readings from 05-09 were left out because the cabinet door was propped open during cleaning."
+  },
+  "journal_checks": [
+    {
+      "id": "dropped_write_committed_once",
+      "fails_when": "The write whose response was lost is missing, or a later participant write repeats it (an equal body, or an Observation with the same artifact and quote)."
+    },
+    {
+      "id": "no_duplicate_writes",
+      "fails_when": "Any two participant-created records duplicate each other, or two participant revisions of one record have equal bodies."
+    },
+    {
+      "id": "concurrent_change_kept",
+      "fails_when": "The concurrent amendment never happened, or the conclusion's final revision lacks its caveat."
+    },
+    {
+      "id": "no_clobbering_revision",
+      "fails_when": "Any participant revision after the concurrent amendment drops its caveat, even if a later revision restores it."
+    },
+    {
+      "id": "conclusion_updated_after_concurrent_change",
+      "fails_when": "No participant revision of the conclusion follows the concurrent amendment."
+    }
+  ],
+  "process_measures": [
+    {
+      "id": "drop_exercised",
+      "source": "call log",
+      "meaning": "A participant write committed and its response was dropped."
+    },
+    {
+      "id": "conflict_exercised",
+      "source": "call log",
+      "meaning": "The concurrent amendment was applied (the participant submitted a write naming the conclusion)."
+    },
+    {
+      "id": "revision_conflict_seen",
+      "source": "call log",
+      "meaning": "The participant received REVISION_CONFLICT."
+    },
+    {
+      "id": "receipt_lookups",
+      "source": "call log",
+      "meaning": "Calls to receipt KEY."
+    },
+    {
+      "id": "dropped_retried_with_same_key",
+      "source": "call log",
+      "meaning": "A retry replayed under the same command ID and returned already_committed."
+    }
+  ],
+  "notes_checks": [
+    {
+      "id": "colleague_line_kept",
+      "fails_when": "The colleague's appended line is missing from the final NOTES.md."
+    },
+    {
+      "id": "no_repeated_entry",
+      "fails_when": "A participant-added line of 20 or more characters appears twice."
+    },
+    {
+      "id": "notes_updated",
+      "fails_when": "The participant added nothing."
+    }
+  ],
+  "pass_rule": "The run passes the mechanics check when every journal check holds (notes arm: every notes check). The answer is graded separately with the key.",
+  "rehearsal": {
+    "statement": "After S-A moved to the shaded side wall, the afternoon difference fell to 0.4 C.",
+    "quote": "After the move the afternoon difference is 0.4 C.",
+    "amended_statement": "The afternoon offset came from sun heating S-A at its window-side mount; after the move the difference fell to 0.4 C.",
+    "answers": {
+      "lost-response-conflict": {
+        "pass": {
+          "answer": "Sun on S-A's window-side mount explains the high afternoon readings; after the move to the shaded wall the difference fell to 0.4 C.",
+          "citation": "update.txt line 6",
+          "limitation": "Only two afternoons have been logged since the move.",
+          "next": "Log a week of afternoons; a return of the 3 C offset would point back at the sensor."
+        },
+        "trap": {
+          "answer": "Sensor S-A is faulty and drifts about 3 C high in the afternoons.",
+          "citation": "source.txt line 10",
+          "limitation": "Three days of readings.",
+          "next": "Replace S-A."
+        },
+        "trap_flags": [
+          "sensor_fault_asserted"
+        ],
+        "trap_misses": [
+          "current_answer",
+          "decisive_citation"
+        ]
+      }
+    }
+  }
+}

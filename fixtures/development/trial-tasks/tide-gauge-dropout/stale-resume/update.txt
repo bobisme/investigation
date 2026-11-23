@@ -1,0 +1,6 @@
+Maintenance note from the north pier crew (synthetic fixture data)
+Pump P1 was electrically isolated for seal replacement from 2026-06-09 08:00 to 2026-06-12 17:00 UTC.
+No pump starts were logged while it was isolated.
+HG-3 still dropped samples on all three isolated nights: 02:10:05 to 02:13:49, 02:10:04 to 02:14:02, 02:10:06 to 02:13:55.
+Telemetry modem M-2 runs its scheduled firmware check every day at 02:10 UTC.
+Nobody has yet checked whether the modem check draws current from the shared supply or holds the gauge's serial line.
