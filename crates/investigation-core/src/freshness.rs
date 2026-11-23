@@ -813,46 +813,89 @@ fn edge_change(
     let (Some(current), Some(cited)) = (current, state.revision(edge.target)) else {
         return Some((Trigger::MissingDependency, edge.target));
     };
-    if current.header.revision == cited.header.revision {
-        return None;
-    }
-    let cause = current.reference();
-    if edge.target.id.kind() == Kind::Assumption && cited.body["status"] != current.body["status"] {
-        return Some((
-            Trigger::AssumptionDisposition {
-                from: text(&cited.body["status"]).map(str::to_owned),
-                to: text(&current.body["status"]).map(str::to_owned),
-            },
-            cause,
-        ));
-    }
     // A judgment about a subject stays a record of that subject when the
     // subject is later rejected or superseded; only its claim matters.
     let subject = edge.propagation == Propagation::ChangeOnly && edge.field == "subject_ref";
+    revision_change(state, cited, current, scope, subject)
+        .map(|trigger| (trigger, current.reference()))
+}
+
+/// The trigger, if any, that the change from `cited` to `current` (two
+/// revisions of one record) raises for a record that cites `cited`.
+fn revision_change(
+    state: &State,
+    cited: &Record,
+    current: &Record,
+    scope: Option<Id>,
+    subject: bool,
+) -> Option<Trigger> {
+    if current.header.revision == cited.header.revision {
+        return None;
+    }
+    if current.header.id.kind() == Kind::Assumption
+        && cited.body["status"] != current.body["status"]
+    {
+        return Some(Trigger::AssumptionDisposition {
+            from: text(&cited.body["status"]).map(str::to_owned),
+            to: text(&current.body["status"]).map(str::to_owned),
+        });
+    }
     // Withdrawals and source judgments are use fields, outside the substantive
     // basis; each new withdrawal or newly raised concern is its own trigger.
     if !subject && let Some(trigger) = crate::source_ops::use_trigger(cited, current) {
-        return Some((trigger, cause));
+        return Some(trigger);
     }
     // Reverifying a reference: a mismatch is its own trigger, and a match
     // that only records the verification (or retains the same bytes) is not a
     // change to what dependents cite.
     if let Some(change) = crate::external_ref::verification_change(cited, current) {
-        return change.map(|trigger| (trigger, cause));
+        return change;
     }
     if let Some(trigger) = end_state(current)
         && end_state(cited).is_none()
         && !subject
     {
-        return Some((trigger, cause));
+        return Some(trigger);
     }
     if let Some(trigger) = measurement_change(state, cited, current) {
-        return Some((trigger, cause));
+        return Some(trigger);
     }
     if substantive(cited, scope) != substantive(current, scope) {
-        return Some((Trigger::MaterialRevision, cause));
+        return Some(Trigger::MaterialRevision);
     }
     None
+}
+
+/// The freshness trigger a plain citation of `cited` sees in the record's
+/// current same-case revision, or `None` when that later revision is benign
+/// to it: lifecycle or attribution metadata, a matching reverification, a
+/// Source or Artifact judgment that raises no concern, or a measurement
+/// judgment that keeps or raises effective validity. A missing record or
+/// revision is [`Trigger::MissingDependency`].
+pub fn successor_change(state: &State, case: Id, cited: RevisionRef) -> Option<Trigger> {
+    let current = state
+        .current(cited.id)
+        .filter(|record| record.header.case_id == case);
+    let (Some(current), Some(historic)) = (current, state.revision(cited)) else {
+        return Some(Trigger::MissingDependency);
+    };
+    revision_change(state, historic, current, None, false)
+}
+
+/// The current same-case revision of a cited record when every change since
+/// the cited revision is benign to a reader of it ([`successor_change`]).
+///
+/// This is the one "later revision is benign" predicate: the index judges
+/// plain dependency edges with it, the promotion gates accept a reviewed or
+/// cited revision whose successor it admits, and the `review.stale_read_set`
+/// gap rule flags only read-set revisions it rejects.
+pub fn benign_successor(state: &State, case: Id, cited: RevisionRef) -> Option<&Record> {
+    if successor_change(state, case, cited).is_some() {
+        return None;
+    }
+    state
+        .current(cited.id)
+        .filter(|record| record.header.case_id == case)
 }
 
 /// Checks that a validation review's computed scoped sets and closure still
@@ -1428,6 +1471,7 @@ impl FreshnessIndex {
 mod tests {
     mod blindspot_review;
     mod judgments;
+    mod promotion_agreement;
     mod source_use;
 
     use super::*;

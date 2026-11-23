@@ -459,7 +459,11 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
 /// A claim without current validated, retained evidence stays uncertain.
 fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
     cell.evidence_refs.iter().any(|r| {
-        let Ok(rec) = exact(s, case, *r, Kind::Observation, "/evidence_refs") else {
+        // A later measurement judgment that keeps or raises effective validity
+        // is benign to the cell, as it is to the freshness index.
+        let Some(rec) = crate::freshness::benign_successor(s, case, *r)
+            .filter(|_| r.id.kind() == Kind::Observation)
+        else {
             return false;
         };
         // Stored Observation bodies carry lifecycle and assessment metadata that
@@ -1418,7 +1422,11 @@ mod tests {
                             rec(observation_id, case, next, observation.clone()),
                         );
                         if matches!(cell, Cell::Stale(_)) {
-                            update_body(&mut state, observation_id, observation);
+                            // A material correction: an unchanged body would be a
+                            // benign successor that keeps the cell current.
+                            let mut corrected = observation;
+                            corrected["value"]["value"] = json!((value + 1).to_string());
+                            update_body(&mut state, observation_id, corrected);
                         }
                         (
                             json!({"decimal":number,"unit":"ms"}),

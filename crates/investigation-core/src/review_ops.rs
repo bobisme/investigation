@@ -257,6 +257,41 @@ fn current<'a>(
     Ok(record)
 }
 
+/// The revision a promotion reads for a cited one. A cited Source or Artifact
+/// reads its current revision when only evidentiary use changed: the reader
+/// examines the judgments too. A cited Observation reads its current revision
+/// when the shared freshness predicate finds the change benign, such as a
+/// measurement judgment that keeps or raises effective validity. Any other
+/// change is a revision conflict naming the record and the trigger.
+fn cited<'a>(
+    state: &'a State,
+    case: Id,
+    reference: RevisionRef,
+    path: &str,
+) -> Result<&'a Record, Failure> {
+    let successor = match reference.id.kind() {
+        Kind::Source | Kind::Artifact => crate::source_ops::use_successor(state, case, reference),
+        Kind::Observation => crate::freshness::benign_successor(state, case, reference),
+        _ => None,
+    };
+    if let Some(record) = successor {
+        return Ok(record);
+    }
+    current(state, case, reference, path).map_err(|mut failure| {
+        if failure.error.code == ErrorCode::RevisionConflict
+            && let Some(trigger) = crate::freshness::successor_change(state, case, reference)
+        {
+            failure.error.message = format!(
+                "{} changed since revision {}: {}. Inspect its current revision.",
+                reference.id,
+                reference.revision,
+                trigger.describe()
+            );
+        }
+        failure
+    })
+}
+
 fn scoped<'a>(
     ctx: &'a OperationContext<'_>,
     expected: RevisionRef,
@@ -450,12 +485,10 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
             }
             for reference in dependencies {
                 let case = self.root.header.case_id;
-                // Source and Artifact use changes (assessment, withdrawal) keep the
-                // cited revision's content; the current revision is what is read.
-                let child = match crate::source_ops::use_successor(self.state, case, reference) {
-                    Some(child) => child,
-                    None => current(self.state, case, reference, "/read_set")?,
-                };
+                // Source and Artifact use changes (assessment, withdrawal) and
+                // benign Observation judgments keep the cited revision's content;
+                // the current revision is what is read.
+                let child = cited(self.state, case, reference, "/read_set")?;
                 if inactive(child) {
                     return Err(gate(
                         "/read_set",
@@ -601,8 +634,14 @@ fn qualification(
     case: Id,
     observation: RevisionRef,
 ) -> Result<(ObservationBody, &Record), Failure> {
-    let record = current(state, case, observation, "/support_refs")?;
-    if record.header.id.kind() != Kind::Observation || inactive(record) {
+    if observation.id.kind() != Kind::Observation {
+        return Err(gate(
+            "/support_refs",
+            "Use an active observation in the same case.",
+        ));
+    }
+    let record = cited(state, case, observation, "/support_refs")?;
+    if inactive(record) {
         return Err(gate(
             "/support_refs",
             "Use an active observation in the same case.",
@@ -832,7 +871,7 @@ fn ready(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Failure> {
     let case = record.header.case_id;
     let mut direct = false;
     for reference in support {
-        let evidence = current(state, case, reference, "/support_refs")?;
+        let evidence = cited(state, case, reference, "/support_refs")?;
         match reference.id.kind() {
             Kind::Observation => {
                 qualification(state, case, reference)?;
@@ -1332,13 +1371,15 @@ pub fn validation_review_current(
         .with_schema("review.submit"));
     }
     let required = required_read_set(state, target)?;
-    // A reviewed Source or Artifact revision still covers its current revision
-    // when only judgments that raise no concern were added since.
+    // A reviewed revision still covers its current revision when the shared
+    // freshness predicate finds every change since benign, such as a Source
+    // judgment that raises no concern or a measurement judgment that keeps or
+    // raises effective validity.
     let covered = |revision: &RevisionRef| {
         review.read_set.iter().any(|read| {
             read == revision
                 || (read.id == revision.id
-                    && crate::source_ops::benign_successor(state, case, *read)
+                    && crate::freshness::benign_successor(state, case, *read)
                         .is_some_and(|current| current.reference() == *revision))
         })
     };
@@ -1351,7 +1392,7 @@ pub fn validation_review_current(
         return Err(failure);
     }
     for reference in &review.read_set {
-        let examined = match crate::source_ops::benign_successor(state, case, *reference) {
+        let examined = match crate::freshness::benign_successor(state, case, *reference) {
             Some(record) => record,
             None => current(state, case, *reference, "/read_set")?,
         };
@@ -1405,7 +1446,17 @@ fn conclusion_validate(
         ));
     }
     validation_review_current(ctx.state(), record, &review_body)?;
-    let mut expected = review_body.read_set.clone();
+    // The reviewed revisions as they stand now: a benign successor the review
+    // still covers is what the caller pins.
+    let case = record.header.case_id;
+    let mut expected: Vec<RevisionRef> = review_body
+        .read_set
+        .iter()
+        .map(|read| {
+            crate::freshness::benign_successor(ctx.state(), case, *read)
+                .map_or(*read, Record::reference)
+        })
+        .collect();
     expected.push(payload.conclusion_ref);
     if review.header.acceptance_sequence != ctx.acceptance_sequence() {
         expected.push(review_ref);
@@ -1413,7 +1464,6 @@ fn conclusion_validate(
     require_expected(ctx, &expected)?;
     let mut body = record.body.clone();
     let id = record.header.id;
-    let case = record.header.case_id;
     body["status"] = json!(ConclusionStatus::Validated);
     body["review_ref"] = json!(review_ref);
     body["reviewed_basis"] = json!(review_body.basis_digest);

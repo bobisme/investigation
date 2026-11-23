@@ -550,10 +550,13 @@ pub fn enumerate_gaps(
         let mut stale = Vec::new();
         if let Some(read_set) = field(&review.body, "read_set").and_then(Value::as_array) {
             for value in read_set {
+                // The freshness index's predicate: a benign later revision,
+                // such as a valid measurement judgment, leaves the read current.
                 if let Some(reference) = exact_ref(Some(value))
                     && state
                         .current(reference.id)
                         .is_some_and(|current| current.reference() != reference)
+                    && crate::freshness::benign_successor(state, case_id, reference).is_none()
                 {
                     stale.push(reference);
                 }
@@ -565,7 +568,7 @@ pub fn enumerate_gaps(
                 subject_refs: vec![review_ref],
                 read_set: join_refs(vec![review_ref], stale.clone()),
                 status: GapStatus::StaleDueToRevision,
-                reason: "A Review read-set contains revisions older than the current case state.",
+                reason: "A Review read-set contains revisions that have since changed in a way its reader must recheck.",
                 prerequisites: vec![prerequisite(
                     "current_read_set",
                     PrerequisiteState::Unmet,

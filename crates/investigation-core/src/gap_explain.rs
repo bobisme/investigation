@@ -206,10 +206,10 @@ const RULES: &[RuleSpec] = &[
         rule_id: "review.stale_read_set",
         subject_kinds: &[Kind::Review],
         status: GapStatus::StaleDueToRevision,
-        condition: "A Review's read_set names a revision older than the current revision of that record.",
+        condition: "A Review's read_set names a revision older than the current revision of that record, and the change since is not benign under the freshness index's predicate (lifecycle metadata, a concern-free Source judgment or a measurement judgment that keeps effective validity are benign).",
         inspected_fields: &["read_set"],
         suggested_operation: Some("review.submit"),
-        persistence: "Emitted while this Review's read_set names superseded revisions; a fresh Review over current revisions does not carry it.",
+        persistence: "Emitted while this Review's read_set names revisions with non-benign successors; a fresh Review over current revisions does not carry it.",
     },
     RuleSpec {
         rule_id: "run.outcome_incomplete_or_unknown",
