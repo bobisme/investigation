@@ -16,6 +16,7 @@ pub mod derivation;
 pub mod evaluate;
 pub mod evaluate_ops;
 pub mod evidence;
+pub mod evidence_reuse;
 pub mod explain;
 mod explain_ops;
 pub mod freshness;

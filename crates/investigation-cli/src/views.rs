@@ -8,6 +8,7 @@ use investigation_core::{
     classification::{AudiencePolicy, Classifier, Field},
     command::RevisionRef,
     decision_ops::{self, EffectiveDecision},
+    evidence_reuse,
     freshness::{FreshnessIndex, RecordFreshness, dependency_edges},
     header::display_title,
     identity::{Id, Kind},
@@ -387,6 +388,11 @@ fn project_record(
     // Advisory measurement flags: never a gate, never a validity change.
     if let Some(report) = measurement_flags::record_flags(&replay.state, record) {
         out.insert("measurement_flags".into(), json!(report));
+    }
+    // Evidence reuse and deviations from a frozen plan, beside (never merged
+    // into) the chronology of the Runs behind the inputs.
+    if let Some(reuse) = evidence_reuse::evidence_reuse(&replay.state, record) {
+        out.insert("evidence_reuse".into(), json!(reuse));
     }
     // Withdrawal is labeled wherever evidence material is read; it is not erasure.
     if matches!(

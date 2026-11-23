@@ -1,5 +1,33 @@
 {
   "$defs": {
+    "ActualInput": {
+      "additionalProperties": false,
+      "description": "One input the analysis actually read.",
+      "properties": {
+        "holdout": {
+          "$ref": "#/$defs/HoldoutPlacement",
+          "default": "not_declared",
+          "description": "The investigator's declaration of this input relative to the reserved\nholdout. It is a claim; the core does not verify the boundary."
+        },
+        "input_ref": {
+          "$ref": "#/$defs/Reference",
+          "description": "An Observation, Artifact, Run or Source the analysis read."
+        },
+        "partition": {
+          "description": "The observation unit or partition, as the holdout boundary names it.",
+          "maxLength": 512,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "input_ref"
+      ],
+      "type": "object"
+    },
     "AssessmentRelation": {
       "enum": [
         "supports",
@@ -72,6 +100,72 @@
       ],
       "type": "string"
     },
+    "Deviation": {
+      "additionalProperties": false,
+      "description": "One departure from the frozen plan.",
+      "properties": {
+        "description": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/DeviationKind"
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "description",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "DeviationKind": {
+      "description": "What kind of departure from the frozen plan a deviation is.",
+      "oneOf": [
+        {
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "early_stop",
+          "description": "Analysis stopped before the frozen stop rule was met.",
+          "type": "string"
+        },
+        {
+          "const": "late_stop",
+          "description": "Collection or analysis continued past the frozen stop rule.",
+          "type": "string"
+        },
+        {
+          "const": "inputs_changed",
+          "description": "Inputs differ from the frozen observation units or partitions.",
+          "type": "string"
+        },
+        {
+          "const": "exclusions_changed",
+          "description": "Exclusions not foreseen by the frozen plan.",
+          "type": "string"
+        },
+        {
+          "const": "analysis_changed",
+          "description": "The analysis differs from the frozen analysis rule.",
+          "type": "string"
+        },
+        {
+          "const": "controls_changed",
+          "description": "Controls differ from the frozen control conditions.",
+          "type": "string"
+        }
+      ]
+    },
     "DowngradeJudgment": {
       "enum": [
         "ok",
@@ -108,6 +202,39 @@
       ],
       "type": "object"
     },
+    "Exclusion": {
+      "additionalProperties": false,
+      "description": "One input or unit left out of the analysis.",
+      "properties": {
+        "excluded": {
+          "description": "What was left out.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "input_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The excluded record, when it is recorded."
+        },
+        "reason": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "excluded",
+        "reason"
+      ],
+      "type": "object"
+    },
     "Expectation": {
       "enum": [
         "more_expected",
@@ -116,6 +243,76 @@
         "not_assessed"
       ],
       "type": "string"
+    },
+    "FrozenBasis": {
+      "additionalProperties": false,
+      "description": "How an Assessment used a frozen confirmatory InquiryPlan: what it actually\nread, what it left out and how it differs from what was frozen.",
+      "properties": {
+        "actual_inputs": {
+          "description": "Observation units or partitions actually analysed.",
+          "items": {
+            "$ref": "#/$defs/ActualInput"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        "deviations": {
+          "default": [],
+          "description": "Every departure from the frozen plan, each with its reason. A\nfixed-sample analysis stopped after a favorable look is an `early_stop`.",
+          "items": {
+            "$ref": "#/$defs/Deviation"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "exclusions": {
+          "default": [],
+          "description": "Inputs or units left out of the analysis, each with its reason.",
+          "items": {
+            "$ref": "#/$defs/Exclusion"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "plan_ref": {
+          "$ref": "#/$defs/Reference",
+          "description": "Exact frozen confirmatory inquiry revision this assessment tests."
+        },
+        "stop_rule_applied": {
+          "description": "The stop rule actually applied, in the investigator's words.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_ref",
+        "actual_inputs",
+        "stop_rule_applied"
+      ],
+      "type": "object"
+    },
+    "HoldoutPlacement": {
+      "description": "Where an input sits relative to the plan's reserved holdout.",
+      "oneOf": [
+        {
+          "enum": [
+            "not_declared"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "within_reserved",
+          "description": "Inside the observation units or partitions the plan reserved.",
+          "type": "string"
+        },
+        {
+          "const": "outside_reserved",
+          "description": "Outside them.",
+          "type": "string"
+        }
+      ]
     },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
@@ -245,6 +442,17 @@
         "$ref": "#/$defs/Reference"
       },
       "type": "array"
+    },
+    "frozen_basis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FrozenBasis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "For an assessment of a frozen confirmatory InquiryPlan: the inputs\nactually read, exclusions, the stop rule applied and deviations from the\nfrozen plan. `show` reports the evidence-reuse reading beside the\nchronology of the Runs behind the inputs."
     },
     "likelihood": {
       "anyOf": [

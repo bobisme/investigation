@@ -432,6 +432,20 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
             out.add(body, "subject_ref", "subject_ref", ChangeOnly)?;
             out.add(body, "evidence_refs", "evidence_refs", Inherit)?;
             out.add(body, "assumption_refs", "assumption_refs", Inherit)?;
+            // Frozen-basis links (W10.06): outside the promotion closure.
+            out.closure = false;
+            let frozen = &body["frozen_basis"];
+            out.add(frozen, "plan_ref", "frozen_basis.plan_ref", ChangeOnly)?;
+            out.each(
+                &frozen["actual_inputs"],
+                &[("input_ref", "frozen_basis.actual_inputs.input_ref")],
+                Inherit,
+            )?;
+            out.each(
+                &frozen["exclusions"],
+                &[("input_ref", "frozen_basis.exclusions.input_ref")],
+                ChangeOnly,
+            )?;
         }
         Kind::Observation => {
             out.add(

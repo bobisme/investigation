@@ -177,6 +177,12 @@ pub struct AssessmentAdd {
     pub assumption_refs: Vec<Reference>,
     pub confidence: Option<Confidence>,
     pub likelihood: Option<Likelihood>,
+    /// For an assessment of a frozen confirmatory InquiryPlan: the inputs
+    /// actually read, exclusions, the stop rule applied and deviations from the
+    /// frozen plan. `show` reports the evidence-reuse reading beside the
+    /// chronology of the Runs behind the inputs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frozen_basis: Option<crate::evidence_reuse::FrozenBasis>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

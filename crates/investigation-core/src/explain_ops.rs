@@ -1344,6 +1344,9 @@ fn assessment_body(
     let rivals = live_rivals(ctx, subject)?;
     pin_expectations(ctx, &mut payload.rival_expectations, &rivals, diagnostic)?;
     evidence_basis(ctx, &payload.evidence_refs, diagnostic)?;
+    if let Some(frozen) = &mut payload.frozen_basis {
+        crate::evidence_reuse::pin_frozen_basis(ctx, frozen, "/frozen_basis")?;
+    }
     let sorted_refs = |references: &[Reference]| -> Result<Vec<RevisionRef>, Failure> {
         let mut refs = references
             .iter()
@@ -1352,13 +1355,17 @@ fn assessment_body(
         refs.sort_unstable_by_key(|reference| (reference.id, reference.revision));
         Ok(refs)
     };
-    let basis = digest(&json!({
+    let mut basis = json!({
         "schema_version": "inv.assessment-basis.v0-alpha",
         "subject_ref": subject,
         "evidence_refs": sorted_refs(&payload.evidence_refs)?,
         "assumption_refs": sorted_refs(&payload.assumption_refs)?,
         "live_rivals": rivals.values().collect::<Vec<_>>(),
-    }))?;
+    });
+    if let Some(frozen) = &payload.frozen_basis {
+        basis["frozen_basis"] = encode(frozen)?;
+    }
+    let basis = digest(&basis)?;
     let mut body = encode(payload)?;
     metadata(
         &mut body,
@@ -1369,7 +1376,8 @@ fn assessment_body(
 
 fn assessment_add(payload: AssessmentAdd, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
     let body = assessment_body(payload, ctx)?;
-    ctx.create(Kind::Assessment, body)?;
+    let reference = ctx.create(Kind::Assessment, body)?;
+    crate::evidence_reuse::warn_recorded(ctx, reference);
     Ok(())
 }
 
@@ -1399,6 +1407,7 @@ fn assessment_supersede(
     successor["supersedes"] = json!(payload.assessment_ref);
     let mut old = record.body.clone();
     let new_ref = ctx.create(Kind::Assessment, successor)?;
+    crate::evidence_reuse::warn_recorded(ctx, new_ref);
     metadata(
         &mut old,
         json!({
