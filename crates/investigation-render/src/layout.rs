@@ -10,19 +10,164 @@ use crate::{PlanPath, RenderError};
 pub const START_HERE: &str = "Start Here.md";
 pub const CASES: &str = "Cases";
 pub const OVERVIEW: &str = "Overview.md";
+pub const ATTACHMENTS: &str = "Attachments";
 
-/// Top-level vault folders that belong to people. The publisher never writes
-/// into them.
-pub const HUMAN_OWNED_ROOTS: [&str; 3] = ["Notes", "Boards", "Inbox"];
+/// Who may write in one area of the vault.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AreaOwner {
+    /// Generated from the snapshot on every render; an edit is drift.
+    Investigation,
+    /// A person's. The publisher never writes, replaces, moves, deletes,
+    /// adopts or sweeps anything inside, and a manifest that claims a path
+    /// here is rejected.
+    Person,
+    /// Investigation's for approved derivative previews only
+    /// ([`crate::Ownership::approves_attachment`]); every other file there
+    /// is preserved and reported as unknown.
+    ListedDerivatives,
+}
 
-/// Whether `path` lies inside a human-owned root folder, ignoring case.
+/// What a row of [`VAULT_AREAS`] covers, by a path's first component.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Location {
+    /// A top-level file.
+    File(&'static str),
+    /// A top-level folder and everything below it.
+    Folder(&'static str),
+    /// Every top-level folder whose name starts with a dot, such as a
+    /// viewer's settings folder. Plan paths can never name one. (The
+    /// publisher's own hidden temporaries are files beside their targets.)
+    HiddenFolders,
+}
+
+/// One area of the vault: where it is, who owns it, and how `Start Here.md`
+/// describes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VaultArea {
+    pub locations: &'static [Location],
+    pub owner: AreaOwner,
+    /// The "Owner and use" cell of the Start Here table, addressed to the
+    /// reader.
+    pub guide: &'static str,
+}
+
+/// The ownership convention, defined once. `Start Here.md` prints it and the
+/// publisher, manifest, sweep and drift rules enforce it through [`area`].
+/// A path outside every row (a top-level name nobody planned) is unknown:
+/// preserved and reported, never adopted.
+///
+/// Human notes can be linked from generated notes, and generated notes from
+/// human ones, but a human note is not evidence: nothing in it is recorded
+/// until it is explicitly added to a case, which retains its exact bytes by
+/// hash, so a later edit never changes a recorded conclusion.
+pub const VAULT_AREAS: &[VaultArea] = &[
+    VaultArea {
+        locations: &[Location::File(START_HERE), Location::Folder(CASES)],
+        owner: AreaOwner::Investigation,
+        guide: "Investigation. Regenerated from the snapshot on every render. Do not edit them: \
+                an edit is drift, left in place, no longer updated and not recorded.",
+    },
+    VaultArea {
+        locations: &[Location::Folder("Notes")],
+        owner: AreaOwner::Person,
+        guide: "You. Write your own analysis here; rendering never writes, moves or deletes \
+                anything in it.",
+    },
+    VaultArea {
+        locations: &[Location::Folder("Boards")],
+        owner: AreaOwner::Person,
+        guide: "You. Draw your own canvases and diagrams here; rendering never writes in it.",
+    },
+    VaultArea {
+        locations: &[Location::Folder("Inbox")],
+        owner: AreaOwner::Person,
+        guide: "You. Drop candidate material here; rendering never writes in it, and it becomes \
+                evidence only when you add it to a case with an `investigation` command.",
+    },
+    VaultArea {
+        locations: &[Location::Folder(ATTACHMENTS)],
+        owner: AreaOwner::ListedDerivatives,
+        guide: "Investigation, for previews of reviewed derivatives only, and only when the view \
+                policy allows them. Original artifacts are never copied here. Any other file in \
+                it is left in place and reported as unknown.",
+    },
+    VaultArea {
+        locations: &[Location::HiddenFolders],
+        owner: AreaOwner::Person,
+        guide: "You, including the viewer's own settings. Rendering never writes, moves or \
+                deletes anything in them.",
+    },
+];
+
+impl Location {
+    /// Whether a top-level name falls in this location, ignoring ASCII case.
+    pub fn covers(self, first: &str) -> bool {
+        match self {
+            Self::File(name) | Self::Folder(name) => name.eq_ignore_ascii_case(first),
+            Self::HiddenFolders => first.starts_with('.'),
+        }
+    }
+}
+
+/// The area a top-level vault name belongs to, ignoring ASCII case.
+pub fn area_of(first: &str) -> Option<&'static VaultArea> {
+    VAULT_AREAS
+        .iter()
+        .find(|area| area.locations.iter().any(|location| location.covers(first)))
+}
+
+/// The area `path` belongs to, by its first component.
+pub fn area(path: &PlanPath) -> Option<&'static VaultArea> {
+    area_of(path.components().next().unwrap_or_default())
+}
+
+/// Whether a top-level vault name is a person's, ignoring ASCII case.
+pub fn is_human_root(first: &str) -> bool {
+    area_of(first).is_some_and(|area| area.owner == AreaOwner::Person)
+}
+
+/// Whether `path` is a human-owned folder or lies inside one, ignoring case.
 pub fn is_human_owned(path: &PlanPath) -> bool {
+    area(path).is_some_and(|area| area.owner == AreaOwner::Person)
+}
+
+/// Whether `path` lies in the attachments folder.
+pub fn is_attachment(path: &PlanPath) -> bool {
+    area(path).is_some_and(|area| area.owner == AreaOwner::ListedDerivatives)
+}
+
+/// `Attachments/<artifact-id>.<extension>`, the only shape an attachment
+/// may have. The extension is lowercase ASCII letters and digits.
+pub fn attachment(artifact: Id, extension: &str) -> Result<PlanPath, RenderError> {
+    if artifact.kind() != Kind::Artifact || !valid_extension(extension) {
+        return Err(RenderError::InvalidPath {
+            path: format!("{ATTACHMENTS}/{artifact}.{extension}"),
+            reason: "an attachment is an artifact ID with a short lowercase extension",
+        });
+    }
+    PlanPath::new(format!("{ATTACHMENTS}/{artifact}.{extension}"))
+}
+
+/// The artifact an attachment path names, when it has exactly the shape
+/// [`attachment`] builds.
+pub fn attachment_artifact(path: &PlanPath) -> Option<Id> {
     let mut components = path.components();
-    let first = components.next().unwrap_or_default();
-    components.next().is_some()
-        && HUMAN_OWNED_ROOTS
-            .iter()
-            .any(|root| root.eq_ignore_ascii_case(first))
+    let (Some(folder), Some(name), None) =
+        (components.next(), components.next(), components.next())
+    else {
+        return None;
+    };
+    let (stem, extension) = name.split_once('.')?;
+    let id: Id = stem.parse().ok()?;
+    (folder == ATTACHMENTS && id.kind() == Kind::Artifact && valid_extension(extension))
+        .then_some(id)
+}
+
+fn valid_extension(extension: &str) -> bool {
+    (1..=8).contains(&extension.len())
+        && extension
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
 /// Record kinds with their own note, in display order: folder and singular name.
@@ -138,5 +283,98 @@ pub const fn kind_name(kind: Kind) -> &'static str {
         Kind::Run => "run",
         // Kinds without a note keep their ID prefix.
         other => other.prefix(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn path(text: &str) -> PlanPath {
+        PlanPath::new(text).unwrap()
+    }
+
+    #[test]
+    fn the_ownership_table_covers_the_tool_and_human_areas_once() {
+        let owner = |first: &str| area_of(first).map(|area| area.owner);
+        assert_eq!(owner(START_HERE), Some(AreaOwner::Investigation));
+        assert_eq!(owner(CASES), Some(AreaOwner::Investigation));
+        assert_eq!(owner(ATTACHMENTS), Some(AreaOwner::ListedDerivatives));
+        for root in [
+            "Notes",
+            "Boards",
+            "Inbox",
+            "notes",
+            "BOARDS",
+            ".obsidian",
+            ".trash",
+        ] {
+            assert_eq!(owner(root), Some(AreaOwner::Person), "{root}");
+            assert!(is_human_root(root));
+        }
+        assert_eq!(owner("Retired"), None);
+        // No two rows claim the same name.
+        let names: Vec<&str> = VAULT_AREAS
+            .iter()
+            .flat_map(|area| area.locations)
+            .filter_map(|location| match location {
+                Location::File(name) | Location::Folder(name) => Some(*name),
+                Location::HiddenFolders => None,
+            })
+            .collect();
+        for name in &names {
+            assert_eq!(
+                VAULT_AREAS
+                    .iter()
+                    .filter(|area| area.locations.iter().any(|l| l.covers(name)))
+                    .count(),
+                1,
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn human_areas_include_their_folder_and_ignore_case() {
+        for text in [
+            "Notes",
+            "Notes/a.md",
+            "notes/x/y.md",
+            "INBOX/z",
+            "Boards/b.canvas",
+        ] {
+            assert!(is_human_owned(&path(text)), "{text}");
+        }
+        for text in [
+            "Notes.md",
+            "NotesX/a.md",
+            "Cases/Notes/a.md",
+            "Start Here.md",
+        ] {
+            assert!(!is_human_owned(&path(text)), "{text}");
+        }
+    }
+
+    #[test]
+    fn attachments_have_one_shape() {
+        let artifact: Id = "art_01890a5d-ac96-774b-bcce-b302099a8057".parse().unwrap();
+        let question: Id = "q_01890a5d-ac96-774b-bcce-b302099a8057".parse().unwrap();
+        let planned = attachment(artifact, "png").unwrap();
+        assert_eq!(planned.as_str(), format!("Attachments/{artifact}.png"));
+        assert!(is_attachment(&planned));
+        assert_eq!(attachment_artifact(&planned), Some(artifact));
+        assert!(attachment(question, "png").is_err());
+        assert!(attachment(artifact, "PNG").is_err());
+        assert!(attachment(artifact, "").is_err());
+        for text in [
+            format!("Attachments/{question}.png"),
+            format!("attachments/{artifact}.png"),
+            format!("Attachments/sub/{artifact}.png"),
+            format!("Attachments/{artifact}.tar.gz"),
+            format!("Attachments/{artifact}"),
+            "Attachments/picture.png".to_owned(),
+        ] {
+            assert_eq!(attachment_artifact(&path(&text)), None, "{text}");
+        }
     }
 }

@@ -30,11 +30,26 @@
 //!   evidence selectors with excerpt anchors, next action or blocker).
 //!   Authored text passes through the context-specific escapers in [`text`]
 //!   and [`yaml`]; links come only from [`layout::wikilink`].
-//! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for.
+//! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for
+//!   and whether derivative previews are allowed.
+//! - Who owns what: [`layout::VAULT_AREAS`] is the one ownership table.
+//!   `Start Here.md` prints it, and every rule below enforces it through
+//!   [`layout::area`]. `Notes/`, `Boards/`, `Inbox/` and hidden folders are a
+//!   person's: the publisher refuses plan entries there before inspecting
+//!   anything, never removes, sweeps or adopts there, the write-ahead intent
+//!   never names them, and a manifest that claims one is rejected. Drift
+//!   detection only reads them (to find a moved note). So their bytes are
+//!   identical across renders, re-renders, generation switches, killed
+//!   renders, drift and a lost manifest. A human note is not evidence until
+//!   it is added to a case, which retains its exact bytes by hash.
+//! - [`attachments`]: `Attachments/` holds approved previews of reviewed
+//!   derivatives only, with the derivative's exact recorded bytes, when the
+//!   policy opts in and the audience may see them; never an original.
 //! - [`publish`]: [`Publisher`] applies a plan. Each path is checked against an
 //!   [`Ownership`] decision before any write. [`NoManifest`] is the
 //!   conservative default: it creates absent files and keeps identical ones,
-//!   and refuses everything else.
+//!   and refuses everything else. [`Ownership::approves_attachment`] gates
+//!   every `Attachments/` entry and approves nothing by default.
 //! - [`manifest`]: [`Manifest`] is the path ownership record in
 //!   `local/render-manifest.json` and the [`Ownership`] the working vault is
 //!   published under. A path is owned only with the hash of the bytes last
@@ -126,6 +141,7 @@
 //! Rendering works with any viewer application absent or closed. The
 //! filesystem is the only interface.
 
+pub mod attachments;
 pub mod drift;
 pub(crate) mod entry;
 pub mod error;
@@ -251,9 +267,14 @@ pub fn render_vault<F: DurableFs>(
     })?);
 
     let survey = drift::survey(&publisher, &loaded.manifest, &plan)?;
-    let ownership = drift::Guard {
+    let guard = drift::Guard {
         manifest: &loaded.manifest,
         survey: &survey,
+    };
+    let ownership = attachments::Gate {
+        inner: &guard,
+        snapshot: &snapshot,
+        policy,
     };
     // A partial render is announced on the entry note when it can still be
     // written; failing to announce it never hides the render error.

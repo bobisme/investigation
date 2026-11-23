@@ -24,7 +24,7 @@ use crate::{
 ///
 /// v7: the full `Start Here.md` (W08.06), and local absolute paths elided
 /// from display text (W06b.15, which changed bytes without its own bump).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v7";
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v8";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

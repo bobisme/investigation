@@ -42,11 +42,25 @@ impl Audience {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ViewPolicy {
     pub audience: Audience,
+    /// Whether reviewed derivative artifacts the audience may see can be
+    /// copied into `Attachments/` as previews ([`crate::attachments`]). Off
+    /// by default; originals are never copied.
+    pub derivative_previews: bool,
 }
 
 impl ViewPolicy {
     pub const fn for_audience(audience: Audience) -> Self {
-        Self { audience }
+        Self {
+            audience,
+            derivative_previews: false,
+        }
+    }
+
+    /// The same policy with derivative previews allowed or not.
+    #[must_use]
+    pub const fn with_derivative_previews(mut self, allowed: bool) -> Self {
+        self.derivative_previews = allowed;
+        self
     }
 
     /// The core audience policy templates pass to
@@ -78,7 +92,12 @@ impl ViewPolicy {
 
     /// Stable text identifying this policy inside a generation.
     pub fn fingerprint(&self) -> String {
-        format!("audience={}", self.audience.as_str())
+        let previews = if self.derivative_previews {
+            ";derivative_previews"
+        } else {
+            ""
+        };
+        format!("audience={}{previews}", self.audience.as_str())
     }
 }
 
@@ -106,6 +125,13 @@ mod tests {
         assert_ne!(
             ViewPolicy::default().fingerprint(),
             ViewPolicy::for_audience(Audience::Restricted).fingerprint()
+        );
+        assert_eq!(ViewPolicy::default().fingerprint(), "audience=internal");
+        assert_ne!(
+            ViewPolicy::default().fingerprint(),
+            ViewPolicy::default()
+                .with_derivative_previews(true)
+                .fingerprint()
         );
     }
 }

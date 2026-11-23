@@ -2,6 +2,9 @@
 //! manifest advertises `updating`/`partial`/`complete`, and a render killed
 //! at any file leaves a state from which the next render completes.
 
+#[path = "support/human.rs"]
+mod human;
+
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -15,7 +18,7 @@ use investigation_core::identity::Id;
 use investigation_render::{
     Action, CaseRenderer, EntryHealth, Generation, Manifest, NoteMarker, Phase, PlanBuilder,
     PlanPath, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan, RenderReport,
-    RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot, ViewPolicy,
+    RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot, ViewPolicy, layout,
     render_vault, vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
@@ -147,6 +150,14 @@ fn files(root: &Path) -> Vec<PathBuf> {
     found
 }
 
+/// Whether a vault-relative file lies in a human-owned folder. A top-level
+/// hidden file is not in a folder: it may be a leftover temporary.
+fn in_human_area(path: &Path) -> bool {
+    let mut components = path.components();
+    let first = components.next().unwrap().as_os_str();
+    components.next().is_some() && layout::is_human_root(first.to_str().unwrap())
+}
+
 /// The vault is exactly today's plan, the manifest is complete and current,
 /// and nothing a crash left behind remains.
 fn assert_complete(store: &mut Store, report: &RenderReport) {
@@ -154,7 +165,11 @@ fn assert_complete(store: &mut Store, report: &RenderReport) {
     assert!(report.unknown.is_empty(), "{:?}", report.unknown);
     let plan = current_plan(store);
     assert_eq!(report.publish.generation.id(), plan.generation().id());
-    let on_disk = files(&vault(store));
+    // Human-owned folders are checked by fingerprint where they are seeded.
+    let on_disk: Vec<PathBuf> = files(&vault(store))
+        .into_iter()
+        .filter(|path| !in_human_area(path))
+        .collect();
     let planned: Vec<PathBuf> = plan
         .entries()
         .iter()
@@ -294,7 +309,8 @@ fn every_note_names_its_snapshot_and_other_cases_never_churn() {
 /// still names the snapshot it reflects, `vault status` reports an
 /// interrupted partial render with the last complete generation, and the
 /// next render completes: at the same snapshot, and after further commits
-/// that change every file the killed render wrote.
+/// that change every file the killed render wrote. The human-owned folders
+/// are untouched throughout, killed render and recovery included.
 #[test]
 fn killing_a_render_at_each_file_leaves_a_state_the_next_render_completes() {
     for moved_on in [false, true] {
@@ -302,6 +318,8 @@ fn killing_a_render_at_each_file_leaves_a_state_the_next_render_completes() {
         loop {
             let directory = tempfile::tempdir().unwrap();
             let (mut store, case_id) = workspace(directory.path());
+            human::seed(&vault(&store));
+            let seen = human::fingerprint(&vault(&store));
             let first = render(&mut store, true).unwrap();
             let complete = first.publish.generation.clone();
             question(&mut store, "q3", case_id);
@@ -310,6 +328,11 @@ fn killing_a_render_at_each_file_leaves_a_state_the_next_render_completes() {
                 assert!(at >= 6, "three notes, overview, Start Here, one retired");
                 break;
             }
+            assert_eq!(
+                human::fingerprint(&vault(&store)),
+                seen,
+                "killed after {at}"
+            );
 
             let status = vault_status(store.workspace()).unwrap();
             assert_eq!(
@@ -325,6 +348,9 @@ fn killing_a_render_at_each_file_leaves_a_state_the_next_render_completes() {
             assert!(!status.is_current(&target));
             let heads = [complete.heads()[0].1.clone(), target.heads()[0].1.clone()];
             for path in files(&vault(&store)) {
+                if in_human_area(&path) {
+                    continue;
+                }
                 let bytes = fs::read(vault(&store).join(&path)).unwrap();
                 match NoteMarker::read(&bytes) {
                     Some(NoteMarker::Case(head)) => assert!(heads.contains(&head)),
@@ -343,6 +369,11 @@ fn killing_a_render_at_each_file_leaves_a_state_the_next_render_completes() {
             assert!(
                 report.adopted.is_empty(),
                 "recovered files are not adoptions"
+            );
+            assert_eq!(
+                human::fingerprint(&vault(&store)),
+                seen,
+                "recovered from {at}"
             );
             at += 1;
         }

@@ -28,6 +28,7 @@ use investigation_core::{
 use crate::{
     DriftKind, Generation, PlanPath, RENDERER_VERSION, RenderError, VerifiedSnapshot, ViewPolicy,
     evidence::prose,
+    layout::{self, Location},
     note::{BANNER, NoteContext, text_at},
     records::{effective_word, lifecycle, overview, reviews::freshness_word},
     text::inline_code,
@@ -155,21 +156,25 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
 }
 
 fn ownership_section(out: &mut String) {
+    out.push_str("\n## Who owns what\n\n| Location | Owner and use |\n|---|---|\n");
+    for area in layout::VAULT_AREAS {
+        let locations: Vec<String> = area
+            .locations
+            .iter()
+            .map(|location| match location {
+                Location::File(name) => inline_code(name),
+                Location::Folder(name) => inline_code(&format!("{name}/")),
+                Location::HiddenFolders => "Hidden folders (names starting with `.`)".to_owned(),
+            })
+            .collect();
+        let _ = writeln!(out, "| {} | {} |", locations.join(", "), area.guide);
+    }
     out.push_str(
-        "\n## Who owns what\n\n\
-         | Location | Owner and use |\n\
-         |---|---|\n\
-         | `Start Here.md`, `Cases/` | Investigation. Regenerated from the snapshot on every \
-         render. Do not edit them: an edit is drift, left in place, no longer updated and not \
-         recorded. |\n\
-         | `Notes/` | You. Write your own analysis here; rendering never writes, moves or deletes \
-         anything in it. |\n\
-         | `Boards/` | You. Draw your own canvases and diagrams here; rendering never writes in \
-         it. |\n\
-         | `Inbox/` | You. Drop candidate material here; rendering never writes in it, and it \
-         becomes evidence only when you add it to a case with an `investigation` command. |\n\n\
-         Linking to a generated note from your own note is fine. Changes to a case go through \
-         `investigation` commands, never through edits to generated notes.\n",
+        "\nLinking to a generated note from your own note is fine. Changes to a case go through \
+         `investigation` commands, never through edits to generated notes. Your notes are not \
+         evidence: to rely on one, add it to a case with an `investigation` command, which keeps \
+         that exact text by its hash, so a later edit to the note does not change what was \
+         recorded.\n",
     );
 }
 
@@ -539,6 +544,37 @@ mod tests {
         )));
         assert!(note.contains("- State: complete."));
         assert!(note.contains("- Drift: none identified"));
+    }
+
+    /// The table people read is the table the publisher enforces: one row
+    /// per area of [`layout::VAULT_AREAS`], in order, with its guide text.
+    #[test]
+    fn the_ownership_section_prints_the_enforced_table() {
+        let snapshot = snapshot(vec![case(1, "internal", 0)]);
+        let plan = VaultRenderer
+            .render(&snapshot, &ViewPolicy::default())
+            .unwrap();
+        let note = start_here(&plan);
+        let section = note
+            .split("\n## Who owns what\n")
+            .nth(1)
+            .and_then(|rest| rest.split("\n## ").next())
+            .unwrap();
+        let rows: Vec<&str> = section
+            .lines()
+            .filter(|line| line.starts_with("| ") && !line.starts_with("| Location"))
+            .collect();
+        assert_eq!(rows.len(), layout::VAULT_AREAS.len(), "{section}");
+        for (row, area) in rows.iter().zip(layout::VAULT_AREAS) {
+            assert!(row.ends_with(&format!(" | {} |", area.guide)), "{row}");
+        }
+        assert!(rows[0].starts_with("| `Start Here.md`, `Cases/` |"));
+        for (row, folder) in rows[1..4].iter().zip(["Notes", "Boards", "Inbox"]) {
+            assert!(row.starts_with(&format!("| `{folder}/` | You. ")), "{row}");
+        }
+        assert!(rows[4].starts_with("| `Attachments/` | Investigation, for previews"));
+        assert!(rows[5].starts_with("| Hidden folders (names starting with `.`) | You"));
+        assert!(section.contains("Your notes are not evidence"));
     }
 
     #[test]

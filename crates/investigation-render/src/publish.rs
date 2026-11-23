@@ -2,7 +2,11 @@
 //!
 //! Every write goes through one path:
 //!
-//! 1. Refuse entries under the human-owned roots (`Notes/`, `Boards/`, `Inbox/`).
+//! 1. Refuse entries in a human-owned area ([`layout::VAULT_AREAS`]: `Notes/`,
+//!    `Boards/`, `Inbox/`, hidden folders), and entries under `Attachments/`
+//!    that are not `Attachments/<artifact-id>.<ext>` approved by
+//!    [`Ownership::approves_attachment`]. These are hard checks made before
+//!    anything is inspected, whatever the ownership rules answer.
 //! 2. Walk the parent directories from an open vault directory handle with
 //!    `O_NOFOLLOW`; a symbolic link or non-directory on the way refuses the
 //!    entry, so nothing is ever written outside the vault.
@@ -80,8 +84,10 @@ pub enum Refusal {
     NotARegularFile,
     /// A parent component is a symbolic link or not a directory.
     UnsafeParent,
-    /// The path lies under a human-owned root folder.
+    /// The path lies in a human-owned area.
     HumanOwned,
+    /// An `Attachments/` entry that is not an approved derivative preview.
+    UnlistedAttachment,
 }
 
 /// An [`Ownership`] answer for one path.
@@ -115,6 +121,15 @@ pub trait Ownership {
     /// [`Decision::Remove`] deletes. The default refuses.
     fn decide_removal(&self, _path: &PlanPath, _on_disk: &OnDisk) -> Decision {
         Decision::Refuse(Refusal::NotProvenOwned)
+    }
+
+    /// Whether an `Attachments/<artifact-id>.<ext>` entry is an approved
+    /// derivative preview that may be written. Asked before [`Self::decide`]
+    /// for every attachment entry; nothing else in that folder is ever
+    /// written. The default approves nothing. Removing an attachment the
+    /// ownership record proves generated needs no approval.
+    fn approves_attachment(&self, _entry: &PlanEntry) -> bool {
+        false
     }
 }
 
@@ -284,7 +299,7 @@ impl<'lock> Publisher<'lock> {
     }
 
     /// Vault-relative paths of files that are neither owned nor human-owned:
-    /// everything outside `Notes/`, `Boards/` and `Inbox/` for which `owned`
+    /// everything outside the human-owned areas for which `owned`
     /// answers false. Hidden entries (a leading dot, such as the viewer's
     /// configuration folder) are skipped, symbolic links are reported and
     /// never followed, and nothing is changed. Sorted.
@@ -324,12 +339,7 @@ impl<'lock> Publisher<'lock> {
                 if name.starts_with('.') {
                     continue;
                 }
-                if !human_roots
-                    && prefix.is_empty()
-                    && layout::HUMAN_OWNED_ROOTS
-                        .iter()
-                        .any(|root| root.eq_ignore_ascii_case(&name))
-                {
+                if !human_roots && prefix.is_empty() && layout::is_human_root(&name) {
                     continue;
                 }
                 let relative = if prefix.is_empty() {
@@ -458,6 +468,12 @@ impl<'lock> Publisher<'lock> {
             .expect("plan paths have at least one component");
         if layout::is_human_owned(path) {
             return Ok(outcome(None, Action::Refused(Refusal::HumanOwned)));
+        }
+        if layout::is_attachment(path)
+            && (layout::attachment_artifact(path).is_none()
+                || !ownership.approves_attachment(entry))
+        {
+            return Ok(outcome(None, Action::Refused(Refusal::UnlistedAttachment)));
         }
 
         let on_disk = match self.walk(path, parents, false)? {

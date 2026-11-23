@@ -259,9 +259,14 @@ impl Manifest {
         next
     }
 
+    /// Entries in a human-owned area are never intended: the publisher
+    /// refuses them, and a manifest naming one would be rejected on load.
     fn add_intent(&mut self, plan: &RenderPlan, reached: &BTreeSet<&PlanPath>) {
         for entry in plan.entries() {
             let path = entry.path();
+            if layout::is_human_owned(path) {
+                continue;
+            }
             let owned_here = self
                 .owned
                 .get(path)

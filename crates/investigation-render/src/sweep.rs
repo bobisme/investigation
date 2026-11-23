@@ -36,7 +36,7 @@ use rustix::{
 };
 
 use crate::{
-    OnDisk, PlanPath, Publisher, RenderError,
+    OnDisk, PlanPath, Publisher, RenderError, layout,
     lock::open_local,
     publish::{TEMP_ATTEMPTS, Walk, inspect},
 };
@@ -143,7 +143,9 @@ impl Publisher<'_> {
         accepts: &dyn Fn(&PlanPath, &Digest) -> bool,
     ) -> Result<Vec<Swept>, RenderError> {
         let mut by_directory: BTreeMap<Vec<&str>, BTreeMap<String, PlanPath>> = BTreeMap::new();
-        for path in targets {
+        // A human-owned area is never swept, even for a target a faulty plan
+        // named there.
+        for path in targets.iter().filter(|path| !layout::is_human_owned(path)) {
             let mut components: Vec<&str> = path.components().collect();
             let name = components.pop().expect("plan paths have a component");
             by_directory

@@ -14,7 +14,10 @@ use investigation_core::{
     identity::{Id, Kind},
     wire::Receipt,
 };
-use investigation_render::{Audience, RenderPlan, VerifiedSnapshot, ViewPolicy, layout, render};
+use investigation_render::{
+    Action, Audience, CaseRenderer, PlanBuilder, Refusal, RenderError, RenderPlan, RenderReport,
+    VaultRenderer, VerifiedSnapshot, ViewPolicy, layout, render, render_vault,
+};
 use investigation_store::{Store, Workspace, store::ingest::IngestReceipt};
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag};
 use serde_json::{Value, json};
@@ -580,6 +583,158 @@ fn a_restricted_audience_sees_the_restricted_quote_but_never_raw_bytes() {
         derivative.contains(&format!("\"exact\":\"{SECRET}\"")),
         "{derivative}"
     );
+}
+
+/// Today's vault plan plus attachment entries: (artifact, bytes).
+struct WithAttachments(Vec<(Id, Vec<u8>)>);
+
+impl CaseRenderer for WithAttachments {
+    fn render(
+        &self,
+        snapshot: &VerifiedSnapshot,
+        policy: &ViewPolicy,
+    ) -> Result<RenderPlan, RenderError> {
+        let plan = VaultRenderer.render(snapshot, policy)?;
+        let mut builder = PlanBuilder::new(plan.generation().clone());
+        for entry in plan.entries() {
+            builder.add(
+                entry.phase(),
+                entry.path().clone(),
+                entry.content(),
+                entry.projects(),
+            )?;
+        }
+        for (artifact, bytes) in &self.0 {
+            let path = layout::attachment(*artifact, "txt")?;
+            builder.add(
+                investigation_render::Phase::Views,
+                path,
+                bytes.clone(),
+                None,
+            )?;
+        }
+        Ok(builder.finish())
+    }
+}
+
+fn attachment_actions(report: &RenderReport) -> Vec<(String, Action)> {
+    report
+        .publish
+        .outcomes
+        .iter()
+        .filter(|outcome| layout::is_attachment(&outcome.path))
+        .map(|outcome| (outcome.path.file_name().to_owned(), outcome.action))
+        .collect()
+}
+
+fn publish(
+    fixture: &mut Fixture,
+    renderer: &impl CaseRenderer,
+    policy: ViewPolicy,
+) -> RenderReport {
+    render_vault(&mut fixture.store, renderer, &policy, &mut |_| {}).unwrap()
+}
+
+/// Every file in the vault, hidden ones included, with its bytes.
+fn vault_files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_owned()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if fs::symlink_metadata(&path).unwrap().is_dir() {
+                pending.push(path);
+            } else {
+                let bytes = fs::read(&path).unwrap();
+                found.push((path.strip_prefix(root).unwrap().to_owned(), bytes));
+            }
+        }
+    }
+    found
+}
+
+/// `Attachments/` receives only a reviewed derivative's exact recorded
+/// bytes, only when the policy allows previews and the audience may see it.
+/// The restricted original never reaches the vault under any name, at any
+/// audience, and is gone from it once the audience allows less.
+#[test]
+fn only_approved_derivatives_become_attachments_and_no_original_reaches_the_vault() {
+    let mut fixture = fixture();
+    let redacted = format!("{UNQUOTED}\n{QUOTE}\n").into_bytes();
+    let original = RESTRICTED_TEXT.as_bytes().to_vec();
+    let candidates = WithAttachments(vec![
+        (fixture.derivative, redacted.clone()),
+        (fixture.original, original.clone()),
+        (fixture.spec, b"Limit 30 ms\n".to_vec()),
+    ]);
+    let derivative_name = format!("{}.txt", fixture.derivative);
+    let refused = Action::Refused(Refusal::UnlistedAttachment);
+
+    // Previews off (the default): nothing is approved.
+    let report = publish(&mut fixture, &candidates, ViewPolicy::default());
+    assert!(
+        attachment_actions(&report)
+            .iter()
+            .all(|(_, action)| *action == refused)
+    );
+
+    // Previews on: only the reviewed derivative, with its recorded bytes. The
+    // original and an unreviewed original are refused at every audience.
+    for audience in [Audience::Internal, Audience::Restricted] {
+        let policy = ViewPolicy::for_audience(audience).with_derivative_previews(true);
+        let report = publish(&mut fixture, &candidates, policy);
+        for (name, action) in attachment_actions(&report) {
+            if name == derivative_name {
+                assert!(matches!(action, Action::Written | Action::Unchanged));
+            } else {
+                assert_eq!(action, refused, "{name} at {audience:?}");
+            }
+        }
+    }
+    let vault = fixture.store.workspace().root().join("vault");
+    assert_eq!(
+        fs::read(vault.join("Attachments").join(&derivative_name)).unwrap(),
+        redacted
+    );
+
+    // Other bytes under the derivative's name are refused, and the owned
+    // preview is left as it was.
+    let swapped = WithAttachments(vec![(fixture.derivative, original.clone())]);
+    let policy = ViewPolicy::default().with_derivative_previews(true);
+    let report = publish(&mut fixture, &swapped, policy);
+    assert_eq!(
+        attachment_actions(&report),
+        [(derivative_name.clone(), refused)]
+    );
+    // An audience that may not see the derivative is refused too.
+    let policy = ViewPolicy::for_audience(Audience::Public).with_derivative_previews(true);
+    let report = publish(&mut fixture, &candidates, policy);
+    assert!(
+        attachment_actions(&report)
+            .iter()
+            .all(|(_, action)| *action == refused)
+    );
+
+    // A plan without previews retires the owned one.
+    let report = publish(&mut fixture, &VaultRenderer, ViewPolicy::default());
+    assert_eq!(report.publish.removed(), 1);
+    assert!(!vault.join("Attachments").join(&derivative_name).exists());
+
+    // No vault file holds the original's bytes, or names its codename at the
+    // default audience.
+    let original_digest = investigation_store::journal::hash_bytes(&original);
+    assert_eq!(original_digest.as_str(), fixture.original_digest);
+    for (path, bytes) in vault_files(&vault) {
+        assert_ne!(
+            investigation_store::journal::hash_bytes(&bytes),
+            original_digest,
+            "{}",
+            path.display()
+        );
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(!text.contains("ships first"), "{}", path.display());
+        assert!(!text.contains(SECRET), "{}", path.display());
+    }
 }
 
 #[test]
