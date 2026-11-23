@@ -5,6 +5,7 @@ mod brief;
 mod brief_delta;
 mod capture;
 mod evidence;
+mod explain;
 mod first_use;
 mod frontier;
 mod guide;
@@ -230,6 +231,9 @@ enum Commands {
     /// Read a bounded handoff from the verified case snapshot.
     #[command(after_help = brief::AFTER_HELP)]
     Brief(brief::Args),
+    /// Walk the recorded evidence and assessment chain behind one record.
+    #[command(after_help = explain::AFTER_HELP)]
+    Explain(explain::Args),
     /// Compute the recorded process digest that a retrospective cites.
     #[command(after_help = retrospective::AFTER_HELP)]
     Retrospective(retrospective::Args),
@@ -384,6 +388,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                     snapshot,
                 } => show(&mut store, &global, &id, depth, at, &snapshot),
                 Commands::Brief(args) => brief(&mut store, &global, args),
+                Commands::Explain(args) => explain::run(&mut store, &global, args),
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
                 Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
