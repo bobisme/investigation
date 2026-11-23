@@ -41,6 +41,18 @@ file access: no symbolic links, a temporary file renamed into place only if
 the target is unchanged, and the `integration.file_bytes` limit. A new
 version of a page reaches installed copies on the next explicit apply.
 
+`just bench` builds release binaries and runs the plan §10.5 performance
+harness (`crates/investigation-bench`). It generates a 10,000-object /
+50,000-relation workspace, the sparse 1,000 × 200 choice fixture and an
+exhaustive small choice fixture through the store API, checks that grouped
+`next` output is complete against the generator's ground truth, and times
+warm `brief`, `next`, frontier pages, a single-operation `record`, `repair
+index` and `vault render` against the targets. It writes a JSON report to
+`target/bench/report.json` with the machine, build profile, load average,
+sample counts, warmup, trial order and nearest-rank percentiles with their
+n. `just check` runs only a smoke run on tiny fixtures; timings on a shared
+or loaded machine are noisy, so compare runs at similar load.
+
 The neutrality check reads the actual CLI help, published schemas, the
 `docs/agent/` pages, and `methods/general.toml` or files under
 `methods/general/`. Once `init` appears

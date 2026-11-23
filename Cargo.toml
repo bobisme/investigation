@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "crates/investigation-bench",
   "crates/investigation-cli",
   "crates/investigation-core",
   "crates/investigation-recording",

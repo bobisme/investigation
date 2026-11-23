@@ -26,6 +26,8 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [dev-dependencies]
+# The benchmark harness, for its smoke test against this binary.
+investigation-bench = { path = "../investigation-bench" }
 jsonschema = { version = "=0.28.3", default-features = false }
 # Parses rendered vault notes in the scenario vault tests.
 pulldown-cmark = { version = "=0.13.6", default-features = false }

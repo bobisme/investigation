@@ -14,8 +14,12 @@ ALLOWED = {
     # The renderer reads verified snapshots; frontends drive it, never the reverse.
     "investigation-render": {"investigation-core", "investigation-store"},
     "investigation-cli": {
-        "investigation-core", "investigation-store", "investigation-recording", "investigation-render"
+        "investigation-core", "investigation-store", "investigation-recording", "investigation-render",
+        # Dev-dependency only: the benchmark harness smoke test.
+        "investigation-bench",
     },
+    # Benchmark harness: generates fixtures through the store, times the CLI binary.
+    "investigation-bench": {"investigation-core", "investigation-store"},
     # Example producer: public recording API only. Test setup also uses the store.
     "example-rust-producer": {"investigation-recording", "investigation-store"},
     "investigation-mcp": {

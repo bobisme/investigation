@@ -573,10 +573,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "investigation-bench"
+version = "0.1.0"
+dependencies = [
+ "investigation-core",
+ "investigation-store",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "investigation-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "investigation-bench",
  "investigation-core",
  "investigation-recording",
  "investigation-render",
