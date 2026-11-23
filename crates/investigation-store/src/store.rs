@@ -192,7 +192,7 @@ impl<F: DurableFs> Store<F> {
             },
             clock,
             ids,
-            |state, catalog, acceptance| {
+            |state, catalog, acceptance, _| {
                 validate_and_apply_with_observations(
                     state,
                     command,
@@ -200,6 +200,7 @@ impl<F: DurableFs> Store<F> {
                     acceptance,
                     &observations,
                 )
+                .map(Prepared::Accept)
             },
         )
         .map_err(|failure| {
@@ -216,7 +217,7 @@ impl<F: DurableFs> Store<F> {
         plan: CommitPlan<'_>,
         clock: &mut dyn Clock,
         ids: &mut dyn IdSource,
-        prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>) -> Result<AcceptedTransaction, Failure>,
+        prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>, Visible<'_>) -> Result<Prepared, Failure>,
     ) -> Result<Receipt, Failure> {
         let CommitPlan {
             case_id,
@@ -259,7 +260,7 @@ impl<F: DurableFs> Store<F> {
             .sequence()
             .checked_add(1)
             .ok_or_else(|| integrity("Case sequence is exhausted."))?;
-        let accepted = prepare(
+        let prepared = prepare(
             original,
             &self.catalog,
             Acceptance {
@@ -267,8 +268,41 @@ impl<F: DurableFs> Store<F> {
                 clock,
                 ids,
             },
+            Visible {
+                target: case.as_ref(),
+                others: &replay,
+            },
         )
         .map_err(|error| add_conflict_context(error, original, case_id))?;
+        let accepted = match prepared {
+            Prepared::Accept(accepted) => accepted,
+            Prepared::Existing {
+                case_id: existing,
+                sequence,
+            } => {
+                let events = match &case {
+                    Some(loaded) if case_id == Some(existing) => &loaded.events,
+                    _ => {
+                        &replay
+                            .cases
+                            .get(&existing)
+                            .ok_or_else(|| missing_case(existing))?
+                            .events
+                    }
+                };
+                let event = usize::try_from(sequence.saturating_sub(1))
+                    .ok()
+                    .and_then(|offset| events.get(offset))
+                    .ok_or_else(|| integrity("An existing transaction is missing."))?;
+                let mut receipt = receipt_for(event).as_retry();
+                // Restore the target case so projection health sees every head.
+                if let (Some(loaded), Some(id)) = (case, case_id) {
+                    replay.cases.insert(id, loaded);
+                }
+                self.apply_projection_health(&replay, &mut receipt);
+                return Ok(receipt);
+            }
+        };
 
         // Exercise the same replay checks before touching canonical bytes.
         let mut projected = original.clone();
@@ -510,6 +544,24 @@ impl<F: DurableFs> Store<F> {
             let _ = marker.write_all(b"A writer stopped after an uncertain sync. Verify the journal and retry with the same command ID.\n");
         }
     }
+}
+
+/// Verified canonical cases a preparation may read under the commit lock.
+struct Visible<'a> {
+    /// The target case, when it already exists.
+    target: Option<&'a CaseReplay>,
+    /// Every other case.
+    others: &'a WorkspaceReplay,
+}
+
+/// What a preparation decided under the commit lock.
+enum Prepared {
+    Accept(AcceptedTransaction),
+    /// Nothing new to record: answer with an earlier transaction's receipt.
+    Existing {
+        case_id: Id,
+        sequence: u64,
+    },
 }
 
 struct CommitPlan<'a> {

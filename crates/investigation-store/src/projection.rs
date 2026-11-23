@@ -4,15 +4,19 @@
 use std::{path::Path, time::Duration};
 
 use investigation_core::{
+    command::RevisionRef,
+    evidence::AcquisitionKey,
     header::Actor,
-    identity::Id,
+    identity::{Id, Kind},
     retrospective::Relation,
     state::AcceptedTransaction,
     wire::{Digest, ErrorCode, Failure, Receipt, Snapshot},
 };
 use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, params};
 
-const INDEX_USER_VERSION: u32 = 1;
+use crate::store::ingest::acquisition::AcquisitionCursor;
+
+const INDEX_USER_VERSION: u32 = 2;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy)]
@@ -86,7 +90,14 @@ impl Projection {
                      )
                  );
                  CREATE INDEX IF NOT EXISTS relations_dependents
-                     ON relations (case_id, target_id, target_revision);",
+                     ON relations (case_id, target_id, target_revision);
+                 CREATE TABLE IF NOT EXISTS acquisitions (
+                     namespace TEXT NOT NULL, external_id TEXT NOT NULL, item TEXT NOT NULL,
+                     case_id TEXT NOT NULL, source_id TEXT NOT NULL,
+                     source_revision INTEGER NOT NULL, description_digest TEXT,
+                     acceptance_sequence INTEGER NOT NULL,
+                     PRIMARY KEY (namespace, external_id, item)
+                 );",
             )
             .map_err(db_error)?;
         database
@@ -202,6 +213,44 @@ impl Projection {
             )
             .map_err(db_error)?;
         }
+        for record in &accepted.records {
+            if record.header.id.kind() != Kind::Source {
+                continue;
+            }
+            // Import cursor: the latest Source revision of each acquisition item.
+            let Some(key) = record
+                .body
+                .get("acquisition_key")
+                .and_then(|key| serde_json::from_value::<AcquisitionKey>(key.clone()).ok())
+            else {
+                continue;
+            };
+            tx.execute(
+                "INSERT INTO acquisitions
+                     (namespace, external_id, item, case_id, source_id, source_revision,
+                     description_digest, acceptance_sequence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                 ON CONFLICT (namespace, external_id, item) DO UPDATE SET
+                     case_id=excluded.case_id, source_id=excluded.source_id,
+                     source_revision=excluded.source_revision,
+                     description_digest=excluded.description_digest,
+                     acceptance_sequence=excluded.acceptance_sequence",
+                params![
+                    key.namespace,
+                    key.external_id,
+                    key.item,
+                    case_id,
+                    record.header.id.to_string(),
+                    sql_counter(record.header.revision.0)?,
+                    record
+                        .body
+                        .get("description_digest")
+                        .and_then(|value| value.as_str()),
+                    sequence
+                ],
+            )
+            .map_err(db_error)?;
+        }
         for edge in event.relations {
             let kind = serde_json::to_value(edge.kind).map_err(codec_error)?;
             tx.execute(
@@ -240,6 +289,62 @@ impl Projection {
         )
         .map_err(db_error)?;
         tx.commit().map_err(db_error)
+    }
+
+    /// Recorded acquisition items of one producer namespace, ordered by external
+    /// ID and item: a resumable importer's cursor. Disposable like the index.
+    pub fn acquisitions(&self, namespace: &str) -> Result<Vec<AcquisitionCursor>, Failure> {
+        let mut query = self
+            .database
+            .prepare(
+                "SELECT external_id, item, case_id, source_id, source_revision,
+                        description_digest, acceptance_sequence
+                 FROM acquisitions WHERE namespace = ?1 ORDER BY external_id, item",
+            )
+            .map_err(db_error)?;
+        let rows = query
+            .query_map([namespace], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, i64>(6)?,
+                ))
+            })
+            .map_err(db_error)?;
+        rows.map(|row| {
+            let (external_id, item, case_id, source_id, revision, digest, sequence) =
+                row.map_err(db_error)?;
+            let parse_id = |value: String| {
+                value
+                    .parse::<Id>()
+                    .map_err(|_| invalid("Index contains an invalid acquisition ID."))
+            };
+            Ok(AcquisitionCursor {
+                key: AcquisitionKey {
+                    namespace: namespace.to_owned(),
+                    external_id,
+                    item,
+                },
+                case_id: parse_id(case_id)?,
+                source: RevisionRef {
+                    id: parse_id(source_id)?,
+                    revision: read_counter(revision)?,
+                },
+                description_digest: digest
+                    .map(|digest| {
+                        digest
+                            .parse()
+                            .map_err(|_| invalid("Index contains an invalid description digest."))
+                    })
+                    .transpose()?,
+                acceptance_sequence: read_counter(sequence)?,
+            })
+        })
+        .collect()
     }
 
     /// Rebuild a fresh index and replace the disposable database only after

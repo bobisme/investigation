@@ -216,6 +216,32 @@ pub struct SourceBody {
     pub verification_limits: Vec<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub metadata: BTreeMap<String, serde_json::Value>,
+    /// Producer-supplied identity of the logical acquisition this Source records.
+    /// Absent when the producer supplied none: each such ingest is its own acquisition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquisition_key: Option<AcquisitionKey>,
+    /// Digest of the manifest description that produced this revision. A new
+    /// description of a known acquisition revises the Source; it is not a new trial.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description_digest: Option<Digest>,
+}
+
+/// Producer namespace plus stable external ID identify one logical acquisition
+/// attempt; `item` names one retained input within it. These are producer claims,
+/// not verified identity, and they never merge distinct keys that share bytes.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct AcquisitionKey {
+    pub namespace: String,
+    pub external_id: String,
+    pub item: String,
+}
+
+impl AcquisitionKey {
+    /// Whether this key belongs to the same producer attempt, whatever the item.
+    pub fn same_attempt(&self, namespace: &str, external_id: &str) -> bool {
+        self.namespace == namespace && self.external_id == external_id
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

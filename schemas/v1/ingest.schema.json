@@ -1,5 +1,27 @@
 {
   "$defs": {
+    "AcquisitionKeyRequest": {
+      "additionalProperties": false,
+      "description": "Producer namespace plus stable external ID of one logical acquisition attempt.\nReimporting the same attempt maps onto the recorded Source; a changed\ndescription of it records a revision, not a new acquisition. Each path or\nstdin name identifies one item within the attempt.",
+      "properties": {
+        "external_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "namespace": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "external_id"
+      ],
+      "type": "object"
+    },
     "Actor": {
       "maxLength": 128,
       "minLength": 1,
@@ -254,6 +276,17 @@
     "SourceManifest": {
       "additionalProperties": false,
       "properties": {
+        "acquisition_key": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AcquisitionKeyRequest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Stable identity of the logical acquisition. Without it every ingest is\na separate acquisition, even when its bytes match an earlier one."
+        },
         "context": {
           "type": [
             "string",

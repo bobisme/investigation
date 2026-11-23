@@ -20,6 +20,10 @@ use serde::Deserialize;
 use super::*;
 use crate::{blob::stage, import_paths::ImportRoot};
 
+#[path = "acquisition.rs"]
+pub mod acquisition;
+use acquisition::{AcquisitionKeyRequest, ItemFacts, ItemOutcome, ItemPlan, PriorAcquisition};
+
 pub const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ITEMS: usize = 32;
 pub const TEXT_PARSER_VERSION: &str = "inv.text.utf8.v1";
@@ -68,6 +72,10 @@ pub struct SourceManifest {
     /// Opaque producer metadata retained with the resulting Source.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub metadata: std::collections::BTreeMap<String, Value>,
+    /// Stable identity of the logical acquisition. Without it every ingest is
+    /// a separate acquisition, even when its bytes match an earlier one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquisition_key: Option<AcquisitionKeyRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -89,6 +97,20 @@ pub struct ItemReceipt {
     #[schemars(schema_with = "unconstrained")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<String>,
+    // Acquisition identity outcome, always present in new receipts: `imported`,
+    // `deduplicated` (a known acquisition; nothing new recorded) or `revised`
+    // (a known acquisition with a changed description or bytes). Published
+    // unconstrained like `diagnostics`, as are the key and prior link.
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<ItemOutcome>,
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquisition_key: Option<investigation_core::evidence::AcquisitionKey>,
+    // Records of the earlier import of this acquisition item.
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior: Option<PriorAcquisition>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
@@ -165,6 +187,18 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
             "Provide a source title of 1–256 characters.",
             "/source/title",
         ));
+    }
+    if let Some(key) = &manifest.source.acquisition_key {
+        key.validate()?;
+        let mut labels = std::collections::BTreeSet::new();
+        for (index, path) in manifest.paths.iter().enumerate() {
+            if !labels.insert(path.to_string_lossy()) {
+                return Err(invalid(
+                    "Each item of a keyed acquisition needs a distinct path.",
+                    &format!("/paths/{index}"),
+                ));
+            }
+        }
     }
     crate::opaque::validate_metadata(&manifest.source.metadata)
         .map_err(|(message, key)| invalid(&message, &format!("/source/metadata{key}")))?;
@@ -250,6 +284,16 @@ impl Store {
         let manifest_digest = digest_for(&staged_manifest)?;
         let manifest_size = staged_manifest.size;
         stages.push(staged_manifest);
+        let description = description_digest(&manifest)?;
+        let facts: Vec<_> = prepared
+            .iter()
+            .map(|item| ItemFacts {
+                label: &item.label,
+                digest: &item.digest,
+                decoded: matches!(item.text, TextStatus::Decoded),
+            })
+            .collect();
+        let mut plans = None;
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: manifest.case_id,
@@ -267,17 +311,75 @@ impl Store {
             },
             &mut SystemClock,
             &mut SystemIdSource,
-            |_, _, acceptance| {
+            |_, _, acceptance, visible| {
+                let resolved = resolve_acquisition(&manifest, &description, &facts, visible)?;
+                let plans = plans.insert(resolved);
+                if let Some((case_id, sequence)) = existing_transaction(plans) {
+                    return Ok(Prepared::Existing { case_id, sequence });
+                }
                 create_records(
                     &manifest,
                     &prepared,
+                    plans,
+                    &description,
                     &manifest_digest,
                     manifest_size,
                     acceptance,
                 )
+                .map(Prepared::Accept)
             },
         )?;
-        Ok(ingest_receipt(receipt, prepared))
+        let plans = match plans {
+            Some(plans) => plans,
+            // An identical earlier request answered before planning: resolve
+            // its items against the case as it stood before that transaction.
+            None => self.replan(&manifest, &description, &facts, &receipt)?,
+        };
+        let mut receipt = ingest_receipt(receipt, prepared, plans);
+        if receipt
+            .items
+            .iter()
+            .all(|item| item.outcome == Some(ItemOutcome::Deduplicated))
+            && receipt.receipt.command_id != manifest.command_id
+        {
+            receipt.receipt.warnings.push(format!(
+                "Every item is already recorded for this acquisition, so command {} committed nothing. The receipt describes the transaction that recorded the current revision.",
+                manifest.command_id
+            ));
+        }
+        Ok(receipt)
+    }
+
+    fn replan(
+        &mut self,
+        manifest: &Manifest,
+        description: &Digest,
+        facts: &[ItemFacts<'_>],
+        receipt: &Receipt,
+    ) -> Result<Vec<ItemPlan>, Failure> {
+        let Some(request) = &manifest.source.acquisition_key else {
+            return Ok(acquisition::unkeyed(facts.len()));
+        };
+        let case_id = manifest.case_id.or_else(|| {
+            receipt
+                .created
+                .iter()
+                .find(|change| change.id.kind() == Kind::Case)
+                .map(|change| change.id)
+        });
+        let Some(case_id) = case_id else {
+            return Ok(acquisition::fresh(request, facts));
+        };
+        let replay = self.case(case_id)?;
+        acquisition::resolve(
+            case_id,
+            &replay,
+            receipt.snapshot.sequence.saturating_sub(1),
+            request,
+            description,
+            manifest.classification,
+            facts,
+        )
     }
 
     fn open_import(
@@ -368,9 +470,89 @@ impl Store {
     }
 }
 
+/// Digest of what the manifest says about its acquisition, apart from who
+/// submitted it, under which command, into which case. Equal descriptions of a
+/// known acquisition are a reimport; a different one is a revision.
+fn description_digest(manifest: &Manifest) -> Result<Digest, Failure> {
+    let description = serde_json::json!({
+        "source": manifest.source,
+        "classification": manifest.classification,
+        "extract_text": manifest.extract_text,
+    });
+    let bytes = serde_json::to_vec(&acquisition::canonical(description))
+        .map_err(|_| integrity("Could not encode the acquisition description."))?;
+    Ok(crate::journal::hash_bytes(&bytes))
+}
+
+/// Find where the manifest's acquisition is already recorded and plan each item.
+/// Runs under the commit lock against verified canonical state.
+fn resolve_acquisition(
+    manifest: &Manifest,
+    description: &Digest,
+    facts: &[ItemFacts<'_>],
+    visible: Visible<'_>,
+) -> Result<Vec<ItemPlan>, Failure> {
+    let Some(request) = &manifest.source.acquisition_key else {
+        return Ok(acquisition::unkeyed(facts.len()));
+    };
+    let target = manifest.case_id.zip(visible.target);
+    let homes: Vec<(Id, &CaseReplay, Id)> = visible
+        .others
+        .cases
+        .iter()
+        .map(|(case_id, case)| (*case_id, case))
+        .chain(target)
+        .filter_map(|(case_id, case)| {
+            acquisition::records_attempt(&case.state, request).map(|source| (case_id, case, source))
+        })
+        .collect();
+    let (home, home_case, source) = match homes.as_slice() {
+        [] => return Ok(acquisition::fresh(request, facts)),
+        [only] => *only,
+        _ => {
+            return Err(integrity(
+                "One acquisition is recorded in more than one case.",
+            ));
+        }
+    };
+    if manifest.case_id.is_some_and(|target| target != home) {
+        return Err(acquisition::other_case(home, source));
+    }
+    let plans = acquisition::resolve(
+        home,
+        home_case,
+        home_case.state.sequence(),
+        request,
+        description,
+        manifest.classification,
+        facts,
+    )?;
+    if manifest.case_id.is_none() && existing_transaction(&plans).is_none() {
+        return Err(acquisition::other_case(home, source));
+    }
+    Ok(plans)
+}
+
+/// When nothing is new, the transaction whose receipt answers the request.
+fn existing_transaction(plans: &[ItemPlan]) -> Option<(Id, u64)> {
+    if plans.is_empty()
+        || plans
+            .iter()
+            .any(|plan| plan.outcome != ItemOutcome::Deduplicated)
+    {
+        return None;
+    }
+    let known = plans.iter().filter_map(|plan| plan.known.as_ref());
+    let case_id = known.clone().next()?.case_id;
+    let sequence = known.map(|known| known.prior_sequence).max()?;
+    Some((case_id, sequence))
+}
+
 fn create_records(
     manifest: &Manifest,
     items: &[PreparedItem],
+    plans: &[ItemPlan],
+    description: &Digest,
     manifest_digest: &Digest,
     manifest_size: u64,
     acceptance: Acceptance<'_>,
@@ -387,6 +569,7 @@ fn create_records(
         ids: acceptance.ids,
         records: Vec::new(),
         created: Vec::new(),
+        updated: Vec::new(),
     };
     if let Some(create) = &manifest.new_case {
         builder.add(
@@ -402,13 +585,9 @@ fn create_records(
         clock_quality: ClockQuality::Unverified,
     });
     let mut first_source = None;
-    for (index, item) in items.iter().enumerate() {
-        let source_id = new_id(builder.ids, Kind::Source)?;
-        let source_ref = RevisionRef {
-            id: source_id,
-            revision: 1,
-        };
-        let source = SourceBody {
+    for (index, (item, plan)) in items.iter().zip(plans).enumerate() {
+        let keyed = plan.key.is_some();
+        let mut source = SourceBody {
             producer: manifest.source.producer.clone(),
             publisher: manifest.source.publisher.clone(),
             identity: manifest
@@ -436,11 +615,29 @@ fn create_records(
                 .cloned()
                 .collect(),
             metadata: manifest.source.metadata.clone(),
+            acquisition_key: plan.key.clone(),
+            description_digest: keyed.then(|| description.clone()),
         };
+        let source_ref = match &plan.known {
+            // A known acquisition keeps its Source ID; a changed description
+            // becomes the next revision of that Source, not a new acquisition.
+            Some(known) if known.revise => {
+                source.acquisition.acquired_at = known.body.acquisition.acquired_at.clone();
+                builder.revise(&known.source, source)?
+            }
+            Some(known) => known.source.reference(),
+            None => {
+                let source_id = new_id(builder.ids, Kind::Source)?;
+                builder.add(source_id, format!("source:{index}"), source, Vec::new())?;
+                RevisionRef {
+                    id: source_id,
+                    revision: 1,
+                }
+            }
+        };
+        let source_id = source_ref.id;
         first_source.get_or_insert(source_ref);
-        builder.add(source_id, format!("source:{index}"), source, Vec::new())?;
 
-        let artifact_id = new_id(builder.ids, Kind::Artifact)?;
         let original = ArtifactBody {
             digest: Some(item.digest.clone()),
             size_bytes: Some(item.size),
@@ -451,13 +648,24 @@ fn create_records(
             integrity: ArtifactIntegrity::Verified,
             sensitivity: sensitivity(manifest.classification),
         };
-        builder.add(
-            artifact_id,
-            format!("artifact:{index}"),
-            original.clone(),
-            vec![source_id],
-        )?;
-        if matches!(item.text, TextStatus::Decoded) {
+        let known_artifact = plan.known.as_ref().and_then(|known| known.artifact);
+        let artifact_id = match known_artifact {
+            Some(artifact_id) => artifact_id,
+            None => {
+                let artifact_id = new_id(builder.ids, Kind::Artifact)?;
+                builder.add(
+                    artifact_id,
+                    format!("artifact:{index}"),
+                    original.clone(),
+                    vec![source_id],
+                )?;
+                artifact_id
+            }
+        };
+        let known_derivative = known_artifact
+            .and(plan.known.as_ref())
+            .and_then(|known| known.derivative);
+        if matches!(item.text, TextStatus::Decoded) && known_derivative.is_none() {
             // Strict UTF-8 decoding with unchanged newline and character bytes.
             // The derivative gets its own record even when its blob deduplicates.
             let text_id = new_id(builder.ids, Kind::Artifact)?;
@@ -503,7 +711,7 @@ fn create_records(
         sequence: builder.sequence,
         records: builder.records,
         created: builder.created,
-        updated: Vec::new(),
+        updated: builder.updated,
         warnings: Vec::new(),
     })
 }
@@ -516,6 +724,7 @@ struct IngestRecords<'a> {
     ids: &'a mut dyn IdSource,
     records: Vec<Record>,
     created: Vec<RecordChange>,
+    updated: Vec<RecordChange>,
 }
 
 impl IngestRecords<'_> {
@@ -572,6 +781,39 @@ impl IngestRecords<'_> {
     }
 }
 
+impl IngestRecords<'_> {
+    /// Record the next revision of a known record, keeping its creation identity.
+    fn revise(&mut self, old: &Record, body: impl Serialize) -> Result<RevisionRef, Failure> {
+        let mut header = old.header.clone();
+        let revision = header
+            .revision
+            .0
+            .checked_add(1)
+            .ok_or_else(|| integrity("Record revision is exhausted."))?;
+        header.history.push(header.revision);
+        header.revision = Revision(revision);
+        header.acceptance_sequence = self.sequence;
+        header.recorded_at = self.timestamp.clone();
+        header.recorded_by = self.manifest.actor.clone();
+        header.classification.level = self.manifest.classification;
+        let reference = RevisionRef {
+            id: header.id,
+            revision,
+        };
+        self.records.push(Record {
+            header,
+            body: serde_json::to_value(body)
+                .map_err(|_| integrity("Could not encode the revised source record."))?,
+        });
+        self.updated.push(RecordChange {
+            id: reference.id,
+            revision,
+            client_ref: None,
+        });
+        Ok(reference)
+    }
+}
+
 fn sensitivity(level: ClassificationLevel) -> investigation_core::evidence::ArtifactSensitivity {
     use investigation_core::evidence::ArtifactSensitivity;
     match level {
@@ -581,30 +823,54 @@ fn sensitivity(level: ClassificationLevel) -> investigation_core::evidence::Arti
     }
 }
 
-fn ingest_receipt(mut receipt: Receipt, items: Vec<PreparedItem>) -> IngestReceipt {
+fn ingest_receipt(
+    mut receipt: Receipt,
+    items: Vec<PreparedItem>,
+    plans: Vec<ItemPlan>,
+) -> IngestReceipt {
     let id = |client_ref: &str| {
         receipt.created.iter().find_map(|change| {
             (change.client_ref.as_deref() == Some(client_ref)).then_some(change.id)
         })
     };
-    let manifest_artifact_id = id("manifest");
     let expected_count = items.len();
+    let complete = plans.len() == expected_count;
+    // With nothing new, the receipt is an earlier transaction's and this
+    // manifest's bytes were not retained.
+    let nothing_new = existing_transaction(&plans).is_some();
+    let manifest_artifact_id = id("manifest").filter(|_| !nothing_new);
     let items = items
         .into_iter()
+        .zip(plans)
         .enumerate()
-        .filter_map(|(index, item)| {
+        .filter_map(|(index, (item, plan))| {
+            let known = plan.known.as_ref();
+            let decoded = matches!(item.text, TextStatus::Decoded);
             Some(ItemReceipt {
-                source_id: id(&format!("source:{index}"))?,
-                artifact_id: id(&format!("artifact:{index}"))?,
+                source_id: known
+                    .map(|known| known.source.header.id)
+                    .or_else(|| id(&format!("source:{index}")))?,
+                artifact_id: known
+                    .and_then(|known| known.artifact)
+                    .or_else(|| id(&format!("artifact:{index}")))?,
                 digest: item.digest,
                 size_bytes: item.size,
-                derivative_id: id(&format!("text:{index}")),
+                derivative_id: known
+                    .filter(|_| decoded)
+                    .and_then(|known| known.artifact.and(known.derivative))
+                    .or_else(|| id(&format!("text:{index}"))),
                 text_status: item.text,
                 diagnostics: item.diagnostics,
+                outcome: Some(plan.outcome),
+                prior: plan.prior(),
+                acquisition_key: plan.key,
             })
         })
         .collect::<Vec<_>>();
-    if manifest_artifact_id.is_none() || items.len() != expected_count {
+    if !complete
+        || items.len() != expected_count
+        || (manifest_artifact_id.is_none() && !nothing_new)
+    {
         receipt.warnings.push("The canonical receipt is available. Some import item details could not be reconstructed.".into());
     }
     IngestReceipt {
