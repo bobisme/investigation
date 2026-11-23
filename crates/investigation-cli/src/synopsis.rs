@@ -62,9 +62,12 @@ fn visible_for_subject(
 
 /// `authored_synopsis` for a record that has synopses, or `synopsis_binding`
 /// for a synopsis annotation itself. Adds nothing for other records.
+/// `policy_state` is today's head; it differs from `state` for a historical
+/// read, whose disclosure still follows today's classification.
 pub(crate) fn show_fields(
     view: &mut Value,
     state: &State,
+    policy_state: &State,
     index: &FreshnessIndex,
     record: &Record,
     depth: ViewDepth,
@@ -73,7 +76,7 @@ pub(crate) fn show_fields(
         view["synopsis_binding"] = status_value(&status, depth);
         return;
     }
-    let classifier = Classifier::new(state);
+    let classifier = Classifier::new(policy_state);
     let policy = AudiencePolicy::default();
     let (shown, withheld) = visible_for_subject(state, index, &classifier, &policy, record);
     if shown.is_empty() && withheld == 0 {
@@ -180,13 +183,17 @@ pub(crate) fn search_fields(
 
 /// A count-only brief omission for the case's synopses, with a read command
 /// for the first stale one (or the newest current one). Synopsis text is never
-/// part of a brief. `None` when the case has no visible synopsis.
+/// part of a brief. `None` when the case has no visible synopsis. Disclosure
+/// follows `policy_state` (today's head); `pin` binds the read argv to the
+/// brief's snapshot.
 pub(crate) fn brief_omission(
     state: &State,
+    policy_state: &State,
     index: &FreshnessIndex,
     workspace: &[String],
+    pin: &[String],
 ) -> Option<Value> {
-    let classifier = Classifier::new(state);
+    let classifier = Classifier::new(policy_state);
     let policy = AudiencePolicy::default();
     let counts = synopsis::case_counts(state, index, |record| {
         classifier.may_show(record, Field::Content, &policy)
@@ -209,9 +216,9 @@ pub(crate) fn brief_omission(
         index.case_id().to_string(),
         "show".into(),
         target.id.to_string(),
-        "--format".into(),
-        "json".into(),
     ]);
+    argv.extend(pin.iter().cloned());
+    argv.extend(["--format".into(), "json".into()]);
     Some(json!({
         "kind":"authored_synopses",
         "current":counts.current,

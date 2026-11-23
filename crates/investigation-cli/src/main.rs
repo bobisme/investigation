@@ -1,6 +1,8 @@
 //! Local command-line frontend.
 
 mod blindspots;
+mod brief;
+mod brief_delta;
 mod capture;
 mod evidence;
 mod frontier;
@@ -13,6 +15,7 @@ mod schema;
 mod search;
 mod selection;
 mod shortcuts;
+mod snapshot;
 mod synopsis;
 mod views;
 
@@ -43,10 +46,11 @@ use investigation_store::{Store, Workspace, store::ReceiptLookup, workspace::Wor
 use serde::Serialize;
 use serde_json::{Value, json};
 
+use brief::BriefInputs;
 use selection::{
     open_workspace, require_case_agreement, select_actor, workspace_argv, workspace_failure,
 };
-use views::{BriefInputs, BriefLevel, ViewDepth};
+use views::ViewDepth;
 
 const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
@@ -202,14 +206,12 @@ enum Commands {
         /// Inspect an exact historical revision.
         #[arg(long, value_name = "REVISION")]
         at: Option<u64>,
+        #[command(flatten)]
+        snapshot: snapshot::SnapshotArgs,
     },
     /// Read a bounded handoff from the verified case snapshot.
-    Brief {
-        #[arg(long, value_enum, default_value = "standard")]
-        level: BriefLevel,
-        #[arg(long, default_value_t = 16_384)]
-        max_bytes: usize,
-    },
+    #[command(after_help = brief::AFTER_HELP)]
+    Brief(brief::Args),
     /// Compute the recorded process digest that a retrospective cites.
     #[command(after_help = retrospective::AFTER_HELP)]
     Retrospective(retrospective::Args),
@@ -346,10 +348,13 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Evidence(command) => evidence::read(&mut store, &global, command),
                 Commands::Capture(command) => capture::run(&mut store, &global, command),
                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),
-                Commands::Show { id, depth, at } => show(&mut store, &global, &id, depth, at),
-                Commands::Brief { level, max_bytes } => {
-                    brief(&mut store, &global, level, max_bytes)
-                }
+                Commands::Show {
+                    id,
+                    depth,
+                    at,
+                    snapshot,
+                } => show(&mut store, &global, &id, depth, at, &snapshot),
+                Commands::Brief(args) => brief(&mut store, &global, args),
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
                 Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
@@ -383,9 +388,21 @@ fn show(
     selector: &str,
     depth: ViewDepth,
     at: Option<u64>,
+    pin: &snapshot::SnapshotArgs,
 ) -> Result<Output, Failure> {
     let case = selection::select_case(store, global.case.as_deref())?;
-    let replay = store.case(case)?;
+    let mut retry = workspace_argv(store.workspace());
+    retry.extend([
+        "--case".into(),
+        case.to_string(),
+        "show".into(),
+        selector.into(),
+        "--format".into(),
+        "json".into(),
+    ]);
+    let pinned = snapshot::resolve(store.case(case)?, pin, retry)?;
+    let replay = pinned.read();
+    let today = pinned.today();
     let id = resolve_prefix(
         selector,
         replay.state.records().map(|record| record.header.id),
@@ -417,18 +434,16 @@ fn show(
     };
     let index = FreshnessIndex::build(&replay.state, case);
     let effective = record
-        .map(|record| views::effective_state(store, &replay, &index, record))
+        .map(|record| views::effective_state_as_of(store, replay, &index, record, today))
         .unwrap_or_default();
-    let projected = if at.is_some() {
-        views::show_record_revision(&replay, id, at, depth, &effective)
-    } else {
-        views::show_record(&replay, id, depth, &effective)
-    };
-    let mut view =
-        projected.map_err(|error| Failure::new(ErrorCode::UnknownReference, error.to_string()))?;
+    let mut view = views::show_record_revision(replay, today, id, at, depth, &effective)
+        .map_err(|error| Failure::new(ErrorCode::UnknownReference, error.to_string()))?;
+    if let Some(label) = pinned.label() {
+        view["historical_read"] = label;
+    }
     if view["content_state"] != "restricted"
         && let Some((key, origins)) =
-            record.and_then(|record| views::origin_projection(&replay, record))
+            record.and_then(|record| views::origin_projection(replay, record))
     {
         view[key] = origins;
     }
@@ -436,14 +451,21 @@ fn show(
         && at.is_none()
         && let Some(record) = record
     {
-        synopsis::show_fields(&mut view, &replay.state, &index, record, depth);
+        synopsis::show_fields(
+            &mut view,
+            &replay.state,
+            today.unwrap_or(&replay.state),
+            &index,
+            record,
+            depth,
+        );
     }
     if depth == ViewDepth::Full
         && at.is_none()
         && let Some(record) = record
     {
         if view["content_state"] != "restricted"
-            && let Some(basis) = views::review_basis(&replay, record)
+            && let Some(basis) = views::review_basis(replay, record)
         {
             view["review_basis"] = basis;
         }
@@ -473,32 +495,30 @@ fn show(
     Ok(Output::success("record_shown", view, text))
 }
 
-fn brief(
-    store: &mut Store,
-    global: &Global,
-    level: BriefLevel,
-    max_bytes: usize,
-) -> Result<Output, Failure> {
+fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output, Failure> {
     let case = selection::select_case(store, global.case.as_deref())?;
-    let replay = store.case(case)?;
-    let mut argv = workspace_argv(store.workspace());
+    let mut prefix = workspace_argv(store.workspace());
+    prefix.extend(["--case".into(), case.to_string()]);
+    let retry = brief::follow_up(&prefix, &["brief"]);
+    let pinned = snapshot::resolve(store.case(case)?, &args.snapshot, retry)?;
+    let replay = pinned.read();
+    let today = pinned.today();
+    let mut argv = prefix.clone();
     argv.extend([
-        "--case".into(),
-        case.to_string(),
         "show".into(),
         case.to_string(),
         "--depth".into(),
         "full".into(),
-        "--format".into(),
-        "json".into(),
     ]);
+    argv.extend(snapshot::pin_argv(&replay.snapshot));
+    argv.extend(["--format".into(), "json".into()]);
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case)?;
     let next = rank_next(&replay.state, &inventory, 3);
     let index = FreshnessIndex::build(&replay.state, case);
     let mut effective = replay
         .state
         .current(case)
-        .map(|record| views::effective_state(store, &replay, &index, record))
+        .map(|record| views::effective_state_as_of(store, replay, &index, record, today))
         .unwrap_or_default();
     let outcomes: Vec<_> = replay
         .state
@@ -525,17 +545,17 @@ fn brief(
         .map(|record| {
             (
                 record.header.id,
-                views::effective_state(store, &replay, &index, record),
+                views::effective_state_as_of(store, replay, &index, record, today),
             )
         })
         .collect();
-    if let Some(primary) = outcomes
+    let primary = outcomes
         .iter()
         .filter(|record| {
             record.body["lifecycle"] != "superseded" && record.body["status"] != "superseded"
         })
-        .max_by_key(|record| (record.header.acceptance_sequence, record.header.id))
-    {
+        .max_by_key(|record| (record.header.acceptance_sequence, record.header.id));
+    if let Some(primary) = primary {
         let overlay = &record_effective[&primary.header.id];
         effective.material_caveat = overlay.material_caveat.clone();
         effective.contradiction = overlay.contradiction.clone();
@@ -560,34 +580,47 @@ fn brief(
         record_effective,
         omissions: synopsis::brief_omission(
             &replay.state,
+            today.unwrap_or(&replay.state),
             &index,
             &workspace_argv(store.workspace()),
+            &snapshot::pin_argv(&replay.snapshot),
         )
         .into_iter()
         .collect(),
+        primary_outcome: primary.map(|record| record.header.id),
+        historical: pinned.label(),
+        read_prefix: prefix.clone(),
         ..BriefInputs::default()
     };
-    let view =
-        views::brief(&replay, level, max_bytes.saturating_sub(1), &inputs).map_err(|error| {
-            let mut failure =
-                Failure::new(ErrorCode::BudgetTooSmall, error.to_string()).at("/max_bytes");
-            let minimum = error.minimum_bytes + 1;
-            failure.error.expected = Some(json!({"minimum_bytes":minimum}));
-            failure.error.actual = Some(json!({"requested_bytes":max_bytes}));
-            let mut argv = workspace_argv(store.workspace());
-            argv.extend([
-                "--case".into(),
-                case.to_string(),
-                "brief".into(),
-                "--level".into(),
-                level.as_str().into(),
-                "--max-bytes".into(),
-                minimum.to_string(),
-                "--format".into(),
-                "json".into(),
-            ]);
-            failure.with_argv(argv)
-        })?;
+    let budget = args.max_bytes.saturating_sub(1);
+    let view = match &args.since {
+        Some(since) => {
+            let since = brief_delta::resolve_since(replay, since, &prefix)?;
+            brief_delta::delta(store, replay, today, &since, args.level, budget, &inputs)
+        }
+        None => brief::brief(replay, today, args.level, budget, &inputs),
+    }
+    .map_err(|error| {
+        let mut failure =
+            Failure::new(ErrorCode::BudgetTooSmall, error.to_string()).at("/max_bytes");
+        let minimum = error.minimum_bytes + 1;
+        failure.error.expected = Some(json!({"minimum_bytes":minimum}));
+        failure.error.actual = Some(json!({"requested_bytes":args.max_bytes}));
+        let minimum = minimum.to_string();
+        let mut tail = vec![
+            "brief",
+            "--level",
+            args.level.as_str(),
+            "--max-bytes",
+            &minimum,
+        ];
+        if let Some(since) = &args.since {
+            tail.extend(["--since", since]);
+        }
+        let pin = snapshot::pin_argv(&replay.snapshot);
+        tail.extend(pin.iter().map(String::as_str));
+        failure.with_argv(brief::follow_up(&prefix, &tail))
+    })?;
     let text = serde_json::to_string_pretty(&view).expect("brief view serializes");
     Ok(Output::new(view, text))
 }

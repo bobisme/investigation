@@ -15,7 +15,7 @@ use investigation_core::{
     measurement_flags, measurement_ops, objection_policy, origin_ops,
     review::EffectiveDisposition,
     review_ops, source_ops,
-    state::Record,
+    state::{Record, State},
 };
 use investigation_store::{Store, journal::CaseReplay};
 use serde_json::{Map, Value, json};
@@ -67,7 +67,7 @@ fn freshness_view(state: &str, effective: &RecordFreshness) -> Value {
 /// Reasons shown below full depth; the rest are counted in `reasons_omitted`.
 const SHOWN_REASONS: usize = 3;
 
-fn bounded_freshness(freshness: Option<&Value>, depth: ViewDepth) -> Value {
+pub(crate) fn bounded_freshness(freshness: Option<&Value>, depth: ViewDepth) -> Value {
     let mut freshness = freshness
         .cloned()
         .unwrap_or_else(|| json!({"state":"unknown"}));
@@ -88,6 +88,20 @@ pub fn effective_state(
     replay: &CaseReplay,
     index: &FreshnessIndex,
     record: &Record,
+) -> EffectiveStateInput {
+    effective_state_as_of(store, replay, index, record, None)
+}
+
+/// Effective state of a record in `replay`. For a historical read, `today` is
+/// the current head: material withdrawn after the snapshot is reported
+/// unavailable, as missing bytes are, because availability follows today's
+/// withdrawal and retention state even when the records are historical.
+pub fn effective_state_as_of(
+    store: &Store,
+    replay: &CaseReplay,
+    index: &FreshnessIndex,
+    record: &Record,
+    today: Option<&State>,
 ) -> EffectiveStateInput {
     let kind = record.header.id.kind();
     let recorded = record.body["status"]
@@ -134,7 +148,15 @@ pub fn effective_state(
         Kind::Artifact => vec![record.reference()],
         _ => Vec::new(),
     };
-    let unavailable = store.unavailable_artifacts(&replay.state, &references);
+    let mut unavailable = store.unavailable_artifacts(&replay.state, &references);
+    let withdrawn_since: Vec<RevisionRef> = today
+        .map(|today| withdrawn_since(&replay.state, today, &references))
+        .unwrap_or_default();
+    for reference in &withdrawn_since {
+        if !unavailable.contains(reference) {
+            unavailable.push(*reference);
+        }
+    }
     let lineage = matches!(kind, Kind::Artifact | Kind::Observation)
         .then(|| crate::lineage::lineage_view(store, &replay.state, record))
         .flatten();
@@ -182,7 +204,11 @@ pub fn effective_state(
         ));
         freshness["overview"] = json!(overview);
     }
-    let caveat = if !unavailable.is_empty() {
+    let caveat = if !withdrawn_since.is_empty() {
+        Some(
+            json!({"state":"known","reason":"Material this record relies on was withdrawn from evidentiary use after this snapshot, or its retained bytes are missing.","unavailable_artifacts":unavailable,"withdrawn_since_snapshot":withdrawn_since}),
+        )
+    } else if !unavailable.is_empty() {
         // A reference was never retained: say so rather than call it missing.
         let references: Vec<RevisionRef> = unavailable
             .iter()
@@ -249,6 +275,25 @@ pub fn effective_state(
     }
 }
 
+/// Cited Artifacts entirely withdrawn from evidentiary use in `today` but not
+/// at the historical `state`: a later withdrawal of the Artifact or its Source.
+fn withdrawn_since(state: &State, today: &State, references: &[RevisionRef]) -> Vec<RevisionRef> {
+    let withdrawn = |state: &State, reference: &RevisionRef| {
+        state.current(reference.id).is_some_and(|record| {
+            source_ops::evidentiary_use(state, record).state == source_ops::UseState::Withdrawn
+        })
+    };
+    references
+        .iter()
+        .filter(|reference| {
+            reference.id.kind() == Kind::Artifact
+                && withdrawn(today, reference)
+                && !withdrawn(state, reference)
+        })
+        .copied()
+        .collect()
+}
+
 pub fn review_basis(replay: &CaseReplay, record: &Record) -> Option<Value> {
     if !matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision) {
         return None;
@@ -283,9 +328,12 @@ impl std::fmt::Display for ViewError {
 impl std::error::Error for ViewError {}
 
 /// Render current or historical record state. Historical revisions are read
-/// from the replay history, while the view snapshot remains the verified head.
+/// from the replay history, while the view snapshot remains the verified head
+/// of `replay`. `today` is the current head when `replay` is pinned to an
+/// earlier snapshot; disclosure follows it.
 pub fn show_record_revision(
     replay: &CaseReplay,
+    today: Option<&State>,
     id: Id,
     revision: Option<u64>,
     depth: ViewDepth,
@@ -301,29 +349,23 @@ pub fn show_record_revision(
             .current(id)
             .ok_or(ViewError::UnknownRecord(id))?,
     };
-    let mut view = project_record(record, replay, depth, effective);
-    view["historical"] = json!(revision.is_some());
+    let mut view = project_record(record, replay, today, depth, effective);
+    view["historical"] = json!(revision.is_some() || today.is_some());
     Ok(view)
 }
 
-pub fn show_record(
-    replay: &CaseReplay,
-    id: Id,
-    depth: ViewDepth,
-    effective: &EffectiveStateInput,
-) -> Result<Value, ViewError> {
-    show_record_revision(replay, id, None, depth, effective)
-}
-
-fn project_record(
+/// Project one record of `replay`. `today` is the current head for a read
+/// pinned to an earlier snapshot: classification is always today's.
+pub(crate) fn project_record(
     record: &Record,
     replay: &CaseReplay,
+    today: Option<&State>,
     depth: ViewDepth,
     effective: &EffectiveStateInput,
 ) -> Value {
     // Effective classification includes derivation inputs, case floor, raises
     // and reviewed downgrades; the recorded label alone is never enough.
-    let classifier = Classifier::new(&replay.state);
+    let classifier = Classifier::new(today.unwrap_or(&replay.state));
     let policy = AudiencePolicy::default();
     let hidden = |record: &Record| !classifier.may_show(record, Field::Title, &policy);
     if hidden(record) {
@@ -420,6 +462,14 @@ fn project_record(
             "evidentiary_use".into(),
             json!(source_ops::evidentiary_use(&replay.state, record)),
         );
+        if let Some(current) =
+            today.and_then(|today| Some((today, today.current(record.header.id)?)))
+        {
+            out.insert(
+                "current_evidentiary_use".into(),
+                json!(source_ops::evidentiary_use(current.0, current.1)),
+            );
+        }
     }
     // Bytes the workspace does not retain are labeled where they are read:
     // `source_unavailable`, with locator and verification standing.
@@ -774,247 +824,81 @@ fn value_at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.').try_fold(value, |value, key| value.get(key))
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, clap::ValueEnum)]
-pub enum BriefLevel {
-    Compact,
-    Standard,
-    Deep,
-}
+/// Fields of an index entry: identity, effective state and caveats, without
+/// synopsis text. A caveat is never dropped from an entry that keeps its record.
+const INDEX_FIELDS: &[&str] = &[
+    "id",
+    "type",
+    "title",
+    "basis_revision",
+    "content_state",
+    "effective_status",
+    "material_caveat",
+    "contradiction",
+    "choice",
+    "evidence_refs",
+    "omitted_evidence_refs",
+    "evidentiary_use",
+    "current_evidentiary_use",
+];
 
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct BriefInputs {
-    pub effective: EffectiveStateInput,
-    /// Per-outcome and per-evidence effective overlays, keyed by record ID.
-    /// Missing entries stay unknown.
-    pub record_effective: std::collections::BTreeMap<Id, EffectiveStateInput>,
-    /// Caller-selected IDs for current conclusions or decisions, in priority order.
-    pub selected_outcomes: Vec<Id>,
-    /// Exact, caller-supplied commands or links for deeper reading.
-    pub next_actions: Vec<Value>,
-    /// Caller-supplied, snapshot-bound omissions and known gaps.
-    pub omissions: Vec<Value>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct BriefError {
-    pub code: &'static str,
-    pub minimum_bytes: usize,
-}
-impl std::fmt::Display for BriefError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}: minimum serialized size is {} bytes",
-            self.code, self.minimum_bytes
-        )
-    }
-}
-impl std::error::Error for BriefError {}
-
-/// Produce a deterministic brief bounded by the exact compact JSON byte count.
-/// Mandatory caveats, freshness and gaps are included before optional records;
-/// if even that envelope cannot fit, callers receive `BUDGET_TOO_SMALL`.
-pub fn brief(
+/// A compact index entry for a record: its identity, effective state, caveat,
+/// contradiction, a freshness label without reason chains and, for an
+/// outcome, the exact evidence it cites. `effective` is `None` for a record
+/// listed by title alone.
+pub(crate) fn index_entry(
+    record: &Record,
     replay: &CaseReplay,
-    level: BriefLevel,
-    max_bytes: usize,
-    inputs: &BriefInputs,
-) -> Result<Value, BriefError> {
-    let mut records: Vec<&Record> = replay.state.records().collect();
-    records.sort_by_key(|r| (r.header.acceptance_sequence, r.header.id));
-    let case = records
-        .iter()
-        .find(|r| r.header.id.kind() == Kind::Case)
-        .copied();
-    let mut selected = Vec::new();
-    if inputs.selected_outcomes.is_empty() {
-        selected.extend(
-            records.iter().copied().filter(|record| {
-                matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision)
-            }),
-        );
-    } else {
-        for id in &inputs.selected_outcomes {
-            if let Some(record) = replay.state.current(*id)
-                && matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision)
-            {
-                selected.push(record);
-            }
-        }
-    }
-    let evidence: Vec<_> = records
-        .iter()
-        .copied()
-        .filter(|record| {
-            matches!(
-                record.header.id.kind(),
-                Kind::Observation | Kind::Comparison
+    today: Option<&State>,
+    effective: Option<&EffectiveStateInput>,
+) -> Value {
+    let unknown = EffectiveStateInput::default();
+    let projected = project_record(
+        record,
+        replay,
+        today,
+        ViewDepth::Summary,
+        effective.unwrap_or(&unknown),
+    );
+    let mut entry = Map::new();
+    for key in INDEX_FIELDS {
+        if effective.is_none()
+            && matches!(
+                *key,
+                "effective_status" | "material_caveat" | "contradiction"
             )
-        })
-        .collect();
-    let inquiries: Vec<_> = records
-        .iter()
-        .copied()
-        .filter(|record| {
-            record.header.id.kind() == Kind::Inquiry && record.body["lifecycle"] != "retired"
-        })
-        .collect();
-    let unresolved = records
-        .iter()
-        .filter(|record| {
-            record.header.id.kind() == Kind::Question
-                && matches!(
-                    record.body.get("disposition").and_then(Value::as_str),
-                    Some("open" | "deferred")
-                )
-        })
-        .map(|record| {
-            project_record(
-                record,
-                replay,
-                ViewDepth::Title,
-                &EffectiveStateInput::default(),
-            )
-        })
-        .collect::<Vec<_>>();
-    let summary_outcomes = selected
-        .iter()
-        .map(|r| {
-            let effective = inputs
-                .record_effective
-                .get(&r.header.id)
-                .cloned()
-                .unwrap_or_default();
-            project_record(r, replay, ViewDepth::Summary, &effective)
-        })
-        .collect::<Vec<_>>();
-    let deep_outcomes = if level == BriefLevel::Deep {
-        selected.len()
-    } else {
-        0
-    };
-    let may_include_evidence = level != BriefLevel::Compact;
-    let mut output = json!({
-        "schema_version":"inv.brief.v0-alpha",
-        "ok":true,
-        "result":"brief",
-        "snapshot":replay.snapshot,
-        "level":level.as_str(),
-        "case":case.map(|r| project_record(r,replay,ViewDepth::Summary,&inputs.effective)),
-        "effective_status":inputs.effective.status.clone().unwrap_or_else(|| json!({"state":"unknown"})),
-        "freshness":inputs.effective.freshness.clone().unwrap_or_else(|| json!({"state":"unknown"})),
-        "material_caveat":inputs.effective.material_caveat.clone().unwrap_or_else(|| json!({"state":"unknown"})),
-        "contradiction":inputs.effective.contradiction.clone().unwrap_or_else(|| json!({"state":"unknown"})),
-        "gaps":inputs.effective.gaps,
-        "omissions":inputs.omissions,
-        "omitted_items":{
-            "deeper_read_commands":inputs.next_actions.len(),
-            "full_outcomes":deep_outcomes,
-            "evidence":evidence.len(),
-            "inquiries":inquiries.len(),
-        },
-        "deeper_read_commands":[],
-        "outcomes":summary_outcomes,
-        "unresolved_questions":unresolved,
-        "full_outcomes":[],
-        "evidence":[],
-        "inquiries":[]
-    });
-    let minimum_bytes = encoded_len(&output);
-    if max_bytes < minimum_bytes {
-        return Err(BriefError {
-            code: "BUDGET_TOO_SMALL",
-            minimum_bytes,
-        });
-    }
-
-    for action in inputs.next_actions.iter().take(3) {
-        if !append_bounded(
-            &mut output,
-            "deeper_read_commands",
-            action.clone(),
-            max_bytes,
-        ) {
-            break;
+        {
+            continue;
         }
-    }
-    if level == BriefLevel::Deep {
-        for r in selected {
-            let effective = inputs
-                .record_effective
-                .get(&r.header.id)
-                .cloned()
-                .unwrap_or_default();
-            let item = project_record(r, replay, ViewDepth::Full, &effective);
-            if !append_bounded(&mut output, "full_outcomes", item, max_bytes) {
-                break;
+        let Some(value) = projected.get(*key) else {
+            continue;
+        };
+        let value = match *key {
+            // The use state and how many withdrawals are in effect; the
+            // withdrawals themselves are one `show` away.
+            "evidentiary_use" | "current_evidentiary_use" => {
+                let mut usage = json!({"state":value["state"]});
+                let withdrawals = value["withdrawals"].as_array().map_or(0, Vec::len);
+                if withdrawals > 0 {
+                    usage["withdrawals"] = json!(withdrawals);
+                }
+                usage
             }
-        }
+            _ => value.clone(),
+        };
+        entry.insert((*key).into(), value);
     }
-    if may_include_evidence {
-        for r in evidence {
-            let effective = inputs
-                .record_effective
-                .get(&r.header.id)
-                .cloned()
-                .unwrap_or_default();
-            let item = project_record(r, replay, ViewDepth::Summary, &effective);
-            if !append_bounded(&mut output, "evidence", item, max_bytes) {
-                break;
-            }
+    if effective.is_some() {
+        let freshness = &projected["freshness"];
+        let mut label = json!({"state":freshness["state"],"label":freshness["label"]});
+        let reasons = freshness["reasons"].as_array().map_or(0, Vec::len)
+            + freshness["reasons_omitted"].as_u64().unwrap_or(0) as usize;
+        if reasons > 0 {
+            label["reason_count"] = json!(reasons);
         }
-        for inquiry in inquiries {
-            let mut item = project_record(
-                inquiry,
-                replay,
-                ViewDepth::Summary,
-                &EffectiveStateInput::default(),
-            );
-            if item["content_state"] != "restricted" {
-                item["desired_observations"] = inquiry.body["desired_observations"].clone();
-            }
-            if !append_bounded(&mut output, "inquiries", item, max_bytes) {
-                break;
-            }
-        }
+        entry.insert("freshness".into(), label);
     }
-    Ok(output)
-}
-
-fn append_bounded(output: &mut Value, section: &str, item: Value, max_bytes: usize) -> bool {
-    let omitted = output["omitted_items"][section]
-        .as_u64()
-        .expect("section has an omission count");
-    output[section]
-        .as_array_mut()
-        .expect("section is an array")
-        .push(item);
-    output["omitted_items"][section] = json!(omitted - 1);
-    if encoded_len(output) <= max_bytes {
-        return true;
-    }
-    output[section]
-        .as_array_mut()
-        .expect("section is an array")
-        .pop();
-    output["omitted_items"][section] = json!(omitted);
-    false
-}
-
-impl BriefLevel {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Compact => "compact",
-            Self::Standard => "standard",
-            Self::Deep => "deep",
-        }
-    }
-}
-
-fn encoded_len(value: &Value) -> usize {
-    serde_json::to_vec(value)
-        .expect("JSON values serialize")
-        .len()
+    Value::Object(entry)
 }
 
 /// Claim-level origin projection for `show`: `claim_origin` on an Observation,
