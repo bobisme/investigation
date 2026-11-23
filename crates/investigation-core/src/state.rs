@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 use crate::{
     catalog::Catalog,
     command::{Command, Reference, RevisionRef},
+    guardrails::SessionEvidence,
     header::{Actor, Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
     identity::{Id, IdSource, Kind},
     observation_ops::ObservationProof,
@@ -247,7 +248,15 @@ pub fn validate_and_apply_with_observations(
     observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
 ) -> Result<AcceptedTransaction, Failure> {
     command.validate_shape()?;
-    apply_operations(state, command, catalog, acceptance, observations, None)
+    apply_operations(
+        state,
+        command,
+        catalog,
+        acceptance,
+        observations,
+        None,
+        None,
+    )
 }
 
 /// As [`validate_and_apply_with_observations`], with retained method pack
@@ -269,6 +278,31 @@ pub fn validate_and_apply_with_packs(
         acceptance,
         observations,
         Some(packs),
+        None,
+    )
+}
+
+/// As [`validate_and_apply_with_packs`], with what the store knows about the
+/// command's declared session, for write-side guardrails. Without it a
+/// guardrail that requires a distinct context is unmet.
+pub fn validate_and_apply_guarded(
+    state: &State,
+    command: &Command,
+    catalog: &Catalog,
+    acceptance: Acceptance<'_>,
+    observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
+    packs: &dyn PackSource,
+    sessions: Option<&SessionEvidence>,
+) -> Result<AcceptedTransaction, Failure> {
+    command.validate_shape()?;
+    apply_operations(
+        state,
+        command,
+        catalog,
+        acceptance,
+        observations,
+        Some(packs),
+        sessions,
     )
 }
 
@@ -283,7 +317,15 @@ pub fn validate_and_apply_composed(
     acceptance: Acceptance<'_>,
 ) -> Result<AcceptedTransaction, Failure> {
     command.validate_composed_shape()?;
-    apply_operations(state, command, catalog, acceptance, &BTreeMap::new(), None)
+    apply_operations(
+        state,
+        command,
+        catalog,
+        acceptance,
+        &BTreeMap::new(),
+        None,
+        None,
+    )
 }
 
 fn apply_operations(
@@ -293,6 +335,7 @@ fn apply_operations(
     acceptance: Acceptance<'_>,
     observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
     packs: Option<&dyn PackSource>,
+    sessions: Option<&SessionEvidence>,
 ) -> Result<AcceptedTransaction, Failure> {
     if acceptance.sequence <= state.sequence {
         return Err(Failure::new(
@@ -358,6 +401,7 @@ fn apply_operations(
             preconditions: &preconditions,
             observation_proof: observations.get(&index),
             packs,
+            sessions,
             images: Vec::new(),
             creation: None,
             final_checks: Vec::new(),
@@ -440,6 +484,7 @@ pub struct OperationContext<'a> {
     preconditions: &'a BTreeMap<Id, u64>,
     observation_proof: Option<&'a Result<ObservationProof, Failure>>,
     packs: Option<&'a dyn PackSource>,
+    sessions: Option<&'a SessionEvidence>,
     images: Vec<Record>,
     creation: Option<RevisionRef>,
     final_checks: Vec<FinalCheck>,
@@ -478,6 +523,21 @@ impl OperationContext<'_> {
     /// Retained method pack bytes, when the caller supplied them.
     pub fn pack_source(&self) -> Option<&dyn PackSource> {
         self.packs
+    }
+
+    /// The command's self-reported session label, when it declared one.
+    pub fn session(&self) -> Option<&crate::inherited_trust::Session> {
+        self.command.session.as_ref()
+    }
+
+    /// The command's human confirmation claim. Not authenticated.
+    pub fn human_confirmation(&self) -> Option<&crate::guardrails::HumanConfirmation> {
+        self.command.human_confirmation.as_ref()
+    }
+
+    /// Session reads the store supplied for write-side guardrails.
+    pub fn session_evidence(&self) -> Option<&SessionEvidence> {
+        self.sessions
     }
 
     pub fn preconditions(&self) -> &BTreeMap<Id, u64> {

@@ -50,6 +50,65 @@
       ],
       "type": "string"
     },
+    "ConfirmedWrite": {
+      "additionalProperties": false,
+      "description": "One guarded write a human confirmation covers.",
+      "properties": {
+        "op": {
+          "$ref": "#/$defs/GuardedOperation"
+        },
+        "subject": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "op",
+        "subject"
+      ],
+      "type": "object"
+    },
+    "GuardedOperation": {
+      "description": "The closed set of operations a guardrail can guard.",
+      "enum": [
+        "conclusion.validate",
+        "decision.accept",
+        "source.withdraw",
+        "observation.retract",
+        "classification.downgrade"
+      ],
+      "type": "string"
+    },
+    "HumanConfirmation": {
+      "additionalProperties": false,
+      "description": "An attributed claim, carried in the command envelope, that a person\nconfirmed specific guarded writes. Investigation records it as stated and\ndoes not authenticate the person or the method.",
+      "properties": {
+        "confirmed_by": {
+          "$ref": "#/$defs/Actor",
+          "description": "Who confirmed, as an actor string. Self-reported, not authenticated."
+        },
+        "confirms": {
+          "description": "The guarded writes confirmed: each names the operation and the ID of\nthe record it changes (the Conclusion, Decision, Source, Observation,\nor the record being downgraded).",
+          "items": {
+            "$ref": "#/$defs/ConfirmedWrite"
+          },
+          "maxItems": 128,
+          "minItems": 1,
+          "type": "array"
+        },
+        "method": {
+          "description": "How the confirmation was obtained, in words. Self-reported.",
+          "maxLength": 500,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "confirmed_by",
+        "method",
+        "confirms"
+      ],
+      "type": "object"
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -145,6 +204,17 @@
       "maxLength": 128,
       "minLength": 1,
       "type": "string"
+    },
+    "human_confirmation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HumanConfirmation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "An attributed claim that a person confirmed named guarded writes, for\na pinned pack guardrail that requires one. Recorded as stated;\ninvestigation does not authenticate people."
     },
     "operations": {
       "items": {

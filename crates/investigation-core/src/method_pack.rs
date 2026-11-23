@@ -86,6 +86,17 @@ pub const POLICY_GATES: &[&str] = &[
     "decision.propose",
 ];
 
+/// Operations a pack guardrail may guard: promotion and suppression writes
+/// an injected instruction would most want (§16.1). The set is closed; no
+/// guardrail can apply to any other operation, so recording stays cheap.
+pub const GUARDED_OPERATIONS: &[&str] = &[
+    "classification.downgrade",
+    "conclusion.validate",
+    "decision.accept",
+    "observation.retract",
+    "source.withdraw",
+];
+
 /// A validated pack plus the SHA-256 digest of the exact bytes it came from.
 /// It exposes no mutation; the only way to obtain one is through [`load`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -147,6 +158,10 @@ pub struct MethodPack {
     /// pins this pack, and only at the declared gate.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policies: Vec<PolicyProposal>,
+    /// Opt-in write-side guardrails. They take effect only for a case that
+    /// pins this pack, and only at the guarded operation.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub guardrails: Vec<GuardrailProposal>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub views: Vec<ViewReference>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -404,6 +419,48 @@ impl PolicyInput {
             }
             Self::ClosureRetrospective => &["case.close"],
             Self::AcknowledgeOpenObjections => &["decision.accept"],
+        }
+    }
+}
+
+/// One write-side guardrail: a requirement a pinned pack adds to one of the
+/// [`GUARDED_OPERATIONS`]. It can only add a requirement; it never relaxes a
+/// built-in gate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct GuardrailProposal {
+    pub name: String,
+    /// One of `conclusion.validate`, `decision.accept`, `source.withdraw`,
+    /// `observation.retract` or `classification.downgrade`.
+    pub operation: String,
+    pub requirement: GuardrailRequirement,
+    pub rationale: String,
+}
+
+/// What a guardrail requires of the guarded write. Actors, sessions and
+/// confirmations are self-reported claims; none is authentication.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GuardrailRequirement {
+    /// The writing actor did not record the subject's current content.
+    DistinctActor,
+    /// The write declares a session that recorded none of the subject's
+    /// current content and has no recorded evidence read of untrusted
+    /// material through investigation.
+    DistinctContext,
+    /// The envelope carries a `human_confirmation` naming this operation and
+    /// subject: who confirmed and how. Recorded as a claim, not verified.
+    HumanConfirmation,
+}
+
+impl GuardrailRequirement {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::DistinctActor => "distinct_actor",
+            Self::DistinctContext => "distinct_context",
+            Self::HumanConfirmation => "human_confirmation",
         }
     }
 }
@@ -1111,6 +1168,30 @@ fn validate(pack: &MethodPack) -> Result<(), PackError> {
         })?;
         check.text("rationale", &policy.rationale)
     })?;
+
+    check.unique(
+        "guardrails",
+        pack.guardrails.iter().map(|g| g.name.as_str()),
+    )?;
+    check.each("guardrails", &pack.guardrails, |check, guardrail| {
+        check.name("name", &guardrail.name)?;
+        if !GUARDED_OPERATIONS.contains(&guardrail.operation.as_str())
+            || !active.contains(guardrail.operation.as_str())
+        {
+            return Err(check.fail(
+                PackErrorKind::UnknownReference,
+                "operation",
+                "Guardrails may only guard conclusion.validate, decision.accept, source.withdraw, observation.retract or classification.downgrade",
+            ));
+        }
+        check.text("rationale", &guardrail.rationale)
+    })?;
+    let pairs: Vec<String> = pack
+        .guardrails
+        .iter()
+        .map(|g| format!("{} {}", g.operation, g.requirement.as_str()))
+        .collect();
+    check.unique("guardrails", pairs.iter().map(String::as_str))?;
 
     check.unique("views", pack.views.iter().map(|v| v.name.as_str()))?;
     check.each("views", &pack.views, |check, view| {

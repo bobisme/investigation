@@ -32,6 +32,7 @@ pub mod freshness;
 pub mod gap_explain;
 pub mod gap_page;
 pub mod gap_rules;
+pub mod guardrails;
 pub mod guidance;
 pub mod header;
 pub mod identity;

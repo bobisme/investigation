@@ -60,6 +60,8 @@ Optional sections:
 - `[[policies]]`: `name`, `input`, `gate`, `fields` for `required_fields`,
   optional `triggers` for `closure_retrospective`, and `rationale`. See
   [Policy inputs](#policy-inputs).
+- `[[guardrails]]`: `name`, `operation`, `requirement` and `rationale`. See
+  [Write-side guardrails](#write-side-guardrails).
 - `[[views]]`: `name`, `title`, `view` (a renderer view identifier), optional
   `record_kinds`.
 - `[[reports]]`: `name`, `title`, `template` (a renderer template identifier).
@@ -102,6 +104,34 @@ that satisfied them. A pin whose bytes are unavailable supplies no policy; the
 gate records it as unavailable and the receipt warns, so the change is never
 silent. Policy applies from adoption onward: earlier accepted records are not
 re-gated when a pack is adopted or replaced.
+
+## Write-side guardrails
+
+A pinned pack can also separate promotion and suppression from the context
+that read hostile evidence. A guardrail adds one requirement to one of five
+operations: `conclusion.validate`, `decision.accept`, `source.withdraw`,
+`observation.retract` or `classification.downgrade`. No other operation can
+be guarded. Guardrails are opt-in: without one, nothing changes.
+
+| `requirement` | Adds |
+|---|---|
+| `distinct_actor` | The writing actor did not record the subject's current content. |
+| `distinct_context` | The command declares a `session` that recorded none of the subject's current content and has no recorded `evidence read` of untrusted material under that label. |
+| `human_confirmation` | The envelope carries `human_confirmation`: `confirmed_by`, `method` (how it was obtained) and `confirms`, which names this operation and the subject's ID. |
+
+```toml
+[[guardrails]]
+name = "separate-validator"
+operation = "conclusion.validate"
+requirement = "distinct_context"
+rationale = "The context that read raw evidence does not validate what it supports."
+```
+
+An unmet requirement fails with `GATE_FAILED`, writes nothing and lists
+`error.expected.guardrail_blockers`, each with a `repair`. A satisfied write
+stores the guardrails it met with the revision it writes. Actors, sessions and
+confirmations are self-reported claims: `investigation` does not authenticate
+people or contexts, and sees only evidence reads made through it.
 
 ## Adoption per case
 

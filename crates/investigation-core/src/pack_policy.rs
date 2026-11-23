@@ -127,6 +127,10 @@ pub struct GatePolicy {
     /// Every pack pinned to the case at the gate, in adoption order.
     pub packs: Vec<ConsultedPack>,
     pub rules: Vec<AppliedRule>,
+    /// `conclusion.validate` and `decision.accept`: the write-side guardrails
+    /// the promotion satisfied, when a pinned pack declares any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guardrail: Option<crate::guardrails::GuardrailRecord>,
 }
 
 /// The gated record as a rule sees it.
@@ -348,6 +352,7 @@ impl Consulted {
                 })
                 .collect(),
             rules: applied,
+            guardrail: None,
         })
     }
 

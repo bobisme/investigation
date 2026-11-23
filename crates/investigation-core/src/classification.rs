@@ -245,6 +245,10 @@ pub struct ClassificationChange {
     pub transformation: Option<ReviewedTransformationRecord>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review: Option<DowngradeReviewRecord>,
+    /// A downgrade: the write-side guardrails it satisfied, when a pinned
+    /// pack declares any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guardrail: Option<crate::guardrails::GuardrailRecord>,
 }
 
 impl ClassificationChange {

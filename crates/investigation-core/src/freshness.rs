@@ -754,6 +754,7 @@ fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
             "corrects",
             MEASUREMENT_ASSESSMENT_KEY,
             crate::origin_ops::CLAIM_ORIGIN_KEY,
+            crate::observation_ops::GUARDRAIL_KEY,
         ],
         Kind::Artifact | Kind::Source => &[
             "status",

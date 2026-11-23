@@ -563,6 +563,8 @@ fn run_operation(
             extensions: None,
         }],
         session: crate::inherited_trust::select_session(&shortcut.global)?,
+
+        human_confirmation: None,
     };
     let envelope = serde_json::to_value(&request).expect("shortcut envelope serializes");
     let bytes = serde_json::to_vec(&envelope).expect("shortcut envelope serializes");

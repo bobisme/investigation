@@ -19,6 +19,7 @@ use crate::{
         ObservationBasis, ObservationBody, SelectorValidation, TextQuoteState,
     },
     freshness::{Freshness, FreshnessIndex},
+    guardrails::GuardedOperation,
     header::Knowledge,
     identity::{Id, Kind},
     objection_policy::{open_objections, raised_after_review},
@@ -701,6 +702,7 @@ fn qualification(
         "run_ref",
         "measurement_assessment",
         crate::origin_ops::CLAIM_ORIGIN_KEY,
+        crate::observation_ops::GUARDRAIL_KEY,
     ] {
         object.remove(key);
     }
@@ -1537,7 +1539,12 @@ fn conclusion_validate(
     body["status"] = json!(ConclusionStatus::Validated);
     body["review_ref"] = json!(review_ref);
     body["reviewed_basis"] = json!(review_body.basis_digest);
-    let (body, policy) = apply_pack_policy(ctx, Gate::ConclusionValidate, record, body)?;
+    let (mut body, policy) = apply_pack_policy(ctx, Gate::ConclusionValidate, record, body)?;
+    if let Some(guardrail) =
+        crate::guardrails::enforce(ctx, GuardedOperation::ConclusionValidate, record)?
+    {
+        body["gate_policy"]["guardrail"] = crate::guardrails::encode(&guardrail)?;
+    }
     ctx.update(payload.conclusion_ref, body)?;
     let actor = ctx.actor().clone();
     ctx.check_final(move |state| {

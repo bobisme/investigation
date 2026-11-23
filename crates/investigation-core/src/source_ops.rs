@@ -108,6 +108,10 @@ pub struct Withdrawal {
     pub rationale: String,
     /// Exact records that ground the withdrawal, such as an erratum.
     pub evidence_refs: Vec<RevisionRef>,
+    /// `source.withdraw`: the write-side guardrails the withdrawal satisfied,
+    /// when a pinned pack declares any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guardrail: Option<crate::guardrails::GuardrailRecord>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -561,6 +565,8 @@ struct WithdrawRequest {
     scope: WithdrawalScope,
     rationale: String,
     evidence_refs: Vec<RevisionRef>,
+    /// The guarded operation, for `source.withdraw` only.
+    guard: Option<crate::guardrails::GuardedOperation>,
 }
 
 fn withdraw(request: WithdrawRequest, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
@@ -579,6 +585,10 @@ fn withdraw(request: WithdrawRequest, ctx: &mut OperationContext<'_>) -> Result<
             "This record has reached its withdrawal limit; withdraw it entirely instead.",
         ));
     }
+    let guardrail = match request.guard {
+        Some(operation) => crate::guardrails::enforce(ctx, operation, &target)?,
+        None => None,
+    };
     let entire = request.scope == WithdrawalScope::Entire;
     log.push(Withdrawal {
         actor: ctx.actor().clone(),
@@ -588,6 +598,7 @@ fn withdraw(request: WithdrawRequest, ctx: &mut OperationContext<'_>) -> Result<
         scope: request.scope,
         rationale: request.rationale,
         evidence_refs: request.evidence_refs,
+        guardrail,
     });
     let mut body = target.body;
     let object = body.as_object_mut().ok_or_else(integrity)?;
@@ -604,6 +615,7 @@ fn withdraw_source(payload: SourceWithdraw, ctx: &mut OperationContext<'_>) -> R
         WithdrawRequest {
             target: payload.source_ref,
             path: "/source_ref",
+            guard: Some(crate::guardrails::GuardedOperation::SourceWithdraw),
             reason: payload.reason,
             scope: payload.scope,
             rationale: payload.rationale,
@@ -621,6 +633,7 @@ fn withdraw_artifact(
         WithdrawRequest {
             target: payload.artifact_ref,
             path: "/artifact_ref",
+            guard: None,
             reason: payload.reason,
             scope: payload.scope,
             rationale: payload.rationale,

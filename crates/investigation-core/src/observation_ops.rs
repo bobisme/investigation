@@ -35,7 +35,12 @@ pub(crate) const OBSERVATION_METADATA: &[&str] = &[
     "measurement_assessment",
     "run_ref",
     crate::origin_ops::CLAIM_ORIGIN_KEY,
+    GUARDRAIL_KEY,
 ];
+
+/// Observation body key that holds the write-side guardrails a retraction
+/// satisfied, when a pinned pack declares any.
+pub const GUARDRAIL_KEY: &str = "guardrail";
 pub(crate) const ARTIFACT_METADATA: &[&str] =
     &["status", "lifecycle", "rationale", "withdrawal_reason"];
 
@@ -402,7 +407,15 @@ fn retract(
             "This Observation is already retracted.",
         ));
     }
-    let body = mark_retracted(&record.body, payload.revision_reason)?;
+    let record = record.clone();
+    let mut body = mark_retracted(&record.body, payload.revision_reason)?;
+    if let Some(guardrail) = crate::guardrails::enforce(
+        context,
+        crate::guardrails::GuardedOperation::ObservationRetract,
+        &record,
+    )? {
+        body[GUARDRAIL_KEY] = crate::guardrails::encode(&guardrail)?;
+    }
     context.update(payload.observation_ref, body)?;
     Ok(())
 }

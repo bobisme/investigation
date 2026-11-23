@@ -13,6 +13,7 @@ use crate::{
         ObservationBasis, ObservationBody, ObservationValue, SelectorValidation,
     },
     freshness::FreshnessIndex,
+    guardrails::{self, GuardedOperation},
     identity::{Id, Kind},
     objection_policy::{
         AcceptanceChallenges, ObjectionAcknowledgmentInput, acknowledge, acknowledgment_policy,
@@ -1007,7 +1008,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 b.acceptance_challenges = Some(challenges);
                 b.gate_policy = None;
                 let actor = c.actor().clone();
-                let gated = policy.enforce(
+                let mut gated = policy.enforce(
                     c.state(),
                     &actor,
                     &Subject {
@@ -1018,6 +1019,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 for warning in policy.warnings() {
                     c.warn(warning);
                 }
+                gated.guardrail =
+                    guardrails::enforce(c, GuardedOperation::DecisionAccept, &target)?;
                 b.gate_policy = Some(gated);
                 c.update(p.decision_ref, body(b)?)?;
                 let id = p.decision_ref.id;

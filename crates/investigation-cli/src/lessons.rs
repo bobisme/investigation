@@ -624,6 +624,8 @@ fn consult(
         preconditions: vec![],
         operations,
         session: crate::inherited_trust::select_session(global)?,
+
+        human_confirmation: None,
     };
     let bytes = serde_json::to_vec(&command).expect("consultation envelope serializes");
     if generated {

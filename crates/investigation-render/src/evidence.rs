@@ -73,6 +73,7 @@ const OBSERVATION_METADATA: &[&str] = &[
     "corrects",
     "measurement_assessment",
     "run_ref",
+    investigation_core::observation_ops::GUARDRAIL_KEY,
 ];
 
 /// The typed Observation body, without its lifecycle keys.

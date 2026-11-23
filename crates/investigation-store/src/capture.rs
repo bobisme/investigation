@@ -431,6 +431,7 @@ fn declare(
         preconditions: Vec::new(),
         operations,
         session: None,
+        human_confirmation: None,
     };
     let result = if new_case {
         validate_and_apply_composed(state, &command, catalog, acceptance)

@@ -271,6 +271,7 @@ fn raise(payload: ClassificationRaise, ctx: &mut OperationContext<'_>) -> Result
             tags: payload.tags,
             transformation: None,
             review: None,
+            guardrail: None,
         },
     )
 }
@@ -382,6 +383,14 @@ fn downgrade(
             "The reviewer must examine the exact subject revision being downgraded.",
         ));
     }
+    let base_level = classifier.base_level(record);
+    let from = current.level;
+    let subject_record = record.clone();
+    let guardrail = crate::guardrails::enforce(
+        ctx,
+        crate::guardrails::GuardedOperation::ClassificationDowngrade,
+        &subject_record,
+    )?;
     let ReviewedTransformation {
         transformation,
         version,
@@ -392,9 +401,9 @@ fn downgrade(
     let change = ClassificationChange {
         direction: ChangeDirection::Downgrade,
         subject_ref,
-        from: current.level,
+        from,
         to: payload.level,
-        base_level: classifier.base_level(record),
+        base_level,
         reason: payload.reason,
         tags: payload.tags,
         transformation: Some(ReviewedTransformationRecord {
@@ -411,6 +420,7 @@ fn downgrade(
             examined,
             limitations: payload.review.limitations,
         }),
+        guardrail,
     };
     record_change(ctx, change)
 }

@@ -12,9 +12,10 @@ use investigation_core::{
     catalog::{Catalog, standard_catalog},
     command::{Command, RevisionRef, SemanticRequest},
     evidence::{ArtifactBody, ObservationBasis},
+    guardrails::{self, SessionEvidence},
     header::{Actor, Clock, SystemClock},
     identity::{Id, IdSource, Kind, SystemIdSource},
-    state::{Acceptance, AcceptedTransaction, State, validate_and_apply_with_packs},
+    state::{Acceptance, AcceptedTransaction, State, validate_and_apply_guarded},
     wire::{
         CommitResult, ErrorCode, Failure, Guidance, GuidanceKind, Projection as ReceiptProjection,
         ProjectionStatus, Receipt, ReceiptArtifact, ReceiptObservation, ResponseVersion, Snapshot,
@@ -202,6 +203,9 @@ impl<F: DurableFs> Store<F> {
             .as_ref()
             .map(|session| self.session_reads(&command.actor, session))
             .transpose()?;
+        // Write-side guardrails see the same reads commit stamps, and those
+        // stamped on the case's earlier events; only a guarded write needs them.
+        let current_reads = guardrails::guards_any(command).then(|| session_reads.clone());
         self.commit_plan(
             CommitPlan {
                 case_id: command.case_id,
@@ -218,13 +222,21 @@ impl<F: DurableFs> Store<F> {
             clock,
             ids,
             |state, catalog, acceptance, visible| {
-                validate_and_apply_with_packs(
+                let sessions = current_reads.map(|current| SessionEvidence {
+                    current,
+                    ledger: visible
+                        .target
+                        .map(CaseReplay::session_ledger)
+                        .unwrap_or_default(),
+                });
+                validate_and_apply_guarded(
                     state,
                     command,
                     catalog,
                     acceptance,
                     &observations,
                     visible.packs,
+                    sessions.as_ref(),
                 )
                 .map(Prepared::Accept)
             },

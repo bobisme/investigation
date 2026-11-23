@@ -148,6 +148,52 @@
       ],
       "type": "object"
     },
+    "GuardrailProposal": {
+      "additionalProperties": false,
+      "description": "One write-side guardrail: a requirement a pinned pack adds to one of the\n[`GUARDED_OPERATIONS`]. It can only add a requirement; it never relaxes a\nbuilt-in gate.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "operation": {
+          "description": "One of `conclusion.validate`, `decision.accept`, `source.withdraw`,\n`observation.retract` or `classification.downgrade`.",
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "requirement": {
+          "$ref": "#/$defs/GuardrailRequirement"
+        }
+      },
+      "required": [
+        "name",
+        "operation",
+        "requirement",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "GuardrailRequirement": {
+      "description": "What a guardrail requires of the guarded write. Actors, sessions and\nconfirmations are self-reported claims; none is authentication.",
+      "oneOf": [
+        {
+          "const": "distinct_actor",
+          "description": "The writing actor did not record the subject's current content.",
+          "type": "string"
+        },
+        {
+          "const": "distinct_context",
+          "description": "The write declares a session that recorded none of the subject's\ncurrent content and has no recorded evidence read of untrusted\nmaterial through investigation.",
+          "type": "string"
+        },
+        {
+          "const": "human_confirmation",
+          "description": "The envelope carries a `human_confirmation` naming this operation and\nsubject: who confirmed and how. Recorded as a claim, not verified.",
+          "type": "string"
+        }
+      ]
+    },
     "ObservationGuidance": {
       "additionalProperties": false,
       "properties": {
@@ -509,6 +555,13 @@
     "cards": {
       "items": {
         "$ref": "#/$defs/Card"
+      },
+      "type": "array"
+    },
+    "guardrails": {
+      "description": "Opt-in write-side guardrails. They take effect only for a case that\npins this pack, and only at the guarded operation.",
+      "items": {
+        "$ref": "#/$defs/GuardrailProposal"
       },
       "type": "array"
     },

@@ -38,6 +38,11 @@ pub struct Command {
     /// the inherited trust of authored text. Absent means unknown.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session: Option<crate::inherited_trust::Session>,
+    /// An attributed claim that a person confirmed named guarded writes, for
+    /// a pinned pack guardrail that requires one. Recorded as stated;
+    /// investigation does not authenticate people.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub human_confirmation: Option<crate::guardrails::HumanConfirmation>,
 }
 
 fn required_case<'de, D: Deserializer<'de>>(decoder: D) -> Result<Option<Id>, D::Error> {
@@ -175,6 +180,9 @@ impl Command {
                     "Revision starts at 1.",
                 ));
             }
+        }
+        if let Some(confirmation) = &self.human_confirmation {
+            crate::guardrails::validate_confirmation(confirmation)?;
         }
         for (index, operation) in self.operations.iter().enumerate() {
             if operation.op == "case.create" && (!creates_case || index > 0) {
