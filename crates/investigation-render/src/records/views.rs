@@ -1493,9 +1493,9 @@ impl<'n, 'a> Views<'n, 'a> {
         });
         let mut text = String::from(
             "\nEvery accepted record revision of this case, in acceptance order. Recorded is \
-             when this workspace accepted the revision, and it alone decides order. Observed \
-             or acquired is the time a source or recorder claims, with its clock quality; it \
-             is provenance, never order. Change names lifecycle transitions (including \
+             when this workspace accepted the revision, and it alone decides order. Observed, \
+             started or acquired is the time a source, producer or recorder claims, with the \
+             clock quality it claims; it is provenance, never order. Change names lifecycle transitions (including \
              changed decisions), corrections, retractions, supersession and the stated \
              reason. One row per revision.\n\n",
         );
@@ -1505,7 +1505,7 @@ impl<'n, 'a> Views<'n, 'a> {
                 "Sequence",
                 "Record",
                 "Change",
-                "Observed or acquired (claimed)",
+                "Observed, started or acquired (claimed)",
                 "Recorded",
                 "Recorded by",
             ],
@@ -1660,6 +1660,14 @@ fn claimed_time(record: &Record) -> String {
         .and_then(|value| serde_json::from_value::<SourceTime>(value.clone()).ok())
     {
         return shown("observed", &time);
+    }
+    if let Some(time) = record
+        .body
+        .get("started_at")
+        .filter(|value| !value.is_null())
+        .and_then(|value| serde_json::from_value::<SourceTime>(value.clone()).ok())
+    {
+        return shown("started", &time);
     }
     if let Some(time) = &record.header.acquired_at {
         return shown("acquired", time);

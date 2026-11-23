@@ -18,9 +18,9 @@ tags:
 
 Case: [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Overview|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]]. Snapshot: sequence 50, head `sha256:fc18d1cae6527d27e4b32e1bd8081e5e9954060f92731cae9cf879bb0e63f3d4`.
 
-Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed or acquired is the time a source or recorder claims, with its clock quality; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
+Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed, started or acquired is the time a source, producer or recorder claims, with the clock quality it claims; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
 
-| Sequence | Record | Change | Observed or acquired (claimed) | Recorded | Recorded by |
+| Sequence | Record | Change | Observed, started or acquired (claimed) | Recorded | Recorded by |
 |---|---|---|---|---|---|
 | 5 | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b926-79b2-a4e0-7c063f89e625\|application/json]], evidence revision 1 | created | acquired `2026-11-23T07:32:06.054258784Z` (clock `unverified`) | `2026-11-23T07:32:06.054258784Z` | `agent:scenario-d` |
 | 5 | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b926-79b2-a4e0-7c17d0ec597a\|text/plain; charset=utf-8]], evidence revision 1 | created | acquired `2026-11-23T07:32:06.054258784Z` (clock `unverified`) | `2026-11-23T07:32:06.054258784Z` | `agent:scenario-d` |

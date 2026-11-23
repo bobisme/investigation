@@ -51,7 +51,12 @@ use crate::{
 /// that rests on its reader no longer makes that reader `needs_review`, so
 /// effective states, caveats and gaps in case notes change for the same
 /// snapshot.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v18";
+/// v19: a closed case's Overview has a `## Closure` section (outcome, reason,
+/// unresolved questions, reopen condition, retrospective or waiver); run
+/// notes show reported start and finish times as claims with their clock;
+/// observation notes label `Observed at (claimed)`; the timeline's claimed
+/// time column also shows a Run's reported start (MB.02).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v19";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

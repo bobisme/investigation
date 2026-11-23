@@ -18,9 +18,9 @@ tags:
 
 Case: [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview|Was a matched production sample available?]]. Snapshot: sequence 2, head `sha256:1d7ad980091987aed14d469d98681daf4e91199bb7afba34cb971dc311b5f3c2`.
 
-Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed or acquired is the time a source or recorder claims, with its clock quality; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
+Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed, started or acquired is the time a source, producer or recorder claims, with the clock quality it claims; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
 
-| Sequence | Record | Change | Observed or acquired (claimed) | Recorded | Recorded by |
+| Sequence | Record | Change | Observed, started or acquired (claimed) | Recorded | Recorded by |
 |---|---|---|---|---|---|
 | 1 | [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview\|Was a matched production sample available?]], case revision 1 | created | none claimed | `2026-11-23T07:31:56.952432045Z` | `agent:timeout-fixture` |
 | 2 | [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview\|Was a matched production sample available?]], case revision 2 | revised: `active` to `closed` | none claimed | `2026-11-23T07:31:56.990128280Z` | `agent:timeout-fixture` |

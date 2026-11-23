@@ -49,6 +49,14 @@ We are investigating [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Questions
 - Freshness: `stale` (effective `needs_review`; of 43 records in evidentiary use, 7 need review and 0 are disputed)
 - Summary: `summary_current` for [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-a224-7070-bc1a-61782ce70dba|Chosen option: Retain database-backed queue (do-nothing baseline)]] revision 1: the deterministic projection of typed fields, Chosen option: Retain database-backed queue (do-nothing baseline)
 
+## Closure
+
+- Outcome: `inconclusive`
+- Reason: The stricter requirement invalidated the earlier choice\; the replacement remains proposed
+- Unresolved questions: [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Questions/q_01a20751-968d-72e3-813e-b30bd0fb27ef|Which queue design should the application use?]] revision 1
+- Reopen condition: A reviewed comparison addresses the 60\-second threshold
+- Retrospective: [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Retrospectives/retro_01a20751-a300-7f50-8a52-d75e4cc8f385|Retrospective at sequence 44]] revision 1
+
 ## Evidence and assessments
 
 What the answer cites, by the field that cites it:

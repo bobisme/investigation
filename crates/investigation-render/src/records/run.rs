@@ -3,11 +3,16 @@
 
 use std::fmt::Write as _;
 
-use investigation_core::{identity::Kind, receipt_check};
+use investigation_core::{header::SourceTime, identity::Kind, receipt_check};
 use serde_json::Value;
 
 use super::{Facts, citing};
-use crate::{RenderError, evidence::prose, note::text_at, text::inline_code};
+use crate::{
+    RenderError,
+    evidence::{prose, source_time},
+    note::text_at,
+    text::inline_code,
+};
 
 pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     let body = &f.record.body;
@@ -49,8 +54,20 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
             inline_code(verification.as_str())
         );
     }
-    f.word_present("Started at", "started_at");
-    f.word_present("Finished at", "finished_at");
+    // Reported times are source claims kept as provenance. They never order
+    // records or strengthen the chronology above (§6.5).
+    for (label, path) in [
+        ("Started at (claimed)", "started_at"),
+        ("Finished at (claimed)", "finished_at"),
+    ] {
+        if let Some(time) = body
+            .get(path)
+            .filter(|value| !value.is_null())
+            .and_then(|value| serde_json::from_value::<SourceTime>(value.clone()).ok())
+        {
+            let _ = writeln!(f.out, "- {label}: {}", source_time(Some(&time)));
+        }
+    }
     f.text_present("Result assertion", "result_assertion");
 
     f.heading("Retained artifacts");

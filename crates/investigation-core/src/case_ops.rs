@@ -5,8 +5,9 @@ use serde_json::{Value, json};
 
 use crate::{
     case::{
-        CaseAmend, CaseBlocker, CaseBody, CaseClose, CaseClosureDetails, CaseLifecycle, CasePause,
-        CaseReopen, CaseTransition, Knowledge, QuestionBody, QuestionDisposition, QuestionResolve,
+        CaseAmend, CaseBlocker, CaseBody, CaseClose, CaseClosureDetails, CaseClosureOutcome,
+        CaseLifecycle, CasePause, CaseReopen, CaseTransition, Knowledge, QuestionBody,
+        QuestionDisposition, QuestionResolve,
     },
     catalog::{OperationDescriptor, OperationInfo},
     command::RevisionRef,
@@ -18,6 +19,9 @@ use crate::{
     state::{OperationContext, State},
     wire::{ErrorCode, Failure},
 };
+
+/// Warning on an inconclusive close that names no reopen condition.
+pub const REOPEN_CONDITION_MISSING: &str = "case.reopen_condition_missing: the case closes inconclusive without a reopen_condition, so nothing states what observation or change should reopen it. Close with a bounded reopen_condition naming the observable sign that would reopen it, or reopen the case and close again.";
 
 pub(crate) fn operations() -> [OperationDescriptor; 5] {
     [
@@ -232,6 +236,11 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
             return Err(invalid("List each unresolved question once.").at(&path));
         }
         unresolved.push(reference);
+    }
+    // An inconclusive close is reopened only by a stated condition (§6.6). It
+    // stays recordable without one, but the gap is said, not hidden.
+    if payload.outcome == CaseClosureOutcome::Inconclusive && payload.reopen_condition.is_none() {
+        context.warn(REOPEN_CONDITION_MISSING.to_owned());
     }
     body.closure_outcome = Some(payload.outcome);
     body.transition_reason = Some(payload.reason);

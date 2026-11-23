@@ -278,6 +278,7 @@ pub(crate) fn sections(
     };
     overview.opening(out)?;
     overview.answer(out)?;
+    overview.closure(out)?;
     overview.evidence(out)?;
     overview.sources(out)?;
     overview.reviews(out)?;
@@ -594,6 +595,63 @@ impl<'a> Overview<'_, 'a> {
             .as_ref()
             .map_or(self.case, |standing| standing.outcome);
         self.synopsis(out, subject)
+    }
+
+    /// How a closed case ended and what should reopen it (§6.6): the outcome,
+    /// its reason, the questions left open, the reopen condition and the
+    /// method account. Only a closed case has this section.
+    fn closure(&self, out: &mut String) -> Result<(), RenderError> {
+        let body = &self.case.body;
+        let Some(closure) = body.get("closure").filter(|closure| closure.is_object()) else {
+            return Ok(());
+        };
+        out.push_str("\n## Closure\n\n");
+        let outcome = text_at(body, "closure_outcome").unwrap_or("unknown");
+        let _ = writeln!(out, "- Outcome: {}", inline_code(&super::wire(outcome)));
+        if !self.notes.may_show(self.case, Field::Content) {
+            out.push_str(
+                "- Reason, open questions and reopen condition: withheld by the view policy\n",
+            );
+            return Ok(());
+        }
+        let authored = |path: &str| {
+            text_at(closure, path)
+                .or_else(|| text_at(body, path))
+                .filter(|text| !text.trim().is_empty())
+        };
+        let _ = writeln!(
+            out,
+            "- Reason: {}",
+            authored("transition_reason").map_or_else(|| "not recorded".to_owned(), prose)
+        );
+        let open = refs(closure.get("unresolved_questions"));
+        let _ = writeln!(
+            out,
+            "- Unresolved questions: {}",
+            if open.is_empty() {
+                "none listed".to_owned()
+            } else {
+                self.links(&open)?
+            }
+        );
+        let reopen = match authored("reopen_condition") {
+            Some(condition) => prose(condition),
+            None if outcome == "inconclusive" => {
+                "none recorded; an inconclusive close without one states no way back".to_owned()
+            }
+            None => "none recorded".to_owned(),
+        };
+        let _ = writeln!(out, "- Reopen condition: {reopen}");
+        let account = match (
+            refs(closure.get("retrospective_ref")).first(),
+            authored("retrospective_waived"),
+        ) {
+            (Some(reference), _) => revision_link(self.notes, *reference)?,
+            (None, Some(waiver)) => format!("waived: {}", prose(waiver)),
+            (None, None) => "none recorded".to_owned(),
+        };
+        let _ = writeln!(out, "- Retrospective: {account}");
+        Ok(())
     }
 
     fn standing_lines(&self, out: &mut String, standing: &Standing<'_>) -> Result<(), RenderError> {

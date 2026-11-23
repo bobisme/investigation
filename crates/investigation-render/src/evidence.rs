@@ -178,7 +178,8 @@ fn knowledge(value: &Knowledge<String>) -> String {
     }
 }
 
-fn source_time(time: Option<&SourceTime>) -> String {
+/// A source-claimed time with its offset and the clock quality as claimed.
+pub(crate) fn source_time(time: Option<&SourceTime>) -> String {
     time.map_or_else(
         || "not recorded".to_owned(),
         |time| {
@@ -1042,7 +1043,7 @@ fn observation_sections(
     );
     let _ = writeln!(
         out,
-        "- Observed at: {}",
+        "- Observed at (claimed): {}",
         source_time(body.observed_at.as_ref())
     );
     for quality in &body.quality {

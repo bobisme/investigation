@@ -18,9 +18,9 @@ tags:
 
 Case: [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Overview|Queue architecture choice]]. Snapshot: sequence 45, head `sha256:a85f2e16f1a0068e5eb9ceadbfbde69a781d5f6808db253fb25465a2349d2a21`.
 
-Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed or acquired is the time a source or recorder claims, with its clock quality; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
+Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed, started or acquired is the time a source, producer or recorder claims, with the clock quality it claims; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
 
-| Sequence | Record | Change | Observed or acquired (claimed) | Recorded | Recorded by |
+| Sequence | Record | Change | Observed, started or acquired (claimed) | Recorded | Recorded by |
 |---|---|---|---|---|---|
 | 4 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Options/opt_01a20751-96b6-7a42-a669-ccd0f950e2db\|Retain database-backed queue (do-nothing baseline)]], option revision 2 | revised: `proposed` to `eligible`; reason: Plausible candidate for the stated application | none claimed | `2026-11-23T07:31:57.271090098Z` | `agent:scenario-c` |
 | 5 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Options/opt_01a20751-96f7-7b33-9215-696ebee2589b\|Adopt managed queue]], option revision 1 | created | none claimed | `2026-11-23T07:31:57.303044361Z` | `agent:scenario-c` |

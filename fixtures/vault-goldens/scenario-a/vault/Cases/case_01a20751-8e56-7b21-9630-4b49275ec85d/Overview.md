@@ -49,6 +49,14 @@ We are investigating [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Questions
 - Freshness: `current` (effective `current`; of 47 records in evidentiary use, 0 need review and 0 are disputed)
 - Summary: `summary_current` for [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] revision 3: the deterministic projection of typed fields, Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.
 
+## Closure
+
+- Outcome: `answered`
+- Reason: The synthetic fixture isolates the scoped mechanism\.
+- Unresolved questions: [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Questions/q_01a20751-8e7a-7c71-b14a-90fde312ac50|Which factor explains the connection-hold overshoot in the retained workload?]] revision 1
+- Reopen condition: A comparable scheduler\-only toggle changes the result\.
+- Retrospective: [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Retrospectives/retro_01a20751-94b8-71f2-bbeb-59aa7355f091|Retrospective at sequence 28]] revision 1
+
 ## Evidence and assessments
 
 What the answer cites, by the field that cites it:

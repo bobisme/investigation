@@ -47,6 +47,14 @@ We are investigating (no question recorded yet) because it informs (no dependent
 - Freshness: `current` (effective `current`; of 1 record in evidentiary use, 0 need review and 0 are disputed)
 - Summary: `summary_current` for [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview|Was a matched production sample available?]] revision 2: the deterministic projection of typed fields, Was a matched production sample available?
 
+## Closure
+
+- Outcome: `inconclusive`
+- Reason: No sample was supplied\.
+- Unresolved questions: none listed
+- Reopen condition: A compatible sample is supplied\.
+- Retrospective: waived: The case ended before any measurement or interpretation\.
+
 ## Evidence and assessments
 
 Nothing is cited by a conclusion or decision yet. The Research section below lists what is recorded.

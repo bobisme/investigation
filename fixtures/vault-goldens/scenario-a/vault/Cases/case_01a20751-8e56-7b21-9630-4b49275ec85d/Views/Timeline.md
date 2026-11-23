@@ -18,9 +18,9 @@ tags:
 
 Case: [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Overview|Why does the synthetic lookup stall?]]. Snapshot: sequence 29, head `sha256:04e8e7421f58b8ee4b6508746532451757992c521bf1e52ee9344fafd6008151`.
 
-Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed or acquired is the time a source or recorder claims, with its clock quality; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
+Every accepted record revision of this case, in acceptance order. Recorded is when this workspace accepted the revision, and it alone decides order. Observed, started or acquired is the time a source, producer or recorder claims, with the clock quality it claims; it is provenance, never order. Change names lifecycle transitions (including changed decisions), corrections, retractions, supersession and the stated reason. One row per revision.
 
-| Sequence | Record | Change | Observed or acquired (claimed) | Recorded | Recorded by |
+| Sequence | Record | Change | Observed, started or acquired (claimed) | Recorded | Recorded by |
 |---|---|---|---|---|---|
 | 2 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Questions/q_01a20751-8e7a-7c71-b14a-90fde312ac50\|Which factor explains the connection-hold overshoot in the retained workload?]], question revision 1 | created | none claimed | `2026-11-23T07:31:55.130700977Z` | `agent:timeout-fixture` |
 | 3 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8e9a-7312-8e8c-2d318d46c4eb\|A checked-out connection is held during the asynchronous wait.]], hypothesis revision 1 | created | none claimed | `2026-11-23T07:31:55.161177723Z` | `agent:timeout-fixture` |
