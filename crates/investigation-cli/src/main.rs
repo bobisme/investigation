@@ -14,6 +14,7 @@ mod guide;
 mod inherited_trust;
 mod lessons;
 mod lineage;
+mod logging;
 mod next;
 mod onboard;
 mod read_only;
@@ -138,6 +139,14 @@ pub(crate) struct Global {
     /// Write directly to stdout.
     #[arg(long, global = true)]
     no_pager: bool,
+    /// Diagnostic logs on stderr: -v info, -vv debug, -vvv trace. INVESTIGATION_LOG sets a level.
+    #[arg(short = 'v', long = "verbose", global = true, action = clap::ArgAction::Count)]
+    #[allow(dead_code)]
+    verbose: u8,
+    /// Only log errors on stderr.
+    #[arg(short = 'q', long, global = true)]
+    #[allow(dead_code)]
+    quiet: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -1080,6 +1089,7 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
 
 fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().collect();
+    logging::init(&args);
     let format = requested_format(&args);
     let parser = shortcuts::augment(Cli::command());
     let parsed = parser.try_get_matches_from(args);

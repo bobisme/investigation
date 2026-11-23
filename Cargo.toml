@@ -18,6 +18,8 @@ rust-version = "1.100"
 investigation-core = { path = "crates/investigation-core" }
 investigation-recording = { path = "crates/investigation-recording" }
 investigation-store = { path = "crates/investigation-store" }
+tracing = { version = "=0.1.44", default-features = false, features = ["std"] }
+tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt", "std"] }
 
 [workspace.lints.rust]
 unsafe_code = "deny"

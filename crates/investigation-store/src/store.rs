@@ -25,6 +25,7 @@ use serde_json::{Value, json};
 
 use crate::{
     blob::{BlobError, StagedBlob, publish_blob},
+    diag::{CommitTrace, Outcome, Stage},
     durable::{
         DurableError, DurableFile, DurableFs, LocalFs, LockError, WriteGate, publish,
         sync_directory, sync_file,
@@ -65,6 +66,9 @@ pub mod session_reads;
 #[cfg(test)]
 #[path = "crash_tests.rs"]
 mod crash_tests;
+#[cfg(test)]
+#[path = "diag_tests.rs"]
+mod diag_tests;
 #[cfg(test)]
 #[path = "real_crash_tests.rs"]
 mod real_crash_tests;
@@ -241,17 +245,43 @@ impl<F: DurableFs> Store<F> {
         ids: &mut dyn IdSource,
         prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>, Visible<'_>) -> Result<Prepared, Failure>,
     ) -> Result<Receipt, Failure> {
+        let command_id = plan.event.command_id.to_owned();
+        let case_id = plan.case_id;
+        let mut trace = CommitTrace::new(&command_id);
+        let result = self.commit_plan_traced(plan, clock, ids, prepare, &mut trace);
+        trace.finish(
+            &command_id,
+            case_id,
+            match &result {
+                Ok(_) => Outcome::Committed,
+                Err(failure) => Outcome::Failed(failure),
+            },
+        );
+        result
+    }
+
+    fn commit_plan_traced(
+        &mut self,
+        plan: CommitPlan<'_>,
+        clock: &mut dyn Clock,
+        ids: &mut dyn IdSource,
+        prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>, Visible<'_>) -> Result<Prepared, Failure>,
+        trace: &mut CommitTrace,
+    ) -> Result<Receipt, Failure> {
         let CommitPlan {
             case_id,
             event: meta,
             request,
             blobs,
         } = plan;
+        trace.enter(Stage::Lock);
         self.gate.check().map_err(durability_failure)?;
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
+        trace.enter(Stage::VerifyTail);
         let mut replay = self.load_verified()?;
         self.fs.reclaim_publication_temporaries();
+        trace.enter(Stage::Idempotency);
         if let Some(existing) = replay.find(meta.actor, meta.command_id) {
             if existing.event.request != request {
                 return Err(Failure::new(
@@ -266,6 +296,7 @@ impl<F: DurableFs> Store<F> {
             return Ok(receipt);
         }
 
+        trace.enter(Stage::Lock);
         let case = case_id
             .map(|id| replay.cases.remove(&id).ok_or_else(|| missing_case(id)))
             .transpose()?;
@@ -282,6 +313,8 @@ impl<F: DurableFs> Store<F> {
             .sequence()
             .checked_add(1)
             .ok_or_else(|| integrity("Case sequence is exhausted."))?;
+        trace.sequence(sequence);
+        trace.enter(Stage::Validate);
         let prepared = prepare(
             original,
             &self.catalog,
@@ -337,6 +370,7 @@ impl<F: DurableFs> Store<F> {
         let transaction_id = ids
             .next_id(Kind::Transaction)
             .map_err(|_| integrity("Could not allocate a transaction ID."))?;
+        trace.accepted(&accepted, transaction_id);
         if accepted
             .created
             .iter()
@@ -365,7 +399,7 @@ impl<F: DurableFs> Store<F> {
         let bytes = event.to_bytes()?;
         let hash = hash_bytes(&bytes);
         let name = event_filename(sequence)?;
-        self.persist(&event, &bytes, &name, genesis.as_deref(), blobs)
+        self.persist(&event, &bytes, &name, genesis.as_deref(), blobs, trace)
             .inspect_err(|error| {
                 if error.error.code == ErrorCode::DurabilityUnknown {
                     self.note_stopped();
@@ -387,7 +421,9 @@ impl<F: DurableFs> Store<F> {
         );
 
         // Past durable publication, projection failures cannot uncommit.
+        trace.enter(Stage::IndexUpdate);
         self.apply_projection_health(&replay, &mut receipt);
+        trace.enter(Stage::Receipt);
         Ok(receipt)
     }
 
@@ -398,7 +434,9 @@ impl<F: DurableFs> Store<F> {
         name: &str,
         genesis: Option<&[u8]>,
         blobs: &[StagedBlob],
+        trace: &mut CommitTrace,
     ) -> Result<(), Failure> {
+        trace.enter(Stage::BlobPublish);
         let expected = event
             .request
             .attachments
@@ -421,7 +459,9 @@ impl<F: DurableFs> Store<F> {
         let directory = case_directory(event.accepted.case_id);
         let Some(genesis) = genesis else {
             let staged = Path::new(TMP).join(format!("event-{}.tmp", event.transaction_id));
+            trace.enter(Stage::JournalWrite);
             write_private(&mut self.fs, &self.gate, &staged, bytes, true)?;
+            trace.enter(Stage::JournalPublish);
             let result = publish(
                 &mut self.fs,
                 &staged,
@@ -436,6 +476,7 @@ impl<F: DurableFs> Store<F> {
 
         // Publish the directory containing both genesis and the first event.
         let staged = Path::new(TMP).join(format!("create-{}", event.transaction_id));
+        trace.enter(Stage::JournalWrite);
         let events = staged.join("events");
         self.fs.create_dir(&staged).map_err(io_failure)?;
         self.fs.create_dir(&events).map_err(io_failure)?;
@@ -454,11 +495,14 @@ impl<F: DurableFs> Store<F> {
             false,
         )?;
         write_private(&mut self.fs, &self.gate, &events.join(name), bytes, true)?;
+        trace.enter(Stage::DirectorySync);
         sync_directory(&mut self.fs, &events, &self.gate).map_err(durability_failure)?;
         sync_directory(&mut self.fs, &staged, &self.gate).map_err(durability_failure)?;
+        trace.enter(Stage::JournalPublish);
         self.fs
             .rename_no_replace(&staged, &directory)
             .map_err(|error| exclusive_publication_failure(DurableError::Io(error)))?;
+        trace.enter(Stage::DirectorySync);
         sync_directory(&mut self.fs, Path::new(CASES), &self.gate).map_err(durability_failure)
     }
 

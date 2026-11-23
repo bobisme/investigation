@@ -38,7 +38,7 @@ impl IdSource for Ids {
     }
 }
 
-fn setup(seed: u64) -> (Store<MemoryFs>, PathBuf) {
+pub(super) fn setup(seed: u64) -> (Store<MemoryFs>, PathBuf) {
     static SERIAL: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
         "inv-crash-{}-{seed}-{}",
@@ -74,7 +74,7 @@ fn setup(seed: u64) -> (Store<MemoryFs>, PathBuf) {
     )
 }
 
-fn request(case_id: Option<Id>, command_id: &str) -> (Command, SemanticRequest) {
+pub(super) fn request(case_id: Option<Id>, command_id: &str) -> (Command, SemanticRequest) {
     let operation = if case_id.is_none() {
         json!({"op":"case.create","payload":{"title":"Crash fixture","mode":"explore"}})
     } else {
@@ -83,7 +83,7 @@ fn request(case_id: Option<Id>, command_id: &str) -> (Command, SemanticRequest) 
     Command::parse(&serde_json::to_vec(&json!({"schema_version":"inv.command.v0-alpha","command_id":command_id,"case_id":case_id,"actor":"agent:crash-test","preconditions":[],"operations":[operation]})).unwrap()).unwrap()
 }
 
-fn apply(
+pub(super) fn apply(
     store: &mut Store<MemoryFs>,
     c: &Command,
     r: &SemanticRequest,
@@ -91,7 +91,7 @@ fn apply(
 ) -> Result<Receipt, Failure> {
     store.commit(c, r.clone(), &[], &mut FixedClock, &mut Ids(seed))
 }
-fn restart(store: &mut Store<MemoryFs>) {
+pub(super) fn restart(store: &mut Store<MemoryFs>) {
     store.fs.crash();
     store.gate = WriteGate::isolated();
 }
