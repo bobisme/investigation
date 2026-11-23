@@ -698,3 +698,74 @@ const PART_A_CARDS: [&str; 11] = [
     "causal-structure",
     "reference-class",
 ];
+
+#[test]
+fn builtin_general_pack_carries_the_evaluation_review_and_process_cards() {
+    let general = builtin_general();
+    let names: Vec<&str> = general
+        .pack()
+        .cards
+        .iter()
+        .filter(|card| PART_B_CARDS.contains(&card.name.as_str()))
+        .map(|card| card.name.as_str())
+        .collect();
+    assert_eq!(names, PART_B_CARDS);
+    for name in PART_B_CARDS {
+        let card = general.card(name).expect("part B card is built in");
+        assert!(
+            !card.body.skip.trim().is_empty(),
+            "{name} states a skip condition"
+        );
+        // `handoff` is requested explicitly; every other card is triggered.
+        assert!(
+            name == "handoff" || !card.triggers.is_empty(),
+            "{name} has a trigger"
+        );
+    }
+    // The cards that carry judgment a rule cannot state their own limits.
+    let blindspot = general.card("blindspot").unwrap();
+    assert!(blindspot.body.record.contains("inv blindspots"));
+    let mistake = blindspot.body.mistake.as_deref().unwrap();
+    assert!(mistake.contains("proof of completeness"));
+    assert!(mistake.contains("low in independence"));
+    let retrospective = general.card("retrospective").unwrap();
+    assert!(retrospective.body.record.contains("process digest"));
+    assert!(retrospective.body.record.contains("transfer limits"));
+    assert!(
+        retrospective
+            .body
+            .mistake
+            .as_deref()
+            .unwrap()
+            .contains("recorded work only")
+    );
+}
+
+#[test]
+fn builtin_general_pack_has_exactly_the_planned_twenty_three_cards() {
+    let general = builtin_general();
+    let names: Vec<&str> = general
+        .pack()
+        .cards
+        .iter()
+        .map(|card| card.name.as_str())
+        .collect();
+    let planned: Vec<&str> = PART_A_CARDS.iter().chain(&PART_B_CARDS).copied().collect();
+    assert_eq!(planned.len(), 23);
+    assert_eq!(names, planned);
+}
+
+const PART_B_CARDS: [&str; 12] = [
+    "premortem",
+    "criteria",
+    "compare",
+    "sensitivity",
+    "independence",
+    "assumptions",
+    "review",
+    "blindspot",
+    "retrospective",
+    "stalled",
+    "handoff",
+    "close",
+];

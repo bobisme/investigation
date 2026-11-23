@@ -209,3 +209,219 @@ mistake = "Picking a class after seeing the answer, or a class so narrow it has 
 skip = "No comparable cases exist, or the class cannot be named; say so and continue. This card can always be skipped with a stated reason."
 
 # ---- End of part A ----
+
+# ---- Part B: evaluation, review and process cards (W09.04) ----
+
+[[cards]]
+name = "premortem"
+title = "Imagine the choice failed"
+stage = "decide"
+summary = "A consequential decision is about to be proposed or accepted."
+modes = ["evaluate", "explore"]
+operations = ["assumption.create", "annotation.add"]
+triggers = [
+  { record_kind = "decision" },
+  { gap_rule = "decision.accepted_with_unresolved_hard_cell" },
+]
+
+[cards.body]
+when = "A choice is about to be proposed or accepted and it would be costly or slow to undo."
+record = "Assume the choice has already failed. Write two or three concrete failure stories, each a sequence of events and not a general worry. Trace each story back to an assumption nobody has tested and record that with assumption.create. For each, note what early sign would show it happening: that sign is a reopen trigger for the decision. Keep the stories as notes with annotation.add."
+mistake = "Listing generic risks that apply to every choice, or treating the exercise as a vote against the choice. This card is advisory: it adds assumptions and triggers and does not block the decision."
+skip = "The choice is cheap and easy to reverse, or failure stories were already written and traced to assumptions for this exact choice."
+
+[[cards]]
+name = "criteria"
+title = "Make the criteria explicit"
+stage = "evaluate"
+summary = "Several options are open and the standards for choosing among them are unstated."
+modes = ["evaluate", "explore"]
+operations = ["criterion.create", "criterion.amend"]
+triggers = [
+  { case_fact = "multiple_options" },
+  { gap_rule = "decision.option_criterion_cell_missing" },
+]
+
+[cards.body]
+when = "Options are being weighed and nobody has written down what a good option must be."
+record = "Separate the must-haves from the preferences. For each criterion say whether it is measurable or a matter of judgment, which direction is better, and what unit or scale it uses. Record the priority order and who set it. State subjective trade-offs as subjective. Add criteria before looking at which option each would favour."
+mistake = "Adding or reweighting a criterion after seeing which option it helps, or presenting a preference as if it were a measurable fact."
+skip = "There is a single option with nothing to choose among, or the criteria are already recorded, current and agreed."
+
+[[cards]]
+name = "compare"
+title = "Compare options cell by cell"
+stage = "evaluate"
+summary = "Options are being compared and some option and criterion pairs have no stated evidence."
+modes = ["evaluate", "explore"]
+operations = ["comparison.add", "comparison.revise"]
+triggers = [
+  { gap_rule = "decision.option_criterion_cell_missing" },
+  { gap_rule = "decision.hard_criterion_cell_missing" },
+  { record_kind = "comparison" },
+]
+
+[cards.body]
+when = "A preference between options is forming and not every option has been assessed against every criterion."
+record = "For each option and each criterion, record the evidence or the stated assumption behind the value, with its uncertainty. Keep unknown cells visible as unknown. Do not fill an empty cell with a guess that looks like a finding. Check that the same unit and method were used across options."
+mistake = "Comparing options on the criteria that are easy to measure and leaving the hard ones blank, or reading a blank as a pass."
+skip = "Only one option is open, or the comparison is already complete, with each unknown cell marked as unknown."
+
+[[cards]]
+name = "sensitivity"
+title = "Find what could reverse the choice"
+stage = "evaluate"
+summary = "The leading option is close to another or rests on an uncertain input."
+modes = ["evaluate", "explore"]
+operations = ["assumption.create", "annotation.add"]
+triggers = [
+  { gap_rule = "decision.hard_criterion_cell_unknown" },
+  { record_kind = "decision" },
+]
+
+[cards.body]
+when = "The margin between options is small, or the preference depends on a weight, threshold, measurement or model assumption that is uncertain."
+record = "Say which single input, if it moved within its plausible range, would change the preferred option or change which options are unbeaten. Record that input as an assumption with assumption.create and give the size of change that would flip the result. Gather new evidence outside Investigation only if it could plausibly matter to the choice, then record it."
+mistake = "Varying only the inputs that are easy to vary, or reporting a stable ranking after testing a narrow range."
+skip = "One option clearly beats every other on a hard criterion no plausible input could change, or no input is uncertain."
+
+[[cards]]
+name = "independence"
+title = "Check that corroboration is independent"
+stage = "assess"
+summary = "Several items seem to agree and they may share an origin."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["assessment.add", "annotation.add"]
+triggers = [
+  { case_fact = "multiple_sources" },
+  { record_kind = "conclusion" },
+]
+
+[cards.body]
+when = "Agreement among sources, runs or measurements is being counted as extra support."
+record = "For each item trace where it came from: the original source, how it was acquired, the instrument or method and any shared upstream step. Items that share an origin count once. Record the dependency in the assessment with assessment.add, or as a note on the source with annotation.add, and say what independent confirmation would look like."
+mistake = "Counting copies, summaries or repeated runs of one setup as separate confirmations."
+skip = "There is a single source, or the items have already been traced to distinct origins and methods."
+
+[[cards]]
+name = "assumptions"
+title = "Surface the linchpin assumptions"
+stage = "assess"
+summary = "A conclusion or choice rests on premises that have not been examined."
+modes = ["explain", "evaluate", "explore"]
+operations = ["assumption.create", "assumption.assess"]
+triggers = [
+  { record_kind = "assumption" },
+  { gap_rule = "conclusion.disputed" },
+]
+
+[cards.body]
+when = "The result would fall apart if one or two of its premises were false and those premises are only implied."
+record = "Name the linchpin premises, the ones the result depends on most. For each, record it with assumption.create, say how it could fail and what would follow, and judge its current standing with assumption.assess, citing what supports or undermines it. Keep unexamined premises marked unexamined."
+mistake = "Recording only the safe assumptions, or marking an assumption as supported because nobody has challenged it."
+skip = "The result does not depend on any premise beyond the recorded observations, or every linchpin is already recorded and assessed."
+
+[[cards]]
+name = "review"
+title = "Seek the strongest objection"
+stage = "review"
+summary = "A consequential conclusion or decision is going to be relied on."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["review.submit", "objection.raise", "conclusion.request_review"]
+triggers = [
+  { record_kind = "conclusion" },
+  { gap_rule = "review.stale_read_set" },
+]
+
+[cards.body]
+when = "Someone other than the author will act on the claim or choice, or is about to."
+record = "Have the reviewer state the strongest objection and what evidence is missing, and say whether the result could be reproduced and how sensitive it is to the assumptions. Request the review with conclusion.request_review, record the outcome with review.submit against the exact material that was read, and record each objection with objection.raise, including its scope and severity. A review that read older material is stale and has to be repeated."
+mistake = "Asking for approval and not for objections, or counting a review as strong because it agrees."
+skip = "The claim is a plain restatement of a single recorded observation, or a current review of this exact material already exists."
+
+[[cards]]
+name = "blindspot"
+title = "Look for what is missing"
+stage = "review"
+summary = "A conclusion or decision is about to be promoted, or repeated work has told you nothing new."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["review.submit", "question.create", "assumption.create", "objection.raise"]
+triggers = [
+  { case_fact = "stalled" },
+  { record_kind = "conclusion" },
+  { record_kind = "decision" },
+]
+
+[cards.body]
+when = "A result is about to be relied on, or several rounds of work have produced nothing that changes the picture."
+record = "Check for missing rival explanations or options, untested assumptions, instrument limits, source families nobody has consulted, decision criteria nobody has stated and what would overturn the result. Run inv blindspots for structural signals, which only reads what is recorded. Record the review with review.submit (kind blindspot), including the scope examined, the method, the gaps found or the bounded reason for none, and how much fresh context the reviewer had. Turn each gap into a question.create, assumption.create or objection.raise."
+mistake = "Reading a clean structural audit or a finished checklist as proof that nothing is missing: neither is proof of completeness, and no check can list explanations nobody thought of. A review by the same session that did the work, with no new information, is low in independence and often repeats the original reasoning."
+skip = "The claim is narrow and low in consequence, or a current review with fresh context or new external evidence already covers this exact material."
+
+[[cards]]
+name = "retrospective"
+title = "Learn from how the work went"
+stage = "close"
+summary = "Substantial work is about to close, or an expensive approach has failed."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["retrospective.record", "retrospective.supersede"]
+triggers = [
+  { gap_rule = "case.ready_to_close_without_retrospective" },
+  { gap_rule = "run.outcome_incomplete_or_unknown" },
+  { record_kind = "retrospective" },
+]
+
+[cards.body]
+when = "The case is ready to close and was substantive, or a costly approach has been abandoned."
+record = "Start from the process digest, which lists recorded runs, amended predictions, rejected hypotheses, ruled-out options, stale reviews and superseded conclusions, so that you annotate recorded facts and do not rely on recall. Record with retrospective.record the methods tried, the steps that told rivals apart, work that proved invalid or misleading, constraints, what is still unknown and any lesson. Cite a digest item or a record for each step and lesson, and give the applicability and transfer limits of each lesson. Compare the outcome with any recorded expectation."
+mistake = "Writing a generic lesson that cites nothing, or one that reads as a rule for every case. A lesson is a proposal from one case: the digest covers recorded work only, so unrecorded effort, dead ends and decisions made outside Investigation are absent from it and the lessons cannot be taken as complete."
+skip = "The case is a recording session only, or it was minor and the waiver on case.close states a short reason."
+
+[[cards]]
+name = "stalled"
+title = "Decide what to do when work stalls"
+stage = "frame"
+summary = "Repeated work has not narrowed the question or changed any conclusion."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["question.create", "case.amend", "case.pause"]
+triggers = [
+  { case_fact = "stalled" },
+]
+
+[cards.body]
+when = "Several rounds of collecting have produced nothing that separates the rivals or moves the choice."
+record = "Choose one of four and record why. Narrow the question into one that a finding could answer (question.create or case.amend). Find a better measurement, one that would give different results under different rivals. Look for a new source of a different family and acquire it outside Investigation. Or stop with a stated reason and pause or close, recording what stays unresolved."
+mistake = "Collecting more of the same evidence, or stopping without saying what remains unknown."
+skip = "The last round did change a conclusion or rule something out, so the work is not stalled, or the pause is planned for reasons that do not concern the evidence."
+
+[[cards]]
+name = "handoff"
+title = "Hand the case on"
+stage = "record"
+summary = "Another agent, person or later session will continue and has none of the working context."
+operations = ["annotation.add", "case.pause"]
+
+[cards.body]
+when = "The context will be lost: the session is ending, it will be reset, or someone else takes over."
+record = "Write for a reader who remembers nothing. State the current claim or choice and its status, the evidence behind it, the contradictions and objections still open, and the next step that is allowed to be recorded. Record it with annotation.add on the case, and pause the case with case.pause if work is stopping. Point to records by ID and do not paraphrase them from memory."
+mistake = "Handing on conclusions without the contradicting evidence, or listing next actions that change the world as if Investigation could carry them out. It only records them: say what to do outside it and what to record afterwards."
+skip = "The same agent continues in the same session with full context, or the case is closed and has its own recorded outcome."
+
+[[cards]]
+name = "close"
+title = "Close with a bounded outcome"
+stage = "close"
+summary = "The objective is met, or work is stopping for good."
+modes = ["explain", "measure", "evaluate", "explore"]
+operations = ["case.close", "question.resolve", "retrospective.record"]
+triggers = [
+  { gap_rule = "case.ready_to_close_without_retrospective" },
+]
+
+[cards.body]
+when = "The question has an answer or choice, or there is a stated reason to stop without one."
+record = "State the outcome and its bounds: what was covered and what was not. Resolve each question with question.resolve, including those left unanswered and the reason. List the residual uncertainty, in particular what remains open and what limits the result, and name the observable sign that should reopen the case. Record a retrospective with retrospective.record before case.close, or a short waiver reason on case.close if the case is minor."
+mistake = "Stating a result without its bounds, or closing with no way back: a closure that cannot be reopened for a stated reason cannot be corrected. Absence of detected problems is not evidence that none remain."
+skip = "Work is only paused, with the question still being pursued, or the case is a recording session with no outcome to state."
+
+# ---- End of part B ----
