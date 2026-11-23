@@ -3,6 +3,7 @@
 mod capture;
 mod evidence;
 mod frontier;
+mod lineage;
 mod next;
 mod onboard;
 mod schema;

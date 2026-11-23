@@ -291,6 +291,10 @@ pub enum ArtifactSensitivity {
     Restricted,
 }
 
+/// One direct input of the transformation that produced a derivative. A
+/// derivative with several inputs (an aggregation, a plot of two runs) lists one
+/// entry per input with the same transformation and version. A chain of steps
+/// is a derivative of a derivative: each step is its own Artifact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ArtifactTransform {
@@ -299,6 +303,33 @@ pub struct ArtifactTransform {
     pub transformation: String,
     #[schemars(length(min = 1, max = 128))]
     pub version: String,
+    /// Recorded digest of the input bytes the transformation read. Resolved by
+    /// the core from the input record; absent on early text derivatives.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_digest: Option<Digest>,
+}
+
+/// What an Artifact retains. Originals are the bytes of an acquisition; a
+/// derivative is the output of a transformation of other Artifacts and never
+/// a new acquisition; a manifest retains the import request itself.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactRole {
+    Original,
+    Derivative,
+    Manifest,
+}
+
+impl ArtifactRole {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Original => "original",
+            Self::Derivative => "derivative",
+            Self::Manifest => "manifest",
+        }
+    }
 }
 
 /// Ingest-produced accepted body, not a standalone ArtifactCreate payload.
@@ -322,10 +353,35 @@ pub struct ArtifactBody {
     /// Append-only attributed withdrawals. Withdrawal is not erasure.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub withdrawals: Vec<crate::source_ops::Withdrawal>,
+    /// Explicit role. Records written before roles were recorded omit it; see
+    /// [`ArtifactBody::role`] for how their role is read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<ArtifactRole>,
+    /// How a derivative was produced, beyond its inputs in `transforms`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derivation: Option<crate::derivation::DerivationRecord>,
 }
 
 impl ArtifactBody {
+    /// The recorded role, or for records without one: a derivative when it
+    /// has transformation inputs, otherwise an original. Such records cannot
+    /// mark a manifest; the ingest journal names those (`manifest` client ref).
+    pub fn role(&self) -> ArtifactRole {
+        self.role.unwrap_or(if self.transforms.is_empty() {
+            ArtifactRole::Original
+        } else {
+            ArtifactRole::Derivative
+        })
+    }
+
     pub fn validate_shape(&self) -> Result<(), ArtifactBlocker> {
+        let derivative = self.role() == ArtifactRole::Derivative;
+        if derivative == self.transforms.is_empty() {
+            return Err(ArtifactBlocker::RoleDisagreesWithTransforms);
+        }
+        if !derivative && self.derivation.is_some() {
+            return Err(ArtifactBlocker::RoleDisagreesWithTransforms);
+        }
         match self.availability {
             ArtifactAvailability::Retained
                 if self.digest.is_none() || self.size_bytes.is_none() =>
@@ -360,6 +416,7 @@ pub enum ArtifactBlocker {
     RetainedBytesNeedDigestAndSize,
     SourceReferenceWrongKind,
     TransformReferenceWrongKind,
+    RoleDisagreesWithTransforms,
 }
 
 impl ArtifactBlocker {
@@ -368,6 +425,7 @@ impl ArtifactBlocker {
             Self::RetainedBytesNeedDigestAndSize => "ARTIFACT_RETAINED_BYTES_INCOMPLETE",
             Self::SourceReferenceWrongKind => "ARTIFACT_SOURCE_WRONG_KIND",
             Self::TransformReferenceWrongKind => "ARTIFACT_TRANSFORM_WRONG_KIND",
+            Self::RoleDisagreesWithTransforms => "ARTIFACT_ROLE_TRANSFORMS_MISMATCH",
         }
     }
 }

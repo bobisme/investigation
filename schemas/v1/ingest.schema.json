@@ -193,6 +193,124 @@
       ],
       "type": "string"
     },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "DerivationInputRequest": {
+      "additionalProperties": false,
+      "description": "One exact Artifact revision the transformation read.",
+      "properties": {
+        "artifact_ref": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Digest of the bytes the transformation read. When supplied it must match\nthe input's recorded digest; the recorded digest is what is stored."
+        }
+      },
+      "required": [
+        "artifact_ref"
+      ],
+      "type": "object"
+    },
+    "DerivationReview": {
+      "additionalProperties": false,
+      "description": "How the output of a derivation was reviewed. Absent means not reviewed.\nA review never lowers classification by itself; that needs a reviewed\n`classification.downgrade` of the derivative.",
+      "properties": {
+        "coverage": {
+          "$ref": "#/$defs/ReviewCoverage"
+        },
+        "limitations": {
+          "items": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "method": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "coverage"
+      ],
+      "type": "object"
+    },
+    "DerivedFromRequest": {
+      "additionalProperties": false,
+      "description": "The ingested bytes are the output of a transformation of recorded Artifacts.\nThe output is recorded as a derivative of those inputs, never as a new\nacquisition. Requires an existing `case_id`; the inputs must be in that case.",
+      "properties": {
+        "inputs": {
+          "description": "Direct inputs; the first is the primary input whose acquisition the\nderivative's `source` names.",
+          "items": {
+            "$ref": "#/$defs/DerivationInputRequest"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array"
+        },
+        "redaction_decisions": {
+          "items": {
+            "$ref": "#/$defs/RedactionDecision"
+          },
+          "maxItems": 256,
+          "type": "array"
+        },
+        "review": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DerivationReview"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the output was reviewed. Omit it when nobody reviewed the output.\nA review never lowers classification; use `classification.downgrade`."
+        },
+        "selectors": {
+          "description": "Portions of the inputs the transformation used.",
+          "items": {
+            "$ref": "#/$defs/SelectorRequest"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "transformation": {
+          "description": "Transformation identity, such as `example-org.redact`.",
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputs",
+        "transformation",
+        "version"
+      ],
+      "type": "object"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -272,6 +390,384 @@
           "type": "object"
         }
       ]
+    },
+    "RedactionAction": {
+      "oneOf": [
+        {
+          "enum": [
+            "removed",
+            "masked",
+            "generalized"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "retained",
+          "description": "Kept unchanged after review; the rationale says why it is safe.",
+          "type": "string"
+        }
+      ]
+    },
+    "RedactionDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/RedactionAction"
+        },
+        "rationale": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "scope": {
+          "description": "What the decision covers, e.g. a field, region or kind of content.",
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "action",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "ReviewCoverage": {
+      "description": "How thoroughly the reviewer examined the transformed output.",
+      "oneOf": [
+        {
+          "const": "whole_output",
+          "description": "The reviewer examined the whole transformed output.",
+          "type": "string"
+        },
+        {
+          "const": "pattern_matching_only",
+          "description": "Only automated pattern matching ran. Never sufficient for a downgrade;\nlisted so producers can report it honestly and receive a repair.",
+          "type": "string"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorKind": {
+      "description": "The actual discriminated union. `EvidenceSelector` binds this to a digest\nand a core-computed validation result.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "whole",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "start": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "byte_range",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parser_version": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "text_lines",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start_line",
+            "end_line",
+            "encoding",
+            "parser_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exact": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "suffix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "text_quote",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "exact"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "parser": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pointer": {
+              "type": "string"
+            },
+            "type": {
+              "const": "json_pointer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "pointer"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "extraction_version": {
+              "type": "string"
+            },
+            "row_identity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "row_index": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "const": "table_cell",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "extraction_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "coordinate_origin": {
+              "type": "string"
+            },
+            "end": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "start": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "type": {
+              "const": "time_window",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end",
+            "unit",
+            "coordinate_origin",
+            "channel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "blob_digest": {
+              "$ref": "#/$defs/Digest"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "code_span",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "repository",
+            "commit",
+            "blob_digest",
+            "path",
+            "start_line",
+            "end_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "schema_uri": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "type": {
+              "const": "external_selector",
+              "type": "string"
+            },
+            "validator": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "namespace",
+            "schema_uri",
+            "schema_version",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SelectorRequest": {
+      "additionalProperties": false,
+      "description": "Request form deliberately lacks a validation field.",
+      "properties": {
+        "artifact_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SelectorVersion"
+        },
+        "selector": {
+          "$ref": "#/$defs/SelectorKind"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_digest",
+        "selector"
+      ],
+      "type": "object"
+    },
+    "SelectorVersion": {
+      "description": "The selector schema is versioned independently from record and command schemas.",
+      "enum": [
+        "inv.selector.v1"
+      ],
+      "type": "string"
     },
     "SourceManifest": {
       "additionalProperties": false,
@@ -457,6 +953,17 @@
           "type": "null"
         }
       ]
+    },
+    "derived_from": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DerivedFromRequest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The items are outputs of a transformation of recorded Artifacts. They are\nrecorded as derivatives of those inputs: no Source or acquisition is\ncreated, `source.title` labels the output and `source.format` gives its\nformat."
     },
     "extract_text": {
       "default": false,

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use investigation_core::{
     command::RevisionRef,
-    evidence::{AcquisitionKey, ArtifactBody, SourceBody},
+    evidence::{AcquisitionKey, ArtifactBody, ArtifactRole, SourceBody},
     header::ClassificationLevel,
     identity::{Id, Kind},
     state::{Record, State},
@@ -98,6 +98,9 @@ pub enum ItemOutcome {
     /// A known attempt and item with a changed description or bytes: the Source
     /// is revised or gains another retained version, never a second acquisition.
     Revised,
+    /// The output of a transformation of recorded Artifacts: a new derivative
+    /// Artifact linked to its inputs. No Source or acquisition is created.
+    Derived,
 }
 
 /// The canonical records an earlier import of the same acquisition produced.
@@ -193,8 +196,10 @@ fn rank(level: ClassificationLevel) -> u8 {
 }
 
 /// Artifacts that retain an ingest manifest rather than an acquired item.
-/// The journal names them with the `manifest` client reference.
-fn manifest_artifacts(case: &CaseReplay, as_of: u64) -> BTreeSet<Id> {
+/// New records carry the explicit `manifest` role; for records written before
+/// roles were recorded, the journal names them with the `manifest` client
+/// reference.
+pub(super) fn manifest_artifacts(case: &CaseReplay, as_of: u64) -> BTreeSet<Id> {
     case.events
         .iter()
         .map(|verified| &verified.event)
@@ -277,7 +282,8 @@ pub(super) fn resolve(
             let originals: Vec<&(&Record, ArtifactBody)> = artifacts
                 .iter()
                 .filter(|(_, artifact)| {
-                    artifact.source.id == source.header.id && artifact.transforms.is_empty()
+                    artifact.source.id == source.header.id
+                        && artifact.role() == ArtifactRole::Original
                 })
                 .collect();
             let latest = |records: &mut dyn Iterator<Item = &Record>| {
@@ -297,7 +303,8 @@ pub(super) fn resolve(
                     &mut artifacts
                         .iter()
                         .filter(|(_, body)| {
-                            body.transforms.first().is_some_and(|transform| {
+                            body.role() == ArtifactRole::Derivative
+                                && body.transforms.first().is_some_and(|transform| {
                                 transform.input.id == artifact_id
                                     && transform.transformation == "decode_utf8"
                                     && transform.version == TEXT_PARSER_VERSION

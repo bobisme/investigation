@@ -787,7 +787,12 @@ fn resolve_text_artifact(
                     .ok()
                     .map(|body| (record.header.id, body))
             })
-            .filter(|(_, body)| body.source.id == requested && is_decoded_text(body))
+            // Text of the Source's own bytes, not of a derivative tracing to it.
+            .filter(|(_, body)| {
+                body.source.id == requested
+                    && is_decoded_text(body)
+                    && decodes_original(state, body)
+            })
             .map(|(id, _)| id)
             .collect::<Vec<_>>();
         return unique_text_artifact(
@@ -842,6 +847,17 @@ fn is_decoded_text(body: &investigation_core::evidence::ArtifactBody) -> bool {
     body.transforms.iter().any(|transform| {
         transform.transformation == "decode_utf8"
             && transform.version == investigation_store::store::ingest::TEXT_PARSER_VERSION
+    })
+}
+
+fn decodes_original(
+    state: &investigation_core::state::State,
+    body: &investigation_core::evidence::ArtifactBody,
+) -> bool {
+    body.transforms.iter().all(|transform| {
+        investigation_core::derivation::artifact_body(state, transform.input).is_some_and(|input| {
+            input.role() == investigation_core::evidence::ArtifactRole::Original
+        })
     })
 }
 

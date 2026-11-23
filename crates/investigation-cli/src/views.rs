@@ -47,6 +47,8 @@ pub struct EffectiveStateInput {
     pub material_caveat: Option<Value>,
     pub contradiction: Option<Value>,
     pub gaps: Vec<Value>,
+    /// Artifact and Observation lineage to the original acquisitions.
+    pub lineage: Option<Value>,
 }
 
 pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> EffectiveStateInput {
@@ -88,6 +90,9 @@ pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> E
         _ => Vec::new(),
     };
     let unavailable = store.unavailable_artifacts(&replay.state, &references);
+    let lineage = matches!(kind, Kind::Artifact | Kind::Observation)
+        .then(|| crate::lineage::lineage_view(store, &replay.state, record))
+        .flatten();
     if !unavailable.is_empty() && state != "superseded" && state != "retracted" {
         state = json!(if reviewed {
             "needs_review"
@@ -148,6 +153,7 @@ pub fn effective_state(store: &Store, replay: &CaseReplay, record: &Record) -> E
         material_caveat: caveat,
         contradiction,
         gaps: Vec::new(),
+        lineage,
     }
 }
 
@@ -351,6 +357,11 @@ fn project_record(
             "summary_basis".into(),
             json!({"revision":record.header.revision.0,"kind":"typed_fields"}),
         );
+        if let Some(lineage) = &effective.lineage
+            && classifier.may_show(record, Field::Lineage, &policy)
+        {
+            out.insert("lineage".into(), lineage.clone());
+        }
         if record.header.id.kind() == Kind::Observation {
             out.insert("summary_untrusted_data".into(), json!(true));
             if let Ok(reference) =

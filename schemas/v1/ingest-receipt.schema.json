@@ -60,6 +60,7 @@
         "digest": {
           "$ref": "#/$defs/Digest"
         },
+        "lineage": true,
         "outcome": true,
         "prior": true,
         "size_bytes": {

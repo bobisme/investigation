@@ -3,7 +3,7 @@ use std::io::Read;
 use investigation_core::{
     case::{CaseCreate, CaseMode},
     evidence::{
-        AcquisitionChannel, ArtifactAvailability, ArtifactBody, ArtifactIntegrity,
+        AcquisitionChannel, ArtifactAvailability, ArtifactBody, ArtifactIntegrity, ArtifactRole,
         ArtifactTransform, SourceAccess, SourceAcquisition, SourceBody,
     },
     header::{
@@ -23,6 +23,10 @@ use crate::{blob::stage, import_paths::ImportRoot};
 #[path = "acquisition.rs"]
 pub mod acquisition;
 use acquisition::{AcquisitionKeyRequest, ItemFacts, ItemOutcome, ItemPlan, PriorAcquisition};
+
+#[path = "derivation.rs"]
+pub mod derivation;
+use derivation::{DerivedFromRequest, ResolvedDerivation};
 
 pub const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ITEMS: usize = 32;
@@ -56,6 +60,12 @@ pub struct Manifest {
     pub extract_text: bool,
     #[serde(default)]
     pub classification: ClassificationLevel,
+    /// The items are outputs of a transformation of recorded Artifacts. They are
+    /// recorded as derivatives of those inputs: no Source or acquisition is
+    /// created, `source.title` labels the output and `source.format` gives its
+    /// format.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derived_from: Option<DerivedFromRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -111,6 +121,11 @@ pub struct ItemReceipt {
     #[schemars(schema_with = "unconstrained")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prior: Option<PriorAcquisition>,
+    // For a derivative: its role, origins and derivation steps, traced to the
+    // original acquisitions. Published unconstrained like `outcome`.
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lineage: Option<investigation_core::derivation::Lineage>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
@@ -202,6 +217,9 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
     }
     crate::opaque::validate_metadata(&manifest.source.metadata)
         .map_err(|(message, key)| invalid(&message, &format!("/source/metadata{key}")))?;
+    if let Some(derived_from) = &manifest.derived_from {
+        derived_from.validate(&manifest)?;
+    }
     Ok((manifest, raw))
 }
 
@@ -312,6 +330,18 @@ impl Store {
             &mut SystemClock,
             &mut SystemIdSource,
             |_, _, acceptance, visible| {
+                let derivation = match (&manifest.derived_from, visible.target) {
+                    (Some(request), Some(case)) => {
+                        Some(derivation::resolve(request, &manifest, case)?)
+                    }
+                    (Some(_), None) => {
+                        return Err(invalid(
+                            "A derivative needs the existing case that holds its inputs.",
+                            "/case_id",
+                        ));
+                    }
+                    (None, _) => None,
+                };
                 let resolved = resolve_acquisition(&manifest, &description, &facts, visible)?;
                 let plans = plans.insert(resolved);
                 if let Some((case_id, sequence)) = existing_transaction(plans) {
@@ -321,6 +351,7 @@ impl Store {
                     &manifest,
                     &prepared,
                     plans,
+                    derivation.as_ref(),
                     &description,
                     &manifest_digest,
                     manifest_size,
@@ -335,7 +366,13 @@ impl Store {
             // its items against the case as it stood before that transaction.
             None => self.replan(&manifest, &description, &facts, &receipt)?,
         };
-        let mut receipt = ingest_receipt(receipt, prepared, plans);
+        // A derivative's receipt reports its lineage from the committed state, so
+        // an identical retry answers the same way.
+        let derived = match (&manifest.derived_from, manifest.case_id) {
+            (Some(_), Some(case_id)) => Some(self.case(case_id)?.state),
+            _ => None,
+        };
+        let mut receipt = ingest_receipt(receipt, prepared, plans, derived.as_ref());
         if receipt
             .items
             .iter()
@@ -548,10 +585,12 @@ fn existing_transaction(plans: &[ItemPlan]) -> Option<(Id, u64)> {
     Some((case_id, sequence))
 }
 
+#[allow(clippy::too_many_arguments)]
 fn create_records(
     manifest: &Manifest,
     items: &[PreparedItem],
     plans: &[ItemPlan],
+    derivation: Option<&ResolvedDerivation>,
     description: &Digest,
     manifest_digest: &Digest,
     manifest_size: u64,
@@ -586,6 +625,39 @@ fn create_records(
     });
     let mut first_source = None;
     for (index, (item, plan)) in items.iter().zip(plans).enumerate() {
+        if let Some(derivation) = derivation {
+            // The output of a transformation: a derivative of the exact inputs,
+            // tracing to their acquisitions. No Source is created for it.
+            let body = ArtifactBody {
+                digest: Some(item.digest.clone()),
+                size_bytes: Some(item.size),
+                format: manifest.source.format.clone(),
+                source: derivation.source,
+                transforms: derivation.transforms.clone(),
+                availability: ArtifactAvailability::Retained,
+                integrity: ArtifactIntegrity::Verified,
+                sensitivity: sensitivity(manifest.classification),
+                role: Some(ArtifactRole::Derivative),
+                derivation: Some(derivation.record.clone()),
+                status: None,
+                withdrawals: Vec::new(),
+            };
+            body.validate_shape()
+                .and_then(|()| body.validate_references())
+                .map_err(|blocker| integrity(blocker.code()))?;
+            let artifact_id = new_id(builder.ids, Kind::Artifact)?;
+            builder.add(
+                artifact_id,
+                format!("artifact:{index}"),
+                body.clone(),
+                derivation.provenance.clone(),
+            )?;
+            first_source.get_or_insert(derivation.source);
+            if matches!(item.text, TextStatus::Decoded) {
+                add_text_derivative(&mut builder, index, artifact_id, &body)?;
+            }
+            continue;
+        }
         let keyed = plan.key.is_some();
         let mut source = SourceBody {
             producer: manifest.source.producer.clone(),
@@ -656,6 +728,8 @@ fn create_records(
             sensitivity: sensitivity(manifest.classification),
             status: None,
             withdrawals: Vec::new(),
+            role: Some(ArtifactRole::Original),
+            derivation: None,
         };
         let known_artifact = plan.known.as_ref().and_then(|known| known.artifact);
         let artifact_id = match known_artifact {
@@ -675,27 +749,7 @@ fn create_records(
             .and(plan.known.as_ref())
             .and_then(|known| known.derivative);
         if matches!(item.text, TextStatus::Decoded) && known_derivative.is_none() {
-            // Strict UTF-8 decoding with unchanged newline and character bytes.
-            // The derivative gets its own record even when its blob deduplicates.
-            let text_id = new_id(builder.ids, Kind::Artifact)?;
-            let derivative = ArtifactBody {
-                format: Some("text/plain; charset=utf-8".into()),
-                transforms: vec![ArtifactTransform {
-                    input: RevisionRef {
-                        id: artifact_id,
-                        revision: 1,
-                    },
-                    transformation: "decode_utf8".into(),
-                    version: TEXT_PARSER_VERSION.into(),
-                }],
-                ..original
-            };
-            builder.add(
-                text_id,
-                format!("text:{index}"),
-                derivative,
-                vec![source_id, artifact_id],
-            )?;
+            add_text_derivative(&mut builder, index, artifact_id, &original)?;
         }
     }
     let source = first_source.ok_or_else(|| integrity("Ingest has no source acquisition."))?;
@@ -714,6 +768,8 @@ fn create_records(
             sensitivity: sensitivity(manifest.classification),
             status: None,
             withdrawals: Vec::new(),
+            role: Some(ArtifactRole::Manifest),
+            derivation: None,
         },
         vec![source.id],
     )?;
@@ -725,6 +781,38 @@ fn create_records(
         updated: builder.updated,
         warnings: Vec::new(),
     })
+}
+
+/// Strict UTF-8 decoding with unchanged newline and character bytes. The text
+/// derivative gets its own record even when its blob deduplicates.
+fn add_text_derivative(
+    builder: &mut IngestRecords<'_>,
+    index: usize,
+    input_id: Id,
+    input: &ArtifactBody,
+) -> Result<(), Failure> {
+    let text_id = new_id(builder.ids, Kind::Artifact)?;
+    let derivative = ArtifactBody {
+        format: Some("text/plain; charset=utf-8".into()),
+        transforms: vec![ArtifactTransform {
+            input: RevisionRef {
+                id: input_id,
+                revision: 1,
+            },
+            transformation: "decode_utf8".into(),
+            version: TEXT_PARSER_VERSION.into(),
+            input_digest: input.digest.clone(),
+        }],
+        role: Some(ArtifactRole::Derivative),
+        derivation: None,
+        ..input.clone()
+    };
+    builder.add(
+        text_id,
+        format!("text:{index}"),
+        derivative,
+        vec![input.source.id, input_id],
+    )
 }
 
 struct IngestRecords<'a> {
@@ -838,6 +926,7 @@ fn ingest_receipt(
     mut receipt: Receipt,
     items: Vec<PreparedItem>,
     plans: Vec<ItemPlan>,
+    derived: Option<&investigation_core::state::State>,
 ) -> IngestReceipt {
     let id = |client_ref: &str| {
         receipt.created.iter().find_map(|change| {
@@ -857,6 +946,32 @@ fn ingest_receipt(
         .filter_map(|(index, (item, plan))| {
             let known = plan.known.as_ref();
             let decoded = matches!(item.text, TextStatus::Decoded);
+            if let Some(state) = derived {
+                let artifact_id = id(&format!("artifact:{index}"))?;
+                let lineage = investigation_core::derivation::lineage(
+                    state,
+                    RevisionRef {
+                        id: artifact_id,
+                        revision: 1,
+                    },
+                )?;
+                let source =
+                    investigation_core::derivation::artifact_body(state, lineage.artifact_ref)?
+                        .source;
+                return Some(ItemReceipt {
+                    source_id: source.id,
+                    artifact_id,
+                    digest: item.digest,
+                    size_bytes: item.size,
+                    derivative_id: id(&format!("text:{index}")),
+                    text_status: item.text,
+                    diagnostics: item.diagnostics,
+                    outcome: Some(ItemOutcome::Derived),
+                    prior: None,
+                    acquisition_key: None,
+                    lineage: Some(lineage),
+                });
+            }
             Some(ItemReceipt {
                 source_id: known
                     .map(|known| known.source.header.id)
@@ -875,6 +990,7 @@ fn ingest_receipt(
                 outcome: Some(plan.outcome),
                 prior: plan.prior(),
                 acquisition_key: plan.key,
+                lineage: None,
             })
         })
         .collect::<Vec<_>>();
