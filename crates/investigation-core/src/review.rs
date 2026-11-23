@@ -5,6 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
+    blindspot_review::{GapDisposition, NovelGap, ReviewedAudit},
     command::{Reference, RevisionRef},
     header::Knowledge,
     wire::{Digest, Snapshot},
@@ -318,6 +319,15 @@ pub enum ReviewSubmit {
         verdict: BlindspotVerdict,
         context_isolation: ContextIsolation,
         context: ReviewContext,
+        /// The structural audit this review read, if any.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        audit: Option<Box<ReviewedAudit>>,
+        /// Dispositions of gap IDs the reviewed audit reported.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        gap_dispositions: Vec<GapDisposition>,
+        /// Gaps the reviewer identified outside the registered checks.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        novel_gaps: Vec<NovelGap>,
     },
 }
 

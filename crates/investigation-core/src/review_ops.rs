@@ -24,10 +24,9 @@ use crate::{
     objection_policy::{open_objections, raised_after_review},
     pack_policy::{self, Gate, Subject},
     review::{
-        AssessmentRelation, BlindspotVerdict, ConclusionCreate, ConclusionStatus,
-        ConclusionValidate, ContextIsolation, EffectiveDisposition, ObjectionChange,
-        ObjectionRaise, ObjectionSeverity, ObjectionStatus, ReviewContext, ReviewStatus,
-        ReviewSubmit, ValidationVerdict,
+        AssessmentRelation, ConclusionCreate, ConclusionStatus, ConclusionValidate,
+        ContextIsolation, EffectiveDisposition, ObjectionChange, ObjectionRaise, ObjectionSeverity,
+        ObjectionStatus, ReviewContext, ReviewStatus, ReviewSubmit, ValidationVerdict,
     },
     state::{OperationContext, Record, State},
     wire::{Digest, ErrorCode, Failure},
@@ -1018,10 +1017,7 @@ fn review_shape(payload: &ReviewSubmit) -> Result<(), Failure> {
             method,
             scope_examined,
             checks_considered,
-            gaps,
-            no_gap_reason,
             limitations,
-            verdict,
             context,
             ..
         } => {
@@ -1034,25 +1030,30 @@ fn review_shape(payload: &ReviewSubmit) -> Result<(), Failure> {
                     "Record the checks performed and the audit limitations.",
                 ));
             }
-            match verdict {
-                BlindspotVerdict::GapsIdentified if gaps.is_empty() => Err(invalid(
-                    "/gaps",
-                    "List an actual gap, or select a bounded verdict.",
-                )),
-                BlindspotVerdict::NoGapIdentifiedWithinScope
-                    if !gaps.is_empty()
-                        || no_gap_reason
-                            .as_ref()
-                            .is_none_or(|reason| reason.trim().is_empty()) =>
-                {
-                    Err(invalid(
-                        "/no_gap_reason",
-                        "Explain why no gap was identified within the stated scope.",
-                    ))
-                }
-                _ => Ok(()),
-            }
+            crate::blindspot_review::shape(&blindspot_detail(payload).ok_or_else(integrity)?)
         }
+    }
+}
+
+fn blindspot_detail(payload: &ReviewSubmit) -> Option<crate::blindspot_review::Detail<'_>> {
+    match payload {
+        ReviewSubmit::Blindspot {
+            verdict,
+            gaps,
+            no_gap_reason,
+            audit,
+            gap_dispositions,
+            novel_gaps,
+            ..
+        } => Some(crate::blindspot_review::Detail {
+            verdict: *verdict,
+            gaps,
+            no_gap_reason: no_gap_reason.as_deref(),
+            audit: audit.as_deref(),
+            gap_dispositions,
+            novel_gaps,
+        }),
+        ReviewSubmit::Validation { .. } => None,
     }
 }
 
@@ -1089,7 +1090,9 @@ fn normalized_read_set(
 }
 
 fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
-    let body = match payload {
+    let detail = blindspot_detail(&payload);
+    let mut blindspot = None;
+    let mut body = match payload.clone() {
         ReviewSubmit::Validation {
             subject_ref,
             basis_digest: supplied_basis,
@@ -1178,6 +1181,7 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             verdict,
             context_isolation,
             context,
+            ..
         } => {
             let subject_ref = resolve(ctx, &subject_ref, SUBJECTS, "/subject_ref")?;
             let target = current(
@@ -1193,9 +1197,17 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
                 &[Kind::Assumption],
                 "/assumption_refs",
             )?;
+            let resolved = crate::blindspot_review::resolve(
+                ctx,
+                subject_ref.id,
+                &audited_snapshot,
+                detail.as_ref().ok_or_else(integrity)?,
+            )?;
             let mut required = evidence_refs.clone();
             required.extend(assumption_refs.iter().copied());
+            required.extend(resolved.read.iter().copied());
             let read_set = normalized_read_set(ctx, target, &read_set, &required)?;
+            blindspot = Some(resolved);
             json!({
                 "kind": ReviewKind::Blindspot, "status": ReviewStatus::Submitted, "subject_ref": subject_ref,
                 "audited_snapshot": audited_snapshot, "read_set": read_set, "method": method, "scope_examined": scope_examined,
@@ -1205,6 +1217,9 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             })
         }
     };
+    if let Some(resolved) = blindspot {
+        resolved.store(&mut body, ctx);
+    }
     ctx.create(Kind::Review, body)?;
     Ok(())
 }

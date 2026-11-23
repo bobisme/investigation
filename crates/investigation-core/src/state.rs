@@ -84,6 +84,29 @@ impl State {
         records.get(end.checked_sub(1)?)
     }
 
+    /// The state as replayed up to an earlier accepted sequence: every record
+    /// revision accepted at or before it, and the snapshots verified up to it.
+    pub fn as_of(&self, sequence: u64) -> State {
+        let history = self
+            .history
+            .iter()
+            .filter_map(|(id, records)| {
+                let end =
+                    records.partition_point(|record| record.header.acceptance_sequence <= sequence);
+                (end > 0).then(|| (*id, records[..end].to_vec()))
+            })
+            .collect();
+        State {
+            sequence: sequence.min(self.sequence),
+            history,
+            verified_snapshots: self
+                .verified_snapshots
+                .range(..=sequence)
+                .map(|(sequence, digest)| (*sequence, digest.clone()))
+                .collect(),
+        }
+    }
+
     pub fn history(&self, id: Id) -> impl Iterator<Item = &Record> {
         self.history.get(&id).into_iter().flatten()
     }

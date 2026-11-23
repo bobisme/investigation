@@ -34,8 +34,9 @@ use crate::{
 
 /// Version of the trigger, relevance and propagation rules in this module.
 /// Version 2 judges Observations by effective validity and keeps
-/// classification changes out of the Overview.
-pub const FRESHNESS_RULES_VERSION: u32 = 2;
+/// classification changes out of the Overview. Version 3 makes a blindspot
+/// review that read a structural audit stale when the check set changes.
+pub const FRESHNESS_RULES_VERSION: u32 = 3;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -134,6 +135,9 @@ pub enum Trigger {
     ObjectionRaisedAfterReview,
     /// The current dependency closure includes a record the review did not read.
     BasisExpanded,
+    /// A blindspot review read a structural audit whose check set differs
+    /// from the registered one. The cause is the review itself.
+    CheckSetChanged,
     /// A cited record is absent from the case.
     MissingDependency,
     /// The record's inherited basis is circular.
@@ -1002,6 +1006,13 @@ impl Node {
             ));
         }
         local.extend(review_basis(state, case, record));
+        if crate::blindspot_review::check_set_changed(record) {
+            local.push(FreshnessReason::local(
+                Trigger::CheckSetChanged,
+                record.reference(),
+                Vec::new(),
+            ));
+        }
         Self {
             reference: record.reference(),
             lifecycle: lifecycle(record),
@@ -1382,6 +1393,7 @@ impl FreshnessIndex {
 
 #[cfg(test)]
 mod tests {
+    mod blindspot_review;
     mod judgments;
     mod source_use;
 

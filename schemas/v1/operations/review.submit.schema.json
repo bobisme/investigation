@@ -45,6 +45,70 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "GapDisposition": {
+      "additionalProperties": false,
+      "description": "A disposition of one `gap_id` reported by the reviewed audit.",
+      "properties": {
+        "disposition": {
+          "$ref": "#/$defs/GapDispositionKind"
+        },
+        "gap_id": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "record_refs": {
+          "default": [],
+          "description": "Records that record or address the gap, including ones created earlier\nin the same transaction.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "related_refs": {
+          "default": [],
+          "description": "Current revisions the reviewer read for this gap; each is also in `read_set`.",
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "uncertainty": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "gap_id",
+        "disposition",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "GapDispositionKind": {
+      "description": "What the reviewer concluded about one gap the audit reported.",
+      "oneOf": [
+        {
+          "const": "accepted",
+          "description": "The gap is real and still open.",
+          "type": "string"
+        },
+        {
+          "const": "addressed",
+          "description": "Recorded work answers the gap; `record_refs` names it.",
+          "type": "string"
+        },
+        {
+          "const": "not_applicable",
+          "description": "The gap does not bear on the reviewed scope, for the stated reason.",
+          "type": "string"
+        }
+      ]
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -83,6 +147,42 @@
           "type": "object"
         }
       ]
+    },
+    "NovelGap": {
+      "additionalProperties": false,
+      "description": "A gap the reviewer identified that no registered check reports.",
+      "properties": {
+        "record_refs": {
+          "default": [],
+          "description": "The Question, Assumption or Objection that records this gap, typically\ncreated earlier in the same transaction and cited by `client_ref`.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "related_refs": {
+          "default": [],
+          "description": "Current revisions the gap concerns; each is also in `read_set`.",
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "statement": {
+          "type": "string"
+        },
+        "uncertainty": {
+          "default": null,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "statement"
+      ],
+      "type": "object"
     },
     "Reference": {
       "anyOf": [
@@ -126,6 +226,36 @@
         "activity",
         "dependencies",
         "dependence_basis"
+      ],
+      "type": "object"
+    },
+    "ReviewedAudit": {
+      "additionalProperties": false,
+      "description": "The structural audit a blindspot review read. Copy the fields from the\n`investigation blindspots` response; its snapshot is the review's\n`audited_snapshot`.",
+      "properties": {
+        "check_set_digest": {
+          "$ref": "#/$defs/Digest",
+          "description": "The response's `check_set_digest`."
+        },
+        "check_version": {
+          "description": "The response's `check_version`.",
+          "type": "string"
+        },
+        "subject_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The response's `scope.subject_ref` for an audit narrowed with\n`--subject`. Omit it for a whole-case audit."
+        }
+      },
+      "required": [
+        "check_version",
+        "check_set_digest"
       ],
       "type": "object"
     },
@@ -259,6 +389,17 @@
           },
           "type": "array"
         },
+        "audit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReviewedAudit"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The structural audit this review read, if any."
+        },
         "audited_snapshot": {
           "$ref": "#/$defs/Snapshot"
         },
@@ -277,6 +418,13 @@
         "evidence_refs": {
           "items": {
             "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "gap_dispositions": {
+          "description": "Dispositions of gap IDs the reviewed audit reported.",
+          "items": {
+            "$ref": "#/$defs/GapDisposition"
           },
           "type": "array"
         },
@@ -304,6 +452,13 @@
             "string",
             "null"
           ]
+        },
+        "novel_gaps": {
+          "description": "Gaps the reviewer identified outside the registered checks.",
+          "items": {
+            "$ref": "#/$defs/NovelGap"
+          },
+          "type": "array"
         },
         "read_set": {
           "items": {

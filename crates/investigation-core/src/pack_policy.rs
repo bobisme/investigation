@@ -28,7 +28,7 @@ use crate::{
     command::RevisionRef,
     guidance::TriggerContext,
     header::Actor,
-    identity::{Id, Kind},
+    identity::Id,
     method_pack::{PolicyInput, PolicyProposal},
     method_pack_ops::{PackStatus, ResolvedPack, UnavailableReason, adopted_packs, resolve_pin},
     state::{OperationContext, Record, State},
@@ -425,47 +425,15 @@ fn meaningful(value: &Value) -> bool {
     }
 }
 
-/// Submitted blindspot reviews of `subject` that are still current: they
-/// reviewed a revision with the same substantive basis, and every revision in
-/// their read-set is still the current one (the `review.stale_read_set` rule).
+/// Submitted blindspot reviews of `subject` that are still current. The
+/// blindspot review contract owns the definition, so pack gates, the
+/// freshness index and views agree: see
+/// [`crate::blindspot_review::current_blindspot_reviews`].
 pub fn current_blindspot_reviews(
     state: &State,
     subject: &Record,
 ) -> Result<Vec<RevisionRef>, Failure> {
-    let digest = basis_digest(subject)?;
-    let mut found = Vec::new();
-    for review in state.records().filter(|record| {
-        record.header.case_id == subject.header.case_id
-            && record.header.id.kind() == Kind::Review
-            && record.body["kind"] == "blindspot"
-            && record.body["status"] == "submitted"
-    }) {
-        let Ok(reviewed) =
-            serde_json::from_value::<RevisionRef>(review.body["subject_ref"].clone())
-        else {
-            continue;
-        };
-        if reviewed.id != subject.header.id {
-            continue;
-        }
-        let Some(reviewed) = state.revision(reviewed) else {
-            continue;
-        };
-        if basis_digest(reviewed)? != digest {
-            continue;
-        }
-        let read_set: Vec<RevisionRef> =
-            serde_json::from_value(review.body["read_set"].clone()).map_err(|_| integrity())?;
-        if read_set.iter().all(|reference| {
-            state
-                .current(reference.id)
-                .is_some_and(|current| current.reference() == *reference)
-        }) {
-            found.push(review.reference());
-        }
-    }
-    found.sort_by_key(|reference| reference.id);
-    Ok(found)
+    crate::blindspot_review::current_blindspot_reviews(state, subject)
 }
 
 /// Actors who recorded the subject's current substantive content: the creator
