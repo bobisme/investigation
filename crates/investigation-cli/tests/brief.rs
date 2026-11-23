@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 
 const ACTOR: &str = "agent:brief-test";
 const DEFAULT_BUDGET: usize = 16_384;
+const WORKSPACE_SENTINEL: &str = "<WORKSPACE>";
 
 /// Run the binary; return the parsed JSON and the exact stdout byte count.
 fn call(cwd: &Path, args: &[&str], stdin: Option<&Value>, exit: i32) -> (Value, usize) {
@@ -208,6 +209,103 @@ fn omitted<'a>(brief: &'a Value, section: &str) -> Option<&'a Value> {
         .find(|entry| entry["section"] == section)
 }
 
+/// Measure an envelope without making its invariant depend on the host path.
+///
+/// Production argv stay exact and runnable. This clone is only for the fixed
+/// envelope-size assertion below, where every `--workspace` value represents
+/// the same field regardless of how long the test runner's `TMPDIR` is.
+fn path_independent_envelope_bytes(value: &Value) -> usize {
+    let mut normalized = value.clone();
+    normalize_workspace_argv(&mut normalized);
+    serde_json::to_vec(&normalized).unwrap().len() + 1
+}
+
+fn normalize_workspace_argv(value: &mut Value) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                if key == "argv" || key.ends_with("_argv") {
+                    normalize_workspace_arg_values(value);
+                } else {
+                    normalize_workspace_argv(value);
+                }
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                normalize_workspace_argv(value);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn normalize_workspace_arg_values(value: &mut Value) {
+    let Some(values) = value.as_array_mut() else {
+        return;
+    };
+    let mut index = 0;
+    while index + 1 < values.len() {
+        if values[index].as_str() == Some("--workspace") && values[index + 1].is_string() {
+            values[index + 1] = json!(WORKSPACE_SENTINEL);
+        }
+        index += 1;
+    }
+}
+
+#[test]
+fn envelope_measurement_normalizes_only_argv_fields_across_paths() {
+    fn envelope(workspace: &str) -> Value {
+        json!({
+            "omitted": [{
+                "section": "freshness",
+                "argv": ["investigation", "--workspace", workspace, "show", "case_1"]
+            }],
+            "complete_read_argv": [
+                "investigation", "--workspace", workspace, "brief", "--max-bytes", "8192"
+            ],
+            "error": {"repair": {
+                "argv": ["investigation", "--workspace", workspace, "brief"]
+            }},
+            "data": ["--workspace", "not-an-argv-value", 7],
+            "typed_argv": ["investigation", "--workspace", 7, "brief"]
+        })
+    }
+
+    let short_path = "/tmp/investigation";
+    let long_path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../target/test-tmp/investigation-workspace"
+    );
+    let short = envelope(short_path);
+    let long = envelope(long_path);
+    assert!(serde_json::to_vec(&short).unwrap().len() < serde_json::to_vec(&long).unwrap().len());
+    assert_eq!(
+        path_independent_envelope_bytes(&short),
+        path_independent_envelope_bytes(&long)
+    );
+
+    let mut normalized = long.clone();
+    normalize_workspace_argv(&mut normalized);
+    assert_eq!(
+        normalized["data"],
+        json!(["--workspace", "not-an-argv-value", 7])
+    );
+    assert_eq!(normalized["omitted"][0]["argv"][2], WORKSPACE_SENTINEL);
+    assert_eq!(normalized["complete_read_argv"][2], WORKSPACE_SENTINEL);
+    assert_eq!(normalized["error"]["repair"]["argv"][2], WORKSPACE_SENTINEL);
+    assert_eq!(normalized["typed_argv"][2], 7);
+
+    // Measurement works on a clone: the real serialized argv remain runnable.
+    assert_eq!(short["omitted"][0]["argv"][2], short_path);
+    assert_eq!(short["complete_read_argv"][2], short_path);
+    assert_eq!(long["omitted"][0]["argv"][2], long_path);
+    assert_eq!(long["complete_read_argv"][2], long_path);
+    assert_eq!(long["error"]["repair"]["argv"][2], long_path);
+    assert_eq!(long["data"][1], "not-an-argv-value");
+    assert_eq!(long["typed_argv"][2], 7);
+}
+
 #[test]
 fn the_default_brief_of_a_large_stale_case_stays_within_budget_and_reports_omissions() {
     let mut work = Casework::start();
@@ -320,9 +418,13 @@ fn the_default_brief_of_a_large_stale_case_stays_within_budget_and_reports_omiss
         let minimum = error["error"]["expected"]["minimum_bytes"]
             .as_u64()
             .unwrap() as usize;
-        assert!(minimum < DEFAULT_BUDGET / 2, "{level} {minimum}");
         let (bounded, bytes) = follow(&root, &error["error"]["repair"]["argv"]);
         assert!(bytes <= minimum, "{level} {bytes} {minimum}");
+        let envelope_bytes = path_independent_envelope_bytes(&bounded);
+        assert!(
+            envelope_bytes < DEFAULT_BUDGET / 2,
+            "{level} {envelope_bytes}"
+        );
         assert_eq!(bounded["material_caveat"], brief["material_caveat"]);
         assert_eq!(bounded["contradiction"], brief["contradiction"]);
         assert_eq!(bounded["freshness"], brief["freshness"]);
