@@ -180,7 +180,15 @@ impl<F: DurableFs> Store<F> {
         for (digest, claim) in blobs {
             let hex = &digest.as_str()["sha256:".len()..];
             let path = Path::new(BLOBS).join(&hex[..2]).join(hex);
-            let failure = match self.fs.read(&path).and_then(read_hash) {
+            let before = self.fs.identity(&path).ok();
+            let hashed = self.fs.read(&path).and_then(read_hash);
+            // Later reads reuse what this hash found while the file is unchanged.
+            if let (Some(before), Ok((actual, size))) = (&before, &hashed) {
+                for length in &claim.lengths {
+                    self.record_verdict(hex, *length, before, actual == hex && size == length);
+                }
+            }
+            let failure = match hashed {
                 Ok((actual, size))
                     if actual == hex && claim.lengths.iter().all(|length| *length == size) =>
                 {

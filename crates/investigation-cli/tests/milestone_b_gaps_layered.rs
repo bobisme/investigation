@@ -28,10 +28,11 @@
 //! and a view changes only in its integrity verdict, while `evidence read`
 //! and `check` report the corruption.
 //!
-//! `show` verifies the digest of every retained blob a record cites, at
-//! every depth, to report availability: it reads restricted bytes, though it
-//! never emits them. The strict property, that no depth reads a restricted
-//! blob, is pinned by an ignored test until the product changes.
+//! The strict property, that no depth reads a restricted blob, has its own
+//! test: a same-size overwrite of the restricted bytes, which only a read
+//! could notice, leaves every view byte-identical. `check` still hashes
+//! them, and once it has found the forgery the views report it. A non-
+//! restricted blob overwritten in place is caught by the next `show`.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -727,10 +728,11 @@ fn every_record_type_has_stable_layered_views_and_evidence_stays_opt_in() {
 }
 
 /// The strict reading of Y15: no depth reads a restricted blob at all. The
-/// probe overwrites only the restricted bytes; a view that never opened
-/// them is byte-identical afterwards.
+/// probe overwrites only the restricted bytes and keeps their size, which a
+/// stat cannot tell from the original: a view that never opened them is
+/// byte-identical afterwards. `check` reads every blob and finds the
+/// forgery; from then on the views report it, still without reading.
 #[test]
-#[ignore = "product gap: show hashes every retained blob a record cites to report availability, restricted ones included, so a restricted Artifact's stub changes at every depth when its blob is overwritten (bytes are never emitted)"]
 fn no_depth_reads_a_restricted_blob() {
     let fixture = build();
     let secret = fixture
@@ -740,7 +742,7 @@ fn no_depth_reads_a_restricted_blob() {
         .trim_start_matches("sha256:")
         .to_owned();
     let before = views(&fixture);
-    let after = probe(&fixture, |blob| blob.ends_with(&secret));
+    let after = probe_keeping_size(&fixture, |blob| blob.ends_with(&secret));
     let changed: Vec<_> = before
         .iter()
         .filter(|(key, (_, stdout))| stdout != &after[*key].1)
@@ -751,6 +753,62 @@ fn no_depth_reads_a_restricted_blob() {
         })
         .collect();
     assert!(changed.is_empty(), "{changed:#?}");
+
+    let checked = run(fixture.root(), &["check", "--json"], -1);
+    assert_eq!(checked["ok"], false, "{checked}");
+    let checked_views = views(&fixture);
+    let mut reported = BTreeSet::new();
+    for (key, (value, stdout)) in &after {
+        let (later, later_stdout) = &checked_views[key];
+        assert!(!later_stdout.contains(PROBE), "{key:?} returned blob bytes");
+        if stdout == later_stdout {
+            continue;
+        }
+        assert_eq!(key.0, fixture.secret_case, "{key:?} changed");
+        let mut paths = Vec::new();
+        differences("", value, later, &mut paths);
+        assert!(
+            paths.iter().all(|path| INTEGRITY_VERDICT
+                .iter()
+                .any(|field| path.starts_with(field))),
+            "{key:?} {paths:?}"
+        );
+        assert_eq!(later["content_state"], "restricted", "{key:?}");
+        reported.insert(key.1.clone());
+    }
+    assert!(
+        reported.contains(&fixture.secret_raw) && reported.contains(&fixture.secret_text),
+        "{reported:?}"
+    );
+}
+
+/// A non-restricted blob overwritten in place, with its size and
+/// modification time kept, is caught by the next `show`: the read that
+/// follows a change of the file hashes it again.
+#[test]
+fn an_overwrite_in_place_is_caught_by_the_next_show() {
+    let fixture = build();
+    let hex = fixture
+        .digest
+        .as_str()
+        .unwrap()
+        .trim_start_matches("sha256:")
+        .to_owned();
+    let (first, _) = fixture.show(&fixture.case, &fixture.text, "title");
+    assert_eq!(first["freshness"]["state"], "current", "{first}");
+    let (second, _) = fixture.show(&fixture.case, &fixture.text, "title");
+    assert_eq!(first, second);
+    let blob = blob_files(&fixture.root().join("state/blobs/sha256"))
+        .into_iter()
+        .find(|blob| blob.ends_with(&hex))
+        .unwrap();
+    overwrite_in_place(&blob);
+    let (third, stdout) = fixture.show(&fixture.case, &fixture.text, "title");
+    assert!(!stdout.contains(PROBE));
+    assert_eq!(
+        third["freshness"]["state"], "evidence_unavailable",
+        "{third}"
+    );
 }
 
 /// View fields that report whether retained bytes verify.
@@ -777,6 +835,41 @@ fn probe(fixture: &Fixture, select: impl Fn(&str) -> bool) -> Views {
         fs::write(blob, format!("{PROBE}\n")).unwrap();
     }
     views(fixture)
+}
+
+/// Overwrite the retained blobs `select` picks with bytes of the same
+/// length, then read every view again.
+fn probe_keeping_size(fixture: &Fixture, select: impl Fn(&str) -> bool) -> Views {
+    let blobs: Vec<PathBuf> = blob_files(&fixture.root().join("state/blobs/sha256"))
+        .into_iter()
+        .filter(|blob| select(blob.to_str().unwrap()))
+        .collect();
+    assert!(!blobs.is_empty());
+    for blob in &blobs {
+        let length = fs::metadata(blob).unwrap().len() as usize;
+        let forged: Vec<u8> = PROBE.bytes().cycle().take(length).collect();
+        fs::remove_file(blob).unwrap();
+        fs::write(blob, forged).unwrap();
+    }
+    views(fixture)
+}
+
+/// Change the first bytes of a blob in place, keeping its inode, size and
+/// modification time.
+fn overwrite_in_place(blob: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = fs::metadata(blob).unwrap();
+    let modified = metadata.modified().unwrap();
+    let mut permissions = metadata.permissions();
+    let mode = permissions.mode();
+    permissions.set_mode(0o600);
+    fs::set_permissions(blob, permissions.clone()).unwrap();
+    let mut file = fs::OpenOptions::new().write(true).open(blob).unwrap();
+    file.write_all(&PROBE.as_bytes()[..4]).unwrap();
+    file.set_modified(modified).unwrap();
+    drop(file);
+    permissions.set_mode(mode);
+    fs::set_permissions(blob, permissions).unwrap();
 }
 
 /// Where a shallower view is not contained in a deeper one: every field of

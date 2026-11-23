@@ -277,10 +277,18 @@ pub(crate) fn delta(
             .map(|status| status["state"].clone())
             .unwrap_or(Value::Null);
         let then = match (before.state.current(id), &index_before) {
-            (Some(old), Some(index)) => views::effective_state(store, before, index, old)
-                .status
-                .map(|status| status["state"].clone())
-                .unwrap_or(Value::Null),
+            // Disclosure is today's: never open bytes restricted since.
+            (Some(old), Some(index)) => views::effective_state_disclosed_by(
+                store,
+                before,
+                index,
+                old,
+                None,
+                today.unwrap_or(&replay.state),
+            )
+            .status
+            .map(|status| status["state"].clone())
+            .unwrap_or(Value::Null),
             _ => Value::Null,
         };
         if then != now {

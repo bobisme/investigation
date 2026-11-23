@@ -520,7 +520,12 @@ impl<F: DurableFs> Store<F> {
             ));
         }
         for blob in blobs {
-            publish_blob(&mut self.fs, &self.gate, Path::new(BLOBS), blob).map_err(blob_failure)?;
+            let (target, linked) = publish_blob(&mut self.fs, &self.gate, Path::new(BLOBS), blob)
+                .map_err(blob_failure)?;
+            // The linked file holds the bytes staging hashed as it wrote them.
+            if linked && let Ok(identity) = self.fs.identity(&target) {
+                self.record_verdict(&blob.digest, blob.size, &identity, true);
+            }
         }
 
         let directory = case_directory(event.accepted.case_id);

@@ -287,6 +287,13 @@ pub const LIMITS: &[Limit] = &[
         NO_REFUSAL,
     ),
     limit(
+        "cache.entry_bytes",
+        crate::durable::MAX_CACHE_ENTRY,
+        Bytes,
+        "One disposable entry under cache/, such as a recorded blob verdict. A larger entry is ignored and the blob is hashed again.",
+        NO_REFUSAL,
+    ),
+    limit(
         "method_pack.bytes",
         method_pack::MAX_PACK_BYTES as u64,
         Bytes,

@@ -33,14 +33,19 @@ fn artifact_of(state: &State, reference: RevisionRef) -> Option<RevisionRef> {
 
 /// Current revisions of the originals a lineage reaches that are no longer
 /// retained or fail verification.
-fn lost_origins(store: &Store, state: &State, lineage: &Lineage) -> Vec<RevisionRef> {
+fn lost_origins(
+    store: &Store,
+    state: &State,
+    classification: &State,
+    lineage: &Lineage,
+) -> Vec<RevisionRef> {
     let current: Vec<RevisionRef> = lineage
         .origins
         .iter()
         .filter_map(|origin| state.current(origin.artifact_ref.id))
         .map(Record::reference)
         .collect();
-    store.unavailable_artifacts(state, &current)
+    store.unavailable_artifacts(state, classification, &current)
 }
 
 fn bounded(items: Vec<Value>) -> (Vec<Value>, usize) {
@@ -49,10 +54,17 @@ fn bounded(items: Vec<Value>) -> (Vec<Value>, usize) {
 }
 
 /// Lineage of an Artifact, or of the Artifact an Observation cites.
-pub fn lineage_view(store: &Store, state: &State, record: &Record) -> Option<Value> {
+/// `classification` governs disclosure: the current head, also when `state`
+/// is an earlier snapshot.
+pub fn lineage_view(
+    store: &Store,
+    state: &State,
+    classification: &State,
+    record: &Record,
+) -> Option<Value> {
     let artifact = artifact_of(state, record.reference())?;
     let lineage = derivation::lineage(state, artifact)?;
-    let lost = lost_origins(store, state, &lineage);
+    let lost = lost_origins(store, state, classification, &lineage);
     let (steps, omitted_steps) = bounded(lineage.steps.iter().map(|step| json!(step)).collect());
     let (sharing, omitted_sharing) = bounded(
         derivation::sharing_origin(state, &lineage)

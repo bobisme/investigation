@@ -99,12 +99,15 @@ pub fn verify_existing(
 /// checked a blob that was there before the lock was taken; one that appeared
 /// since was published by another writer from bytes it hashed as it staged
 /// them.
+///
+/// Returns the blob's path and whether this call linked it there: only then
+/// is the published file the one whose bytes `staged` hashed.
 pub fn publish_blob(
     fs: &mut impl DurableFs,
     gate: &WriteGate,
     base: &Path,
     staged: &StagedBlob,
-) -> Result<PathBuf, BlobError> {
+) -> Result<(PathBuf, bool), BlobError> {
     gate.check()?;
     let target = target(base, staged)?;
     let shard = base.join(&staged.digest[..2]);
@@ -114,16 +117,17 @@ pub fn publish_blob(
         Err(e) => return Err(e.into()),
     }
     sync_directory(fs, base, gate)?;
-    match publish(fs, &staged.temp, &target, gate) {
-        Ok(()) => {}
+    let linked = match publish(fs, &staged.temp, &target, gate) {
+        Ok(()) => true,
         Err(DurableError::Io(e)) if e.kind() == io::ErrorKind::AlreadyExists => {
             sync_directory(fs, &shard, gate)?;
+            false
         }
         Err(e) => return Err(e.into()),
-    }
+    };
     // An orphan temp is safe if cleanup fails; it is never a writable producer link.
     let _ = fs.remove(&staged.temp);
-    Ok(target)
+    Ok((target, linked))
 }
 fn verify(mut input: impl Read, digest: &str, size: u64) -> Result<(), BlobError> {
     let mut hash = Sha256::new();
@@ -167,10 +171,14 @@ mod tests {
         let gate = WriteGate::isolated();
         let base = Path::new("state/blobs/sha256");
         let first = stage(&mut fs, &gate, Path::new("state/tmp/a"), &b"hello"[..]).unwrap();
-        let target = publish_blob(&mut fs, &gate, base, &first).unwrap();
+        let (target, linked) = publish_blob(&mut fs, &gate, base, &first).unwrap();
+        assert!(linked);
         let second = stage(&mut fs, &gate, Path::new("state/tmp/b"), &b"hello"[..]).unwrap();
         assert!(verify_existing(&fs, base, &second).unwrap());
-        assert_eq!(publish_blob(&mut fs, &gate, base, &second).unwrap(), target);
+        assert_eq!(
+            publish_blob(&mut fs, &gate, base, &second).unwrap(),
+            (target.clone(), false)
+        );
         let other = stage(&mut fs, &gate, Path::new("state/tmp/c"), &b"another"[..]).unwrap();
         assert!(!verify_existing(&fs, base, &other).unwrap());
         // A published blob that disagrees with the staged size and digest is refused.

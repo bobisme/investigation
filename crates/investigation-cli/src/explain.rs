@@ -780,7 +780,11 @@ impl Context<'_> {
         let selector = &basis["selector"];
         let available = self
             .store
-            .unavailable_artifacts(self.state(), &[reference])
+            .unavailable_artifacts(
+                self.state(),
+                self.today.unwrap_or(self.state()),
+                &[reference],
+            )
             .is_empty()
             && !self.withdrawn_today(reference);
         json!({
@@ -809,7 +813,11 @@ impl Context<'_> {
         let retained = !reference_only
             && self
                 .store
-                .unavailable_artifacts(self.state(), &[reference])
+                .unavailable_artifacts(
+                    self.state(),
+                    self.today.unwrap_or(self.state()),
+                    &[reference],
+                )
                 .is_empty()
             && !self.withdrawn_today(reference);
         let mut out = json!({

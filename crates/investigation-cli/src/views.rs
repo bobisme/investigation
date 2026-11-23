@@ -103,6 +103,27 @@ pub fn effective_state_as_of(
     record: &Record,
     today: Option<&State>,
 ) -> EffectiveStateInput {
+    effective_state_disclosed_by(
+        store,
+        replay,
+        index,
+        record,
+        today,
+        today.unwrap_or(&replay.state),
+    )
+}
+
+/// [`effective_state_as_of`], with the state whose classification governs
+/// disclosure given apart from `today`: a read path never opens the bytes of
+/// an Artifact that `classification` restricts.
+pub fn effective_state_disclosed_by(
+    store: &Store,
+    replay: &CaseReplay,
+    index: &FreshnessIndex,
+    record: &Record,
+    today: Option<&State>,
+    classification: &State,
+) -> EffectiveStateInput {
     let kind = record.header.id.kind();
     let recorded = record.body["status"]
         .as_str()
@@ -148,7 +169,7 @@ pub fn effective_state_as_of(
         Kind::Artifact => vec![record.reference()],
         _ => Vec::new(),
     };
-    let mut unavailable = store.unavailable_artifacts(&replay.state, &references);
+    let mut unavailable = store.unavailable_artifacts(&replay.state, classification, &references);
     let withdrawn_since: Vec<RevisionRef> = today
         .map(|today| withdrawn_since(&replay.state, today, &references))
         .unwrap_or_default();
@@ -158,7 +179,7 @@ pub fn effective_state_as_of(
         }
     }
     let lineage = matches!(kind, Kind::Artifact | Kind::Observation)
-        .then(|| crate::lineage::lineage_view(store, &replay.state, record))
+        .then(|| crate::lineage::lineage_view(store, &replay.state, classification, record))
         .flatten();
     if !unavailable.is_empty() && state != "superseded" && state != "retracted" {
         state = json!(if reviewed {

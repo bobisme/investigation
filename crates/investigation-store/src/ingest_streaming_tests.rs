@@ -286,6 +286,12 @@ impl DurableFs for Probing {
     fn reclaim_publication_temporaries(&mut self) {
         self.local.reclaim_publication_temporaries();
     }
+    fn read_cache(&self, path: &Path) -> Option<Vec<u8>> {
+        self.local.read_cache(path)
+    }
+    fn write_cache(&self, path: &Path, bytes: &[u8]) {
+        self.local.write_cache(path, bytes);
+    }
 }
 
 /// While a copy, a reference hash and a deduplicated reimport stream, another

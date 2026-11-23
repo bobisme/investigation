@@ -24,6 +24,30 @@ pub struct FileIdentity {
     changed: (i64, i64),
 }
 
+impl FileIdentity {
+    /// The file's size when it was looked at.
+    pub fn size(&self) -> u64 {
+        self.size
+    }
+
+    /// A stable text form, for a disposable cache entry naming this file.
+    pub(crate) fn key(&self) -> String {
+        format!(
+            "{}.{}.{}.{}.{}.{}.{}",
+            self.device,
+            self.inode,
+            self.size,
+            self.modified.0,
+            self.modified.1,
+            self.changed.0,
+            self.changed.1
+        )
+    }
+}
+
+/// Largest disposable cache entry [`DurableFs::read_cache`] returns.
+pub const MAX_CACHE_ENTRY: u64 = 4096;
+
 pub trait DurableFile: Write {
     fn sync_all(&mut self) -> io::Result<()>;
     fn set_readonly(&mut self) -> io::Result<()>;
@@ -47,6 +71,17 @@ pub trait DurableFs {
     fn identity(&self, path: &Path) -> io::Result<FileIdentity>;
     /// Called after journal verification while the workspace commit lock is held.
     fn reclaim_publication_temporaries(&mut self) {}
+    /// A small disposable file under `cache/`, or `None` when it is absent,
+    /// unreadable or larger than [`MAX_CACHE_ENTRY`]. Never canonical: a
+    /// caller treats anything it cannot parse as absent. Filesystems without
+    /// a disposable cache have none.
+    fn read_cache(&self, _path: &Path) -> Option<Vec<u8>> {
+        None
+    }
+    /// Replace a small disposable file under `cache/`, best effort: a
+    /// failure is ignored and nothing is synced. Takes `&self` because a
+    /// cache write is never part of a canonical publication.
+    fn write_cache(&self, _path: &Path, _bytes: &[u8]) {}
 }
 impl DurableFile for File {
     fn sync_all(&mut self) -> io::Result<()> {
@@ -148,6 +183,57 @@ impl DurableFs for LocalFs {
     fn reclaim_publication_temporaries(&mut self) {
         reclaim_publication_temporaries(&self.root.join("state/tmp"), std::time::SystemTime::now());
     }
+    fn read_cache(&self, p: &Path) -> Option<Vec<u8>> {
+        if !p.starts_with("cache") {
+            return None;
+        }
+        let mut bytes = Vec::new();
+        File::open(self.path(p).ok()?)
+            .ok()?
+            .take(MAX_CACHE_ENTRY + 1)
+            .read_to_end(&mut bytes)
+            .ok()?;
+        (bytes.len() as u64 <= MAX_CACHE_ENTRY).then_some(bytes)
+    }
+    fn write_cache(&self, p: &Path, bytes: &[u8]) {
+        let _ = write_cache_entry(self, p, bytes);
+    }
+}
+
+/// Write a disposable cache entry beside its target and rename it over the
+/// target, so a reader sees the old entry or the new one, never a part.
+fn write_cache_entry(fs: &LocalFs, p: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+    use std::sync::atomic::AtomicU64;
+    static SERIAL: AtomicU64 = AtomicU64::new(0);
+    if !p.starts_with("cache") || bytes.len() as u64 > MAX_CACHE_ENTRY {
+        return Err(io::ErrorKind::InvalidInput.into());
+    }
+    let target = fs.path(p)?;
+    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err(io::ErrorKind::InvalidInput.into());
+    };
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(parent)?;
+    let temporary = parent.join(format!(
+        ".{}.{}-{}.tmp",
+        name.to_string_lossy(),
+        std::process::id(),
+        SERIAL.fetch_add(1, Ordering::Relaxed)
+    ));
+    let written = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&temporary)
+        .and_then(|mut file| file.write_all(bytes))
+        .and_then(|()| fs::rename(&temporary, &target));
+    if written.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    written
 }
 
 const PUBLICATION_TEMP_GRACE: Duration = Duration::from_secs(24 * 60 * 60);

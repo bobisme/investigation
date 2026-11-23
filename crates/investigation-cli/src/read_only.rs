@@ -21,7 +21,10 @@ pub(crate) const ENV: &str = "INVESTIGATION_READ_ONLY";
 /// What a command does to the workspace or to files outside it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Effect {
-    /// Never writes and never exports.
+    /// Never writes workspace data and never exports. Like `search`
+    /// refreshing `cache/index.sqlite`, a read may replace disposable files
+    /// under `cache/` (recorded blob verdicts), best effort: they are never
+    /// canonical, and a read that cannot write them hashes again.
     Read,
     /// Writes workspace data, exports files or changes a file the user
     /// names outside the workspace (`integration apply`).

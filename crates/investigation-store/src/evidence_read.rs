@@ -129,28 +129,72 @@ fn retained_blob(state: &State, reference: RevisionRef) -> Option<RetainedBlob> 
 }
 
 impl<F: DurableFs> Store<F> {
-    /// Return exact references whose expected retained bytes cannot be verified.
+    /// For a read path (`show`, `brief`, `explain`, `search` and every other
+    /// view of effective state): the exact references whose expected
+    /// retained bytes are missing or do not match. `classification` is the
+    /// state whose effective classification governs disclosure: the current
+    /// head, also when `state` is an earlier snapshot.
+    ///
+    /// This never reads the bytes of an Artifact whose effective
+    /// classification hides its content from the default audience: such a
+    /// blob is available when a verdict recorded for its current file
+    /// identity says intact or, with none, when the file is present with its
+    /// recorded size. Any other blob is hashed unless a verdict is recorded
+    /// for its current identity (see `blob_verdicts`). Promotion gates and
+    /// `check` do not use this: they hash every blob they need.
     pub fn unavailable_artifacts(
         &self,
         state: &State,
+        classification: &State,
         references: &[RevisionRef],
     ) -> Vec<RevisionRef> {
+        let classifier = Classifier::new(classification);
+        let policy = AudiencePolicy::default();
         references
             .iter()
             .copied()
             .filter(|reference| {
-                reference.id.kind() == Kind::Artifact
-                    && retained_blob(state, *reference).is_none_or(|blob| !self.hash(&blob).intact)
+                if reference.id.kind() != Kind::Artifact {
+                    return false;
+                }
+                let Some(blob) = retained_blob(state, *reference) else {
+                    return true;
+                };
+                let restricted = state
+                    .revision(*reference)
+                    .is_none_or(|artifact| !classifier.may_show(artifact, Field::Content, &policy));
+                !self.read_intact(&blob, restricted)
             })
             .collect()
     }
 
-    /// Read the whole blob. Never call this under the commit lock on a path
-    /// that can defer instead.
+    /// Whether a read path may call the blob intact. A `restricted` blob is
+    /// never opened.
+    fn read_intact(&self, blob: &RetainedBlob, restricted: bool) -> bool {
+        let Ok(current) = self.fs.identity(&blob.path) else {
+            return false;
+        };
+        if let Some(intact) = self.cached_verdict(&blob.hex, blob.size, &current) {
+            return intact;
+        }
+        if restricted {
+            return current.size() == blob.size;
+        }
+        self.hash(blob).intact
+    }
+
+    /// Read the whole blob and record the verdict. Never call this under the
+    /// commit lock on a path that can defer instead.
     fn hash(&self, blob: &RetainedBlob) -> Hashed {
         let identity = self.fs.identity(&blob.path).ok();
-        let intact = identity.is_some()
-            && crate::blob::verify_blob(&self.fs, &blob.path, &blob.hex, blob.size).is_ok();
+        let verified =
+            identity.map(|_| crate::blob::verify_blob(&self.fs, &blob.path, &blob.hex, blob.size));
+        let intact = matches!(verified, Some(Ok(())));
+        if let (Some(before), Some(Ok(()) | Err(crate::blob::BlobError::DigestMismatch))) =
+            (&identity, &verified)
+        {
+            self.record_verdict(&blob.hex, blob.size, before, intact);
+        }
         Hashed { identity, intact }
     }
 
@@ -464,6 +508,7 @@ impl<F: DurableFs> Store<F> {
             .strip_prefix("sha256:")
             .ok_or_else(|| integrity("Unsupported artifact digest."))?;
         let path = Path::new(BLOBS).join(&hex[..2]).join(hex);
+        let before = self.fs.identity(&path).ok();
         let mut bytes = Vec::new();
         self.fs
             .read(&path)
@@ -471,7 +516,11 @@ impl<F: DurableFs> Store<F> {
             .map_err(|_| {
                 integrity("The retained blob could not be opened.").with_argv(read_argv("check"))
             })?;
-        if bytes.len() as u64 != size || hash_bytes(&bytes) != *digest {
+        let intact = bytes.len() as u64 == size && hash_bytes(&bytes) == *digest;
+        if let Some(before) = &before {
+            self.record_verdict(hex, size, before, intact);
+        }
+        if !intact {
             return Err(integrity(
                 "The retained blob does not match its recorded size and digest.",
             )
@@ -529,6 +578,13 @@ fn selection_failure(error: SelectorError) -> Failure {
     failure
 }
 
+#[path = "blob_verdicts.rs"]
+mod blob_verdicts;
+
 #[cfg(test)]
 #[path = "evidence_read_lock_tests.rs"]
 mod lock_tests;
+
+#[cfg(test)]
+#[path = "read_path_hash_tests.rs"]
+mod read_path_hash_tests;
