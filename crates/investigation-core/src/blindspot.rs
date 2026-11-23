@@ -35,6 +35,7 @@ mod causal;
 mod evaluative;
 mod lessons;
 mod seed;
+mod sources;
 #[cfg(test)]
 mod tests;
 
@@ -71,6 +72,7 @@ const FAMILIES: &[&[CheckSpec]] = &[
     evaluative::CHECKS,
     causal::CHECKS,
     lessons::CHECKS,
+    sources::CHECKS,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

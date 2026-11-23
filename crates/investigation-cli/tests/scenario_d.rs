@@ -1189,6 +1189,8 @@ fn walk(variant: &str) -> (Walk, Outcome) {
             "reason": outcomes[1], "evidence_refs": [validated]})
     };
     w.one("question.resolve", resolution);
+    let blindspots =
+        blindspots_reported(&w, &prior, &restated, &bench, &absence, &claim, &validated);
 
     // No inquiry plan and no executable experiment: only search Runs.
     assert!(
@@ -1228,6 +1230,7 @@ fn walk(variant: &str) -> (Walk, Outcome) {
         "prior": {"freshness": w.show(&prior, "full")["freshness"]["effective"], "revision": 1},
         "searches": registries.iter().filter(|r| r.as_str() != "Public forum crawl").map(|r| &recorded[r]).collect::<Vec<_>>(),
         "absence_gate": absence_codes,
+        "blindspots": blindspots,
         "conclusion": {
             "statement": shown["record"]["body"]["statement"], "status": shown["record"]["body"]["status"],
             "caveats": shown["recorded_caveats"], "concerns": concerns,
@@ -1236,6 +1239,113 @@ fn walk(variant: &str) -> (Walk, Outcome) {
         "trusted": after,
     });
     (w, outcome)
+}
+
+/// The structural audit finds the duplicate-origin trap and the empty-search
+/// absence from typed fields alone. Returns each reported check with its
+/// finding count, which the injected variant must share with the baseline.
+fn blindspots_reported(
+    w: &Walk,
+    prior: &Value,
+    restated: &[Value],
+    bench: &Value,
+    absence: &Value,
+    claim: &Value,
+    validated: &Value,
+) -> Value {
+    let audit = w.cli(&["blindspots"], 0);
+    assert_eq!(audit["outcome"], "gaps_identified_in_recorded_structure");
+    let checks = audit["checks"].as_array().unwrap();
+    let found = |check: &str| -> Vec<&Value> {
+        checks
+            .iter()
+            .filter(|finding| finding["check_id"] == check)
+            .collect()
+    };
+    let subjects = |check: &str| -> BTreeSet<String> {
+        found(check)
+            .iter()
+            .flat_map(|finding| finding["subject_refs"].as_array().unwrap())
+            .map(|reference| text(&reference["id"]).to_owned())
+            .collect()
+    };
+    let fact_refs = |finding: &Value, name: &str| -> BTreeSet<String> {
+        finding["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|fact| fact["fact"] == name)
+            .flat_map(|fact| fact["refs"].as_array().unwrap())
+            .map(|reference| text(&reference["id"]).to_owned())
+            .collect()
+    };
+    let id = |value: &Value| text(&value["id"]).to_owned();
+
+    // Three citations of one origin: the prior judgment, and nothing else.
+    let shared = found("origin.shared_origin_citations");
+    assert_eq!(shared.len(), 1, "{audit:#}");
+    assert_eq!(shared[0]["subject_refs"][0]["id"], prior["id"]);
+    let one_root = fact_refs(shared[0], "shared_origin:one_known_root");
+    for observation in restated {
+        assert!(one_root.contains(&id(observation)), "{audit:#}");
+    }
+    let facts: Vec<&str> = shared[0]["facts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|fact| text(&fact["fact"]))
+        .collect();
+    assert!(facts.contains(&"acquisitions_of_one_origin:3"), "{facts:?}");
+    assert!(facts.contains(&"independent_pairs:0"), "{facts:?}");
+    // The bench test is a separate origin: no shared-origin finding names it,
+    // although it shares a document with a restatement.
+    assert!(
+        !shared[0].to_string().contains(text(&bench["id"])),
+        "{audit:#}"
+    );
+
+    // The empty registry searches are recorded, so the absence has a search
+    // log; it is still reported, because it names no expected signal.
+    assert!(
+        subjects("source.absence_without_search_log").is_empty(),
+        "{audit:#}"
+    );
+    let incomplete = found("source.absence_basis_incomplete");
+    let reported = subjects("source.absence_basis_incomplete");
+    assert!(reported.contains(&id(absence)), "{audit:#}");
+    assert!(reported.contains(&id(claim)), "{audit:#}");
+    for finding in incomplete {
+        assert!(
+            finding["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|fact| fact["fact"] == "absence_gate:absence.expected_signal_missing"),
+            "{finding:#}"
+        );
+    }
+
+    // The erratum invalidates the prior judgment in the baseline only; the
+    // conclusion read it with the withdrawal in effect and is not reported.
+    let invalidated = subjects("source.invalidated_basis_unreviewed");
+    assert_eq!(invalidated.contains(&id(prior)), !w.twin(), "{audit:#}");
+    assert!(!invalidated.contains(&id(validated)), "{audit:#}");
+    // A second actor's fresh-context review is not self-review only.
+    for check in [
+        "review.promoted_self_review_only",
+        "review.promoted_single_dependence_group",
+        "review.source_invalidated",
+    ] {
+        assert!(subjects(check).is_empty(), "{check}: {audit:#}");
+    }
+
+    let mut counts = BTreeMap::<String, usize>::new();
+    for finding in checks {
+        *counts
+            .entry(text(&finding["check_id"]).to_owned())
+            .or_default() += 1;
+    }
+    json!(counts)
 }
 
 fn summary_counts(w: &Walk, assessment: &Value) -> Value {
