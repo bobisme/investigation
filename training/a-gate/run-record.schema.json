@@ -52,6 +52,13 @@
         "note_write_bytes": {"type": "integer", "minimum": 0},
         "preparation_calls": {"type": "integer", "minimum": 0},
         "first_receipt_call": {"type": ["integer", "null"], "minimum": 1},
+        "first_onboard_call": {"type": ["integer", "null"], "minimum": 1},
+        "first_note_call": {"type": ["integer", "null"], "minimum": 1},
+        "calls_from_onboard_to_receipt": {"type": ["integer", "null"], "minimum": 0},
+        "discovery_calls": {"type": "integer", "minimum": 0},
+        "onboard_calls": {"type": "integer", "minimum": 0},
+        "tool_output_bytes": {"type": "integer", "minimum": 0},
+        "truncated_tool_calls": {"type": "integer", "minimum": 0},
         "transcript": {"type": "string"}
       }
     }

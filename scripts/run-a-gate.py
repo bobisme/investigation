@@ -25,6 +25,7 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "fixtures"
 FIXTURE = runpy.run_path(str(ROOT / "scripts/check-fixture-families.py"))
+COST = runpy.run_path(str(ROOT / "scripts/a-gate-cost.py"))
 ENDPOINT = "http://127.0.0.1:11434"
 TOOLS = [{"type": "function", "function": {
     "name": "shell",
@@ -109,7 +110,7 @@ def schedule(families, models, seed):
     return blocks
 
 
-def shell(command, work, binary, timeout):
+def shell(command, work, binary, timeout, trace=None):
     argv = ["bwrap", "--unshare-all", "--hostname", "a-gate", "--die-with-parent", "--new-session",
             "--ro-bind", "/usr", "/usr", "--symlink", "usr/bin", "/bin",
             "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib64", "/lib64",
@@ -124,6 +125,9 @@ def shell(command, work, binary, timeout):
     if binary is not None:
         argv += ["--ro-bind", str(binary), "/tools/investigation"]
     argv += ["prlimit", "--fsize=2097152", "--nofile=128", "--", "bash", "--noprofile", "--norc", "-c", command]
+    if trace is not None:
+        argv = ["prlimit", "--fsize=8388608", "--", "strace", "-f", "-qq", "-yy", "-s", "128",
+                "--kill-on-exit", "-e", "trace=" + COST["SYSCALLS"], "-o", str(trace), *argv]
     with tempfile.TemporaryFile() as output:
         try:
             child = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=output, stderr=output,
@@ -146,23 +150,6 @@ def materialize_update(variant, work):
 def checkpoint_marker(work, name):
     marker = work / name
     return marker.is_file() and not marker.is_symlink() and marker.stat().st_size == 0
-
-
-def classify_costs(counters, command, result):
-    size = len(result["output"].encode())
-    if "investigation" in command and re.search(r"\b(schema|onboard)\b|--help|(?:^|\s)-h(?:\s|$)", command):
-        counters["discovery_bytes"] += size
-    if "source.txt" in command or "update.txt" in command or "evidence read" in command:
-        counters["evidence_bytes"] += size
-    if "NOTES.md" in command and re.search(r"\b(cat|sed|head|tail|awk|rg|grep)\b", command.split(">")[0]):
-        counters["note_read_bytes"] += size
-    if "NOTES.md" in command and re.search(r">+\s*(?:\./)?NOTES\.md", command):
-        counters["note_write_calls"] += 1
-    if re.search(r">+\s*[^;&\n]*\.(json|jsonl)(?:[\s;&]|$)", command):
-        counters["preparation_calls"] += 1
-    if not counters["first_receipt_call"] and any(
-            word in result["output"] for word in ('"committed"', '"already_committed"')):
-        counters["first_receipt_call"] = counters["tool_calls"]
 
 
 def answer_fields(text):
@@ -191,11 +178,15 @@ def session(model, phase, variant, work, binary, transcript_path, budget, seed, 
                 {"role": "user", "content": f'Objective\n{variant["objective"]}\n\n{prompt}'}]
     counters = Counter({key: 0 for key in (
         "input_tokens", "output_tokens", "tool_calls", "discovery_bytes", "evidence_bytes",
-        "note_read_bytes", "note_write_bytes", "preparation_calls", "first_receipt_call",
+        "note_read_bytes", "note_write_bytes", "preparation_calls", "first_receipt_call", "first_onboard_call",
+        "first_note_call", "discovery_calls", "onboard_calls", "tool_output_bytes", "truncated_tool_calls",
     )})
     run_id = str(uuid.uuid4())
     done = None
     answer_text = None
+    trace_directory = transcript_path.with_suffix(".trace")
+    trace_directory.mkdir()
+    journal = COST["journal_events"](work)
     with transcript_path.open("x", encoding="utf-8") as log:
         def record(event, **fields):
             log.write(json.dumps({"event": event, **fields}, ensure_ascii=False) + "\n")
@@ -264,16 +255,28 @@ def session(model, phase, variant, work, binary, transcript_path, budget, seed, 
                                      "content": "Shell call budget reached. Submit your answer."})
                     continue
                 command = arguments.get("command") if isinstance(arguments, dict) else None
+                counters["tool_calls"] += 1
+                call_number = counters["tool_calls"]
+                trace = trace_directory / f"{call_number:04}.log"
                 if function["name"] != "shell" or not isinstance(command, str) or len(command) > SHELL_BYTES:
                     result = {"exit": 2, "output": "Expected one shell command string.", "bytes": 0}
+                    accounting = {}
                 else:
-                    result = shell(command, work, binary, min(12, max(0.01, remaining())))
-                counters["tool_calls"] += 1
-                if isinstance(command, str):
-                    classify_costs(counters, command, result)
-                counters["note_write_bytes"] = sum(path.stat().st_size for path in work.glob("*.md")
-                                                   if path.is_file() and not path.is_symlink())
-                record("shell", command=command, **result)
+                    result = shell(command, work, binary, min(12, max(0.01, remaining())), trace)
+                    with trace.open(encoding="utf-8", errors="replace") as raw:
+                        accounting = COST["trace_cost"](raw, work)
+                counters.update(accounting)
+                counters["tool_output_bytes"] += result["bytes"]
+                counters["truncated_tool_calls"] += int(result.get("truncated", False))
+                if accounting.get("onboard_calls") and not counters["first_onboard_call"]:
+                    counters["first_onboard_call"] = call_number
+                if accounting.get("note_write_bytes") and not counters["first_note_call"]:
+                    counters["first_note_call"] = call_number
+                current_events = COST["journal_events"](work)
+                if current_events - journal and not counters["first_receipt_call"]:
+                    counters["first_receipt_call"] = call_number
+                journal = current_events
+                record("shell", command=command, accounting=accounting, trace=trace.name if trace.exists() else None, **result)
                 messages.append({"role": "tool", "tool_name": "shell", "content": json.dumps(result)})
                 if phase == "investigator":
                     if injected_turn is None and checkpoint_marker(work, "review.ready") and has_review_material(work):
@@ -295,7 +298,12 @@ def session(model, phase, variant, work, binary, transcript_path, budget, seed, 
                     break
         elapsed_ms = round((time.monotonic() - started) * 1000)
         record("finished", status=done, elapsed_ms=elapsed_ms, counters=dict(counters))
-    counters["first_receipt_call"] = counters["first_receipt_call"] or None
+    for field in ("first_receipt_call", "first_onboard_call", "first_note_call"):
+        counters[field] = counters[field] or None
+    first_onboard, first_receipt = counters["first_onboard_call"], counters["first_receipt_call"]
+    counters["calls_from_onboard_to_receipt"] = (
+        first_receipt - first_onboard if first_onboard and first_receipt and first_receipt >= first_onboard else None
+    )
     return dict(counters, session_id=run_id, status=done, elapsed_ms=elapsed_ms,
                 transcript=transcript_path.name), answer_fields(answer_text or "")
 
@@ -418,6 +426,7 @@ def main():
         "host": {"kernel": platform.release(), "machine": platform.machine()},
         "tools": {"ollama": request("/api/version")["version"], "python": platform.python_version(),
                   "bubblewrap": subprocess.check_output(["bwrap", "--version"], text=True).strip(),
+                  "strace": subprocess.check_output(["strace", "--version"], text=True).splitlines()[0],
                   "bash": subprocess.check_output(["bash", "--version"], text=True).splitlines()[0]},
     }
     blocks = schedule(families, args.model, args.seed)
