@@ -9,7 +9,8 @@ use investigation_core::{command::RevisionRef, identity::Id, wire::Digest};
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::Serialize;
 
-use super::Product;
+use super::{Product, dependent_rule};
+use crate::Audience;
 
 /// Schema version of [`ExportManifest`].
 pub const MANIFEST_SCHEMA: &str = "inv.export-manifest.v1";
@@ -74,8 +75,11 @@ pub struct ManifestSnapshot {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ManifestPolicy {
-    /// `inv.export-policy.v1`: positive inclusion by effective
-    /// classification at the pinned and the current revision.
+    /// The audience policy version: `inv.export-policy.v2` is positive
+    /// inclusion by effective classification at the pinned and the current
+    /// revision, plus fixed caveats (internal, restricted) or withholding
+    /// (public) for records that rest on or are challenged by withheld
+    /// material.
     pub version: String,
     /// `public`, `internal` or `restricted`.
     pub audience: String,
@@ -140,7 +144,7 @@ pub struct Statements {
 }
 
 impl Statements {
-    pub fn fixed(completeness: Completeness) -> Self {
+    pub fn fixed(completeness: Completeness, audience: Audience) -> Self {
         Self {
             rendering: "Rendered deterministically from the exact verified snapshot named here, with no model call. The same snapshot, kind, renderer and policy give the same bytes.".to_owned(),
             evidence: "This export is a view of the case record. It does not replace the primary evidence it cites; negative and inconclusive results are kept, and superseded records are marked, not rewritten.".to_owned(),
@@ -149,7 +153,10 @@ impl Statements {
                 Completeness::Incomplete => "Incomplete: the audience policy withheld material from this export. What was withheld is not named here.",
             }
             .to_owned(),
-            disclosure: "Disclosure follows the audience policy and classifications in force when the export was made, also for an earlier snapshot.".to_owned(),
+            disclosure: format!(
+                "Disclosure follows the audience policy and classifications in force when the export was made, also for an earlier snapshot. {}",
+                dependent_rule(audience)
+            ),
             identifiers: "Record IDs are UUIDv7 values and embed their creation time to the millisecond.".to_owned(),
             distribution: "Written to a local directory only. Publishing, sending or uploading it is a separate action.".to_owned(),
         }

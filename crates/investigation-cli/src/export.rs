@@ -4,7 +4,8 @@
 //! The pipeline lives in `investigation_render::export`; this module selects
 //! the case and the destination and reports the result. The response is the
 //! publisher's receipt: unlike the export's own manifest it names the exact
-//! records the audience policy withheld and the case's current head.
+//! records the audience policy withheld, the records it shows with caveats,
+//! and the case's current head.
 
 use std::{
     env,
@@ -78,10 +79,12 @@ Writes one case, as recorded at one verified snapshot, into a new or empty
 directory, and export-manifest.json last. The same snapshot, kind and audience
 always give the same bytes. Nothing is overwritten, sent or uploaded, and no
 model is called. Records classified above --audience are left out and the
-export is marked incomplete; the exact records left out are listed only in
-this command's output, never in the export. --require-complete refuses
-instead. --snapshot pins an earlier verified head; disclosure still follows
-today's classifications.
+export is marked incomplete. A record that rests on, or is challenged by, a
+left-out record carries a fixed caveat for the internal and restricted
+audiences and is left out for public. The exact records left out or caveated
+are listed only in this command's output, never in the export.
+--require-complete refuses instead. --snapshot pins an earlier verified head;
+disclosure still follows today's classifications.
 
 Kinds:
 ",
@@ -235,6 +238,13 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             audience.as_str()
         );
     }
+    if !plan.caveated().is_empty() {
+        let _ = write!(
+            text,
+            "\ncaveated {} shown record(s) that rest on or are challenged by withheld material",
+            plan.caveated().len()
+        );
+    }
     let _ = write!(
         text,
         "\nNext: read {shown}/{MANIFEST_FILE}, then share the directory yourself.\nRead the case at this snapshot: {}",
@@ -243,13 +253,17 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     Ok(Output::success("exported", value, text))
 }
 
-/// The publisher-only list of withheld records.
+/// The publisher-only list of withheld and caveated records.
 fn exclusions_json(plan: &ExportPlan) -> Value {
     let exclusions = plan.exclusions();
+    let caveated = plan.caveated();
     json!({
-        "note": "For the publisher only: these records were withheld by the audience policy and are not named in the export.",
+        "note": "For the publisher only: these records were withheld by the audience policy and are not named in the export; the caveated records are shown with the policy's fixed caveats.",
+        "policy": export::POLICY_VERSION,
         "exclusion_count": exclusions.len(),
         "exclusions": exclusions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
+        "caveated_count": caveated.len(),
+        "caveated": caveated.iter().take(MAX_LISTED).collect::<Vec<_>>(),
         "lists_capped_at": MAX_LISTED,
     })
 }

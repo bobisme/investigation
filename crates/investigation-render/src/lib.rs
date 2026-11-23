@@ -182,9 +182,12 @@
 //!   tracked or cached. [`PublishMode::Full`] restamps every note instead.
 //! - Exports ([`export`]): `export --kind KIND` pins one case to a verified
 //!   head, plans a registered kind's files with the same pure planning and
-//!   audience classification (strict, without placeholders), and writes them
-//!   with an `inv.export-manifest.v1` manifest into a fresh destination,
-//!   never over anything. Kinds plug in through [`export::KINDS`].
+//!   audience classification (strict, without placeholders, and a record
+//!   bearing on withheld material caveated or withheld by audience), and
+//!   writes them with an `inv.export-manifest.v1` manifest into a fresh
+//!   destination, never over anything. Kinds plug in through
+//!   [`export::KINDS`] and ask [`export::ExportInput::includes`] and
+//!   [`export::ExportInput::caveats`] on every channel.
 //!
 //! Rendering works with any viewer application absent or closed. The
 //! filesystem is the only interface.

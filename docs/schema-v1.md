@@ -318,11 +318,21 @@ Without `--format json`, `brief` prints a text form of the same bounded view, so
 
 - `export_id` (`exp_` and a SHA-256 hash of everything the manifest attests, so identical exports share it), `kind`, `product` (`report`, `review`, `archive` or `bundle`) and `resumable` (true only for a workspace archive).
 - `versions`: the export framework (`inv.export.v1`), the kind's renderer, the manifest schema and the freshness rules that computed effective states.
-- `snapshot` (case ID, sequence, head hash) and `policy` (`inv.export-policy.v1`, the audience, `placeholders: false`).
+- `snapshot` (case ID, sequence, head hash) and `policy` (`inv.export-policy.v2`, the audience, `placeholders: false`).
 - `completeness`: `incomplete` whenever the audience policy withheld any record of the case. The manifest never names what was withheld; the command's own response lists the exact records for the publisher.
 - `sources` (the recorded digest of each included Artifact), `supersession` links between included records, every other `files` entry with its SHA-256 hash and size, and fixed `statements` about determinism, evidence, completeness, disclosure, UUIDv7 creation times and local-only distribution.
 
 The manifest holds no time, local path or workspace identity, so the same snapshot, kind, renderer and policy give byte-identical files and manifest. A record is included only when its effective classification permits the audience both at the pinned snapshot and today. `--require-complete` refuses an export that would be incomplete and writes nothing.
+
+Filtering never makes a record read stronger. Effective states, and the material that bears on each record, are computed on the full pinned snapshot before anything is withheld. That material is the record's challenges (open objections naming it, and reviews and assessments of it) and, for a Conclusion, Decision, Assessment or Comparison, the dependency closure a reviewer must read plus the open objections to anything in it. When some of that material is withheld, the policy decides by audience:
+
+| Audience | Gets | A record that bears on withheld material |
+|---|---|---|
+| `restricted` | every record | cannot occur |
+| `internal` | records at `internal` or below | is shown with a fixed caveat: `Material that challenges or reviews this record is withheld…` or `Part of what this record rests on is withheld…` |
+| `public` | records at `public` | is withheld too, and so is anything resting on or challenged by it, until nothing shown depends on what is not shown |
+
+A caveat names no ID, title, kind, count, level or digest of the withheld material. A statement whose dependency closure cannot be walked is withheld whenever anything is withheld. The manifest's `disclosure` statement states the rule for its audience. The command's `publisher_receipt` lists each withheld record with its reason (`audience`, `audience_today`, `challenge_withheld`, `basis_withheld`, `basis_unverifiable`) and each caveated record with its caveats; neither list is written into the export.
 
 ## Dry runs
 

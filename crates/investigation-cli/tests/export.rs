@@ -16,7 +16,11 @@ use std::{
     process::{Command, Stdio},
 };
 
-use investigation_core::{identity::Id, wire::CommitResult};
+use investigation_core::{
+    identity::{Id, Kind},
+    review_ops,
+    wire::CommitResult,
+};
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
 
@@ -567,4 +571,215 @@ fn the_manifest_matches_its_published_schema() {
                 .contains("UUIDv7")
         );
     }
+}
+
+/// The first Conclusion or Decision of `case` that rests on another record,
+/// and the record of its dependency closure to raise: an Observation when
+/// there is one.
+fn statement_and_basis(workspace: &Path, case: Id) -> Option<(Id, Id)> {
+    let mut store = Store::open(Workspace::open(workspace).unwrap());
+    let replay = store.case(case).unwrap();
+    let state = &replay.state;
+    state
+        .records()
+        .filter(|record| matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision))
+        .find_map(|record| {
+            let reads = review_ops::required_reads(state, record).ok()?;
+            let members: Vec<Id> = reads
+                .into_iter()
+                .map(|reference| reference.id)
+                .filter(|id| *id != record.header.id && id.kind() != Kind::Case)
+                .collect();
+            let basis = members
+                .iter()
+                .find(|id| id.kind() == Kind::Observation)
+                .or_else(|| members.first())?;
+            Some((record.header.id, *basis))
+        })
+}
+
+fn raise_to_restricted(workspace: &Path, case: Id, id: Id) {
+    let mut store = Store::open(Workspace::open(workspace).unwrap());
+    let revision = store
+        .case(case)
+        .unwrap()
+        .state
+        .current(id)
+        .unwrap()
+        .header
+        .revision
+        .0;
+    let input = json!({
+        "schema_version":"inv.command.v1", "command_id":format!("raise-{id}"),
+        "case_id":case, "actor":"agent:exporter", "preconditions":[],
+        "operations":[{"op":"classification.raise", "payload":{
+            "subject_ref":{"id":id, "revision":revision},
+            "level":"restricted", "reason":"Restricted for the audience test."}}]
+    });
+    let receipt = store.record(&serde_json::to_vec(&input).unwrap()).unwrap();
+    assert_eq!(receipt.result, CommitResult::Committed);
+}
+
+fn listed_ids(receipt: &Value, list: &str) -> Vec<String> {
+    receipt[list]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+/// No file of the export names a withheld record, and every caveated record
+/// is listed with exactly the caveat lines the receipt reports for it.
+fn assert_receipt_matches_export(label: &str, out: &Path, case: &str, value: &Value) {
+    let receipt = &value["publisher_receipt"];
+    assert_eq!(receipt["policy"], "inv.export-policy.v2", "{label}");
+    let excluded = listed_ids(receipt, "exclusions");
+    let count = receipt["exclusion_count"].as_u64().unwrap() as usize;
+    assert!(count >= excluded.len(), "{label}");
+    for (path, bytes) in files(out) {
+        let text = String::from_utf8(bytes).unwrap();
+        for id in excluded.iter().filter(|id| *id != case) {
+            assert!(
+                !text.contains(id.as_str()),
+                "{label}: {path} names withheld {id}"
+            );
+        }
+    }
+    let report = String::from_utf8(fs::read(out.join("case-report.md")).unwrap()).unwrap();
+    let mut caveat_lines = 0;
+    for caveated in receipt["caveated"].as_array().unwrap() {
+        let id = caveated["id"].as_str().unwrap();
+        let mut lines = report.lines().skip_while(|line| !line.contains(id));
+        if lines.next().is_none() {
+            continue; // A kind of record this report does not list.
+        }
+        let shown = lines
+            .take_while(|line| line.trim_start().starts_with("- Caveat: "))
+            .count();
+        assert_eq!(
+            shown,
+            caveated["caveats"].as_array().unwrap().len(),
+            "{label}: {id}"
+        );
+        caveat_lines += shown;
+    }
+    assert_eq!(
+        report.matches("- Caveat: ").count(),
+        caveat_lines,
+        "{label}: only caveated records carry a caveat"
+    );
+    let complete = value["completeness"] == "complete";
+    assert_eq!(complete, count == 0, "{label}");
+    assert_eq!(
+        manifest(out)["completeness"],
+        value["completeness"],
+        "{label}"
+    );
+}
+
+/// The policy per audience over every case of Scenarios A, C and D, after
+/// raising one record a Conclusion or Decision rests on to `restricted`:
+/// `restricted` gets everything with no caveat, `internal` gets the
+/// statement with its basis caveat, and `public` gets no caveat at all.
+#[test]
+fn each_audience_gets_its_policy_over_scenarios_a_c_and_d() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let mut raised_any = 0;
+    for scenario in SCENARIOS {
+        let workspace = fixtures::workspace(scenario, &root.join(scenario), false);
+        for case in cases(&workspace) {
+            let case_id: Id = case.parse().unwrap();
+            let raised = statement_and_basis(&workspace, case_id);
+            if let Some((_, basis)) = raised {
+                raise_to_restricted(&workspace, case_id, basis);
+                raised_any += 1;
+            }
+            for audience in ["restricted", "internal", "public"] {
+                let label = format!("{scenario} {case} {audience}");
+                let out = root.join(format!("{scenario}-{case}-{audience}"));
+                let (exit, value) = export(
+                    root,
+                    &workspace,
+                    &case,
+                    &["--audience", audience, "--out", out.to_str().unwrap()],
+                );
+                assert_eq!(exit, 0, "{label}: {value}");
+                assert_receipt_matches_export(&label, &out, &case, &value);
+                let receipt = &value["publisher_receipt"];
+                let excluded = listed_ids(receipt, "exclusions");
+                let caveated = listed_ids(receipt, "caveated");
+                match audience {
+                    "restricted" => {
+                        assert!(excluded.is_empty(), "{label}: {receipt}");
+                        assert!(caveated.is_empty(), "{label}: {receipt}");
+                    }
+                    "internal" => match raised {
+                        Some((statement, basis)) => {
+                            let reason = receipt["exclusions"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .find(|item| item["id"] == basis.to_string().as_str())
+                                .map(|item| item["reason"].clone());
+                            assert_eq!(reason, Some(json!("audience")), "{label}");
+                            let entry = receipt["caveated"]
+                                .as_array()
+                                .unwrap()
+                                .iter()
+                                .find(|item| item["id"] == statement.to_string().as_str())
+                                .cloned();
+                            assert!(
+                                entry.is_some_and(|entry| entry["caveats"]
+                                    .as_array()
+                                    .unwrap()
+                                    .contains(&json!("basis_withheld"))),
+                                "{label}: {receipt}"
+                            );
+                            let report = fs::read_to_string(out.join("case-report.md")).unwrap();
+                            let shown: Vec<&str> = report
+                                .lines()
+                                .skip_while(|line| !line.contains(&statement.to_string()))
+                                .collect();
+                            assert!(
+                                shown.get(1..).is_some_and(|rest| rest
+                                    .iter()
+                                    .take_while(|line| line.starts_with("  - Caveat: "))
+                                    .any(|line| line.contains("rests on"))),
+                                "{label}: {statement} is listed with its caveat"
+                            );
+                            // Nothing the internal audience may see was
+                            // withheld for any other reason.
+                            assert!(
+                                receipt["exclusions"]
+                                    .as_array()
+                                    .unwrap()
+                                    .iter()
+                                    .all(|item| item["reason"] == "audience"),
+                                "{label}: {receipt}"
+                            );
+                        }
+                        None => {
+                            assert!(excluded.is_empty(), "{label}: {receipt}");
+                            assert!(caveated.is_empty(), "{label}: {receipt}");
+                        }
+                    },
+                    _ => {
+                        // Scenario records are internal or restricted, so the
+                        // public export withholds them all and is told of no
+                        // omission per record.
+                        assert!(caveated.is_empty(), "{label}: {receipt}");
+                        assert!(!excluded.is_empty(), "{label}");
+                        let report = fs::read_to_string(out.join("case-report.md")).unwrap();
+                        assert!(!report.contains("Caveat"), "{label}");
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        raised_any >= 3,
+        "every scenario has a statement with a basis"
+    );
 }

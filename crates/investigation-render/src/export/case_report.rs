@@ -7,7 +7,9 @@
 //! engine and the objection policy on the full pinned snapshot, so a
 //! withheld objection still leaves its subject `disputed`. Negative and
 //! inconclusive results are listed like any other, and a superseded record
-//! names its successor instead of being dropped.
+//! names its successor instead of being dropped. A record that rests on, or
+//! is challenged by, withheld material carries the policy's fixed caveats on
+//! the lines under it.
 //!
 //! This is the minimal skeleton of the §15.4 case report. Methods,
 //! alternatives, contradictions, evidence selectors and retrospective
@@ -22,7 +24,7 @@ use investigation_core::{
     state::Record,
 };
 
-use super::{ExportInput, ExportRenderer};
+use super::{ExportInput, ExportRenderer, dependent_rule};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::prose,
@@ -32,7 +34,9 @@ use crate::{
 };
 
 /// Output format of this kind.
-pub const VERSION: &str = "inv.export.case-report.v1";
+/// v2: the caveats of `inv.export-policy.v2` under each caveated record, and
+/// the dependent-record rule in the limits (W11.02).
+pub const VERSION: &str = "inv.export.case-report.v2";
 
 /// The report's file name.
 pub const FILE: &str = "case-report.md";
@@ -110,6 +114,7 @@ fn report(input: &ExportInput<'_>) -> String {
                 "- Case status: {}",
                 inline_code(lifecycle(record).unwrap_or("not recorded"))
             );
+            caveats(&mut out, input, record, "");
         }
         None => out.push_str("- Not included for this audience.\n"),
     }
@@ -168,6 +173,7 @@ fn report(input: &ExportInput<'_>) -> String {
         "- Effective dispositions were computed on the whole case at this snapshot before \
          anything was withheld, so withholding a record does not make another read stronger.\n",
     );
+    let _ = writeln!(out, "- {}", dependent_rule(input.audience));
     let _ = writeln!(
         out,
         "- To read the full evidence chain, open the case at this snapshot: {}",
@@ -208,9 +214,17 @@ fn section(
             inline_code(&record.header.id.to_string()),
             detail(record)
         );
+        caveats(out, input, record, "  ");
     }
     if records.len() > MAX_LISTED {
         let _ = writeln!(out, "- … and {} more", records.len() - MAX_LISTED);
+    }
+}
+
+/// The policy's fixed caveats of a shown record, one line each.
+fn caveats(out: &mut String, input: &ExportInput<'_>, record: &Record, indent: &str) {
+    for caveat in input.caveats(record) {
+        let _ = writeln!(out, "{indent}- Caveat: {}", caveat.text());
     }
 }
 

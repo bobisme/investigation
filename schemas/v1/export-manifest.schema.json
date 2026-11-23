@@ -51,7 +51,7 @@
           "type": "boolean"
         },
         "version": {
-          "description": "`inv.export-policy.v1`: positive inclusion by effective\nclassification at the pinned and the current revision.",
+          "description": "The audience policy version: `inv.export-policy.v2` is positive\ninclusion by effective classification at the pinned and the current\nrevision, plus fixed caveats (internal, restricted) or withholding\n(public) for records that rest on or are challenged by withheld\nmaterial.",
           "type": "string"
         }
       },

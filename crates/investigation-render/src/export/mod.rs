@@ -24,13 +24,19 @@
 //!   unless `--snapshot` names an earlier one) and keeps today's state beside
 //!   it: disclosure always follows today's classification.
 //! - [`Inclusion`] is positive inclusion under the strict audience policy
-//!   (no ID-only placeholders): a record appears only when both its pinned
-//!   and its current revision may be shown to the audience. Effective state
-//!   is computed on the full pinned snapshot before anything is filtered
-//!   ([`ExportInput::notes`]), so withholding a record never makes another
-//!   one read stronger. Every withheld record of the case is an
+//!   (no ID-only placeholders, [`POLICY_VERSION`]): a record appears only
+//!   when both its pinned and its current revision may be shown to the
+//!   audience, and when nothing that challenges it or that it rests on is
+//!   withheld, unless the audience may be told so by a fixed [`Caveat`]
+//!   (internal and restricted may; public may not, and gets the record
+//!   withheld instead). Effective state and the material bearing on each
+//!   record are computed on the full pinned snapshot before anything is
+//!   filtered ([`ExportInput::notes`]), so withholding a record never makes
+//!   another one read stronger. Every withheld record of the case is an
 //!   [`Exclusion`]; any exclusion makes the export `incomplete`, and the
-//!   exact exclusions go only to the publisher, never into the export.
+//!   exact exclusions and caveated records go only to the publisher, never
+//!   into the export. The table of what each audience gets is in the
+//!   `inclusion` module documentation.
 //! - [`ExportManifest`] (`inv.export-manifest.v1`) names the snapshot, the
 //!   framework, renderer and schema versions, the audience and policy
 //!   version, completeness, included source digests, supersession links and
@@ -43,6 +49,17 @@
 //! Adding a kind: write a unit type implementing [`ExportRenderer`] in a new
 //! module here (pure: the planner purity test lists it), set it as the
 //! `renderer` of its [`KINDS`] row, and add the module to the purity test.
+//! The kind's whole contract with the audience policy is two calls, asked
+//! on every channel it emits (bodies, titles, links, file names, tables,
+//! counts, previews, summaries, search entries):
+//!
+//! - [`ExportInput::includes`] before a record, or anything derived from it,
+//!   appears at all. Count only included records.
+//! - [`ExportInput::caveats`] for each included record it shows: render
+//!   every returned [`Caveat::text`] beside the record wherever its standing
+//!   (title with a state, summary, table row) appears. Never paraphrase or
+//!   drop it, and never add your own words about withheld material.
+//!
 //! Kinds that need more than records (retained bytes for attachments or an
 //! archive, selected human notes) take them as explicit, digest-checked
 //! inputs on [`ExportInput`], never by reading the workspace while planning.
@@ -71,7 +88,7 @@ use crate::{
     note::NoteContext,
 };
 
-pub use inclusion::{Exclusion, Inclusion};
+pub use inclusion::{Caveat, Caveated, Exclusion, Inclusion, caveats_approved, dependent_rule};
 pub use manifest::{
     Completeness, ExportManifest, FileDigest, MANIFEST_SCHEMA, ManifestPolicy, ManifestSnapshot,
     ManifestVersions, SourceDigest, Statements, Supersession, manifest_schema,
@@ -79,14 +96,18 @@ pub use manifest::{
 pub use snapshot::{ExportSnapshot, Pin};
 pub use write::{Written, write_export};
 
-/// Version of the shared pipeline: snapshot pinning, inclusion, manifest and
-/// destination rules. Bump it when any of them changes the bytes written.
+/// Version of the shared pipeline: snapshot pinning, manifest and
+/// destination rules. Bump it when any of them changes the bytes written;
+/// the audience policy has its own [`POLICY_VERSION`].
 pub const FRAMEWORK_VERSION: &str = "inv.export.v1";
 
-/// Version of the export audience policy: strict positive inclusion by
+/// Version of the export audience policy. v1: strict positive inclusion by
 /// effective classification, judged at the pinned and the current revision,
-/// with no placeholders for withheld records.
-pub const POLICY_VERSION: &str = "inv.export-policy.v1";
+/// with no placeholders for withheld records. v2 (W11.02): also the
+/// dependent-record layer, so a record that rests on or is challenged by
+/// withheld material carries a fixed caveat (internal, restricted) or is
+/// withheld itself (public).
+pub const POLICY_VERSION: &str = "inv.export-policy.v2";
 
 /// The manifest's file name inside every export. It is written last.
 pub const MANIFEST_FILE: &str = "export-manifest.json";
@@ -130,8 +151,8 @@ pub trait ExportRenderer: Sync {
     fn version(&self) -> &'static str;
 
     /// Add this kind's files to `files`. Show a record's content only when
-    /// [`ExportInput::includes`] admits it. The manifest file name is
-    /// reserved.
+    /// [`ExportInput::includes`] admits it, and always with its
+    /// [`ExportInput::caveats`]. The manifest file name is reserved.
     fn plan(&self, input: &ExportInput<'_>, files: &mut PlanBuilder) -> Result<(), RenderError>;
 }
 
@@ -258,9 +279,18 @@ pub struct ExportInput<'a> {
 }
 
 impl ExportInput<'_> {
-    /// Whether the record's title, summary and content may appear.
+    /// Whether the record's title, summary and content may appear, and be
+    /// counted. Ask it on every channel before a record, or anything derived
+    /// from it, appears.
     pub fn includes(&self, record: &Record) -> bool {
         self.inclusion.includes(record)
+    }
+
+    /// The fixed caveats to show beside an included record wherever its
+    /// standing appears, in a fixed order; empty when it needs none. Render
+    /// each [`Caveat::text`] as given.
+    pub fn caveats(&self, record: &Record) -> &[Caveat] {
+        self.inclusion.caveats(record)
     }
 
     /// The record's safe display title when it is included.
@@ -274,7 +304,7 @@ impl ExportInput<'_> {
 }
 
 /// A planned export: the kind's files, its manifest, and the exact
-/// exclusions, which only the publisher sees.
+/// exclusions and caveated records, which only the publisher sees.
 #[derive(Debug, Clone)]
 pub struct ExportPlan {
     kind: &'static KindSpec,
@@ -282,6 +312,7 @@ pub struct ExportPlan {
     manifest: ExportManifest,
     manifest_bytes: Vec<u8>,
     exclusions: Vec<Exclusion>,
+    caveated: Vec<Caveated>,
 }
 
 impl ExportPlan {
@@ -307,6 +338,11 @@ impl ExportPlan {
     /// publisher: they are never written into the export.
     pub fn exclusions(&self) -> &[Exclusion] {
         &self.exclusions
+    }
+
+    /// Records shown with caveats, in ID order. Private to the publisher.
+    pub fn caveated(&self) -> &[Caveated] {
+        &self.caveated
     }
 
     pub fn complete(&self) -> bool {
@@ -415,7 +451,8 @@ pub fn plan_export(
     if files.entry(MANIFEST_FILE).is_some() {
         return Err(RenderError::DuplicatePath(MANIFEST_FILE.to_owned()).into());
     }
-    let exclusions = inclusion.exclusions(case.state());
+    let exclusions = inclusion.exclusions();
+    let caveated = inclusion.caveated();
     let manifest = build_manifest(kind, renderer, &input, &files, exclusions.is_empty());
     let mut manifest_bytes =
         serde_json::to_vec_pretty(&manifest).expect("export manifest serializes");
@@ -426,6 +463,7 @@ pub fn plan_export(
         manifest,
         manifest_bytes,
         exclusions,
+        caveated,
     })
 }
 
@@ -517,7 +555,7 @@ fn build_manifest(
         sources,
         supersession,
         files: file_digests,
-        statements: Statements::fixed(completeness),
+        statements: Statements::fixed(completeness, input.audience),
     }
 }
 
