@@ -40,7 +40,8 @@ render publishes the vault from the current verified snapshot. Files edited,
 moved or deleted outside the renderer are left as found and reported as drift;
 drift never fails a render. status and conflicts read the render record only
 and write nothing. reconcile resolves listed drifted paths with one explicit
-disposition. Nothing here opens a viewer.
+disposition. remove deletes the generated files, keeping edited ones.
+Nothing here opens a viewer.
 Examples:
   investigation vault render --format json
   investigation vault status --format json
@@ -67,6 +68,9 @@ pub(crate) enum VaultCommand {
     /// Copy a case's generated map into Boards/ as a canvas you own; never replaces a file.
     #[command(after_help = crate::vault_copy_map::AFTER_HELP)]
     CopyMap(crate::vault_copy_map::CopyMapArgs),
+    /// Delete the projection's generated files; edited and human-owned files stay.
+    #[command(after_help = crate::vault_remove::AFTER_HELP)]
+    Remove(crate::vault_remove::RemoveArgs),
 }
 
 pub(crate) fn run(
@@ -84,6 +88,7 @@ pub(crate) fn run(
         VaultCommand::Conflicts => conflicts(store.workspace(), &scope),
         VaultCommand::Reconcile(args) => crate::vault_reconcile::run(store, global, args),
         VaultCommand::CopyMap(_) => unreachable!("handled before the scope is selected"),
+        VaultCommand::Remove(args) => crate::vault_remove::run(store.workspace(), &args),
     }
 }
 
@@ -540,8 +545,14 @@ fn status(store: &mut Store, scope: &Scope) -> Result<Output, Failure> {
         None
     };
     let next = next(workspace, tail);
+    // Where the projection lives; the existing vault's path is not echoed.
+    let projection = match workspace.config().vault_policy.existing() {
+        Some((_, prefix)) => json!({"mode":"existing_vault","managed_prefix":prefix}),
+        None => json!({"mode":"dedicated","root":"vault/"}),
+    };
     let value = json!({
         "vault_enabled":enabled,
+        "projection":projection,
         "freshness":freshness,
         "current":is_current,
         "state":status.state.as_str(),

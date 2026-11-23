@@ -101,6 +101,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // updates the manifest and renders; propose-change also records a
     // change. --dry-run checks and prints only.
     ("vault reconcile", Effect::WriteUnlessFlag(&["dry_run"])),
+    // Deletes generated vault files the manifest proves owned.
+    ("vault remove", Effect::WriteUnlessFlag(&["dry_run"])),
     // `doctor bundle` requires --preview and writes no archive.
     // Reads investigation.toml and local/actor.toml; never writes or prints a secret.
     ("config list", Effect::Read),

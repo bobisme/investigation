@@ -218,6 +218,14 @@ fn entries(workspace: &Workspace, global: &Global) -> Result<Vec<Entry>, Failure
         "vault_policy.viewer_release",
         json!(policy.viewer_release),
     ));
+    entries.push(single(
+        "vault_policy.existing_vault",
+        json!(policy.existing_vault),
+    ));
+    entries.push(single(
+        "vault_policy.managed_prefix",
+        json!(policy.managed_prefix),
+    ));
     for name in config.extensions.keys() {
         entries.push(Entry {
             key: format!("extensions.{name}"),

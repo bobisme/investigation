@@ -32,6 +32,8 @@ the copy names the snapshot it was taken from. Its file nodes keep the paths
 the notes had then; if a generated note later moves (vault reconcile
 release-path) or goes, the node shows as missing: re-point or delete it, or
 copy the current map to a new name.
+In existing-vault mode, Boards/ is the one inside the managed prefix, and
+the copy's file nodes carry the prefix.
 The map needs a stated viewer release ([vault_policy] viewer_release in
 investigation.toml) and a vault rendered at the current snapshot.
 Examples:

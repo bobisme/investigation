@@ -66,6 +66,21 @@
 //! ([`crate::reconcile`]). A lost manifest forgets the release; the old path
 //! then holds a file nobody owns, which a render refuses as foreign and never
 //! overwrites.
+//!
+//! ## A complete record of what the renderer wrote
+//!
+//! Every path the renderer ever wrote into the projection is in the
+//! manifest under exactly one heading: `owned` (generated files: notes,
+//! views, `.base` files, `Map.canvas`, `Start Here.md`, approved previews),
+//! `pending` (written by an unfinished render), `released` (handed to a
+//! person by `release-path`), or `handed_over` (observed edits that
+//! `preserve-as-note` moved into `Notes/Reconciled/`, with the bytes moved
+//! and the path they came from). Only `owned` and `pending` paths are ever
+//! replaced or removed, and only while they hold the recorded bytes; the
+//! other two are the person's and are never written, removed or adopted.
+//! `projection` names the root the record was written for, in existing-vault
+//! mode ([`crate::projection`]); a render, reconcile or removal under another
+//! root refuses rather than act on the wrong folder.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -87,7 +102,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Action, Decision, Drift, DriftKind, Generation, OnDisk, Ownership, PlanEntry, PlanPath,
     PublishReport, Refusal, RenderError, RenderLock, RenderPlan, drift::CONFLICTS_DIR, layout,
-    lock::open_local, publish::write_bytes_atomically,
+    lock::open_local, projection::Projection, publish::write_bytes_atomically,
 };
 
 /// Workspace-relative path of the manifest.
@@ -125,6 +140,21 @@ pub struct Released {
     /// The record the path projected, when it projected exactly one.
     pub projects: Option<Id>,
     /// The last complete generation when the path was released.
+    pub since: String,
+}
+
+/// A file `preserve-as-note` moved into `Notes/Reconciled/`: the person's
+/// from then on, recorded so the manifest names every path the renderer
+/// wrote. It is never written, replaced, removed or adopted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandedOver {
+    /// Projection-relative path under `Notes/Reconciled/`.
+    pub path: String,
+    /// The bytes moved there.
+    pub sha256: Digest,
+    /// The drifted generated path whose observed edit it was.
+    pub from: PlanPath,
+    /// The last complete generation when it was moved.
     pub since: String,
 }
 
@@ -184,6 +214,11 @@ pub struct Manifest {
     drifted: BTreeMap<PlanPath, Drift>,
     /// Paths handed to a person, with where their projection moved.
     released: BTreeMap<PlanPath, Released>,
+    /// Observed edits moved into `Notes/Reconciled/`, by path.
+    handed_over: BTreeMap<String, HandedOver>,
+    /// The existing vault and managed prefix the record was written for;
+    /// `None` for the workspace's own `vault/`.
+    projection: Option<(String, String)>,
 }
 
 /// How [`Manifest::load`] found the manifest.
@@ -278,6 +313,99 @@ impl Manifest {
     /// Used wherever unowned files are listed or adopted.
     pub(crate) fn claims(&self, path: &str) -> bool {
         self.owns(path) || self.is_released(path)
+    }
+
+    /// Files moved into `Notes/Reconciled/` by `preserve-as-note`, in path
+    /// order ([`HandedOver`]).
+    pub fn handed_over(&self) -> impl Iterator<Item = &HandedOver> {
+        self.handed_over.values()
+    }
+
+    /// The same record noting that `preserve-as-note` moved bytes there.
+    pub(crate) fn hand_over(mut self, handed: HandedOver) -> Self {
+        self.handed_over.insert(handed.path.clone(), handed);
+        self
+    }
+
+    /// The existing vault and managed prefix this record was written for,
+    /// or `None` for the workspace's own `vault/`.
+    pub fn projection(&self) -> Option<(&str, &str)> {
+        self.projection
+            .as_ref()
+            .map(|(vault, prefix)| (vault.as_str(), prefix.as_str()))
+    }
+
+    /// Whether the record names no path at all: nothing owned, pending,
+    /// released or handed over. A render into an existing vault's prefix
+    /// under such a record is a first render.
+    pub fn records_nothing(&self) -> bool {
+        self.owned.is_empty()
+            && self.pending.is_empty()
+            && self.released.is_empty()
+            && self.handed_over.is_empty()
+    }
+
+    /// Check that this record belongs to `projection`, and return it bound
+    /// to it. A record that names no path may be bound anew; one that does
+    /// and was written for another root is refused, so the paths it owns
+    /// are never looked for, replaced or removed under the wrong folder.
+    pub(crate) fn bound_to(mut self, projection: &Projection) -> Result<Self, RenderError> {
+        let wanted = match projection {
+            Projection::Dedicated => None,
+            Projection::Existing { vault, prefix } => Some((
+                vault.to_str().unwrap_or_default().to_owned(),
+                prefix.clone(),
+            )),
+        };
+        if self.projection != wanted && !self.records_nothing() {
+            let recorded = match &self.projection {
+                None => "the workspace's vault/".to_owned(),
+                Some((vault, prefix)) => format!("{prefix}/ in the existing vault {vault}"),
+            };
+            return Err(RenderError::Projection {
+                reason: format!(
+                    "the render manifest records the projection in {recorded}, but the vault \
+                     policy now names {}; restore the earlier setting and run vault remove \
+                     first, then change it",
+                    projection.describe()
+                ),
+            });
+        }
+        self.projection = wanted;
+        Ok(self)
+    }
+
+    /// The record to store before a removal of the whole projection
+    /// deletes anything: state `updating`, so owned files it deletes before
+    /// it is killed are recreated by the next render rather than diagnosed
+    /// as deleted ([`crate::remove`]).
+    pub(crate) fn removing(&self) -> Self {
+        let mut next = self.clone();
+        next.state = RenderState::Updating {
+            generation: self
+                .generation
+                .as_ref()
+                .map_or_else(|| "unrendered".to_owned(), |last| last.id.clone()),
+        };
+        next
+    }
+
+    /// The record after a removal of the whole projection reached the
+    /// `outcomes` ([`crate::remove`]): removed paths, and paths found
+    /// already empty, are forgotten; every other path stays owned with its
+    /// drift record. Released and handed-over paths are kept, and the last
+    /// complete generation is cleared, so the vault reads unrendered.
+    pub(crate) fn removed(mut self, outcomes: &[crate::Outcome]) -> Self {
+        for outcome in outcomes {
+            self.pending.remove(&outcome.path);
+            if matches!(outcome.action, Action::Removed | Action::Unchanged) {
+                self.owned.remove(&outcome.path);
+                self.drifted.remove(&outcome.path);
+            }
+        }
+        self.generation = None;
+        self.state = RenderState::Complete;
+        self
     }
 
     /// Where each released path's projection is published instead.
@@ -539,6 +667,8 @@ impl Manifest {
             pending: BTreeMap::new(),
             drifted,
             released: self.released.clone(),
+            handed_over: self.handed_over.clone(),
+            projection: self.projection.clone(),
         };
         if !complete {
             let reached: BTreeSet<&PlanPath> = report
@@ -731,6 +861,23 @@ impl Manifest {
                     since: released.since.clone(),
                 })
                 .collect(),
+            handed_over: self
+                .handed_over
+                .values()
+                .map(|handed| WireHandedOver {
+                    path: handed.path.clone(),
+                    sha256: handed.sha256.clone(),
+                    from: handed.from.as_str().to_owned(),
+                    since: handed.since.clone(),
+                })
+                .collect(),
+            projection: self
+                .projection
+                .as_ref()
+                .map(|(vault, prefix)| WireProjection {
+                    existing_vault: vault.clone(),
+                    managed_prefix: prefix.clone(),
+                }),
         };
         let mut bytes = serde_json::to_vec_pretty(&wire).expect("manifest serializes");
         bytes.push(b'\n');
@@ -850,6 +997,55 @@ impl Manifest {
                 "the manifest relocates a path to a released path".to_owned(),
             ));
         }
+        let mut handed_over = BTreeMap::new();
+        for record in wire.handed_over {
+            let inside = record
+                .path
+                .strip_prefix(crate::reconcile::NOTES_FOLDER)
+                .and_then(|rest| rest.strip_prefix('/'));
+            let from = PlanPath::new(record.from).ok();
+            let relative = inside.is_some_and(|rest| {
+                rest.split('/')
+                    .all(|component| !component.is_empty() && !component.starts_with('.'))
+            });
+            let (true, Some(from)) = (relative, from) else {
+                return Err(Problem::Invalid(
+                    "the manifest lists a handed-over file outside Notes/Reconciled/".to_owned(),
+                ));
+            };
+            let path = record.path;
+            if handed_over.contains_key(&path) {
+                return Err(Problem::Invalid(format!(
+                    "the manifest lists the handed-over file {path:?} twice"
+                )));
+            }
+            handed_over.insert(
+                path.clone(),
+                HandedOver {
+                    path,
+                    sha256: record.sha256,
+                    from,
+                    since: record.since,
+                },
+            );
+        }
+        let projection = match wire.projection {
+            None => None,
+            Some(projection)
+                if std::path::Path::new(&projection.existing_vault).is_absolute()
+                    && investigation_store::workspace::check_managed_prefix(
+                        &projection.managed_prefix,
+                    )
+                    .is_ok() =>
+            {
+                Some((projection.existing_vault, projection.managed_prefix))
+            }
+            Some(_) => {
+                return Err(Problem::Invalid(
+                    "the manifest names an invalid existing-vault projection".to_owned(),
+                ));
+            }
+        };
         Ok(Self {
             workspace_id: wire.workspace_id,
             generation: wire.generation.map(|generation| CompletedGeneration {
@@ -873,6 +1069,8 @@ impl Manifest {
             pending,
             drifted,
             released,
+            handed_over,
+            projection,
         })
     }
 }
@@ -1015,6 +1213,26 @@ struct Wire {
     /// Absent in manifests written before paths could be released.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     released: Vec<WireReleased>,
+    /// Absent until `preserve-as-note` moves a file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    handed_over: Vec<WireHandedOver>,
+    /// Absent for the workspace's own `vault/`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    projection: Option<WireProjection>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WireHandedOver {
+    path: String,
+    sha256: Digest,
+    from: String,
+    since: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WireProjection {
+    existing_vault: String,
+    managed_prefix: String,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -97,3 +97,88 @@ words, and nothing is coloured. The columns follow the case's focus
 with at most 96 edges; the left-out note says what the bounds dropped and links
 the tables that list it. The map is tool-owned and regenerated on every render;
 copy it into `Boards/` to keep an editable version.
+
+## Existing-vault mode
+
+By default the vault is the workspace's own `vault/` folder. To render the
+casebook into a vault you already have, name that vault and one folder in it
+in the workspace's `investigation.toml`:
+
+```toml
+[vault_policy]
+enabled = true
+existing_vault = "/home/me/Notes"
+managed_prefix = "Investigation"
+```
+
+`existing_vault` is an absolute, canonical path (no symbolic links) to an
+existing folder outside the workspace, and the workspace must not be inside
+it, so canonical state is never synchronized as notes. `managed_prefix` is
+one to four nested folder names of ASCII letters, digits, spaces, `-`, `_`
+and `.`, none hidden, such as `Investigation` or `Projects/Investigation`. Its
+parent folders must already exist; the renderer creates only the prefix
+folder itself. The workspace's own `vault/` is then not used. `vault status`
+reports the mode under `projection`.
+
+The rules:
+
+- **Only the prefix is touched.** Every write, rename and removal happens
+  inside `<existing_vault>/<managed_prefix>/`, through directory handles that
+  never follow links. Nothing outside it is written, moved, deleted or read:
+  not your notes or their properties, not the viewer's configuration folder,
+  its settings, themes, plugins or property types.
+- **The ownership table applies inside the prefix.** `Start Here.md` and
+  `Cases/` are generated; `Notes/`, `Boards/` and `Inbox/` inside the prefix
+  are yours, and `vault reconcile --disposition preserve-as-note` moves an
+  edit into `<prefix>/Notes/Reconciled/`. `vault copy-map --to
+  Boards/<name>.canvas` writes into `<prefix>/Boards/`, never your vault's
+  own `Boards/`. `Start Here.md` names the prefix.
+- **Links stay inside the prefix.** Every generated wikilink, frontmatter
+  link and Canvas file path, on generated maps and copied boards alike,
+  starts with the prefix
+  (`[[Investigation/Cases/<case-id>/Overview|...]]`), so none resolves to a
+  note of yours with the same name, such as your own `Start Here.md`.
+- **Your notes never appear in a generated view.** Tables are built from the
+  snapshot alone, and every Base filters on the exact `inv_case_id`, which
+  your notes do not carry.
+- **The first render needs an empty prefix.** When the manifest records
+  nothing yet, a render refuses if the prefix already holds a file the
+  renderer does not own, unless the file already holds exactly the bytes
+  planned for its path (a lost manifest is rebuilt that way). Empty folders
+  and hidden files do not count.
+- **The manifest is complete and bound to its folder.**
+  `local/render-manifest.json` lists every path the renderer wrote: owned
+  generated files (notes, views, `.base` files, `Map.canvas`, `Start Here.md`),
+  paths released to you, and files moved into `Notes/Reconciled/` with the
+  path they came from. It records the vault and prefix it was written for;
+  if the setting changes while the manifest still records paths, render,
+  reconcile and remove refuse. Run `vault remove` with the earlier setting
+  first.
+- **Removal deletes only owned files.** `investigation vault remove` deletes
+  each owned file only while it holds exactly the bytes recorded for it, then
+  the folders that leaves empty, and the prefix folder last when it is empty.
+  Edited generated files stay (and stay listed by `vault conflicts`), as do
+  released paths, `Notes/Reconciled/`, your own files and anything the
+  manifest does not own. Nothing is deleted recursively. `--dry-run` lists
+  what would happen. The workspace journal is unchanged, and `vault render`
+  projects the casebook again.
+
+Changing the managed prefix renames nothing: remove the projection, change
+the setting, then render.
+
+### Property types
+
+Every generated property is `inv_`-prefixed, so vault-wide property types you
+set for your own notes never apply to them. The casebook expects these types.
+If your vault already assigns a different type to one of these names, the
+viewer may show a warning on generated notes; nothing breaks.
+
+| Type | Properties |
+|---|---|
+| Text | `inv_artifact_role`, `inv_availability`, `inv_basis`, `inv_case_id`, `inv_disposition`, `inv_effective`, `inv_evidentiary_use`, `inv_focus`, `inv_freshness`, `inv_generation`, `inv_id`, `inv_integrity`, `inv_kind`, `inv_mode`, `inv_quote_state`, `inv_retention`, `inv_review_freshness`, `inv_review_kind`, `inv_schema`, `inv_selector_validation`, `inv_severity`, `inv_snapshot`, `inv_source_access`, `inv_status`, `inv_summary`, `inv_value_kind`, `inv_verdict`, `inv_view` |
+| Text holding one link | `inv_case` |
+| Number | `inv_basis_sequence`, `inv_lineage_depth`, `inv_open_gaps`, `inv_render_sequence`, `inv_revision`, `inv_rows` |
+| Checkbox | `inv_assessed`, `inv_withheld` |
+| Date & time | `inv_updated` |
+
+Generated notes also carry the viewer's own `aliases` and `tags` lists.

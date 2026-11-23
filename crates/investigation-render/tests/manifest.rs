@@ -603,6 +603,9 @@ fn no_publisher_code_path_deletes_recursively() {
         include_str!("../src/sweep.rs"),
         include_str!("../src/status.rs"),
         include_str!("../src/drift.rs"),
+        include_str!("../src/projection.rs"),
+        include_str!("../src/remove.rs"),
+        include_str!("../src/reconcile.rs"),
     ];
     let mut directory_removals = 0;
     for source in sources {

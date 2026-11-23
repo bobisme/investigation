@@ -752,7 +752,7 @@ fn node(out: &mut String, id: &str, file: &PlanPath, x: i64, y: i64) {
         "\n    {{\"id\": {}, \"type\": \"file\", \"file\": {}, \"x\": {x}, \"y\": {y}, \
          \"width\": {NODE_WIDTH}, \"height\": {NODE_HEIGHT}}}",
         json(id),
-        json(file.as_str())
+        json(&layout::vault_path(file))
     );
 }
 

@@ -357,6 +357,7 @@ impl CaseRenderer for VaultRenderer {
         snapshot: &VerifiedSnapshot,
         policy: &ViewPolicy,
     ) -> Result<RenderPlan, RenderError> {
+        let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
         let generation = Generation::new(RENDERER_VERSION, snapshot, policy);
         let mut plan = PlanBuilder::new(generation.clone());
         let contexts: Vec<NoteContext<'_>> = snapshot
@@ -413,6 +414,7 @@ impl CaseRenderer for VaultRenderer {
         policy: &ViewPolicy,
         health: &EntryHealth,
     ) -> Result<RenderPlan, RenderError> {
+        let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
         let generation = plan.generation().clone();
         let contexts: Vec<NoteContext<'_>> = snapshot
             .cases()

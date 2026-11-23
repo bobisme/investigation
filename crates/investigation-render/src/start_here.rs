@@ -71,10 +71,19 @@ pub fn note(
     let mut out = String::new();
     // The generation is also the `inv_generation` property, added by
     // `crate::marker::stamp_plan`; Start Here is the only note carrying it.
+    let opening = match policy.vault_prefix.as_deref() {
+        None => "This vault is a read-only view of the Investigation workspace that contains it."
+            .to_owned(),
+        Some(prefix) => format!(
+            "This folder, {} in your vault, is a read-only view of an Investigation workspace \
+             kept outside the vault.",
+            inline_code(&format!("{prefix}/"))
+        ),
+    };
     let _ = write!(
         out,
         "# Start Here\n\n{BANNER}\n\
-         This vault is a read-only view of the Investigation workspace that contains it. The \
+         {opening} The \
          workspace journal is the record; every note here is projected from one verified \
          snapshot of it, and nothing written in the vault changes it. The notes are plain \
          Markdown with wikilinks, and nothing here needs a community plugin.\n\n\
@@ -83,7 +92,7 @@ pub fn note(
         inline_code(policy.audience.as_str()),
     );
     health_section(&mut out, generation, health);
-    ownership_section(&mut out);
+    ownership_section(&mut out, policy.vault_prefix.as_deref());
     resume_intro(&mut out);
     cases_section(&mut out, snapshot, cases)?;
     Ok(out)
@@ -175,8 +184,19 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
     );
 }
 
-fn ownership_section(out: &mut String) {
-    out.push_str("\n## Who owns what\n\n| Location | Owner and use |\n|---|---|\n");
+fn ownership_section(out: &mut String, prefix: Option<&str>) {
+    out.push_str("\n## Who owns what\n\n");
+    if let Some(prefix) = prefix {
+        let folder = inline_code(&format!("{prefix}/"));
+        let _ = write!(
+            out,
+            "Investigation manages only the {folder} folder of this vault. It never writes, \
+             moves or deletes anything outside it: your other notes, their properties, and the \
+             viewer's settings, themes and plugins stay as they are. Every generated link points \
+             inside {folder}. The locations below are inside {folder}.\n\n"
+        );
+    }
+    out.push_str("| Location | Owner and use |\n|---|---|\n");
     for area in layout::VAULT_AREAS {
         let locations: Vec<String> = area
             .locations

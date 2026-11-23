@@ -87,6 +87,17 @@ pub struct VaultPolicy {
     /// Absent, unparseable or unsupported means plain Markdown only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer_release: Option<String>,
+    /// Existing-vault mode: an absolute path to a vault the person already
+    /// has, outside this workspace. The casebook is rendered into
+    /// [`Self::managed_prefix`] inside it and nowhere else; the workspace's
+    /// own `vault/` is not used. Set both or neither.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub existing_vault: Option<PathBuf>,
+    /// The one folder of [`Self::existing_vault`] the renderer manages, such
+    /// as `Investigation` or `Projects/Investigation`. Its parent folders
+    /// must already exist; the renderer creates only the folder itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub managed_prefix: Option<String>,
 }
 
 impl Default for VaultPolicy {
@@ -96,8 +107,93 @@ impl Default for VaultPolicy {
             include_approved_derivatives: false,
             preserve_human_folders: true,
             viewer_release: None,
+            existing_vault: None,
+            managed_prefix: None,
         }
     }
+}
+
+/// Folders a managed prefix may nest: `Investigation` up to
+/// `a/b/c/Investigation`.
+pub const MAX_PREFIX_COMPONENTS: usize = 4;
+
+impl VaultPolicy {
+    /// The existing vault and its managed prefix, in existing-vault mode.
+    pub fn existing(&self) -> Option<(&Path, &str)> {
+        match (&self.existing_vault, &self.managed_prefix) {
+            (Some(vault), Some(prefix)) => Some((vault.as_path(), prefix.as_str())),
+            _ => None,
+        }
+    }
+
+    /// Whether the projection lives in the workspace's own `vault/`.
+    pub const fn uses_workspace_vault(&self) -> bool {
+        self.enabled && self.existing_vault.is_none()
+    }
+
+    fn validate(&self) -> Result<(), WorkspaceError> {
+        let invalid = |reason: String| Err(WorkspaceError::InvalidConfig(reason));
+        match (&self.existing_vault, &self.managed_prefix) {
+            (None, None) => return Ok(()),
+            (Some(_), None) | (None, Some(_)) => {
+                return invalid(
+                    "vault_policy.existing_vault and vault_policy.managed_prefix are set together"
+                        .to_owned(),
+                );
+            }
+            (Some(_), Some(_)) if !self.enabled => {
+                return invalid(
+                    "vault_policy.existing_vault needs vault_policy.enabled = true".to_owned(),
+                );
+            }
+            (Some(vault), Some(prefix)) => {
+                if !vault.is_absolute()
+                    || vault.components().any(|component| {
+                        matches!(component, Component::ParentDir | Component::CurDir)
+                    })
+                {
+                    return invalid(format!(
+                        "vault_policy.existing_vault {} must be an absolute path without . or .. \
+                         components",
+                        vault.display()
+                    ));
+                }
+                if let Err(reason) = check_managed_prefix(prefix) {
+                    return invalid(format!("vault_policy.managed_prefix {prefix:?} {reason}"));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Check a managed prefix: one to [`MAX_PREFIX_COMPONENTS`] `/`-separated
+/// folder names of ASCII letters, digits, spaces, `-`, `_` and `.`, none
+/// hidden, empty, `..` or ending in a space or dot. Links to generated notes
+/// start with it, so it holds nothing a link would break on.
+pub fn check_managed_prefix(prefix: &str) -> Result<(), &'static str> {
+    let components: Vec<&str> = prefix.split('/').collect();
+    if prefix.is_empty() || components.len() > MAX_PREFIX_COMPONENTS {
+        return Err("must name one to four nested folders");
+    }
+    for component in components {
+        if component.is_empty() || component.len() > 64 {
+            return Err("has an empty or overlong folder name");
+        }
+        if component.starts_with('.') || component.starts_with(' ') {
+            return Err("names a hidden folder or starts with a space");
+        }
+        if component.ends_with(' ') || component.ends_with('.') {
+            return Err("has a folder name ending with a space or dot");
+        }
+        if !component
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b' ' | b'-' | b'_' | b'.'))
+        {
+            return Err("may hold only ASCII letters, digits, spaces, -, _ and .");
+        }
+    }
+    Ok(())
 }
 
 impl WorkspaceConfig {
@@ -115,6 +211,7 @@ impl WorkspaceConfig {
     }
 
     fn validate(&self) -> Result<(), WorkspaceError> {
+        self.vault_policy.validate()?;
         for name in self.extensions.keys() {
             if !name.contains('.') || name.starts_with('.') || name.ends_with('.') {
                 return Err(WorkspaceError::InvalidConfig(format!(
@@ -494,7 +591,16 @@ impl Workspace {
                 marker.genesis_sequence,
             ));
         }
-        verify_layout(&root, config.vault_policy.enabled)?;
+        if let Some(vault) = &config.vault_policy.existing_vault
+            && (vault.starts_with(&root) || root.starts_with(vault))
+        {
+            return Err(WorkspaceError::InvalidConfig(format!(
+                "vault_policy.existing_vault {} must be outside the workspace, and the workspace \
+                 outside it, so canonical state is never synchronized as notes",
+                vault.display()
+            )));
+        }
+        verify_layout(&root, &config.vault_policy)?;
 
         Ok(Self {
             state_dir: root.join("state"),
@@ -587,13 +693,15 @@ fn required_directories(vault: bool) -> Vec<&'static str> {
     directories
 }
 
-fn verify_layout(root: &Path, vault_enabled: bool) -> Result<(), WorkspaceError> {
-    for relative in required_directories(vault_enabled) {
+/// The workspace's own `vault/` is required only when the projection lives
+/// there; in existing-vault mode a leftover `vault/` is allowed and unused.
+fn verify_layout(root: &Path, vault: &VaultPolicy) -> Result<(), WorkspaceError> {
+    for relative in required_directories(vault.uses_workspace_vault()) {
         let path = root.join(relative);
         ensure_directory(&path)?;
     }
     ensure_regular_file(&root.join(LOCK_FILE))?;
-    if !vault_enabled && root.join("vault").exists() {
+    if !vault.enabled && root.join("vault").exists() {
         return Err(WorkspaceError::LayoutMismatch(
             "vault directory exists while vault policy is disabled".to_owned(),
         ));

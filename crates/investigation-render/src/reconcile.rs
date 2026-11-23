@@ -34,7 +34,9 @@
 //!    from the manifest: a regenerated path is forgotten so the render
 //!    creates it afresh, without replacing; a released path is recorded as
 //!    released ([`crate::manifest::Released`]) with the path its projection
-//!    moves to. The manifest is stored before the render.
+//!    moves to. A file moved into `Notes/Reconciled/` is recorded as handed
+//!    over ([`crate::manifest::HandedOver`]). The manifest is stored before
+//!    the render.
 //! 4. Render under the same lock ([`crate::render_vault`]), so the vault,
 //!    the entry note and the manifest end consistent.
 //!
@@ -71,7 +73,8 @@ use crate::{
     drift::{conflicts_directory, read_regular},
     layout,
     lock::{self, open_local},
-    manifest::Released,
+    manifest::{HandedOver, Released},
+    projection::Projection,
     publish::{Removal, Walk, inspect_named, remove_verified, write_bytes_atomically},
     render_locked,
     start_here::EntryHealth,
@@ -235,7 +238,9 @@ pub fn preview(
             waited: std::time::Duration::ZERO,
         });
     };
-    let manifest = Manifest::read(workspace)?.manifest;
+    let manifest = Manifest::read(workspace)?
+        .manifest
+        .bound_to(&Projection::of(workspace))?;
     check(&publisher, &manifest, request)
 }
 
@@ -251,7 +256,9 @@ pub fn reconcile_vault<F: DurableFs>(
 ) -> Result<ReconcileReport, RenderError> {
     let lock = RenderLock::acquire(store.workspace(), RENDER_LOCK_WAIT)?;
     let workspace = store.workspace();
-    let manifest = Manifest::load(workspace, &lock)?.manifest;
+    let manifest = Manifest::load(workspace, &lock)?
+        .manifest
+        .bound_to(&Projection::of(workspace))?;
     let publisher = Publisher::open(workspace, &lock)?;
     let checked = check(&publisher, &manifest, request)?;
     let tag = tag(&manifest);
@@ -797,6 +804,19 @@ fn settle(
     step: &PathStep,
     since: &str,
 ) -> Result<Manifest, RenderError> {
+    // Every file moved into `Notes/Reconciled/` is recorded, so the manifest
+    // names every path the renderer wrote; it is the person's from now on.
+    let mut manifest = manifest;
+    for observed in &step.observed {
+        if let Handling::MovedToNotes { to } = &observed.handling {
+            manifest = manifest.hand_over(HandedOver {
+                path: to.clone(),
+                sha256: observed.sha256.clone(),
+                from: step.path.clone(),
+                since: since.to_owned(),
+            });
+        }
+    }
     if let Some(relocated_to) = &step.relocated_to {
         return Ok(manifest.release(Released {
             path: step.path.clone(),
@@ -834,6 +854,7 @@ impl<R: CaseRenderer> CaseRenderer for Relocated<'_, R> {
         snapshot: &VerifiedSnapshot,
         policy: &ViewPolicy,
     ) -> Result<RenderPlan, RenderError> {
+        let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
         relocate(self.inner.render(snapshot, policy)?, &self.relocations)
     }
 
@@ -844,6 +865,7 @@ impl<R: CaseRenderer> CaseRenderer for Relocated<'_, R> {
         policy: &ViewPolicy,
         health: &EntryHealth,
     ) -> Result<RenderPlan, RenderError> {
+        let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
         relocate(
             self.inner.announce(plan, snapshot, policy, health)?,
             &self.relocations,

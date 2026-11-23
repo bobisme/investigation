@@ -244,10 +244,66 @@ pub fn record_note(case_id: Id, id: Id) -> Result<Option<PlanPath>, RenderError>
         .transpose()
 }
 
-/// The link target for a planned note: its vault-relative path without `.md`.
-/// Plan paths never contain link-breaking characters.
-pub fn link_target(path: &PlanPath) -> &str {
-    path.as_str().strip_suffix(".md").unwrap_or(path.as_str())
+std::thread_local! {
+    /// The managed prefix links are built under while a plan is made; see
+    /// [`LinkRoot`].
+    static LINK_ROOT: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+/// The folder every generated link starts from, for the duration of one
+/// planning call.
+///
+/// Plan paths are relative to the projection root. In the dedicated vault
+/// that root is the vault, so a link is the plan path itself. In
+/// existing-vault mode the root is the managed prefix inside the person's
+/// vault ([`crate::ViewPolicy::vault_prefix`]), and a viewer resolves a
+/// vault-relative link from the vault root: every link and Canvas file path
+/// must start with the prefix, or it would resolve to a person's note at the
+/// same path outside it. The planner entry points ([`crate::VaultRenderer`]
+/// and the reconcile relocation) enter the policy's prefix here before they
+/// build any link, and leave it when they return, so [`link_target`],
+/// [`wikilink`], [`block_link`] and [`vault_path`] all agree and the plan
+/// stays a function of the snapshot and the policy alone.
+#[must_use = "the link root is left when the guard drops"]
+pub struct LinkRoot {
+    previous: Option<String>,
+}
+
+impl LinkRoot {
+    /// Build links under `prefix` (`None`: from the vault root) until the
+    /// guard drops. Nested scopes restore the outer one.
+    pub fn enter(prefix: Option<&str>) -> Self {
+        let previous = LINK_ROOT.with(|root| root.replace(prefix.map(str::to_owned)));
+        Self { previous }
+    }
+}
+
+impl Drop for LinkRoot {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        LINK_ROOT.with(|root| *root.borrow_mut() = previous);
+    }
+}
+
+/// `path` as the viewer addresses it from the vault root: the plan path,
+/// under the managed prefix in existing-vault mode ([`LinkRoot`]). Canvas
+/// file nodes use it.
+pub fn vault_path(path: &PlanPath) -> String {
+    LINK_ROOT.with(|root| match root.borrow().as_deref() {
+        Some(prefix) => format!("{prefix}/{}", path.as_str()),
+        None => path.as_str().to_owned(),
+    })
+}
+
+/// The link target for a planned note: its vault path ([`vault_path`])
+/// without `.md`. Plan paths and managed prefixes never contain
+/// link-breaking characters.
+pub fn link_target(path: &PlanPath) -> String {
+    let full = vault_path(path);
+    match full.strip_suffix(".md") {
+        Some(stem) => stem.to_owned(),
+        None => full,
+    }
 }
 
 /// A vault-relative wikilink: the only way generated Markdown links anywhere.
@@ -257,6 +313,7 @@ pub fn link_target(path: &PlanPath) -> &str {
 /// label falls back to the file name.
 pub fn wikilink(path: &PlanPath, display: &str) -> String {
     let target = link_target(path);
+    let target = target.as_str();
     debug_assert!(
         target
             .chars()

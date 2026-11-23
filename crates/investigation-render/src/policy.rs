@@ -52,6 +52,12 @@ pub struct ViewPolicy {
     /// compatibility profile ([`crate::compat`]). The default is the
     /// baseline: plain Markdown, no optional feature.
     pub viewer: Resolved,
+    /// Existing-vault mode: the managed prefix folder the projection lives
+    /// in inside a person's vault, such as `Investigation`. Every generated
+    /// link and Canvas file path starts with it ([`crate::layout::LinkRoot`])
+    /// and `Start Here.md` names it. `None` (the default) is the dedicated
+    /// vault, whose links start at its root.
+    pub vault_prefix: Option<String>,
 }
 
 impl ViewPolicy {
@@ -63,7 +69,16 @@ impl ViewPolicy {
                 release: None,
                 optional: std::collections::BTreeSet::new(),
             },
+            vault_prefix: None,
         }
+    }
+
+    /// The same policy rendering into the managed prefix `prefix` of an
+    /// existing vault (`None`: the dedicated vault).
+    #[must_use]
+    pub fn with_vault_prefix(mut self, prefix: Option<&str>) -> Self {
+        self.vault_prefix = prefix.map(str::to_owned);
+        self
     }
 
     /// The same policy with derivative previews allowed or not.
@@ -132,7 +147,14 @@ impl ViewPolicy {
             .release
             .as_deref()
             .map_or_else(String::new, |release| format!(";viewer={release}"));
-        format!("audience={}{previews}{viewer}", self.audience.as_str())
+        let prefix = self
+            .vault_prefix
+            .as_deref()
+            .map_or_else(String::new, |prefix| format!(";prefix={prefix}"));
+        format!(
+            "audience={}{previews}{viewer}{prefix}",
+            self.audience.as_str()
+        )
     }
 }
 
@@ -165,6 +187,13 @@ mod tests {
         let viewer = crate::compat::Profile::bundled().resolve(Some("1.15.1"));
         let with_viewer = ViewPolicy::default().with_viewer(viewer);
         assert_eq!(with_viewer.fingerprint(), "audience=internal;viewer=1.15.1");
+        assert_eq!(
+            with_viewer
+                .clone()
+                .with_vault_prefix(Some("Investigation"))
+                .fingerprint(),
+            "audience=internal;viewer=1.15.1;prefix=Investigation"
+        );
         assert!(with_viewer.allows("canvas.file") && !ViewPolicy::default().allows("canvas.file"));
         assert_ne!(
             ViewPolicy::default().fingerprint(),

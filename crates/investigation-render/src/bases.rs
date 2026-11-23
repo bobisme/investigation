@@ -267,7 +267,10 @@ pub(crate) fn plan(
 ) -> Result<(PlanPath, String), RenderError> {
     let path = layout::case_base(case_id, name)?;
     let table = layout::case_view(case_id, name)?;
-    Ok((path, content(case_id, name, table.as_str(), spec)))
+    Ok((
+        path,
+        content(case_id, name, &layout::vault_path(&table), spec),
+    ))
 }
 
 fn content(case_id: Id, name: &str, table: &str, spec: &Spec) -> String {

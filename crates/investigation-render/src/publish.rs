@@ -1,4 +1,5 @@
-//! Ownership-aware publication of a [`RenderPlan`] into `vault/`.
+//! Ownership-aware publication of a [`RenderPlan`] into `vault/`, or into
+//! the managed prefix of an existing vault ([`crate::projection`]).
 //!
 //! Every write goes through one path:
 //!
@@ -43,8 +44,8 @@ use investigation_core::wire::Digest;
 use investigation_store::{Workspace, journal::hash_bytes};
 use rustix::{
     fs::{
-        AtFlags, CWD, Dir, FileType, Mode, OFlags, RenameFlags, fstat, fsync, mkdirat, openat,
-        renameat, renameat_with, statat, unlinkat,
+        AtFlags, Dir, FileType, Mode, OFlags, RenameFlags, fstat, fsync, mkdirat, openat, renameat,
+        renameat_with, statat, unlinkat,
     },
     io::Errno,
 };
@@ -222,25 +223,10 @@ pub struct Publisher<'lock> {
     /// The [`RenderLock`] it was opened under, or for [`Self::inspect`] the
     /// idle probe; the publisher cannot outlive either.
     _serialized: PhantomData<&'lock ()>,
-    vault: OwnedFd,
-}
-
-/// Open `vault/` without following a link, when the vault policy is enabled.
-fn open_vault(workspace: &Workspace) -> Result<OwnedFd, RenderError> {
-    if !workspace.config().vault_policy.enabled {
-        return Err(RenderError::VaultDisabled);
-    }
-    let root = openat(
-        CWD,
-        workspace.root(),
-        OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC,
-        Mode::empty(),
-    )
-    .map_err(|error| RenderError::io(".", error))?;
-    openat(&root, "vault", DIRECTORY, Mode::empty()).map_err(|error| match error {
-        Errno::LOOP | Errno::NOTDIR => RenderError::UnsafeDirectory("vault"),
-        error => RenderError::io("vault", error),
-    })
+    /// The projection root ([`crate::projection`]): `vault/`, or the managed
+    /// prefix of an existing vault. `None` only for [`Self::inspect`] before
+    /// the first render created the prefix; it then reads as empty.
+    vault: Option<OwnedFd>,
 }
 
 pub(crate) enum Walk {
@@ -256,7 +242,7 @@ impl<'lock> Publisher<'lock> {
         }
         Ok(Self {
             _serialized: PhantomData,
-            vault: open_vault(workspace)?,
+            vault: crate::projection::open_root(workspace, true)?,
         })
     }
 
@@ -272,7 +258,7 @@ impl<'lock> Publisher<'lock> {
             Probe::Running => Ok(None),
             Probe::Idle { .. } => Ok(Some(Self {
                 _serialized: PhantomData,
-                vault: open_vault(workspace)?,
+                vault: crate::projection::open_root(workspace, false)?,
             })),
         }
     }
@@ -311,7 +297,7 @@ impl<'lock> Publisher<'lock> {
             outcomes.push(outcome);
         }
         for path in &retired {
-            let outcome = self.retire(plan.generation(), path, ownership)?;
+            let outcome = self.retire(temp_tag(plan.generation()), path, ownership)?;
             observe(&PublishStep {
                 index: outcomes.len(),
                 total,
@@ -402,7 +388,10 @@ impl<'lock> Publisher<'lock> {
         components: &[CString],
         label: &str,
     ) -> Result<Option<OwnedFd>, RenderError> {
-        let mut directory = openat(&self.vault, ".", DIRECTORY, Mode::empty())
+        let Some(root) = &self.vault else {
+            return Ok(None);
+        };
+        let mut directory = openat(root, ".", DIRECTORY, Mode::empty())
             .map_err(|error| RenderError::io("vault", error))?;
         for component in components {
             directory = match openat(&directory, component.as_c_str(), DIRECTORY, Mode::empty()) {
@@ -416,9 +405,10 @@ impl<'lock> Publisher<'lock> {
 
     /// Delete one retired path if [`Ownership::decide_removal`] proves it
     /// generated and its bytes do not change while it is being removed.
-    fn retire(
+    /// `tag` names the hidden file it is moved aside to first.
+    pub(crate) fn retire(
         &self,
-        generation: &Generation,
+        tag: &str,
         path: &PlanPath,
         ownership: &dyn Ownership,
     ) -> Result<Outcome, RenderError> {
@@ -445,13 +435,7 @@ impl<'lock> Publisher<'lock> {
             (_, OnDisk::Other) => Action::Refused(Refusal::NotARegularFile),
             (Decision::Refuse(refusal), _) => Action::Refused(refusal),
             (Decision::Remove, OnDisk::Regular { sha256 }) => {
-                match remove_verified(
-                    &directory,
-                    temp_tag(generation),
-                    path.as_str(),
-                    name,
-                    sha256,
-                )? {
+                match remove_verified(&directory, tag, path.as_str(), name, sha256)? {
                     Removal::Removed => {
                         drop(directory);
                         self.prune_empty_parents(path, parents);
@@ -466,6 +450,15 @@ impl<'lock> Publisher<'lock> {
         Ok(outcome(Some(on_disk), action))
     }
 
+    /// Remove the top-level folder `name` of the projection root when it is
+    /// empty: one non-recursive `rmdir`. Best effort; `true` when removed.
+    /// Only a removal of the whole projection ([`crate::remove`]) asks.
+    pub(crate) fn remove_empty_folder(&self, name: &str) -> bool {
+        self.vault
+            .as_ref()
+            .is_some_and(|root| remove_empty_directory(root, name))
+    }
+
     /// Remove parent folders a removal left empty, deepest first, stopping at
     /// the first that is not empty. Top-level vault folders are never
     /// removed. Each removal is a single non-recursive `rmdir`, which fails
@@ -477,10 +470,9 @@ impl<'lock> Publisher<'lock> {
             else {
                 return;
             };
-            if unlinkat(&directory, parents[depth - 1], AtFlags::REMOVEDIR).is_err() {
+            if !remove_empty_directory(&directory, parents[depth - 1]) {
                 return;
             }
-            let _ = fsync(&directory);
         }
     }
 
@@ -547,7 +539,10 @@ impl<'lock> Publisher<'lock> {
         parents: &[&str],
         create: bool,
     ) -> Result<Walk, RenderError> {
-        let mut directory = openat(&self.vault, ".", DIRECTORY, Mode::empty())
+        let Some(root) = &self.vault else {
+            return Ok(Walk::Missing);
+        };
+        let mut directory = openat(root, ".", DIRECTORY, Mode::empty())
             .map_err(|error| RenderError::io("vault", error))?;
         for component in parents {
             let next = match openat(&directory, *component, DIRECTORY, Mode::empty()) {
@@ -570,6 +565,17 @@ impl<'lock> Publisher<'lock> {
         }
         Ok(Walk::Directory(directory))
     }
+}
+
+/// The one way the renderer removes a folder: a single non-recursive
+/// `rmdir` of `name` in `directory`, which the kernel refuses while any
+/// entry, foreign or hidden, remains. `true` when it was removed.
+pub(crate) fn remove_empty_directory(directory: &OwnedFd, name: &str) -> bool {
+    if unlinkat(directory, name, AtFlags::REMOVEDIR).is_err() {
+        return false;
+    }
+    let _ = fsync(directory);
+    true
 }
 
 pub(crate) fn inspect(

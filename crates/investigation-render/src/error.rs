@@ -35,6 +35,11 @@ pub enum RenderError {
         reason: String,
         changed: bool,
     },
+    /// Existing-vault mode refused to touch the person's vault: the vault or
+    /// the managed prefix is unsafe, the prefix holds files the renderer
+    /// does not own, or the manifest records a projection somewhere else.
+    /// Nothing in the vault changed.
+    Projection { reason: String },
 }
 
 impl RenderError {
@@ -66,6 +71,7 @@ impl RenderError {
             Self::Reconcile { .. } => {
                 Failure::new(ErrorCode::InvalidInput, self.to_string()).at("/paths")
             }
+            Self::Projection { .. } => Failure::new(ErrorCode::InvalidInput, self.to_string()),
         }
     }
 }
@@ -111,6 +117,10 @@ impl fmt::Display for RenderError {
                 write!(formatter, "vault reconcile: {reason}.")
             }
             Self::Reconcile { path, reason, .. } => write!(formatter, "{path}: {reason}."),
+            Self::Projection { reason } => write!(
+                formatter,
+                "Existing-vault projection refused: {reason}. Nothing in the vault changed."
+            ),
         }
     }
 }

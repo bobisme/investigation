@@ -5,6 +5,11 @@
 //! drift. This copies the map the current snapshot plans into `Boards/`,
 //! which no render ever writes, adopts, sweeps or reports. Nothing here
 //! touches the manifest, the journal or any canonical record.
+//! - In existing-vault mode ([`crate::projection`]) `Boards/` is the one
+//!   inside the managed prefix: the copy is written through the projection
+//!   root and nothing outside the prefix is touched. Its file nodes carry
+//!   the prefix, like the generated map's, so they resolve inside it. A
+//!   manifest written for another root refuses the copy.
 //!
 //! - The copy is taken from the plan, not from the file on disk, so an edited
 //!   (drifted) generated map still yields the generated one. It is refused
@@ -33,6 +38,7 @@ use crate::{
     manifest::Manifest,
     map,
     plan::render,
+    projection::Projection,
     publish::{Publisher, Walk, write_bytes_atomically},
 };
 use investigation_core::identity::Id;
@@ -138,7 +144,9 @@ pub fn copy_map(
     let snapshot = VerifiedSnapshot::read(store)?;
     let workspace: &Workspace = store.workspace();
     let generation = Generation::new(RENDERER_VERSION, &snapshot, policy);
-    let manifest = Manifest::load(workspace, &lock)?.manifest;
+    let manifest = Manifest::load(workspace, &lock)?
+        .manifest
+        .bound_to(&Projection::of(workspace))?;
     let rendered = matches!(manifest.last_complete(), Some(last) if last.id == generation.id());
     if !rendered {
         return Err(CopyMapError::NotRendered {

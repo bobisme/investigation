@@ -127,13 +127,15 @@ pub fn vault_status(workspace: &Workspace) -> Result<VaultStatus, RenderError> {
 /// derivatives, and the optional viewer features (native Bases, the case
 /// map) that the bundled compatibility profile allows for its stated
 /// `viewer_release`. An absent, unknown or out-of-range release gets plain
-/// Markdown only.
+/// Markdown only. In existing-vault mode it carries the managed prefix, so
+/// every link starts there.
 pub fn working_policy(workspace: &Workspace) -> ViewPolicy {
     let vault = &workspace.config().vault_policy;
     let resolved = Profile::bundled().resolve(vault.viewer_release.as_deref());
     ViewPolicy::default()
         .with_derivative_previews(vault.include_approved_derivatives)
         .with_viewer(resolved)
+        .with_vault_prefix(vault.existing().map(|(_, prefix)| prefix))
 }
 
 /// Vault-relative paths of files outside the human-owned areas that the
