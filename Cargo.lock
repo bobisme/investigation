@@ -595,6 +595,11 @@ name = "investigation-recording"
 version = "0.1.0"
 dependencies = [
  "investigation-core",
+ "investigation-store",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

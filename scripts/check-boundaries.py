@@ -21,6 +21,9 @@ ALLOWED = {
         "investigation-cli",
     },
 }
+# Library crates that native producers link must not pull in a frontend, even transitively.
+FRONTENDS = {"investigation-cli", "investigation-mcp"}
+LIBRARIES = {"investigation-core", "investigation-store", "investigation-recording"}
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -39,6 +42,29 @@ def dependency_errors():
         dependencies = {dependency["name"] for dependency in package["dependencies"]}
         for dependency in sorted((dependencies & ALLOWED.keys()) - ALLOWED[name]):
             yield f"{manifest}: {name} cannot depend on {dependency}"
+
+
+def frontend_errors():
+    metadata = json.loads(cargo("metadata", "--locked", "--all-features", "--format-version", "1"))
+    names = {package["id"]: package["name"] for package in metadata["packages"]}
+    # Follow normal and build dependencies; dev-dependencies are not linked by producers.
+    graph = {
+        node["id"]: [
+            dependency["pkg"]
+            for dependency in node["deps"]
+            if any(kind["kind"] != "dev" for kind in dependency["dep_kinds"])
+        ]
+        for node in metadata["resolve"]["nodes"]
+    }
+    for root in sorted(package for package, name in names.items() if name in LIBRARIES):
+        seen, pending = {root}, [root]
+        while pending:
+            for dependency in graph.get(pending.pop(), []):
+                if dependency not in seen:
+                    seen.add(dependency)
+                    pending.append(dependency)
+        for frontend in sorted({names[package] for package in seen} & FRONTENDS):
+            yield f"{names[root]} dependency tree contains frontend crate {frontend}"
 
 
 def neutral_surfaces():
@@ -79,7 +105,7 @@ def neutrality_errors():
 
 
 if __name__ == "__main__":
-    errors = list(dependency_errors()) or list(neutrality_errors())
+    errors = list(dependency_errors()) or list(frontend_errors()) or list(neutrality_errors())
     for error in errors:
         print(error, file=sys.stderr)
     sys.exit(bool(errors))

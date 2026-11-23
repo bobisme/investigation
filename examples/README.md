@@ -1,3 +1,5 @@
 # Examples
 
 Neutral producer examples in Rust and Python.
+
+Each example implements the producer adapter protocol in [docs/recording.md](../docs/recording.md#producer-adapter-protocol-invproducer-adapterv1), so the conformance runner drives both the same way.
