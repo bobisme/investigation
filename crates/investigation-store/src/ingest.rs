@@ -489,7 +489,7 @@ impl<F: DurableFs> Store<F> {
         // A derivative's receipt reports its lineage from the committed state, so
         // an identical retry answers the same way.
         let derived = match (&manifest.derived_from, manifest.case_id) {
-            (Some(_), Some(case_id)) => Some(self.case(case_id)?.state),
+            (Some(_), Some(case_id)) => Some(self.state_after_write(case_id)?),
             _ => None,
         };
         let references = prepared.iter().any(|item| item.reference.is_some());
@@ -560,7 +560,7 @@ impl<F: DurableFs> Store<F> {
             return Ok(());
         };
         let state = match manifest.case_id.or(created_case) {
-            Some(case_id) => self.case(case_id)?.state,
+            Some(case_id) => self.state_after_write(case_id)?,
             // A deduplicated new_case manifest answers from the acquisition's home case.
             None => match self
                 .cases()?

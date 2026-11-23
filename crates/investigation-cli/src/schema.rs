@@ -28,6 +28,7 @@ const WIRE_SCHEMAS: &[&str] = &[
     "audit",
     "method-pack",
     "export-manifest",
+    "dry-run",
 ];
 const RESERVED_WIRE_SCHEMAS: &[&str] = &[];
 
@@ -81,6 +82,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         "audit" => Some(investigation_core::blindspot::audit_schema()),
         "method-pack" => Some(investigation_core::method_pack::schema()),
         "export-manifest" => Some(investigation_render::export::manifest_schema()),
+        "dry-run" => Some(crate::dry_run::schema()),
         _ => wire_schema(name),
     };
     if let Some(schema) = wire {
@@ -107,6 +109,9 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 }
                 "export-manifest" => {
                     "Read export-manifest.json, written last into every directory investigation export creates."
+                }
+                "dry-run" => {
+                    "Read the would-be receipt that a write given --dry-run returns without committing."
                 }
                 "method-pack" => {
                     "Author an inv.method-pack.v1 TOML file (tables decode to this shape); retain it with ingest and pin it with method_pack.adopt."

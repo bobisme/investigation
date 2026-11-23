@@ -11,6 +11,8 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::dry_run::DryRun;
+
 /// What can be seen of one file without reading it. Two equal identities of
 /// a path mean the same file, not written, truncated, replaced or changed in
 /// mode between the two looks, to the filesystem's timestamp granularity: a
@@ -82,6 +84,14 @@ pub trait DurableFs {
     /// failure is ignored and nothing is synced. Takes `&self` because a
     /// cache write is never part of a canonical publication.
     fn write_cache(&self, _path: &Path, _bytes: &[u8]) {}
+    /// The dry run this filesystem is in, if any: it then writes nothing to
+    /// the workspace (see [`crate::dry_run`]).
+    fn dry_run(&self) -> Option<&DryRun> {
+        None
+    }
+    fn dry_run_mut(&mut self) -> Option<&mut DryRun> {
+        None
+    }
 }
 impl DurableFile for File {
     fn sync_all(&mut self) -> io::Result<()> {
@@ -95,10 +105,25 @@ impl DurableFile for File {
 }
 pub struct LocalFs {
     root: PathBuf,
+    dry: Option<DryRun>,
 }
 impl LocalFs {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            dry: None,
+        }
+    }
+    /// From now on write nothing to the workspace: keep staged bytes out of
+    /// it and refuse every other write.
+    pub fn begin_dry_run(&mut self) {
+        self.dry.get_or_insert_with(DryRun::default);
+    }
+    fn refuse_if_dry(&self, p: &Path) -> io::Result<()> {
+        match self.dry {
+            Some(_) => Err(crate::dry_run::refused(p)),
+            None => Ok(()),
+        }
     }
     fn path(&self, path: &Path) -> io::Result<PathBuf> {
         if path
@@ -118,6 +143,9 @@ impl DurableFs for LocalFs {
     type Guard = CommitLock;
     fn create_private(&mut self, p: &Path) -> io::Result<File> {
         use std::os::unix::fs::OpenOptionsExt;
+        if let Some(dry) = &mut self.dry {
+            return dry.create(p);
+        }
         OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -126,12 +154,22 @@ impl DurableFs for LocalFs {
     }
     fn create_dir(&mut self, p: &Path) -> io::Result<()> {
         use std::os::unix::fs::DirBuilderExt;
+        self.refuse_if_dry(p)?;
         fs::DirBuilder::new().mode(0o700).create(self.path(p)?)
     }
     fn read(&self, p: &Path) -> io::Result<Box<dyn Read>> {
+        if let Some(staged) = self.dry.as_ref().and_then(|dry| dry.read(p)) {
+            return staged;
+        }
         Ok(Box::new(File::open(self.path(p)?)?))
     }
     fn sync_existing(&mut self, p: &Path) -> io::Result<()> {
+        if let Some(dry) = &self.dry {
+            return match dry.staged(p) {
+                Some(file) => file.sync_all(),
+                None => Err(crate::dry_run::refused(p)),
+            };
+        }
         File::open(self.path(p)?)?.sync_all()
     }
     fn list(&self, p: &Path) -> io::Result<Vec<PathBuf>> {
@@ -142,9 +180,11 @@ impl DurableFs for LocalFs {
         Ok(entries)
     }
     fn link_no_replace(&mut self, a: &Path, b: &Path) -> io::Result<()> {
+        self.refuse_if_dry(b)?;
         fs::hard_link(self.path(a)?, self.path(b)?)
     }
     fn rename_no_replace(&mut self, a: &Path, b: &Path) -> io::Result<()> {
+        self.refuse_if_dry(b)?;
         rustix::fs::renameat_with(
             rustix::fs::CWD,
             self.path(a)?,
@@ -155,12 +195,17 @@ impl DurableFs for LocalFs {
         .map_err(Into::into)
     }
     fn sync_dir(&mut self, p: &Path) -> io::Result<()> {
+        self.refuse_if_dry(p)?;
         File::open(self.path(p)?)?.sync_all()
     }
     fn remove(&mut self, p: &Path) -> io::Result<()> {
+        if let Some(dry) = &mut self.dry {
+            return dry.remove(p);
+        }
         fs::remove_file(self.path(p)?)
     }
     fn remove_dir(&mut self, p: &Path) -> io::Result<()> {
+        self.refuse_if_dry(p)?;
         fs::remove_dir(self.path(p)?)
     }
     fn lock(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
@@ -170,7 +215,10 @@ impl DurableFs for LocalFs {
         use std::os::unix::fs::MetadataExt;
         // Follows a final symlink, as `read` does. The change time moves on
         // every write, truncation, mode change or link, and no caller sets it.
-        let metadata = fs::metadata(self.path(p)?)?;
+        let metadata = match self.dry.as_ref().and_then(|dry| dry.staged(p)) {
+            Some(staged) => staged.metadata()?,
+            None => fs::metadata(self.path(p)?)?,
+        };
         Ok(FileIdentity {
             device: metadata.dev(),
             inode: metadata.ino(),
@@ -181,6 +229,9 @@ impl DurableFs for LocalFs {
     }
 
     fn reclaim_publication_temporaries(&mut self) {
+        if self.dry.is_some() {
+            return;
+        }
         reclaim_publication_temporaries(&self.root.join("state/tmp"), std::time::SystemTime::now());
     }
     fn read_cache(&self, p: &Path) -> Option<Vec<u8>> {
@@ -196,7 +247,16 @@ impl DurableFs for LocalFs {
         (bytes.len() as u64 <= MAX_CACHE_ENTRY).then_some(bytes)
     }
     fn write_cache(&self, p: &Path, bytes: &[u8]) {
+        if self.dry.is_some() {
+            return;
+        }
         let _ = write_cache_entry(self, p, bytes);
+    }
+    fn dry_run(&self) -> Option<&DryRun> {
+        self.dry.as_ref()
+    }
+    fn dry_run_mut(&mut self) -> Option<&mut DryRun> {
+        self.dry.as_mut()
     }
 }
 

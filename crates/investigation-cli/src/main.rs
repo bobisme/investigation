@@ -9,6 +9,7 @@ mod capture_schema;
 mod config;
 mod docs;
 mod doctor;
+mod dry_run;
 mod evidence;
 mod explain;
 mod export;
@@ -191,22 +192,26 @@ enum Commands {
     },
     /// Submit one atomic transaction using the operation catalog.
     #[command(
-        after_help = "Run investigation schema record for the envelope. Run investigation schema --list for operations.\nExample: investigation record --input transaction.json --format json"
+        after_help = "Run investigation schema record for the envelope. Run investigation schema --list for operations.\nExamples:\n  investigation record --input transaction.json --format json\n  investigation record --input transaction.json --dry-run --format json\n--dry-run checks the transaction against the current snapshot like a commit and writes nothing."
     )]
     Record {
         /// Read from this file, or use - to read stdin.
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
+        #[arg(long, help = dry_run::HELP)]
+        dry_run: bool,
     },
     /// Preserve original local bytes and return their acquisition IDs.
     Ingest {
         /// Read the manifest from FILE, or - for a path-only manifest on stdin.
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
+        #[arg(long, help = dry_run::HELP)]
+        dry_run: bool,
     },
     /// Open an exploratory case and retain one attachment atomically.
     #[command(
-        after_help = "Example: investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin.\nWithout --actor or AGENT, the case is attributed to the actor init --actor recorded on this machine."
+        after_help = "Examples:\n  investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\n  investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --dry-run --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin.\nWithout --actor or AGENT, the case is attributed to the actor init --actor recorded on this machine."
     )]
     Start {
         /// The question the case investigates.
@@ -217,6 +222,8 @@ enum Commands {
         /// Stable idempotency key; generated if omitted.
         #[arg(long, value_name = "KEY")]
         command_id: Option<String>,
+        #[arg(long, help = dry_run::HELP)]
+        dry_run: bool,
     },
     /// Inspect retained source material explicitly.
     #[command(subcommand)]
@@ -434,19 +441,20 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
-                Commands::Record { input } => record(&mut store, &global, &input),
-                Commands::Ingest { input } => evidence::ingest(&mut store, &global, &input),
+                Commands::Record { input, dry_run } => {
+                    dry_run::run(&mut store, dry_run, |store| record(store, &global, &input))
+                }
+                Commands::Ingest { input, dry_run } => dry_run::run(&mut store, dry_run, |store| {
+                    evidence::ingest(store, &global, &input)
+                }),
                 Commands::Start {
                     question,
                     attach,
                     command_id,
-                } => evidence::start(
-                    &mut store,
-                    &global,
-                    &question,
-                    &attach,
-                    command_id.as_deref(),
-                ),
+                    dry_run,
+                } => dry_run::run(&mut store, dry_run, |store| {
+                    evidence::start(store, &global, &question, &attach, command_id.as_deref())
+                }),
                 Commands::Evidence(command) => evidence::read(&mut store, &global, command),
                 Commands::Capture(command) => capture::run(&mut store, &global, command),
                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),

@@ -31,16 +31,19 @@ pub(crate) enum Effect {
     Write,
     /// A read, except that these flags (clap argument ids) make it write.
     ReadUnlessFlag(&'static [&'static str]),
-    /// A write, except that this flag (clap argument id) turns it into a dry read.
-    WriteUnlessFlag(&'static str),
+    /// A write, except that any of these flags (clap argument ids) turns it
+    /// into a dry read.
+    WriteUnlessFlag(&'static [&'static str]),
 }
 
 /// Declared once: command path and its effect. Parent commands are not listed.
 pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("init", Effect::Write),
-    ("record", Effect::Write),
-    ("ingest", Effect::Write),
-    ("start", Effect::Write),
+    // --dry-run validates against the current snapshot and writes nothing:
+    // no journal, blob, staging, cache entry or index.
+    ("record", Effect::WriteUnlessFlag(&["dry_run"])),
+    ("ingest", Effect::WriteUnlessFlag(&["dry_run"])),
+    ("start", Effect::WriteUnlessFlag(&["dry_run"])),
     ("evidence read", Effect::Read),
     ("capture begin", Effect::Write),
     ("capture append", Effect::Write),
@@ -68,10 +71,22 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("exposure", Effect::Read),
     ("repair index", Effect::Write),
     ("repair staging", Effect::Write),
-    ("observe", Effect::WriteUnlessFlag("print_envelope")),
-    ("note", Effect::WriteUnlessFlag("print_envelope")),
-    ("case new", Effect::WriteUnlessFlag("print_envelope")),
-    ("source add", Effect::WriteUnlessFlag("print_envelope")),
+    (
+        "observe",
+        Effect::WriteUnlessFlag(&["print_envelope", "dry_run"]),
+    ),
+    (
+        "note",
+        Effect::WriteUnlessFlag(&["print_envelope", "dry_run"]),
+    ),
+    (
+        "case new",
+        Effect::WriteUnlessFlag(&["print_envelope", "dry_run"]),
+    ),
+    (
+        "source add",
+        Effect::WriteUnlessFlag(&["print_envelope", "dry_run"]),
+    ),
     // Writes the vault, its manifest and the conflicts area under local/.
     ("vault render", Effect::Write),
     ("vault status", Effect::Read),
@@ -82,7 +97,7 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Moves observed files into Notes/Reconciled/ or local/conflicts/,
     // updates the manifest and renders; propose-change also records a
     // change. --dry-run checks and prints only.
-    ("vault reconcile", Effect::WriteUnlessFlag("dry_run")),
+    ("vault reconcile", Effect::WriteUnlessFlag(&["dry_run"])),
     // `doctor bundle` requires --preview and writes no archive.
     // Reads investigation.toml and local/actor.toml; never writes or prints a secret.
     ("config list", Effect::Read),
@@ -94,8 +109,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // like an export; --dry-run prints the diff and writes nothing.
     ("integration show", Effect::Read),
     ("integration inspect", Effect::Read),
-    ("integration apply", Effect::WriteUnlessFlag("dry_run")),
-    ("integration remove", Effect::WriteUnlessFlag("dry_run")),
+    ("integration apply", Effect::WriteUnlessFlag(&["dry_run"])),
+    ("integration remove", Effect::WriteUnlessFlag(&["dry_run"])),
     // Hidden spelling of --version.
     ("version", Effect::Read),
 ];
@@ -138,12 +153,14 @@ fn write_reason(path: &str, leaf: &ArgMatches) -> Option<String> {
             .iter()
             .find(|flag| flag_given(leaf, flag))
             .map(|flag| format!("`{path} --{flag}` writes")),
-        Some(Effect::WriteUnlessFlag(flag)) => (!flag_given(leaf, flag)).then(|| {
-            format!(
-                "`{path}` writes unless --{} is given",
-                flag.replace('_', "-")
-            )
-        }),
+        Some(Effect::WriteUnlessFlag(flags)) => (!flags.iter().any(|flag| flag_given(leaf, flag)))
+            .then(|| {
+                let flags: Vec<_> = flags
+                    .iter()
+                    .map(|flag| format!("--{}", flag.replace('_', "-")))
+                    .collect();
+                format!("`{path}` writes unless {} is given", flags.join(" or "))
+            }),
     }
 }
 
@@ -234,8 +251,7 @@ mod tests {
         let tree = crate::shortcuts::augment(crate::Cli::command());
         for (path, effect) in EFFECTS {
             let flags: &[&str] = match effect {
-                Effect::ReadUnlessFlag(flags) => flags,
-                Effect::WriteUnlessFlag(flag) => std::slice::from_ref(flag),
+                Effect::ReadUnlessFlag(flags) | Effect::WriteUnlessFlag(flags) => flags,
                 _ => continue,
             };
             let mut command = &tree;

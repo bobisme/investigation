@@ -407,11 +407,11 @@ impl Store {
                 false,
             ),
         };
-        let replay = self.case(case_id)?;
+        let state = self.state_after_write(case_id)?;
         let mut receipt = producer_receipt(
             receipt,
             case_id,
-            &replay.state,
+            &state,
             run,
             &staged,
             &request,

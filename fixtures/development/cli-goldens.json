@@ -485,6 +485,7 @@
       "audit",
       "method-pack",
       "export-manifest",
+      "dry-run",
       "capture",
       "capture.begin",
       "capture.begin.receipt",

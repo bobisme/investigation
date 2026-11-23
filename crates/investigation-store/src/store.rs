@@ -122,6 +122,20 @@ impl Store {
             catalog: standard_catalog(),
         }
     }
+
+    /// Make every later write a dry run: it takes the same lock, verifies the
+    /// same journal and runs the same idempotency check, validation and gates
+    /// as a commit, then returns the receipt the commit would return and
+    /// publishes nothing. The receipt's identifiers and snapshot are those of
+    /// a plan; a commit assigns its own. See [`crate::dry_run`].
+    pub fn set_dry_run(&mut self) {
+        self.fs.begin_dry_run();
+    }
+
+    /// Whether [`Self::set_dry_run`] was called.
+    pub fn is_dry_run(&self) -> bool {
+        self.fs.dry_run().is_some()
+    }
 }
 
 impl<F: DurableFs> Store<F> {
@@ -274,7 +288,7 @@ impl<F: DurableFs> Store<F> {
             &command.command_id,
             command.case_id,
             match &result {
-                Ok(_) => Outcome::Committed,
+                Ok(_) => self.success_outcome(),
                 Err(failure) => Outcome::Failed(failure),
             },
         );
@@ -315,7 +329,7 @@ impl<F: DurableFs> Store<F> {
             &command_id,
             case_id,
             match &result {
-                Ok(_) => Outcome::Committed,
+                Ok(_) => self.success_outcome(),
                 Err(failure) => Outcome::Failed(failure),
             },
         );
@@ -475,6 +489,13 @@ impl<F: DurableFs> Store<F> {
         let bytes = event.to_bytes()?;
         let hash = hash_bytes(&bytes);
         let name = event_filename(sequence)?;
+        if let Some(dry) = self.fs.dry_run_mut() {
+            // Everything a commit checks has passed; publish nothing.
+            dry.plan(case_id, projected);
+            let mut receipt = receipt_for(&VerifiedEvent { event, hash });
+            receipt.projection.index = ProjectionStatus::Pending;
+            return Ok(Some(receipt));
+        }
         self.persist(&event, &bytes, &name, genesis.as_deref(), blobs, trace)
             .inspect_err(|error| {
                 if error.error.code == ErrorCode::DurabilityUnknown {
@@ -588,6 +609,23 @@ impl<F: DurableFs> Store<F> {
             .map_err(|error| exclusive_publication_failure(DurableError::Io(error)))?;
         trace.enter(Stage::DirectorySync);
         sync_directory(&mut self.fs, Path::new(CASES), &self.gate).map_err(durability_failure)
+    }
+
+    fn success_outcome(&self) -> Outcome<'static> {
+        if self.fs.dry_run().is_some() {
+            Outcome::DryRun
+        } else {
+            Outcome::Committed
+        }
+    }
+
+    /// The state the last write left `case_id` in: after a dry run that
+    /// planned a transaction in it, the state that transaction would leave.
+    pub(crate) fn state_after_write(&mut self, case_id: Id) -> Result<State, Failure> {
+        if let Some(planned) = self.fs.dry_run().and_then(|dry| dry.planned(case_id)) {
+            return Ok(planned.clone());
+        }
+        Ok(self.case(case_id)?.state)
     }
 
     fn coordinate(&mut self) -> Result<F::Guard, Failure> {
@@ -725,7 +763,10 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn apply_projection_health(&self, replay: &WorkspaceReplay, receipt: &mut Receipt) {
-        if self.refresh_index(replay).is_err() {
+        if self.fs.dry_run().is_some() {
+            // A dry run leaves the index as it is.
+            receipt.projection.index = ProjectionStatus::Pending;
+        } else if self.refresh_index(replay).is_err() {
             receipt.projection.index = ProjectionStatus::Degraded;
             receipt.warnings.push("The canonical transaction is committed. Run investigation repair index to rebuild the disposable index.".to_owned());
         } else {

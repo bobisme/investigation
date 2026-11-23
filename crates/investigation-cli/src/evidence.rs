@@ -136,7 +136,9 @@ pub(crate) fn start(
         Some(command_id) => command_id.to_owned(),
         None => {
             let generated = crate::shortcuts::generated_command_id();
-            crate::shortcuts::announce_generated_id(&generated)?;
+            if !store.is_dry_run() {
+                crate::shortcuts::announce_generated_id(&generated)?;
+            }
             generated
         }
     };
@@ -168,7 +170,10 @@ pub(crate) fn start(
             .find(|id| id.starts_with(prefix))
             .map(str::to_owned)
     };
-    if let (Some(case), Some(source)) = (created("case_"), created("src_")) {
+    // A dry run's records do not exist yet; its next write is the commit.
+    if let (false, Some(case), Some(source)) =
+        (store.is_dry_run(), created("case_"), created("src_"))
+    {
         // The v1 receipt `next` list holds local reads only, so the write
         // that should follow is published beside it as `next_write`.
         let step =

@@ -27,6 +27,7 @@ pub(crate) struct ParsedShortcut {
     pub(crate) payload_overrides: BTreeMap<String, Value>,
     pub(crate) command_id: Option<String>,
     pub(crate) print_envelope: bool,
+    pub(crate) dry_run: bool,
 }
 
 /// Add catalog-declared shortcuts to the regular CLI command tree.
@@ -87,6 +88,13 @@ fn shortcut_leaf(
                 .long("print-envelope")
                 .action(ArgAction::SetTrue)
                 .help("Print the exact one-operation request without submitting it."),
+        )
+        .arg(
+            Arg::new("dry_run")
+                .long("dry-run")
+                .action(ArgAction::SetTrue)
+                .conflicts_with("print_envelope")
+                .help(crate::dry_run::HELP),
         );
     for argument in spec.arguments {
         assert!(
@@ -471,6 +479,7 @@ pub(crate) fn from_matches(matches: &mut ArgMatches) -> Option<ParsedShortcut> {
     }
     let command_id = values_matches.get_one::<String>("command_id").cloned();
     let print_envelope = values_matches.get_flag("print_envelope");
+    let dry_run = values_matches.get_flag("dry_run");
     let global = crate::Global::from_arg_matches_mut(matches).ok()?;
     Some(ParsedShortcut {
         global,
@@ -479,6 +488,7 @@ pub(crate) fn from_matches(matches: &mut ArgMatches) -> Option<ParsedShortcut> {
         payload_overrides,
         command_id,
         print_envelope,
+        dry_run,
     })
 }
 
@@ -501,14 +511,14 @@ pub(crate) fn run(store: &mut Store, shortcut: ParsedShortcut) -> Result<Output,
         .clone()
         .unwrap_or_else(generated_command_id);
     let actor = select_actor(store.workspace(), shortcut.global.actor.as_ref(), None)?;
-    match spec.target {
+    // A dry run announces no command ID: nothing is written under it.
+    let announce = generated && !shortcut.dry_run;
+    crate::dry_run::run(store, shortcut.dry_run, |store| match spec.target {
         ShortcutTarget::Operation(operation) => {
-            run_operation(store, operation, &shortcut, &actor, &command_id, generated)
+            run_operation(store, operation, &shortcut, &actor, &command_id, announce)
         }
-        ShortcutTarget::Ingest => {
-            run_ingest(store, spec, &shortcut, &actor, &command_id, generated)
-        }
-    }
+        ShortcutTarget::Ingest => run_ingest(store, spec, &shortcut, &actor, &command_id, announce),
+    })
 }
 
 pub(crate) fn generated_command_id() -> String {

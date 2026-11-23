@@ -1,0 +1,53 @@
+{
+  "$defs": {
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:dry-run",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The published shape of a dry-run response: the would-be receipt of the\ncommand (`receipt`, `ingest-receipt` or `producer-run-receipt`) with\nthese fields replaced or added.",
+  "properties": {
+    "next": {
+      "description": "Empty: the planned records do not exist yet."
+    },
+    "next_write": {
+      "description": "The command that commits the request: this one without `--dry-run`."
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "result": {
+      "const": "dry_run",
+      "description": "Always `dry_run`: nothing was committed.",
+      "type": "string"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ResponseVersion"
+    },
+    "warnings": {
+      "description": "The commit's warnings, after one that says nothing was committed.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "would_result": {
+      "description": "The `result` the commit would return: `committed`, or\n`already_committed` when it would change nothing (this actor already\ncommitted the command ID, or an ingest's items are all recorded)."
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "result",
+    "would_result",
+    "next",
+    "next_write",
+    "warnings"
+  ],
+  "title": "DryRunResponse",
+  "type": "object"
+}

@@ -208,6 +208,7 @@
     "capture.finalize.receipt": "capture.finalize.receipt.schema.json",
     "capture.recover": "capture.recover.schema.json",
     "capture.recover.receipt": "capture.recover.receipt.schema.json",
+    "dry-run": "dry-run.schema.json",
     "error": "error.schema.json",
     "evidence-selector": "evidence-selector.schema.json",
     "export-manifest": "export-manifest.schema.json",

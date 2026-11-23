@@ -144,6 +144,11 @@ impl CommitTrace {
                 sequence, stage = Stage::Receipt.name(), elapsed_ms = self.elapsed_ms(),
                 "commit complete"
             ),
+            Outcome::DryRun => tracing::info!(
+                target: TARGET,
+                command_id, case_id = case, sequence, elapsed_ms = self.elapsed_ms(),
+                "dry run complete; nothing committed"
+            ),
             Outcome::Failed(failure) => {
                 let class = serde_json::to_value(failure.error.code)
                     .ok()
@@ -188,5 +193,7 @@ impl CommitTrace {
 
 pub(crate) enum Outcome<'a> {
     Committed,
+    /// Validated like a commit, then stopped before publication.
+    DryRun,
     Failed(&'a Failure),
 }

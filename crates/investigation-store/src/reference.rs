@@ -462,9 +462,8 @@ impl<F: DurableFs> Store<F> {
                 revision: change.revision,
             })
             .ok_or_else(|| integrity("The reverification receipt names no Artifact revision."))?;
-        let replay = self.case(case_id)?;
-        let retention = replay
-            .state
+        let state = self.state_after_write(case_id)?;
+        let retention = state
             .revision(revised)
             .and_then(artifact_retention)
             .ok_or_else(|| integrity("The reverified Artifact revision is unreadable."))?;
