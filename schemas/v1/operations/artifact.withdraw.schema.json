@@ -1,0 +1,139 @@
+{
+  "$defs": {
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "WithdrawalReason": {
+      "description": "Why a Source or Artifact is withdrawn from evidentiary use.",
+      "oneOf": [
+        {
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "retracted_by_origin",
+          "description": "The originator retracted the material.",
+          "type": "string"
+        },
+        {
+          "const": "corrected_by_erratum",
+          "description": "An erratum or correction notice changes the material.",
+          "type": "string"
+        },
+        {
+          "const": "superseded",
+          "description": "A later edition or release replaces the material.",
+          "type": "string"
+        },
+        {
+          "const": "authenticity_doubt",
+          "description": "The material may not be what or from whom it claims to be.",
+          "type": "string"
+        },
+        {
+          "const": "collection_error",
+          "description": "The material was collected, imported or attributed incorrectly.",
+          "type": "string"
+        },
+        {
+          "const": "out_of_scope",
+          "description": "The material is outside the case scope.",
+          "type": "string"
+        }
+      ]
+    },
+    "WithdrawalScope": {
+      "description": "What a withdrawal covers.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The whole record leaves evidentiary use.",
+          "properties": {
+            "extent": {
+              "const": "entire",
+              "type": "string"
+            }
+          },
+          "required": [
+            "extent"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Only the named part is withdrawn; the rest stays usable. Dependents are\nstill marked for review, because the core cannot tell which part each\none relies on.",
+          "properties": {
+            "extent": {
+              "const": "partial",
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "extent",
+            "statement"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:artifact.withdraw",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact current Artifact revision being withdrawn."
+    },
+    "evidence_refs": {
+      "default": [],
+      "description": "Exact current Sources, Artifacts or Observations that ground the withdrawal.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "reason": {
+      "$ref": "#/$defs/WithdrawalReason"
+    },
+    "scope": {
+      "$ref": "#/$defs/WithdrawalScope"
+    }
+  },
+  "required": [
+    "artifact_ref",
+    "reason",
+    "scope",
+    "rationale"
+  ],
+  "title": "ArtifactWithdraw",
+  "type": "object"
+}

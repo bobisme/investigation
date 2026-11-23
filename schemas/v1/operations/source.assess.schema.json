@@ -1,0 +1,221 @@
+{
+  "$defs": {
+    "Authenticity": {
+      "enum": [
+        "authentic",
+        "doubtful",
+        "not_authentic",
+        "cannot_judge"
+      ],
+      "type": "string"
+    },
+    "AuthenticityJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "judgment": {
+          "$ref": "#/$defs/Authenticity"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "judgment",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "Currency": {
+      "enum": [
+        "current",
+        "outdated",
+        "superseded",
+        "cannot_judge"
+      ],
+      "type": "string"
+    },
+    "CurrencyJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "judgment": {
+          "$ref": "#/$defs/Currency"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "judgment",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "OriginJudgment": {
+      "additionalProperties": false,
+      "properties": {
+        "judgment": {
+          "$ref": "#/$defs/OriginRole"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "judgment",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "OriginRole": {
+      "enum": [
+        "primary",
+        "secondary",
+        "tertiary",
+        "cannot_judge"
+      ],
+      "type": "string"
+    },
+    "Reliability": {
+      "enum": [
+        "reliable",
+        "mixed",
+        "unreliable",
+        "cannot_judge"
+      ],
+      "type": "string"
+    },
+    "ReliabilityGround": {
+      "description": "What a reliability judgment considered about the source itself.",
+      "enum": [
+        "track_record",
+        "competence",
+        "access"
+      ],
+      "type": "string"
+    },
+    "ReliabilityJudgment": {
+      "additionalProperties": false,
+      "description": "Reliability of the source (track record, competence, access), judged\nseparately from the credibility of any specific datum it reports.",
+      "properties": {
+        "grounds": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ReliabilityGround"
+          },
+          "type": "array"
+        },
+        "judgment": {
+          "$ref": "#/$defs/Reliability"
+        },
+        "rationale": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "judgment",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:source.assess",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "authenticity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AuthenticityJudgment"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Whether the source is what, and from whom, it claims to be."
+    },
+    "currency": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CurrencyJudgment"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Whether the material is still current, for example after an erratum."
+    },
+    "evidence_refs": {
+      "default": [],
+      "description": "Exact current Sources, Artifacts or Observations the judgment relies on.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "limitations": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "origin": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/OriginJudgment"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Primary, secondary or tertiary relation to what it reports."
+    },
+    "reliability": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReliabilityJudgment"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Track record, competence and access of the source itself."
+    },
+    "source_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact current Source revision being judged."
+    }
+  },
+  "required": [
+    "source_ref"
+  ],
+  "title": "SourceAssess",
+  "type": "object"
+}

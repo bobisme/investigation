@@ -224,6 +224,15 @@ pub struct SourceBody {
     /// description of a known acquisition revises the Source; it is not a new trial.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description_digest: Option<Digest>,
+    /// `withdrawn` while an entire withdrawal is in effect (`source.withdraw`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::source_ops::EvidentiaryStatus>,
+    /// Append-only attributed withdrawals. Withdrawal is not erasure.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withdrawals: Vec<crate::source_ops::Withdrawal>,
+    /// Append-only attributed judgments recorded by `source.assess`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_assessment: Option<crate::source_ops::SourceAssessmentLog>,
 }
 
 /// Producer namespace plus stable external ID identify one logical acquisition
@@ -306,6 +315,13 @@ pub struct ArtifactBody {
     pub availability: ArtifactAvailability,
     pub integrity: ArtifactIntegrity,
     pub sensitivity: ArtifactSensitivity,
+    /// `withdrawn` while an entire withdrawal is in effect (`artifact.withdraw`).
+    /// Withdrawal never changes `availability`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<crate::source_ops::EvidentiaryStatus>,
+    /// Append-only attributed withdrawals. Withdrawal is not erasure.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub withdrawals: Vec<crate::source_ops::Withdrawal>,
 }
 
 impl ArtifactBody {

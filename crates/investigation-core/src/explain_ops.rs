@@ -290,6 +290,23 @@ fn pinned(reference: &Reference) -> Result<RevisionRef, Failure> {
     }
 }
 
+/// A cited Source or Artifact at its current revision when only its
+/// evidentiary use changed since the cited revision; otherwise exact.
+fn cited_evidence<'a>(
+    ctx: &'a OperationContext<'_>,
+    reference: RevisionRef,
+    kind: Kind,
+    path: &str,
+) -> Result<&'a Record, Failure> {
+    match ctx.case_id().and_then(|case| {
+        crate::source_ops::use_successor(ctx.state(), case, reference)
+            .filter(|record| record.header.id.kind() == kind)
+    }) {
+        Some(record) => Ok(record),
+        None => current(ctx, reference, kind, path),
+    }
+}
+
 fn current<'a>(
     ctx: &'a OperationContext<'_>,
     reference: RevisionRef,
@@ -1044,12 +1061,21 @@ fn ensure_observation_usable(
             selector,
             text_quote,
         } => {
-            let artifact = current(ctx, *artifact_ref, Kind::Artifact, path)?;
+            let artifact = cited_evidence(ctx, *artifact_ref, Kind::Artifact, path)?;
+            if let Some(withdrawn) = crate::source_ops::withdrawn_lineage(ctx.state(), artifact) {
+                return Err(blocked(
+                    path,
+                    format!(
+                        "Evidence from withdrawn {} has no diagnostic force. Withdrawal is not erasure; use an inconclusive or non_diagnostic relation to record it.",
+                        withdrawn.id
+                    ),
+                ));
+            }
             let artifact: ArtifactBody = content(
                 &artifact.body,
                 &["status", "lifecycle", "rationale", "withdrawal_reason"],
             )?;
-            let source = current(ctx, artifact.source, Kind::Source, path)?;
+            let source = cited_evidence(ctx, artifact.source, Kind::Source, path)?;
             crate::measurement_ops::effective_validity(ctx.state(), observation)
                 == MeasurementValidity::Valid
                 && selector.validation == crate::evidence::SelectorValidation::Verified
@@ -1088,6 +1114,17 @@ fn evidence_basis(
             valid_observation = true;
         } else if diagnostic {
             let record = current(ctx, reference, kind, &path)?;
+            if matches!(kind, Kind::Artifact | Kind::Source)
+                && let Some(withdrawn) = crate::source_ops::withdrawn_lineage(ctx.state(), record)
+            {
+                return Err(blocked(
+                    &path,
+                    format!(
+                        "Withdrawn {} has no diagnostic force. Withdrawal is not erasure; use an inconclusive or non_diagnostic relation to record it.",
+                        withdrawn.id
+                    ),
+                ));
+            }
             if kind == Kind::Artifact {
                 let artifact: ArtifactBody = content(
                     &record.body,

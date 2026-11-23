@@ -617,12 +617,19 @@ fn create_records(
             metadata: manifest.source.metadata.clone(),
             acquisition_key: plan.key.clone(),
             description_digest: keyed.then(|| description.clone()),
+            status: None,
+            withdrawals: Vec::new(),
+            source_assessment: None,
         };
         let source_ref = match &plan.known {
             // A known acquisition keeps its Source ID; a changed description
             // becomes the next revision of that Source, not a new acquisition.
             Some(known) if known.revise => {
                 source.acquisition.acquired_at = known.body.acquisition.acquired_at.clone();
+                // A new description never lifts a withdrawal or drops a judgment.
+                source.status = known.body.status;
+                source.withdrawals = known.body.withdrawals.clone();
+                source.source_assessment = known.body.source_assessment.clone();
                 builder.revise(&known.source, source)?
             }
             Some(known) => known.source.reference(),
@@ -647,6 +654,8 @@ fn create_records(
             availability: ArtifactAvailability::Retained,
             integrity: ArtifactIntegrity::Verified,
             sensitivity: sensitivity(manifest.classification),
+            status: None,
+            withdrawals: Vec::new(),
         };
         let known_artifact = plan.known.as_ref().and_then(|known| known.artifact);
         let artifact_id = match known_artifact {
@@ -703,6 +712,8 @@ fn create_records(
             availability: ArtifactAvailability::Retained,
             integrity: ArtifactIntegrity::Verified,
             sensitivity: sensitivity(manifest.classification),
+            status: None,
+            withdrawals: Vec::new(),
         },
         vec![source.id],
     )?;

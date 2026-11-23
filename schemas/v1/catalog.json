@@ -1,6 +1,7 @@
 {
   "operations": {
     "annotation.add": "operations/annotation.add.schema.json",
+    "artifact.withdraw": "operations/artifact.withdraw.schema.json",
     "assessment.add": "operations/assessment.add.schema.json",
     "assessment.retract": "operations/assessment.retract.schema.json",
     "assessment.supersede": "operations/assessment.supersede.schema.json",
@@ -52,15 +53,14 @@
     "review.submit": "operations/review.submit.schema.json",
     "run.reconcile": "operations/run.reconcile.schema.json",
     "run.record": "operations/run.record.schema.json",
-    "run.start": "operations/run.start.schema.json"
+    "run.start": "operations/run.start.schema.json",
+    "source.assess": "operations/source.assess.schema.json",
+    "source.withdraw": "operations/source.withdraw.schema.json"
   },
   "reserved_operations": [
-    "artifact.withdraw",
     "coverage.define",
     "coverage.link",
-    "coverage.revise",
-    "source.assess",
-    "source.withdraw"
+    "coverage.revise"
   ],
   "reserved_wire_schemas": [
     "capture"
@@ -73,7 +73,8 @@
         "assessment.retract",
         "assessment.supersede",
         "assumption.assess",
-        "measurement.assess"
+        "measurement.assess",
+        "source.assess"
       ],
       "stage": "assess"
     },
@@ -141,9 +142,11 @@
     },
     {
       "operations": [
+        "artifact.withdraw",
         "observation.add",
         "observation.correct",
-        "observation.retract"
+        "observation.retract",
+        "source.withdraw"
       ],
       "stage": "observe"
     },

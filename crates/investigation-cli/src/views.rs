@@ -12,7 +12,7 @@ use investigation_core::{
     identity::{Id, Kind},
     measurement_ops,
     review::EffectiveDisposition,
-    review_ops,
+    review_ops, source_ops,
     state::Record,
 };
 use investigation_store::{Store, journal::CaseReplay};
@@ -306,6 +306,24 @@ fn project_record(
             );
         }
         _ => {}
+    }
+    // Withdrawal is labeled wherever evidence material is read; it is not erasure.
+    if matches!(
+        record.header.id.kind(),
+        Kind::Source | Kind::Artifact | Kind::Observation
+    ) {
+        out.insert(
+            "evidentiary_use".into(),
+            json!(source_ops::evidentiary_use(&replay.state, record)),
+        );
+    }
+    if record.header.id.kind() == Kind::Source {
+        out.insert(
+            "source_standing".into(),
+            source_ops::standing(record)
+                .map(|standing| json!(standing))
+                .unwrap_or_else(|_| json!({"state":"unreadable"})),
+        );
     }
     out.insert(
         "recorded_caveats".into(),

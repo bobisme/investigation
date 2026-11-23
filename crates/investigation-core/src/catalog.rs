@@ -507,19 +507,13 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::method_pack_ops::operations())
         .chain(crate::measurement_ops::operations())
         .chain(crate::classification_ops::operations())
+        .chain(crate::source_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")
 }
 
-const RESERVED_OPERATIONS: &[&str] = &[
-    "artifact.withdraw",
-    "coverage.define",
-    "coverage.link",
-    "coverage.revise",
-    "source.assess",
-    "source.withdraw",
-];
+const RESERVED_OPERATIONS: &[&str] = &["coverage.define", "coverage.link", "coverage.revise"];
 
 fn record_body(payload: impl Serialize) -> Result<Value, Failure> {
     serde_json::to_value(payload).map_err(|error| {

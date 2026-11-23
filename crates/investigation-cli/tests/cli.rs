@@ -1170,3 +1170,181 @@ fn classification_propagates_to_derivatives_and_hides_restricted_titles_by_defau
     let shown = run(root, &["show", derivative, "--json"], None, 0);
     assert_eq!(shown["content_state"], "restricted");
 }
+
+#[test]
+fn withdrawn_evidence_stays_readable_labeled_and_out_of_new_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    fs::write(root.join("spec.txt"), "Limit 25 ms\n").unwrap();
+    let start = run(
+        root,
+        &[
+            "start",
+            "Which limit does the specification state?",
+            "--attach",
+            "spec.txt",
+            "--command-id",
+            "withdraw-case",
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let case = start["created"][0]["id"].as_str().unwrap();
+    let item = &start["items"][0];
+    let source = item["source_id"].as_str().unwrap();
+    let original = item["artifact_id"].as_str().unwrap();
+    let derivative = item["derivative_id"].as_str().unwrap();
+    let selector = json!({"schema_version":"inv.selector.v1","artifact_digest":item["digest"],"selector":{"type":"text_lines","start_line":1,"end_line":1,"encoding":"utf-8","parser_version":"inv.text.utf8.v1"}});
+    fs::write(
+        root.join("selector.json"),
+        serde_json::to_vec(&selector).unwrap(),
+    )
+    .unwrap();
+    let submit = |key: &str, op: &str, payload: Value, exit| {
+        let command = json!({
+            "schema_version":"inv.command.v1", "command_id":key, "case_id":case,
+            "actor":ACTOR, "preconditions":[], "operations":[{"op":op,"payload":payload}]
+        });
+        run(
+            root,
+            &["record", "--input", "-", "--json"],
+            Some(&command),
+            exit,
+        )
+    };
+    let observe = |key: &str, exit| {
+        submit(
+            key,
+            "observation.add",
+            json!({
+                "value":{"kind":"text","statement":"The specification states a 25 ms limit."},
+                "basis":{"kind":"source","artifact_ref":{"id":derivative,"revision":1},"selector":selector,
+                    "text_quote":{"exact":"Limit 25 ms"}},
+                "validity":"valid","quality":[],"limitations":[],"evidence_kind":"observational","variables_changed":[]
+            }),
+            exit,
+        )
+    };
+    let observation = observe("observe", 0)["created"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let question = submit(
+        "question",
+        "question.create",
+        json!({"wording":"Which limit applies?","importance":"normal"}),
+        0,
+    );
+    let hypothesis = submit(
+        "hypothesis",
+        "hypothesis.create",
+        json!({
+            "question_ref":{"id":question["created"][0]["id"],"revision":1},
+            "statement":"The limit is 25 ms.","applicability":"The retained edition",
+            "assumption_refs":[],"possible_falsifiers":["An erratum"],"rival_refs":[]
+        }),
+        0,
+    );
+    let assess = |key: &str, exit| {
+        submit(
+            key,
+            "assessment.add",
+            json!({
+                "subject_ref":{"id":hypothesis["created"][0]["id"],"revision":1},
+                "evidence_refs":[{"id":observation,"revision":1}],"relation":"supports",
+                "rationale":"The retained edition states the limit."
+            }),
+            exit,
+        )
+    };
+
+    // An attributed source judgment keeps the evidence usable; there is no grade.
+    let judged = submit(
+        "judge",
+        "source.assess",
+        json!({
+            "source_ref":{"id":source,"revision":1},
+            "authenticity":{"judgment":"authentic","rationale":"Copied from the publisher archive."},
+            "origin":{"judgment":"primary","rationale":"The publisher issued it."}
+        }),
+        0,
+    );
+    assert_eq!(judged["updated"][0]["revision"], 2);
+    let shown = run(root, &["show", source, "--json"], None, 0);
+    assert_eq!(
+        shown["source_standing"]["dimensions"][0]["dimension"],
+        "authenticity"
+    );
+    assert_eq!(
+        shown["source_standing"]["dimensions"][3]["current"],
+        json!([])
+    );
+    assert!(shown["source_standing"].get("grade").is_none());
+    assert_eq!(shown["evidentiary_use"]["state"], "in_use");
+    assess("assess-before", 0);
+
+    let withdrawn = submit(
+        "withdraw",
+        "artifact.withdraw",
+        json!({
+            "artifact_ref":{"id":original,"revision":1},"reason":"corrected_by_erratum",
+            "scope":{"extent":"entire"},"rationale":"The publisher replaced this edition."
+        }),
+        0,
+    );
+    assert_eq!(withdrawn["updated"][0]["revision"], 2);
+
+    // Not erasure: the derived bytes stay readable and are labeled withdrawn.
+    let read = run(
+        root,
+        &[
+            "evidence",
+            "read",
+            derivative,
+            "--selector-file",
+            "selector.json",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(read["excerpt"]["text"], "Limit 25 ms\n");
+    assert_eq!(read["evidentiary_use"]["state"], "withdrawn");
+    assert_eq!(read["evidentiary_use"]["availability"], "retained");
+    assert_eq!(read["evidentiary_use"]["erasure"], false);
+    assert_eq!(
+        read["evidentiary_use"]["withdrawals"][0]["record"]["id"],
+        original
+    );
+    let shown = run(root, &["show", &observation, "--json"], None, 0);
+    assert_eq!(shown["evidentiary_use"]["state"], "withdrawn");
+    let shown = run(
+        root,
+        &["show", original, "--depth", "full", "--json"],
+        None,
+        0,
+    );
+    assert_eq!(shown["record"]["body"]["availability"], "retained");
+    assert_eq!(
+        shown["record"]["body"]["withdrawals"][0]["reason"],
+        "corrected_by_erratum"
+    );
+
+    // Withdrawal changes evidentiary use: no new diagnostic judgment or Observation.
+    assert_eq!(assess("assess-after", 5)["error"]["code"], "GATE_FAILED");
+    assert_eq!(observe("observe-again", 5)["error"]["code"], "GATE_FAILED");
+    let help = run(root, &["schema", "source.withdraw", "--json"], None, 0);
+    assert!(help.to_string().contains("not erasure"), "{help}");
+}

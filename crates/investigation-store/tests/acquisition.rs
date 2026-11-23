@@ -398,3 +398,50 @@ fn an_acquisition_belongs_to_one_case_and_keeps_its_classification() {
         Some("/source/acquisition_key/namespace")
     );
 }
+
+#[test]
+fn a_reimport_never_lifts_a_withdrawal_or_drops_a_source_judgment() {
+    let (_temporary, root, mut store) = workspace();
+    let path = root.join("bench-result.json");
+    fs::write(&path, b"latency.p99 18.7 ms\n").unwrap();
+    let first = ingest(
+        &mut store,
+        &manifest("capture-1", None, &[&path], Some("bench-run-007")),
+    );
+    let case = case_of(&first);
+    let item = first.items[0].clone();
+    let command = json!({
+        "schema_version":"inv.command.v1","command_id":"withdraw-1","case_id":case,
+        "actor":"agent:acquisition-test","preconditions":[],
+        "operations":[
+            {"op":"source.assess","payload":{
+                "source_ref":{"id":item.source_id,"revision":1},
+                "authenticity":{"judgment":"doubtful","rationale":"The header names another publisher."}}},
+            {"op":"source.withdraw","payload":{
+                "source_ref":{"id":item.source_id,"revision":2},"reason":"authenticity_doubt",
+                "scope":{"extent":"entire"},"rationale":"Attribution could not be confirmed."}}
+        ]
+    });
+    store
+        .record(&serde_json::to_vec(&command).unwrap())
+        .unwrap();
+
+    let mut described = manifest("capture-2", Some(case), &[&path], Some("bench-run-007"));
+    described["source"]["verification_limits"] = json!(["Attribution unconfirmed"]);
+    let revised = ingest(&mut store, &described);
+    assert_eq!(revised.items[0].outcome, Some(ItemOutcome::Revised));
+    assert_eq!(revised.items[0].source_id, item.source_id);
+    let (_, body) = sources(&mut store, case)
+        .into_iter()
+        .find(|(id, _)| *id == item.source_id)
+        .unwrap();
+    assert_eq!(body.verification_limits, ["Attribution unconfirmed"]);
+    assert_eq!(
+        body.status,
+        Some(investigation_core::source_ops::EvidentiaryStatus::Withdrawn)
+    );
+    assert_eq!(body.withdrawals.len(), 1);
+    assert_eq!(body.source_assessment.unwrap().judgments.len(), 1);
+    assert_eq!(sources(&mut store, case).len(), 1, "still one acquisition");
+    assert!(store.check().unwrap().integrity_ok());
+}

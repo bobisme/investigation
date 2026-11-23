@@ -469,6 +469,18 @@ fn accepted_body(
                 failure.error.actual = Some(json!(artifact_record.reference().revision));
                 return Err(failure);
             }
+            if let Some(withdrawn) =
+                crate::source_ops::withdrawn_lineage(context.state(), artifact_record)
+            {
+                return Err(Failure::new(
+                    ErrorCode::GateFailed,
+                    format!(
+                        "{} is withdrawn from evidentiary use and cannot ground a new Observation. Withdrawal is not erasure; its bytes stay readable.",
+                        withdrawn.id
+                    ),
+                )
+                .at("/basis/artifact_ref"));
+            }
             let artifact: ArtifactBody = decode(&artifact_record.body, ARTIFACT_METADATA)?;
             if artifact.source.id.kind() != Kind::Source || context.exact(artifact.source).is_none()
             {

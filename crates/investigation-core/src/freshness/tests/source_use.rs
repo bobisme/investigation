@@ -1,0 +1,368 @@
+//! `source.assess`, `source.withdraw` and `artifact.withdraw` through the real
+//! operations, observed through the freshness index and the evidence gates.
+
+use super::*;
+use crate::source_ops::{UseState, evidentiary_use, standing, withdrawn_lineage};
+
+fn apply_as(case: &mut Case, actor: &str, ops: Vec<Value>) -> Result<RevisionRef, Failure> {
+    let sequence = case.state.sequence() + 1;
+    let command: Command = serde_json::from_value(json!({
+        "schema_version":"inv.command.v1","case_id":case.case,"actor":actor,
+        "command_id":format!("source-use-{sequence}"),"preconditions":[],"operations":ops,
+    }))
+    .unwrap();
+    let accepted = validate_and_apply(
+        &case.state,
+        &command,
+        &standard_catalog(),
+        Acceptance {
+            sequence,
+            clock: &mut SystemClock,
+            ids: &mut SystemIdSource,
+        },
+    )?;
+    case.state.apply(&accepted)?;
+    case.settle();
+    Ok(accepted.records[0].reference())
+}
+
+fn try_one(case: &mut Case, name: &str, payload: Value) -> Result<RevisionRef, Failure> {
+    apply_as(case, "agent:test", vec![op(name, payload)])
+}
+
+fn withdraw_source(source: RevisionRef, scope: Value) -> Value {
+    json!({
+        "source_ref": source, "reason": "retracted_by_origin", "scope": scope,
+        "rationale": "The publisher retracted the benchmark report.", "evidence_refs": []
+    })
+}
+
+fn diagnostic_assessment(f: &Fixture) -> Value {
+    json!({
+        "subject_ref": f.hypothesis, "evidence_refs": [f.observation], "relation": "supports",
+        "rationale": "The retained p99 is below the limit."
+    })
+}
+
+/// A second, independently collected Source, recorded the way ingest records one.
+fn erratum(case: &mut Case) -> RevisionRef {
+    case.image(Kind::Source, json!({
+        "producer":null,"publisher":"Queue vendor","identity":"erratum.txt",
+        "acquisition":{"channel":"local_file","acquired_at":null,"method":null,"context":null,"environment":null},
+        "access":"local_only","verification_limits":[]
+    }), None)
+}
+
+const LAYERS: usize = 9;
+
+fn layers(f: &Fixture) -> [RevisionRef; LAYERS] {
+    [
+        f.artifact,
+        f.observation,
+        f.assessment,
+        f.conclusion,
+        f.conclusion_review,
+        f.note,
+        f.comparison,
+        f.decision,
+        f.decision_review,
+    ]
+}
+
+#[test]
+fn real_source_withdrawal_reaches_every_dependent_layer_without_erasure() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let original = case.state.revision(f.source).unwrap().body.clone();
+    let withdrawn = case.one(
+        "source.withdraw",
+        withdraw_source(f.source, json!({"extent":"entire"})),
+    );
+    assert_eq!(withdrawn.revision, 2);
+
+    for reference in layers(&f) {
+        let result = case.freshness(reference);
+        assert_eq!(result.freshness, Freshness::NeedsReview, "{result:#?}");
+        let reason = only_reason(result);
+        assert_eq!(reason.trigger, Trigger::Withdrawn);
+        assert_eq!(reason.cause, withdrawn);
+        assert_eq!(reason.path[0].record, reference.id);
+        assert_eq!(reason.path.last().unwrap().cites, f.source);
+    }
+    assert_eq!(
+        case.freshness(f.conclusion).label(),
+        "validated / needs_review"
+    );
+    assert_eq!(
+        case.freshness(f.decision).label(),
+        "accepted / needs_review"
+    );
+    for unaffected in [f.question, f.hypothesis, f.option, f.criterion] {
+        assert_eq!(case.freshness(unaffected).freshness, Freshness::Current);
+    }
+    let overview = case.index.overview();
+    assert_eq!(overview.needs_review, LAYERS);
+    assert!(!overview.affected.iter().any(|r| r.id == f.source.id));
+    assert_eq!(
+        case.freshness(f.source).lifecycle.as_deref(),
+        Some("withdrawn")
+    );
+
+    // Not erasure: the earlier revision is unchanged, and so is availability.
+    assert_eq!(case.state.revision(f.source).unwrap().body, original);
+    let current = case.state.current(f.source.id).unwrap();
+    assert_eq!(current.body["status"], "withdrawn");
+    assert_eq!(current.body["withdrawals"][0]["actor"], "agent:test");
+    assert_eq!(current.body["withdrawals"][0]["revision"], 1);
+    assert_eq!(current.body["identity"], original["identity"]);
+    let observation = case.state.current(f.observation.id).unwrap();
+    assert_eq!(observation.reference(), f.observation);
+    let label = evidentiary_use(&case.state, observation);
+    assert_eq!(label.state, UseState::Withdrawn);
+    assert_eq!(
+        label.availability,
+        Some(crate::evidence::ArtifactAvailability::Retained)
+    );
+    assert!(!label.erasure);
+    assert_eq!(label.withdrawals[0].record, withdrawn);
+    assert_eq!(withdrawn_lineage(&case.state, observation), Some(withdrawn));
+
+    // Withdrawn evidence grounds no new diagnostic judgment or promotion.
+    let refused = try_one(&mut case, "assessment.add", diagnostic_assessment(&f)).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed, "{refused:?}");
+    let conclusion = case.state.current(f.conclusion.id).unwrap();
+    let refused = required_read_set(&case.state, conclusion).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed, "{refused:?}");
+    let again = try_one(
+        &mut case,
+        "source.withdraw",
+        withdraw_source(withdrawn, json!({"extent":"entire"})),
+    )
+    .unwrap_err();
+    assert_eq!(again.error.code, ErrorCode::GateFailed);
+    // A non-diagnostic record of the withdrawn evidence is still possible.
+    let mut payload = diagnostic_assessment(&f);
+    payload["relation"] = json!("non_diagnostic");
+    try_one(&mut case, "assessment.add", payload).unwrap();
+}
+
+#[test]
+fn partial_withdrawal_marks_dependents_and_keeps_the_rest_usable() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let withdrawn = case.one(
+        "source.withdraw",
+        withdraw_source(
+            f.source,
+            json!({"extent":"partial","statement":"The second benchmark table only."}),
+        ),
+    );
+    for reference in layers(&f) {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(reason.trigger, Trigger::Withdrawn);
+        assert_eq!(reason.cause, withdrawn);
+    }
+    let source = case.state.current(f.source.id).unwrap();
+    assert!(source.body.get("status").is_none());
+    assert_eq!(case.freshness(f.source).freshness, Freshness::Current);
+    let observation = case.state.current(f.observation.id).unwrap();
+    assert_eq!(
+        evidentiary_use(&case.state, observation).state,
+        UseState::PartiallyWithdrawn
+    );
+    // The rest stays usable: the promotion closure reads the current Source.
+    let conclusion = case.state.current(f.conclusion.id).unwrap();
+    let reads = required_read_set(&case.state, conclusion).unwrap();
+    assert!(reads.contains(&withdrawn), "{reads:?}");
+    try_one(&mut case, "assessment.add", diagnostic_assessment(&f)).unwrap();
+    // A later entire withdrawal is its own trigger.
+    let entire = case.one(
+        "source.withdraw",
+        withdraw_source(withdrawn, json!({"extent":"entire"})),
+    );
+    let reason = only_reason(case.freshness(f.conclusion));
+    assert_eq!(
+        (reason.trigger.clone(), reason.cause),
+        (Trigger::Withdrawn, entire)
+    );
+}
+
+#[test]
+fn artifact_withdrawal_reaches_derived_observations() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let withdrawn = case.one(
+        "artifact.withdraw",
+        json!({
+            "artifact_ref": f.artifact, "reason": "collection_error", "scope": {"extent":"entire"},
+            "rationale": "The capture recorded the wrong environment.", "evidence_refs": []
+        }),
+    );
+    for reference in [f.observation, f.assessment, f.conclusion, f.decision] {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(reason.trigger, Trigger::Withdrawn);
+        assert_eq!(reason.cause, withdrawn);
+    }
+    let artifact = case.state.current(f.artifact.id).unwrap();
+    assert_eq!(artifact.body["availability"], "retained");
+    assert_eq!(
+        artifact.body["digest"],
+        case.state.revision(f.artifact).unwrap().body["digest"]
+    );
+    let refused = try_one(&mut case, "assessment.add", diagnostic_assessment(&f)).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed);
+}
+
+#[test]
+fn primary_source_erratum_invalidates_a_prior_judgment_without_deleting_it() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let original = case.state.revision(f.source).unwrap().body.clone();
+    let erratum = erratum(&mut case);
+    let assessed = case.one(
+        "source.assess",
+        json!({
+            "source_ref": f.source,
+            "origin": {"judgment":"primary","rationale":"The vendor published the benchmark."},
+            "currency": {"judgment":"superseded","rationale":"The vendor erratum replaces the p99 table."},
+            "limitations": ["The erratum names one edition."],
+            "evidence_refs": [erratum]
+        }),
+    );
+    for reference in [
+        f.observation,
+        f.assessment,
+        f.conclusion,
+        f.comparison,
+        f.decision,
+    ] {
+        let result = case.freshness(reference);
+        assert_eq!(result.freshness, Freshness::NeedsReview, "{result:#?}");
+        let reason = only_reason(result);
+        assert_eq!(
+            reason.trigger,
+            Trigger::SourceConcern {
+                dimensions: vec!["currency".into()]
+            }
+        );
+        assert_eq!(reason.cause, assessed);
+    }
+    assert_eq!(case.freshness(erratum).freshness, Freshness::Current);
+    // The judged record and every record built on it keep their history.
+    assert_eq!(case.state.revision(f.source).unwrap().body, original);
+    assert_eq!(
+        case.state.current(f.observation.id).unwrap().reference(),
+        f.observation
+    );
+    assert_eq!(
+        case.state.current(f.assessment.id).unwrap().reference(),
+        f.assessment
+    );
+    let shown = standing(case.state.current(f.source.id).unwrap()).unwrap();
+    let currency = &shown.dimensions[3];
+    assert!(currency.concern);
+    assert_eq!(currency.current[0].judgment, "superseded");
+    assert!(
+        shown.dimensions[0].current.is_empty(),
+        "authenticity not judged"
+    );
+    assert_eq!(shown.judgments_kept, 1);
+}
+
+#[test]
+fn benign_judgments_keep_dependents_current_and_promotable() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let assessed = case.one(
+        "source.assess",
+        json!({
+            "source_ref": f.source,
+            "authenticity": {"judgment":"authentic","rationale":"Retrieved from the vendor archive."},
+            "reliability": {"judgment":"cannot_judge","grounds":["track_record"],"rationale":"No earlier reports examined."},
+            "currency": {"judgment":"current","rationale":"No later edition found."}
+        }),
+    );
+    for result in case.index.records() {
+        assert_eq!(result.freshness, Freshness::Current, "{result:?}");
+    }
+    let conclusion = case.state.current(f.conclusion.id).unwrap();
+    assert!(
+        required_read_set(&case.state, conclusion)
+            .unwrap()
+            .contains(&assessed)
+    );
+    try_one(&mut case, "assessment.add", diagnostic_assessment(&f)).unwrap();
+
+    // A second assessor disagrees; the concern is raised, not averaged away.
+    let disputed = apply_as(
+        &mut case,
+        "agent:second-reader",
+        vec![op(
+            "source.assess",
+            json!({
+                "source_ref": assessed,
+                "currency": {"judgment":"outdated","rationale":"A newer release changed the queue."}
+            }),
+        )],
+    )
+    .unwrap();
+    let reason = only_reason(case.freshness(f.conclusion));
+    assert_eq!(reason.cause, disputed);
+    let shown = standing(case.state.current(f.source.id).unwrap()).unwrap();
+    assert!(shown.dimensions[3].disagreement);
+    assert!(shown.dimensions[3].concern);
+    assert_eq!(shown.dimensions[3].current.len(), 2);
+}
+
+#[test]
+fn malformed_requests_are_refused_before_anything_changes() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let cases = [
+        (
+            "source.assess",
+            json!({"source_ref": f.source, "limitations": []}),
+            ErrorCode::InvalidInput,
+        ),
+        (
+            "source.assess",
+            json!({"source_ref": f.artifact,
+                "currency": {"judgment":"current","rationale":"Checked."}}),
+            ErrorCode::InvalidInput,
+        ),
+        (
+            "source.assess",
+            json!({"source_ref": f.source, "evidence_refs": [f.source],
+                "currency": {"judgment":"current","rationale":"Checked."}}),
+            ErrorCode::InvalidInput,
+        ),
+        (
+            "source.withdraw",
+            withdraw_source(f.source, json!({"extent":"partial","statement":" "})),
+            ErrorCode::InvalidInput,
+        ),
+        (
+            "artifact.withdraw",
+            json!({"artifact_ref": f.artifact, "reason": "other", "scope": {"extent":"entire"},
+                "rationale": "Stale.", "evidence_refs": [f.assessment]}),
+            ErrorCode::InvalidInput,
+        ),
+        (
+            "source.withdraw",
+            withdraw_source(
+                RevisionRef {
+                    id: f.source.id,
+                    revision: 9,
+                },
+                json!({"extent":"entire"}),
+            ),
+            ErrorCode::RevisionConflict,
+        ),
+    ];
+    let before = case.state.sequence();
+    for (name, payload, code) in cases {
+        let refused = try_one(&mut case, name, payload.clone()).unwrap_err();
+        assert_eq!(refused.error.code, code, "{name} {payload}: {refused:?}");
+    }
+    assert_eq!(case.state.sequence(), before);
+}

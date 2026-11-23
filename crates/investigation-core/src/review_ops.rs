@@ -447,7 +447,13 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
                 }
             }
             for reference in dependencies {
-                let child = current(self.state, self.root.header.case_id, reference, "/read_set")?;
+                let case = self.root.header.case_id;
+                // Source and Artifact use changes (assessment, withdrawal) keep the
+                // cited revision's content; the current revision is what is read.
+                let child = match crate::source_ops::use_successor(self.state, case, reference) {
+                    Some(child) => child,
+                    None => current(self.state, case, reference, "/read_set")?,
+                };
                 if inactive(child) {
                     return Err(gate(
                         "/read_set",
@@ -463,7 +469,7 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
                         "The evidence basis contains circular justification.",
                     ));
                 }
-                if self.seen.insert(reference.id, reference).is_none() {
+                if self.seen.insert(reference.id, child.reference()).is_none() {
                     self.visit(child)?;
                 }
             }
@@ -631,9 +637,24 @@ fn qualification(
     if artifact_ref.id.kind() != Kind::Artifact {
         return Err(integrity());
     }
-    let artifact = current(state, case, *artifact_ref, "/support_refs")?;
+    let artifact = match crate::source_ops::use_successor(state, case, *artifact_ref) {
+        Some(artifact) => artifact,
+        None => current(state, case, *artifact_ref, "/support_refs")?,
+    };
+    if let Some(withdrawn) = crate::source_ops::withdrawn_lineage(state, artifact) {
+        return Err(gate(
+            "/support_refs",
+            format!(
+                "Evidence from withdrawn {} cannot provide direct support. Withdrawal is not erasure; its bytes stay readable.",
+                withdrawn.id
+            ),
+        ));
+    }
     let artifact_body: ArtifactBody = decode(&artifact.body)?;
-    let source = current(state, case, artifact_body.source, "/support_refs")?;
+    let source = match crate::source_ops::use_successor(state, case, artifact_body.source) {
+        Some(source) => source,
+        None => current(state, case, artifact_body.source, "/support_refs")?,
+    };
     if source.header.id.kind() != Kind::Source
         || inactive(source)
         || inactive(artifact)

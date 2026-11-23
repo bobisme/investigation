@@ -106,6 +106,9 @@ pub enum Trigger {
     MaterialRevision,
     /// A cited measurement is now assessed as invalid.
     InvalidMeasurement,
+    /// A cited source is newly judged doubtful or not authentic, unreliable,
+    /// or outdated or superseded (`source.assess`).
+    SourceConcern { dimensions: Vec<String> },
     /// A cited assumption's disposition changed.
     AssumptionDisposition {
         from: Option<String>,
@@ -539,7 +542,14 @@ fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
             "rationale",
             "corrects",
         ],
-        Kind::Artifact | Kind::Source => &["status", "lifecycle", "rationale", "withdrawal_reason"],
+        Kind::Artifact | Kind::Source => &[
+            "status",
+            "lifecycle",
+            "rationale",
+            "withdrawal_reason",
+            "withdrawals",
+            "source_assessment",
+        ],
         Kind::Hypothesis => &["lifecycle", "rationale", "alternative_to"],
         Kind::Inquiry => &[
             "lifecycle",
@@ -637,6 +647,11 @@ fn edge_change(
     // A judgment about a subject stays a record of that subject when the
     // subject is later rejected or superseded; only its claim matters.
     let subject = edge.propagation == Propagation::ChangeOnly && edge.field == "subject_ref";
+    // Withdrawals and source judgments are use fields, outside the substantive
+    // basis; each new withdrawal or newly raised concern is its own trigger.
+    if !subject && let Some(trigger) = crate::source_ops::use_trigger(cited, current) {
+        return Some((trigger, cause));
+    }
     if let Some(trigger) = end_state(current)
         && end_state(cited).is_none()
         && !subject
@@ -1173,6 +1188,8 @@ impl FreshnessIndex {
 
 #[cfg(test)]
 mod tests {
+    mod source_use;
+
     use super::*;
     use crate::{
         catalog::standard_catalog,

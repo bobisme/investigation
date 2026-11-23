@@ -41,6 +41,8 @@ pub struct EvidenceRead {
     pub snapshot: Snapshot,
     pub selector: SelectorRequest,
     pub content_trust: &'static str,
+    /// Withdrawn bytes stay readable and are labeled here; withdrawal is not erasure.
+    pub evidentiary_use: investigation_core::source_ops::EvidentiaryUse,
     pub excerpt: Excerpt,
 }
 
@@ -161,6 +163,10 @@ impl<F: DurableFs> Store<F> {
             snapshot: replay.snapshot.clone(),
             selector,
             content_trust: "untrusted_evidence",
+            evidentiary_use: investigation_core::source_ops::evidentiary_use(
+                &replay.state,
+                artifact,
+            ),
             excerpt,
         })
     }

@@ -348,7 +348,8 @@
           "assessment.retract",
           "assessment.supersede",
           "assumption.assess",
-          "measurement.assess"
+          "measurement.assess",
+          "source.assess"
         ],
         "stage": "assess"
       },
@@ -416,9 +417,11 @@
       },
       {
         "operations": [
+          "artifact.withdraw",
           "observation.add",
           "observation.correct",
-          "observation.retract"
+          "observation.retract",
+          "source.withdraw"
         ],
         "stage": "observe"
       },
