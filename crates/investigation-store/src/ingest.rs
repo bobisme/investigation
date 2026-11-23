@@ -84,6 +84,11 @@ pub struct ItemReceipt {
     pub size_bytes: u64,
     pub derivative_id: Option<Id>,
     pub text_status: TextStatus,
+    // Diagnostics about content the core retained but did not interpret.
+    // Published unconstrained: frozen v1 only allows additive unconstrained properties.
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
@@ -108,6 +113,11 @@ struct PreparedItem {
     size: u64,
     channel: AcquisitionChannel,
     text: TextStatus,
+    diagnostics: Vec<String>,
+}
+
+fn unconstrained(_: &mut schemars::SchemaGenerator) -> Schema {
+    true.into()
 }
 
 pub fn manifest_schema() -> Schema {
@@ -156,6 +166,8 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
             "/source/title",
         ));
     }
+    crate::opaque::validate_metadata(&manifest.source.metadata)
+        .map_err(|(message, key)| invalid(&message, &format!("/source/metadata{key}")))?;
     Ok((manifest, raw))
 }
 
@@ -330,8 +342,24 @@ impl Store {
         } else {
             TextStatus::NotRequested
         };
+        let mut diagnostics = Vec::new();
+        if staged.size <= crate::opaque::MAX_PROBE_BYTES {
+            let mut data = Vec::new();
+            self.fs
+                .read(&staged.temp)
+                .map_err(io_failure)?
+                .take(crate::opaque::MAX_PROBE_BYTES)
+                .read_to_end(&mut data)
+                .map_err(io_failure)?;
+            if let crate::opaque::EnvelopeProbe::UnsupportedVersion(version) =
+                crate::opaque::probe_envelope(&data)
+            {
+                diagnostics.push(crate::opaque::unsupported_version_diagnostic(&version));
+            }
+        }
         Ok(PreparedItem {
             label,
+            diagnostics,
             digest: digest_for(staged)?,
             size: staged.size,
             channel,
@@ -400,7 +428,13 @@ fn create_records(
             } else {
                 SourceAccess::LocalOnly
             },
-            verification_limits: manifest.source.verification_limits.clone(),
+            verification_limits: manifest
+                .source
+                .verification_limits
+                .iter()
+                .chain(&item.diagnostics)
+                .cloned()
+                .collect(),
             metadata: manifest.source.metadata.clone(),
         };
         first_source.get_or_insert(source_ref);
@@ -566,6 +600,7 @@ fn ingest_receipt(mut receipt: Receipt, items: Vec<PreparedItem>) -> IngestRecei
                 size_bytes: item.size,
                 derivative_id: id(&format!("text:{index}")),
                 text_status: item.text,
+                diagnostics: item.diagnostics,
             })
         })
         .collect::<Vec<_>>();

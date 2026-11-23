@@ -389,6 +389,15 @@ fn project_record(
         }
     }
     if depth == ViewDepth::Full {
+        if record
+            .body
+            .get("metadata")
+            .and_then(Value::as_object)
+            .is_some_and(|metadata| !metadata.is_empty())
+        {
+            // Namespaced producer metadata is stored raw and never interpreted.
+            out.insert("metadata_status".into(), json!("uninterpreted"));
+        }
         out.insert(
             "record".into(),
             json!({"header":record.header,"body":record.body}),

@@ -55,6 +55,7 @@
             }
           ]
         },
+        "diagnostics": true,
         "digest": {
           "$ref": "#/$defs/Digest"
         },

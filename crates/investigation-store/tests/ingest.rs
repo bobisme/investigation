@@ -128,3 +128,90 @@ fn failed_path_leaves_no_case_and_binary_stdin_keeps_its_bytes() {
     assert!(result.items[0].derivative_id.is_none());
     assert!(store.check().unwrap().integrity_ok());
 }
+
+fn opaque_workspace() -> (tempfile::TempDir, std::path::PathBuf) {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("workspace");
+    Workspace::init(&root, false).unwrap();
+    let config = root.join("investigation.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    fs::write(
+        config,
+        contents.replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    (temporary, root)
+}
+
+#[test]
+fn unknown_envelope_version_is_retained_opaque_with_a_diagnostic() {
+    let (_guard, root) = opaque_workspace();
+    let envelope =
+        br#"{"schema_version":"inv.producer-run.v9","assertions":[{"name":"latency","value":1}]}"#;
+    fs::write(root.join("run.json"), envelope).unwrap();
+    let metadata = json!({"example-org.instrument": {"b": [1.5, null, "x"], "a": {}}});
+    let manifest = json!({
+        "schema_version":"inv.ingest.v1", "command_id":"opaque-1", "actor":"agent:test",
+        "new_case":{"title":"Opaque"},
+        "source":{"title":"Run","metadata":metadata},
+        "paths":["run.json"],
+    });
+    let mut store = Store::open(Workspace::open(&root).unwrap());
+    let receipt = store
+        .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+        .unwrap();
+    let item = &receipt.items[0];
+    assert_eq!(item.diagnostics.len(), 1);
+    assert!(item.diagnostics[0].contains("inv.producer-run.v9"));
+    let hex = item.digest.as_str().strip_prefix("sha256:").unwrap();
+    let saved = root.join("state/blobs/sha256").join(&hex[..2]).join(hex);
+    assert_eq!(fs::read(saved).unwrap(), envelope);
+    let case = receipt
+        .receipt
+        .created
+        .iter()
+        .find(|change| change.id.kind() == Kind::Case)
+        .unwrap()
+        .id;
+    // Nothing is mapped into typed facts: only the case, source, artifacts.
+    assert!(
+        receipt
+            .receipt
+            .created
+            .iter()
+            .all(|c| matches!(c.id.kind(), Kind::Case | Kind::Source | Kind::Artifact))
+    );
+
+    // A fresh replay of the journal returns the metadata exactly as supplied.
+    let mut reopened = Store::open(Workspace::open(&root).unwrap());
+    let replay = reopened.case(case).unwrap();
+    let source = replay.state.current(item.source_id).unwrap();
+    assert_eq!(
+        serde_json::to_vec(&source.body["metadata"]).unwrap(),
+        serde_json::to_vec(&metadata).unwrap()
+    );
+    assert!(
+        source.body["verification_limits"][0]
+            .as_str()
+            .unwrap()
+            .contains("opaque")
+    );
+}
+
+#[test]
+fn oversized_opaque_metadata_is_rejected_before_anything_commits() {
+    let (_guard, root) = opaque_workspace();
+    fs::write(root.join("a.txt"), "x").unwrap();
+    let manifest = json!({
+        "schema_version":"inv.ingest.v1", "command_id":"opaque-2", "actor":"agent:test",
+        "new_case":{"title":"Opaque"},
+        "source":{"title":"Run","metadata":{"example-org.big":"x".repeat(70_000)}},
+        "paths":["a.txt"],
+    });
+    let mut store = Store::open(Workspace::open(&root).unwrap());
+    let failure = store
+        .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+        .unwrap_err();
+    assert_eq!(failure.error.code, ErrorCode::InvalidInput);
+    assert!(failure.error.message.contains("exceeds"));
+}

@@ -585,6 +585,7 @@ fn v1_envelopes_retain_opaque_source_metadata_and_reject_unknown_versions() {
         0,
     );
     assert_eq!(displayed["record"]["body"]["metadata"], metadata);
+    assert_eq!(displayed["metadata_status"], "uninterpreted");
 }
 
 #[test]
