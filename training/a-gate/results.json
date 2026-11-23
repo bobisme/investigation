@@ -1,0 +1,544 @@
+{
+  "between_family_accuracy_variance": 0.023750000000000004,
+  "between_family_accuracy_variance_interval": [
+    0.0016666666666666668,
+    0.03900000000000001
+  ],
+  "case_effects": {
+    "digest-window-fold": {
+      "accuracy": 0.2,
+      "false_promotion_rate": 0.0
+    },
+    "edge-cache-coalescing": {
+      "accuracy": 0.0,
+      "false_promotion_rate": -0.125
+    },
+    "field-logger-autonomy": {
+      "accuracy": 0.4,
+      "false_promotion_rate": 0.125
+    },
+    "lexicon-workspace-index": {
+      "accuracy": 0.0,
+      "false_promotion_rate": 0.0
+    },
+    "museum-audio-packaging": {
+      "accuracy": 0.05,
+      "false_promotion_rate": -0.125
+    },
+    "sprite-linear-export": {
+      "accuracy": 0.1,
+      "false_promotion_rate": 0.125
+    }
+  },
+  "costs": {
+    "inv": {
+      "assignments": 24,
+      "first_note_calls": [
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        3,
+        4,
+        4,
+        28,
+        4,
+        3,
+        8,
+        3,
+        4
+      ],
+      "first_note_median": 3.0,
+      "first_receipt_median": 18.5,
+      "mean_per_assignment": {
+        "discovery_bytes": 3150.75,
+        "elapsed_ms": 63616.583333333336,
+        "evidence_bytes": 1960.3333333333333,
+        "input_tokens": 12509.416666666666,
+        "note_read_bytes": 2933.5,
+        "note_write_bytes": 3145.1666666666665,
+        "output_tokens": 5176.958333333333,
+        "preparation_calls": 0.9583333333333334,
+        "tool_calls": 18.541666666666668
+      },
+      "onboard_to_receipt_calls": [
+        16
+      ],
+      "onboard_to_receipt_median": 16,
+      "phase_status": {
+        "investigator": {
+          "budget_exhausted": 9,
+          "completed": 15
+        },
+        "successor": {
+          "completed": 24
+        }
+      },
+      "receipt_calls": [
+        23,
+        14
+      ],
+      "review_checkpoints": 15,
+      "totals": {
+        "discovery_bytes": 75618,
+        "elapsed_ms": 1526798,
+        "evidence_bytes": 47048,
+        "input_tokens": 300226,
+        "note_read_bytes": 70404,
+        "note_write_bytes": 75484,
+        "output_tokens": 124247,
+        "preparation_calls": 23,
+        "tool_calls": 445
+      }
+    },
+    "notes": {
+      "assignments": 24,
+      "first_note_calls": [
+        3,
+        4,
+        3,
+        3,
+        4,
+        3,
+        3,
+        4,
+        4,
+        4,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        3,
+        4,
+        4,
+        3,
+        3,
+        3,
+        3
+      ],
+      "first_note_median": 3.0,
+      "first_receipt_median": null,
+      "mean_per_assignment": {
+        "discovery_bytes": 0.0,
+        "elapsed_ms": 51131.916666666664,
+        "evidence_bytes": 2110.125,
+        "input_tokens": 5795.541666666667,
+        "note_read_bytes": 6704.958333333333,
+        "note_write_bytes": 5769.458333333333,
+        "output_tokens": 4646.375,
+        "preparation_calls": 0.0,
+        "tool_calls": 12.708333333333334
+      },
+      "onboard_to_receipt_calls": [],
+      "onboard_to_receipt_median": null,
+      "phase_status": {
+        "investigator": {
+          "completed": 24
+        },
+        "successor": {
+          "budget_exhausted": 1,
+          "completed": 23
+        }
+      },
+      "receipt_calls": [],
+      "review_checkpoints": 24,
+      "totals": {
+        "discovery_bytes": 0,
+        "elapsed_ms": 1227166,
+        "evidence_bytes": 50643,
+        "input_tokens": 139093,
+        "note_read_bytes": 160919,
+        "note_write_bytes": 138467,
+        "output_tokens": 111513,
+        "preparation_calls": 0,
+        "tool_calls": 305
+      }
+    }
+  },
+  "domain_breakdown": {
+    "architecture": {
+      "arms": {
+        "inv": {
+          "accuracy": 0.9,
+          "false_promotion_rate": 0.041666666666666664
+        },
+        "notes": {
+          "accuracy": 0.75,
+          "false_promotion_rate": 0.041666666666666664
+        }
+      },
+      "counts": {
+        "inv": {
+          "all_items_and_no_promotion": 7,
+          "false_promotions": 1,
+          "missed_warranted": 6,
+          "promotion_opportunities": 24,
+          "warranted_correct": 54,
+          "warranted_total": 60
+        },
+        "notes": {
+          "all_items_and_no_promotion": 4,
+          "false_promotions": 1,
+          "missed_warranted": 15,
+          "promotion_opportunities": 24,
+          "warranted_correct": 45,
+          "warranted_total": 60
+        }
+      },
+      "difference": {
+        "accuracy": 0.15,
+        "false_promotion_rate": 0.0
+      },
+      "independent_families": 3,
+      "paired_observations": 12
+    },
+    "debugging": {
+      "arms": {
+        "inv": {
+          "accuracy": 0.6333333333333333,
+          "false_promotion_rate": 0.041666666666666664
+        },
+        "notes": {
+          "accuracy": 0.5333333333333333,
+          "false_promotion_rate": 0.041666666666666664
+        }
+      },
+      "counts": {
+        "inv": {
+          "all_items_and_no_promotion": 2,
+          "false_promotions": 1,
+          "missed_warranted": 22,
+          "promotion_opportunities": 24,
+          "warranted_correct": 38,
+          "warranted_total": 60
+        },
+        "notes": {
+          "all_items_and_no_promotion": 1,
+          "false_promotions": 1,
+          "missed_warranted": 28,
+          "promotion_opportunities": 24,
+          "warranted_correct": 32,
+          "warranted_total": 60
+        }
+      },
+      "difference": {
+        "accuracy": 0.1,
+        "false_promotion_rate": 0.0
+      },
+      "independent_families": 3,
+      "paired_observations": 12
+    }
+  },
+  "intervals": {
+    "accuracy": [
+      0.025000000000000005,
+      0.2416666666666667
+    ],
+    "false_promotion_rate": [
+      -0.08333333333333333,
+      0.08333333333333333
+    ]
+  },
+  "lookup": {
+    "arms": {
+      "inv": {
+        "accuracy": 0.875,
+        "false_promotion_rate": 0.0
+      },
+      "notes": {
+        "accuracy": 1.0,
+        "false_promotion_rate": 0.0
+      }
+    },
+    "counts": {
+      "inv": {
+        "all_items_and_no_promotion": 1,
+        "false_promotions": 0,
+        "missed_warranted": 1,
+        "promotion_opportunities": 4,
+        "warranted_correct": 7,
+        "warranted_total": 8
+      },
+      "notes": {
+        "all_items_and_no_promotion": 2,
+        "false_promotions": 0,
+        "missed_warranted": 0,
+        "promotion_opportunities": 4,
+        "warranted_correct": 8,
+        "warranted_total": 8
+      }
+    },
+    "difference": {
+      "accuracy": -0.125,
+      "false_promotion_rate": 0.0
+    },
+    "independent_families": 1,
+    "paired_observations": 2
+  },
+  "lookup_costs": {
+    "inv": {
+      "assignments": 2,
+      "first_note_calls": [
+        4
+      ],
+      "first_note_median": 4,
+      "first_receipt_median": null,
+      "mean_per_assignment": {
+        "discovery_bytes": 0.0,
+        "elapsed_ms": 18821.0,
+        "evidence_bytes": 470.0,
+        "input_tokens": 10301.0,
+        "note_read_bytes": 307.0,
+        "note_write_bytes": 307.0,
+        "output_tokens": 1359.0,
+        "preparation_calls": 0.0,
+        "tool_calls": 8.0
+      },
+      "onboard_to_receipt_calls": [],
+      "onboard_to_receipt_median": null,
+      "phase_status": {
+        "investigator": {
+          "budget_exhausted": 1,
+          "completed": 1
+        },
+        "successor": {
+          "completed": 2
+        }
+      },
+      "receipt_calls": [],
+      "review_checkpoints": 1,
+      "totals": {
+        "discovery_bytes": 0,
+        "elapsed_ms": 37642,
+        "evidence_bytes": 940,
+        "input_tokens": 20602,
+        "note_read_bytes": 614,
+        "note_write_bytes": 614,
+        "output_tokens": 2718,
+        "preparation_calls": 0,
+        "tool_calls": 16
+      }
+    },
+    "notes": {
+      "assignments": 2,
+      "first_note_calls": [
+        3,
+        4
+      ],
+      "first_note_median": 3.5,
+      "first_receipt_median": null,
+      "mean_per_assignment": {
+        "discovery_bytes": 0.0,
+        "elapsed_ms": 23224.0,
+        "evidence_bytes": 470.0,
+        "input_tokens": 3216.5,
+        "note_read_bytes": 2128.0,
+        "note_write_bytes": 1195.5,
+        "output_tokens": 1955.0,
+        "preparation_calls": 0.0,
+        "tool_calls": 10.0
+      },
+      "onboard_to_receipt_calls": [],
+      "onboard_to_receipt_median": null,
+      "phase_status": {
+        "investigator": {
+          "completed": 2
+        },
+        "successor": {
+          "completed": 2
+        }
+      },
+      "receipt_calls": [],
+      "review_checkpoints": 1,
+      "totals": {
+        "discovery_bytes": 0,
+        "elapsed_ms": 46448,
+        "evidence_bytes": 940,
+        "input_tokens": 6433,
+        "note_read_bytes": 4256,
+        "note_write_bytes": 2391,
+        "output_tokens": 3910,
+        "preparation_calls": 0,
+        "tool_calls": 20
+      }
+    }
+  },
+  "model_breakdown": {
+    "gemma4:26b": {
+      "arms": {
+        "inv": {
+          "accuracy": 0.6666666666666666,
+          "false_promotion_rate": 0.041666666666666664
+        },
+        "notes": {
+          "accuracy": 0.5333333333333333,
+          "false_promotion_rate": 0.0
+        }
+      },
+      "counts": {
+        "inv": {
+          "all_items_and_no_promotion": 2,
+          "false_promotions": 1,
+          "missed_warranted": 20,
+          "promotion_opportunities": 24,
+          "warranted_correct": 40,
+          "warranted_total": 60
+        },
+        "notes": {
+          "all_items_and_no_promotion": 1,
+          "false_promotions": 0,
+          "missed_warranted": 28,
+          "promotion_opportunities": 24,
+          "warranted_correct": 32,
+          "warranted_total": 60
+        }
+      },
+      "difference": {
+        "accuracy": 0.13333333333333333,
+        "false_promotion_rate": 0.041666666666666664
+      },
+      "independent_families": 6,
+      "paired_observations": 12
+    },
+    "qwen3.5:9b": {
+      "arms": {
+        "inv": {
+          "accuracy": 0.8666666666666667,
+          "false_promotion_rate": 0.041666666666666664
+        },
+        "notes": {
+          "accuracy": 0.75,
+          "false_promotion_rate": 0.08333333333333333
+        }
+      },
+      "counts": {
+        "inv": {
+          "all_items_and_no_promotion": 7,
+          "false_promotions": 1,
+          "missed_warranted": 8,
+          "promotion_opportunities": 24,
+          "warranted_correct": 52,
+          "warranted_total": 60
+        },
+        "notes": {
+          "all_items_and_no_promotion": 4,
+          "false_promotions": 2,
+          "missed_warranted": 15,
+          "promotion_opportunities": 24,
+          "warranted_correct": 45,
+          "warranted_total": 60
+        }
+      },
+      "difference": {
+        "accuracy": 0.11666666666666667,
+        "false_promotion_rate": -0.041666666666666664
+      },
+      "independent_families": 6,
+      "paired_observations": 12
+    }
+  },
+  "record_use": {
+    "boundary_operations": {
+      "investigator_decision_accept_before_update": 0,
+      "investigator_review_submit_before_update": 0
+    },
+    "hypotheses_without_falsifier": [],
+    "hypothesis_count": 0,
+    "omitted_at_opportunity": {
+      "artifact": 24,
+      "assumption": 12,
+      "case": 22,
+      "comparison": 12,
+      "conclusion": 12,
+      "criterion": 12,
+      "decision": 12,
+      "hypothesis": 12,
+      "inquiry": 12,
+      "observation": 24,
+      "option": 12,
+      "retrospective": 24,
+      "review": 24,
+      "run": 12,
+      "source": 24
+    },
+    "operations": {
+      "case.create": 3
+    },
+    "opportunities": {
+      "artifact": 24,
+      "assumption": 12,
+      "case": 24,
+      "comparison": 12,
+      "conclusion": 12,
+      "criterion": 12,
+      "decision": 12,
+      "hypothesis": 12,
+      "inquiry": 12,
+      "observation": 24,
+      "option": 12,
+      "retrospective": 24,
+      "review": 24,
+      "run": 12,
+      "source": 24
+    },
+    "record_count": {
+      "case": 3
+    },
+    "retrieved_at_opportunity": {
+      "case": 2
+    },
+    "retrospective_count": 0,
+    "retrospectives_without_checkable_step": [],
+    "used_at_opportunity": {
+      "case": 2
+    }
+  },
+  "rule": {
+    "accuracy_improves": true,
+    "directional_gain": true,
+    "false_promotions_improve": false,
+    "false_promotions_tie": true
+  },
+  "substantive": {
+    "arms": {
+      "inv": {
+        "accuracy": 0.7666666666666667,
+        "false_promotion_rate": 0.041666666666666664
+      },
+      "notes": {
+        "accuracy": 0.6416666666666667,
+        "false_promotion_rate": 0.041666666666666664
+      }
+    },
+    "counts": {
+      "inv": {
+        "all_items_and_no_promotion": 9,
+        "false_promotions": 2,
+        "missed_warranted": 28,
+        "promotion_opportunities": 48,
+        "warranted_correct": 92,
+        "warranted_total": 120
+      },
+      "notes": {
+        "all_items_and_no_promotion": 5,
+        "false_promotions": 2,
+        "missed_warranted": 43,
+        "promotion_opportunities": 48,
+        "warranted_correct": 77,
+        "warranted_total": 120
+      }
+    },
+    "difference": {
+      "accuracy": 0.125,
+      "false_promotion_rate": 0.0
+    },
+    "independent_families": 6,
+    "paired_observations": 24
+  }
+}
