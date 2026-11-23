@@ -46,6 +46,8 @@
     "option.amend": "operations/option.amend.schema.json",
     "option.create": "operations/option.create.schema.json",
     "option.disposition": "operations/option.disposition.schema.json",
+    "origin.judge_dependence": "operations/origin.judge_dependence.schema.json",
+    "origin.trace": "operations/origin.trace.schema.json",
     "question.create": "operations/question.create.schema.json",
     "question.resolve": "operations/question.resolve.schema.json",
     "retrospective.record": "operations/retrospective.record.schema.json",
@@ -74,6 +76,8 @@
         "assessment.supersede",
         "assumption.assess",
         "measurement.assess",
+        "origin.judge_dependence",
+        "origin.trace",
         "source.assess"
       ],
       "stage": "assess"

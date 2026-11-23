@@ -508,6 +508,7 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::measurement_ops::operations())
         .chain(crate::classification_ops::operations())
         .chain(crate::source_ops::operations())
+        .chain(crate::origin_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")

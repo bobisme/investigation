@@ -367,6 +367,17 @@ impl Edges {
         Ok(())
     }
 
+    fn push(&mut self, targets: Vec<RevisionRef>, field: &'static str, propagation: Propagation) {
+        for target in targets {
+            self.edges.push(DependencyEdge {
+                field,
+                target,
+                propagation,
+                closure: self.closure,
+            });
+        }
+    }
+
     fn each(
         &mut self,
         list: &Value,
@@ -430,6 +441,15 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
                 Inherit,
             )?;
             out.add(body, "run_ref", "run_ref", Inherit)?;
+            // Claim origin judgments: change-only, outside the promotion closure.
+            out.closure = false;
+            let (upstream, roots) = crate::origin_ops::origin_references(record)?;
+            out.push(
+                upstream,
+                "claim_origin.traces.origin.observation_ref",
+                ChangeOnly,
+            );
+            out.push(roots, "claim_origin.dependence.roots", ChangeOnly);
         }
         Kind::Artifact => {
             out.each(
@@ -657,6 +677,7 @@ fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
             "rationale",
             "corrects",
             MEASUREMENT_ASSESSMENT_KEY,
+            crate::origin_ops::CLAIM_ORIGIN_KEY,
         ],
         Kind::Artifact | Kind::Source => &[
             "status",

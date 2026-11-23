@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "Dependence": {
+      "description": "How far origin roots depend on each other. `unknown` is a normal state.",
+      "enum": [
+        "shared",
+        "partly_shared",
+        "independent_on_stated_dimensions",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "OriginDimension": {
+      "description": "A dimension a dependence judgment covers or a recorded fact shares.",
+      "enum": [
+        "acquisition",
+        "upstream_source",
+        "collection_run",
+        "method",
+        "environment",
+        "dependence_group"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:origin.judge_dependence",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "basis": {
+      "description": "Who judged on what basis: what was compared and found.",
+      "type": "string"
+    },
+    "dimensions": {
+      "default": [],
+      "description": "Dimensions the judgment covers. Required for\n`independent_on_stated_dimensions`.",
+      "items": {
+        "$ref": "#/$defs/OriginDimension"
+      },
+      "type": "array"
+    },
+    "evidence_refs": {
+      "default": [],
+      "description": "Exact current Sources, Artifacts or Observations the judgment relies on.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "judgment": {
+      "$ref": "#/$defs/Dependence"
+    },
+    "roots": {
+      "description": "Exact current Observations, each its own known origin root. The\njudgment is stored on the first one.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "roots",
+    "judgment",
+    "basis"
+  ],
+  "title": "DependencePayload",
+  "type": "object"
+}

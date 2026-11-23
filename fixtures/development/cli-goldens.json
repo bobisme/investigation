@@ -349,6 +349,8 @@
           "assessment.supersede",
           "assumption.assess",
           "measurement.assess",
+          "origin.judge_dependence",
+          "origin.trace",
           "source.assess"
         ],
         "stage": "assess"

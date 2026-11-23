@@ -11,7 +11,7 @@ use investigation_core::{
     freshness::{FreshnessIndex, RecordFreshness, dependency_edges},
     header::display_title,
     identity::{Id, Kind},
-    measurement_flags, measurement_ops, objection_policy,
+    measurement_flags, measurement_ops, objection_policy, origin_ops,
     review::EffectiveDisposition,
     review_ops, source_ops,
     state::Record,
@@ -963,6 +963,30 @@ fn encoded_len(value: &Value) -> usize {
     serde_json::to_vec(value)
         .expect("JSON values serialize")
         .len()
+}
+
+/// Claim-level origin projection for `show`: `claim_origin` on an Observation,
+/// `evidence_origins` on a record citing Observations. Acquisitions are counted
+/// apart from known origins, and an unjudged dependence is `unknown`, never
+/// independent. Kept out of `brief`, whose minimum envelope is budgeted.
+pub fn origin_projection(replay: &CaseReplay, record: &Record) -> Option<(&'static str, Value)> {
+    match record.header.id.kind() {
+        Kind::Observation => Some((
+            "claim_origin",
+            origin_ops::observation_origin(&replay.state, record)
+                .map(|origin| json!(origin))
+                .unwrap_or_else(|_| json!({"state":"unreadable"})),
+        )),
+        Kind::Assessment
+        | Kind::Comparison
+        | Kind::Conclusion
+        | Kind::Decision
+        | Kind::Hypothesis => {
+            let origins = origin_ops::cited_origins(&replay.state, record);
+            (!origins.is_empty()).then(|| ("evidence_origins", json!(origins)))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

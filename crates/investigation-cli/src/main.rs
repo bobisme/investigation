@@ -423,6 +423,12 @@ fn show(
     };
     let mut view =
         projected.map_err(|error| Failure::new(ErrorCode::UnknownReference, error.to_string()))?;
+    if view["content_state"] != "restricted"
+        && let Some((key, origins)) =
+            record.and_then(|record| views::origin_projection(&replay, record))
+    {
+        view[key] = origins;
+    }
     if depth == ViewDepth::Full
         && at.is_none()
         && let Some(record) = record

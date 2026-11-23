@@ -615,6 +615,7 @@ fn qualification(
         "revision_reason",
         "run_ref",
         "measurement_assessment",
+        crate::origin_ops::CLAIM_ORIGIN_KEY,
     ] {
         object.remove(key);
     }

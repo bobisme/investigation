@@ -1144,6 +1144,7 @@ fn ensure_observation_usable(
             "corrects",
             "measurement_assessment",
             "run_ref",
+            crate::origin_ops::CLAIM_ORIGIN_KEY,
         ],
     )?;
     let usable = match &body.basis {

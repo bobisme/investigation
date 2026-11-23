@@ -34,6 +34,7 @@ pub(crate) const OBSERVATION_METADATA: &[&str] = &[
     "corrects",
     "measurement_assessment",
     "run_ref",
+    crate::origin_ops::CLAIM_ORIGIN_KEY,
 ];
 pub(crate) const ARTIFACT_METADATA: &[&str] =
     &["status", "lifecycle", "rationale", "withdrawal_reason"];

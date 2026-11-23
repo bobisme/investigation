@@ -1,0 +1,159 @@
+{
+  "$defs": {
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "OriginDimensions": {
+      "additionalProperties": false,
+      "description": "Dimensions on which claim origins can share a dependence. Each is optional;\nan absent dimension was not recorded.",
+      "properties": {
+        "collection_run": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Run that produced the originating observation."
+        },
+        "dependence_groups": {
+          "description": "Named groups of origins known to depend on each other.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "environment": {
+          "description": "Fixture, unit, build or environment the originating claim was made in.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method": {
+          "description": "How the originating claim was produced, for example a bench test.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "upstream_source": {
+          "description": "Who or what first produced the claim, as the assessor understands it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "OriginLink": {
+      "description": "Where one Observation's claim comes from.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The passage originates the claim: its own measurement, a first-party\nstatement or correction, or a report nobody upstream made.",
+          "properties": {
+            "kind": {
+              "const": "original",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The passage restates, quotes or summarizes the claim of another\nObservation, which may itself be a restatement.",
+          "properties": {
+            "kind": {
+              "const": "restates",
+              "type": "string"
+            },
+            "observation_ref": {
+              "$ref": "#/$defs/RevisionRef"
+            }
+          },
+          "required": [
+            "kind",
+            "observation_ref"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The assessor looked and could not establish the origin.",
+          "properties": {
+            "kind": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:origin.trace",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "dimensions": {
+      "$ref": "#/$defs/OriginDimensions",
+      "default": {}
+    },
+    "evidence_refs": {
+      "default": [],
+      "description": "Exact current Sources, Artifacts or Observations the judgment relies on.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "observation_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact current Observation whose claim is traced."
+    },
+    "origin": {
+      "$ref": "#/$defs/OriginLink"
+    },
+    "rationale": {
+      "description": "Why the assessor judges this origin.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "observation_ref",
+    "origin",
+    "rationale"
+  ],
+  "title": "OriginTracePayload",
+  "type": "object"
+}
