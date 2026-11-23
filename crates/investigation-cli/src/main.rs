@@ -6,6 +6,7 @@ mod brief_delta;
 mod calibration;
 mod capture;
 mod capture_schema;
+mod config;
 mod docs;
 mod doctor;
 mod evidence;
@@ -306,6 +307,9 @@ enum Commands {
     /// Write an immutable report or bundle of one case at one verified snapshot to a new directory.
     #[command(after_help = export::after_help())]
     Export(export::Args),
+    /// Read the effective workspace settings and where each value comes from; never writes.
+    #[command(subcommand, after_help = config::AFTER_HELP)]
+    Config(config::ConfigCommand),
     /// Report versions, capabilities, limits, filesystem support and workspace health.
     #[command(after_help = doctor::AFTER_HELP)]
     Doctor(doctor::Args),
@@ -421,6 +425,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Guide(args) => guide::show(args, &global),
         Commands::Method(command) => guide::method(command, &global),
         Commands::Doctor(args) => doctor::run(args, &global),
+        Commands::Config(command) => config::run(&global, command),
         Commands::Integration(command) => integration::run(command),
         Commands::Version => Ok(version_output(format!(
             "{PROGRAM_NAME} {}",
@@ -483,6 +488,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Guide(_)
                 | Commands::Method(_)
                 | Commands::Doctor(_)
+                | Commands::Config(_)
                 | Commands::Integration(_)
                 | Commands::Version => {
                     unreachable!("workspace-independent command")

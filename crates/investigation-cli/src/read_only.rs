@@ -84,6 +84,10 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // change. --dry-run checks and prints only.
     ("vault reconcile", Effect::WriteUnlessFlag("dry_run")),
     // `doctor bundle` requires --preview and writes no archive.
+    // Reads investigation.toml and local/actor.toml; never writes or prints a secret.
+    ("config list", Effect::Read),
+    ("config get", Effect::Read),
+    ("config path", Effect::Read),
     ("doctor", Effect::Read),
     ("doctor bundle", Effect::Read),
     // Apply and remove change one file the user names outside any workspace,

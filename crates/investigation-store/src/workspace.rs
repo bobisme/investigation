@@ -1012,7 +1012,9 @@ impl std::error::Error for WorkspaceError {
     }
 }
 
+mod config_keys;
 mod local_actor;
+pub use config_keys::CONFIG_FILE_NAME;
 pub use local_actor::LOCAL_ACTOR_FILE;
 
 #[cfg(test)]
