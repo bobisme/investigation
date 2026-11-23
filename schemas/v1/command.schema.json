@@ -65,6 +65,14 @@
             "null"
           ]
         },
+        "extensions": {
+          "additionalProperties": true,
+          "description": "Optional fields declared by method packs the case has adopted, keyed\nby pack ID: `{\"<pack id>\": {\"<property>\": value}}`. They are stored on\nthe record this operation creates, or on the single record it revises,\nafter a check against the pinned pack's property schemas. An object\nreplaces that pack's fields on the record; `null` removes them. The\ncore never interprets them.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
         "op": {
           "type": "string"
         },

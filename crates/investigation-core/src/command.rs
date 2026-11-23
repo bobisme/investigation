@@ -48,6 +48,14 @@ pub struct Operation {
     pub client_ref: Option<String>,
     #[schemars(with = "std::collections::BTreeMap<String, Value>")]
     pub payload: Value,
+    /// Optional fields declared by method packs the case has adopted, keyed
+    /// by pack ID: `{"<pack id>": {"<property>": value}}`. They are stored on
+    /// the record this operation creates, or on the single record it revises,
+    /// after a check against the pinned pack's property schemas. An object
+    /// replaces that pack's fields on the record; `null` removes them. The
+    /// core never interprets them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extensions: Option<std::collections::BTreeMap<String, Value>>,
 }
 
 /// An exact revision already issued by the store.

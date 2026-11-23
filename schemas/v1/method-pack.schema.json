@@ -1,0 +1,583 @@
+{
+  "$defs": {
+    "Card": {
+      "additionalProperties": false,
+      "description": "One short guidance card. Its text is plain prose, never a template.",
+      "properties": {
+        "body": {
+          "$ref": "#/$defs/CardBody"
+        },
+        "modes": {
+          "description": "Restricts the card to some of the pack's modes; empty means all.",
+          "items": {
+            "$ref": "#/$defs/CaseMode"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "operations": {
+          "description": "Active catalog operations the card tells the reader to use.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "stage": {
+          "description": "A workflow stage from the operation catalog.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "One line describing when the card applies.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "triggers": {
+          "description": "Any one of these references makes the card relevant. Empty means the\ncard is only shown on request.",
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "stage",
+        "summary",
+        "body"
+      ],
+      "type": "object"
+    },
+    "CardBody": {
+      "additionalProperties": false,
+      "properties": {
+        "mistake": {
+          "description": "A common mistake.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "record": {
+          "description": "What to record.",
+          "type": "string"
+        },
+        "skip": {
+          "description": "When it is reasonable to skip the card.",
+          "type": "string"
+        },
+        "when": {
+          "description": "When the card applies.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "when",
+        "record",
+        "skip"
+      ],
+      "type": "object"
+    },
+    "CaseFact": {
+      "description": "Structural case facts derived from recorded fields only.",
+      "oneOf": [
+        {
+          "const": "no_question",
+          "description": "The case has no Question.",
+          "type": "string"
+        },
+        {
+          "const": "single_open_hypothesis",
+          "description": "Exactly one Hypothesis is open.",
+          "type": "string"
+        },
+        {
+          "const": "competing_hypotheses",
+          "description": "Two or more Hypotheses are open.",
+          "type": "string"
+        },
+        {
+          "const": "multiple_options",
+          "description": "Two or more Options are open.",
+          "type": "string"
+        },
+        {
+          "const": "multiple_sources",
+          "description": "The case cites two or more Sources.",
+          "type": "string"
+        },
+        {
+          "const": "measured_observation",
+          "description": "At least one Observation carries a measured value.",
+          "type": "string"
+        },
+        {
+          "const": "stalled",
+          "description": "The stalled-investigation detector reports repeated inconclusive work.",
+          "type": "string"
+        }
+      ]
+    },
+    "CaseMode": {
+      "enum": [
+        "explain",
+        "measure",
+        "evaluate",
+        "explore",
+        "record"
+      ],
+      "type": "string"
+    },
+    "FieldSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "schema": {
+          "$ref": "#/$defs/ValueSchema"
+        }
+      },
+      "required": [
+        "name",
+        "schema"
+      ],
+      "type": "object"
+    },
+    "ObservationGuidance": {
+      "additionalProperties": false,
+      "properties": {
+        "modes": {
+          "items": {
+            "$ref": "#/$defs/CaseMode"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "text"
+      ],
+      "type": "object"
+    },
+    "PolicyInput": {
+      "description": "The enumerated policy inputs. Each can only add a requirement at its gate;\nnone can relax a built-in gate or apply to recording.",
+      "oneOf": [
+        {
+          "const": "required_fields",
+          "description": "Named fields must be present and nonempty on the gated record.",
+          "type": "string"
+        },
+        {
+          "const": "blindspot_review",
+          "description": "A current blindspot review of the gated Conclusion or Decision.",
+          "type": "string"
+        },
+        {
+          "const": "closure_retrospective",
+          "description": "A Retrospective, not a waiver, when the declared triggers hold.",
+          "type": "string"
+        },
+        {
+          "const": "distinct_actor",
+          "description": "The promoting actor did not author the subject's current content.",
+          "type": "string"
+        },
+        {
+          "const": "acknowledge_open_objections",
+          "description": "Every open objection, not only critical ones, needs an acknowledgment.",
+          "type": "string"
+        },
+        {
+          "const": "isolated_review",
+          "description": "A current review of the gated subject with no low-independence flag:\nnot a same-session self-review, not a declared self-review, and not\nrecorded by an actor who recorded the subject's content. Declared and\nattributed, never a claim of cognitive independence.",
+          "type": "string"
+        }
+      ]
+    },
+    "PolicyProposal": {
+      "additionalProperties": false,
+      "properties": {
+        "fields": {
+          "description": "`required_fields` only: dotted field names that must be present and\nnonempty on the gated record (the Conclusion, Decision or Case).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "gate": {
+          "description": "One of the promotion or closure operations in [`POLICY_GATES`].",
+          "type": "string"
+        },
+        "input": {
+          "$ref": "#/$defs/PolicyInput"
+        },
+        "name": {
+          "type": "string"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "triggers": {
+          "description": "`closure_retrospective` only: case facts or record kinds that make the\ncase material for closure. Empty means every closing case is material.",
+          "items": {
+            "$ref": "#/$defs/Trigger"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "input",
+        "gate",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "PropertyDefinition": {
+      "additionalProperties": false,
+      "description": "An optional field a pack proposes for some record kinds.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "name": {
+          "description": "Snake-case field name inside the pack's extension namespace.",
+          "type": "string"
+        },
+        "record_kinds": {
+          "items": {
+            "$ref": "#/$defs/RecordKind"
+          },
+          "type": "array"
+        },
+        "schema": {
+          "$ref": "#/$defs/ValueSchema"
+        }
+      },
+      "required": [
+        "name",
+        "record_kinds",
+        "description",
+        "schema"
+      ],
+      "type": "object"
+    },
+    "RecordKind": {
+      "description": "Case-scoped record kinds a pack may name.",
+      "enum": [
+        "case",
+        "question",
+        "source",
+        "artifact",
+        "observation",
+        "hypothesis",
+        "assumption",
+        "option",
+        "criterion",
+        "comparison",
+        "assessment",
+        "conclusion",
+        "decision",
+        "review",
+        "objection",
+        "annotation",
+        "retrospective",
+        "inquiry",
+        "run"
+      ],
+      "type": "string"
+    },
+    "ReportReference": {
+      "additionalProperties": false,
+      "description": "A named report built from a renderer-provided template.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "template": {
+          "description": "Identifier of a renderer-provided template; never a path, URL or code.",
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "template"
+      ],
+      "type": "object"
+    },
+    "Trigger": {
+      "additionalProperties": false,
+      "description": "A reference into the closed trigger vocabulary. Exactly one field is set.",
+      "properties": {
+        "case_fact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseFact"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gap_rule": {
+          "description": "A built-in gap-rule ID.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "record_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecordKind"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The case holds at least one record of this kind."
+        }
+      },
+      "type": "object"
+    },
+    "ValueSchema": {
+      "additionalProperties": false,
+      "description": "A closed schema subset: bounded scalars, enumerations, arrays and objects.\nThere are no references, patterns or conditional keywords.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "enum": {
+          "description": "`string` only: the permitted values.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "fields": {
+          "description": "Required for `object`.",
+          "items": {
+            "$ref": "#/$defs/FieldSchema"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "items": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ValueSchema"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required for `array`."
+        },
+        "max_items": {
+          "description": "Required for `array`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "max_length": {
+          "description": "Required for `string`: maximum UTF-8 bytes.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "maximum": {
+          "description": "`integer` only.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "minimum": {
+          "description": "`integer` only.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "required": {
+          "description": "`object` only: names of required fields.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "type": {
+          "$ref": "#/$defs/ValueType"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "type": "object"
+    },
+    "ValueType": {
+      "oneOf": [
+        {
+          "enum": [
+            "string",
+            "integer",
+            "boolean",
+            "array",
+            "object"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "decimal",
+          "description": "A base-10 decimal string such as `18.70`.",
+          "type": "string"
+        }
+      ]
+    },
+    "ViewReference": {
+      "additionalProperties": false,
+      "description": "A named view built from a renderer-provided view kind.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "record_kinds": {
+          "items": {
+            "$ref": "#/$defs/RecordKind"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        },
+        "view": {
+          "description": "Identifier of a renderer-provided view; never a path or URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "title",
+        "view"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:method-pack",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`inv.method-pack.v1`. Every list defaults to empty; unknown keys are errors.",
+  "properties": {
+    "cards": {
+      "items": {
+        "$ref": "#/$defs/Card"
+      },
+      "type": "array"
+    },
+    "id": {
+      "description": "Lowercase kebab-case identifier; also the extension namespace.",
+      "type": "string"
+    },
+    "modes": {
+      "description": "Case modes the pack applies to.",
+      "items": {
+        "$ref": "#/$defs/CaseMode"
+      },
+      "type": "array"
+    },
+    "observation_guidance": {
+      "items": {
+        "$ref": "#/$defs/ObservationGuidance"
+      },
+      "type": "array"
+    },
+    "policies": {
+      "description": "Proposed promotion requirements. They take effect only for a case that\npins this pack, and only at the declared gate.",
+      "items": {
+        "$ref": "#/$defs/PolicyProposal"
+      },
+      "type": "array"
+    },
+    "properties": {
+      "description": "Optional properties, recorded under `extensions.<pack id>.<name>`.",
+      "items": {
+        "$ref": "#/$defs/PropertyDefinition"
+      },
+      "type": "array"
+    },
+    "reports": {
+      "items": {
+        "$ref": "#/$defs/ReportReference"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "description": "Exactly `inv.method-pack.v1`.",
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "version": {
+      "description": "`MAJOR.MINOR.PATCH`.",
+      "type": "string"
+    },
+    "views": {
+      "items": {
+        "$ref": "#/$defs/ViewReference"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "id",
+    "version",
+    "title",
+    "summary",
+    "modes"
+  ],
+  "title": "MethodPack",
+  "type": "object"
+}

@@ -366,6 +366,11 @@ fn apply_operations(
         descriptor
             .execute(&operation.payload, &mut context)
             .map_err(|error| prefix_path(error, &format!("{prefix}/payload"), ""))?;
+        if let Some(extensions) = &operation.extensions {
+            context
+                .attach_extensions(extensions)
+                .map_err(|error| prefix_path(error, &format!("{prefix}/extensions"), ""))?;
+        }
         let OperationContext {
             images,
             creation,
@@ -622,6 +627,40 @@ impl OperationContext<'_> {
         let reference = new.reference();
         self.push(new);
         Ok(reference)
+    }
+
+    /// Store an operation's validated pack extensions on the header of the
+    /// record it created, or of the single record it revised.
+    fn attach_extensions(&mut self, requested: &BTreeMap<String, Value>) -> Result<(), Failure> {
+        let target = crate::pack_extensions::target(
+            self.creation.map(|reference| reference.id),
+            &self.images,
+        )?;
+        let case_id = self
+            .case_id
+            .ok_or_else(|| Failure::new(ErrorCode::IntegrityFailure, "Extensions need a case."))?;
+        let index = self
+            .images
+            .iter()
+            .rposition(|record| record.header.id == target)
+            .expect("the target is one of the operation's images");
+        let extensions = crate::pack_extensions::apply(
+            self.state,
+            case_id,
+            self.packs,
+            &self.images[index],
+            requested,
+        )?;
+        self.images[index].header.extensions = extensions.clone();
+        if let Some(latest) = self
+            .state
+            .history
+            .get_mut(&target)
+            .and_then(|revisions| revisions.last_mut())
+        {
+            latest.header.extensions = extensions;
+        }
+        Ok(())
     }
 
     pub fn check_final(&mut self, check: impl FnOnce(&State) -> Result<(), Failure> + 'static) {

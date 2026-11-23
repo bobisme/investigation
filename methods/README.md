@@ -53,7 +53,9 @@ Optional sections:
 - `[[properties]]`: `name`, `record_kinds`, `description` and a closed `schema`
   (`type` = `string` with `max_length` and optional `enum`, `integer` with
   optional `minimum`/`maximum`, `decimal`, `boolean`, `array` with `items` and
-  `max_items`, or `object` with `fields` and optional `required`).
+  `max_items`, or `object` with `fields` and optional `required`). A case
+  that adopted the pack records them with `extensions` on a transaction
+  operation; see [Extension properties](#extension-properties).
 - `[[observation_guidance]]`: `name`, `title`, `text`, optional `modes`.
 - `[[policies]]`: `name`, `input`, `gate`, `fields` for `required_fields`,
   optional `triggers` for `closure_retrospective`, and `rationale`. See
@@ -127,3 +129,26 @@ original path, so editing the file on disk changes nothing for the case. A pin
 whose bytes are missing, altered or no longer loadable is reported as
 unavailable (`show CASE_ID --depth full` lists `method_packs`); recording,
 reading and export continue.
+
+## Extension properties
+
+A declared property is an optional field on an existing record kind, so a
+pack can add fields without a change to any Rust record type. A transaction
+operation carries them beside its payload, keyed by the pack ID:
+
+```json
+{"op": "observation.add", "payload": {"...": "..."},
+ "extensions": {"bench-notes": {"warmup_runs": 5, "machine": {"cpu": "x86-64"}}}}
+```
+
+The store checks them when it commits the transaction, against the schema
+of the pinned pack revision that it reads from the retained bytes. The values
+are stored on the header of the record that the operation creates, or of the
+single record that it revises, under `extensions.<pack id>`. A refused value
+names its JSON Pointer. A namespace the case has not adopted is refused with
+a `method_pack.adopt` repair. The core never reads the values for a gate,
+freshness, ranking, blindspot check or basis digest. Only the pack's own
+`required_fields` policy can name them. Reads label them as pack data, and
+replay does not need the pack file.
+[`fixtures/method-packs/bench-notes.toml`](../fixtures/method-packs/bench-notes.toml)
+is a complete example with a card and four properties.

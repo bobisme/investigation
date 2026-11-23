@@ -401,12 +401,14 @@ fn declare(
             op: "case.create".into(),
             client_ref: Some(CASE_ALIAS.into()),
             payload: json!({"title": title, "mode": "record"}),
+            extensions: None,
         });
     }
     operations.push(CommandOperation {
         op: "run.start".into(),
         client_ref: Some(RUN_ALIAS.into()),
         payload: declaration.run.clone(),
+        extensions: None,
     });
     let new_case = existing.is_none();
     let command = Command {

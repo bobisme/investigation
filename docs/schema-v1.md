@@ -1,6 +1,6 @@
 # Investigation v1 contracts
 
-The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`, and completed producer runs use `inv.producer-run.v1`. The published JSON Schemas cover commands, normal, import and producer-run receipts, producer-run envelopes, structural audit responses, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
+The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`, and completed producer runs use `inv.producer-run.v1`. The published JSON Schemas cover commands, normal, import and producer-run receipts, producer-run envelopes, structural audit responses, method pack files, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
 
 ## Using the contract
 
@@ -190,6 +190,14 @@ For each pair of reviews of one subject, `order` reports what journal order and 
 `investigation review-packet ID [--snapshot SEQUENCE [--head-hash DIGEST]]` returns `result: review_packet` for a Conclusion, Decision or Comparison. It keeps the case and its questions (`question`), the criteria (`criteria`) and the rest of the subject's dependency closure (`evidence`). Inclusion is positive: each record kind keeps a fixed list of fields, and every other field of a packed record is named in its `omitted_fields`. The packet never carries the subject's claim, choice or outcome, any confidence or likelihood, assessment or comparison rationale, record status or any actor, and `omissions` lists those categories. Reviews of and objections to the subject appear only by reference in `omitted_records`. A record that the audience may not see is listed as `restricted` with no fields. `review_basis` gives the exact `subject_ref`, `basis_digest` and `read_set` a validation review cites. `packet_digest` hashes the content, so the same snapshot gives the same digest. The packet writes nothing and does not make a review independent.
 
 A pinned pack can require, through the `isolated_review` policy input at `conclusion.validate` or `decision.accept`, a current review of the subject with no low-independence flag.
+
+## Pack extension properties
+
+A method pack can declare optional typed `[[properties]]` for some record kinds. When a case has adopted the pack (`method_pack.adopt`), any operation of an `inv.command.v1` transaction can carry `extensions` beside its `payload`: `{"<pack id>": {"<property>": value}}`. The values are stored on the header of the record that the operation creates, or of the single record that it revises, under `header.extensions.<pack id>`. A later revision keeps them unless an operation replaces that pack's object, or sends `null` to remove it. No record type changes, and no new record kind or ID prefix exists.
+
+Values are checked when they are written, against the closed schema of the pack revision that the case pins, read from its retained bytes. A wrong type, a value out of range, an undeclared property, or a property declared for another record kind gives `INVALID_INPUT` with the JSON Pointer of the failing value, for example `/operations/0/extensions/bench-notes/machine/cores`. A pack that the case has not adopted gives `UNKNOWN_REFERENCE` with a `method_pack.adopt` repair. Producer fields that no pack declares go in the opaque `metadata`. If the pinned pack's bytes are unavailable, new values give `GATE_FAILED`; recording without extensions continues. Replay never reads a pack, so records keep their values when the pack file is removed.
+
+Extensions are inert. No gate, freshness rule, gap rule, ranking, blindspot check or basis digest reads them. Only a pack's own declared `required_fields` policy can name them (see [Policy inputs](../methods/README.md#policy-inputs)). `show --depth full` lists them under `pack_fields`, with `interpretation: pack_data_uninterpreted`, and a vault note shows them under `## Pack fields`. The `method-pack` wire schema publishes the shape of a pack file.
 
 ## Authored synopses
 

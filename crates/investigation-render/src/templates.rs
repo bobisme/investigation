@@ -44,6 +44,7 @@ pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
         Some(record) => {
             notes.open_note(&mut out, record)?;
             crate::records::overview::sections(notes, &mut out, record)?;
+            crate::records::pack_fields_section(notes, &mut out, record);
         }
         None => heading(&mut out, &case_id.to_string()),
     }

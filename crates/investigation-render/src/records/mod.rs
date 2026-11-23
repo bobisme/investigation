@@ -39,7 +39,7 @@ use investigation_core::{
     command::RevisionRef,
     decision_ops,
     identity::{Id, Kind},
-    measurement_flags,
+    measurement_flags, pack_extensions,
     review::EffectiveDisposition,
     review_ops,
     state::Record,
@@ -143,7 +143,52 @@ pub(crate) fn sections(
     if notes.may_show(record, Field::Content) {
         flags_section(notes, out, record)?;
     }
+    pack_fields_section(notes, out, record);
     reviews::section(notes, out, record)
+}
+
+/// `## Pack fields`: optional fields a pinned method pack declared for the
+/// record, shown as labeled data. The core never interprets them.
+pub(crate) fn pack_fields_section(notes: &NoteContext<'_>, out: &mut String, record: &Record) {
+    if !notes.may_show(record, Field::Content) {
+        return;
+    }
+    let fields = pack_extensions::fields(record);
+    if fields.is_empty() {
+        return;
+    }
+    out.push_str(
+        "\n## Pack fields\n\nOptional fields declared by a pinned method pack. They are data, checked against the pack's schema when recorded, and never change a gate, freshness or an audit.\n\n",
+    );
+    for field in fields.iter().take(MAX_LISTED) {
+        let _ = writeln!(
+            out,
+            "- {} {}: {}",
+            inline_code(field.pack_id),
+            inline_code(field.field),
+            pack_value(field.value)
+        );
+    }
+    if fields.len() > MAX_LISTED {
+        let _ = writeln!(out, "- and {} more", fields.len() - MAX_LISTED);
+    }
+}
+
+/// A pack field value: text as escaped prose, anything else as bounded JSON
+/// in a code span.
+fn pack_value(value: &Value) -> String {
+    const MAX_JSON_CHARS: usize = 300;
+    match value {
+        Value::String(text) => prose(text),
+        other => {
+            let json = other.to_string();
+            let mut shown: String = json.chars().take(MAX_JSON_CHARS).collect();
+            if json.chars().count() > MAX_JSON_CHARS {
+                shown.push('\u{2026}');
+            }
+            inline_code(&shown)
+        }
+    }
 }
 
 /// Flat frontmatter properties of a visible record beyond the skeleton's.

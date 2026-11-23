@@ -1,0 +1,52 @@
+# A third-party method pack (inv.method-pack.v1) used by the tests of W09.06.
+#
+# It adds one guidance card and optional, typed fields to existing record
+# kinds without any change to core code. Nothing here runs: the core checks
+# recorded values against these schemas and otherwise never reads them.
+schema_version = "inv.method-pack.v1"
+id = "bench-notes"
+version = "1.0.0"
+title = "Bench notes"
+summary = "Benchmark bookkeeping: warm-up runs, machine and source editions."
+modes = ["measure", "explore"]
+
+[[cards]]
+name = "warm-up"
+title = "Record the warm-up"
+stage = "observe"
+summary = "A timed observation does not say how many runs were discarded first."
+operations = ["observation.add"]
+triggers = [{ record_kind = "observation" }]
+
+[cards.body]
+when = "A measured value comes from repeated timed runs and some early runs were discarded."
+record = "Record the number of discarded runs in the bench-notes warmup_runs field of the observation, and the machine it ran on."
+skip = "The value is not timed, or no run was discarded."
+
+[[properties]]
+name = "warmup_runs"
+record_kinds = ["observation", "run"]
+description = "Runs discarded before the measured ones."
+schema = { type = "integer", minimum = 0, maximum = 1000 }
+
+[[properties]]
+name = "machine"
+record_kinds = ["observation"]
+description = "The machine the measurement ran on."
+schema = { type = "object", required = ["cpu"], fields = [
+  { name = "cpu", schema = { type = "string", max_length = 64 } },
+  { name = "cores", schema = { type = "integer", minimum = 1, maximum = 4096 } },
+  { name = "clock_ghz", schema = { type = "decimal" } },
+] }
+
+[[properties]]
+name = "phases"
+record_kinds = ["observation", "hypothesis", "conclusion"]
+description = "Benchmark phases the record covers."
+schema = { type = "array", max_items = 4, items = { type = "string", enum = ["cold", "warm", "steady"], max_length = 8 } }
+
+[[properties]]
+name = "edition"
+record_kinds = ["source"]
+description = "The edition of a published source."
+schema = { type = "string", max_length = 64 }

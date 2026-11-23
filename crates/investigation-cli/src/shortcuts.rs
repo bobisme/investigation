@@ -560,6 +560,7 @@ fn run_operation(
             op: operation.to_owned(),
             client_ref: None,
             payload: payload.clone(),
+            extensions: None,
         }],
     };
     let envelope = serde_json::to_value(&request).expect("shortcut envelope serializes");

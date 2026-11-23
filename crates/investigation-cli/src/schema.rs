@@ -26,6 +26,7 @@ const WIRE_SCHEMAS: &[&str] = &[
     "producer-run",
     "producer-run-receipt",
     "audit",
+    "method-pack",
 ];
 const RESERVED_WIRE_SCHEMAS: &[&str] = &[];
 
@@ -77,6 +78,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
             Some(investigation_store::store::ingest::producer_run::receipt_schema())
         }
         "audit" => Some(investigation_core::blindspot::audit_schema()),
+        "method-pack" => Some(investigation_core::method_pack::schema()),
         _ => wire_schema(name),
     };
     if let Some(schema) = wire {
@@ -100,6 +102,9 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 }
                 "audit" => {
                     "Read the response of investigation blindspots, a read-only structural audit."
+                }
+                "method-pack" => {
+                    "Author an inv.method-pack.v1 TOML file (tables decode to this shape); retain it with ingest and pin it with method_pack.adopt."
                 }
                 _ => "Inspect the shape of an error and its repair guidance.",
             };

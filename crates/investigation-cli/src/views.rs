@@ -668,6 +668,11 @@ pub(crate) fn project_record(
             // Namespaced producer metadata is stored raw and never interpreted.
             out.insert("metadata_status".into(), json!("uninterpreted"));
         }
+        // Fields a pinned method pack declared: labeled pack data, never read
+        // by a gate, freshness, ranking or audit.
+        if let Some(fields) = investigation_core::pack_extensions::projection(record) {
+            out.insert("pack_fields".into(), fields);
+        }
         out.insert(
             "record".into(),
             json!({"header":record.header,"body":record.body}),

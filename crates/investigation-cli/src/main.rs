@@ -832,6 +832,14 @@ fn record(store: &mut Store, global: &Global, input: &Path) -> Result<Output, Fa
     Ok(receipt_output(store.workspace(), receipt))
 }
 
+fn is_extension_failure(failure: &Failure) -> bool {
+    failure.error.path.as_deref().is_some_and(|path| {
+        path.strip_prefix("/operations/")
+            .and_then(|rest| rest.split_once('/'))
+            .is_some_and(|(_, rest)| rest.starts_with("extensions"))
+    }) && failure.error.repair.is_some()
+}
+
 fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failure) -> Failure {
     let operation = failure
         .error
@@ -847,6 +855,11 @@ fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failur
             command.operations.get(operation)
         })
         .or_else(|| command.operations.first());
+    // A refused pack extension already names its repair (method pack adoption);
+    // it is not about the operation's payload or a case-local reference.
+    if is_extension_failure(&failure) {
+        return with_workspace_repair(store.workspace(), failure);
+    }
     if matches!(
         failure.error.code,
         ErrorCode::GateFailed | ErrorCode::UnknownReference

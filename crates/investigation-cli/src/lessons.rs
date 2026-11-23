@@ -600,6 +600,7 @@ fn consult(
             op: CONSULT.to_owned(),
             client_ref: None,
             payload,
+            extensions: None,
         });
     }
     if operations.is_empty() {

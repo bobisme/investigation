@@ -474,6 +474,7 @@
       "producer-run",
       "producer-run-receipt",
       "audit",
+      "method-pack",
       "capture",
       "capture.begin",
       "capture.begin.receipt",
