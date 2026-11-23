@@ -14,7 +14,7 @@ A producer is an external program that runs something under its own authority an
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
-**Status.** The types and signatures are fixed. `begin` is durable and has its CLI command, `capture begin`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+**Status.** The types and signatures are fixed. `begin` and `append` are durable and have their CLI commands, `capture begin` and `capture append`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
 
 ## `capture begin`
 
@@ -51,16 +51,75 @@ Idempotency:
 
 The limits are fixed when the handle is declared: 65536 bytes per appended event, 67108864 bytes per attachment and 100000 positions. A later build with other defaults returns the original limits on a retry.
 
+## `capture append`
+
+```sh
+investigation --workspace ./cases capture append --input event.json --format json
+```
+
+`--input` takes a file, or `-` for stdin. The request is the JSON form of `CaptureEvent`:
+
+```json
+{
+  "handle": "handle_…",
+  "key": "phase-summarize",
+  "position": 3,
+  "fact": {"kind": "phase_changed", "phase": "summarize"},
+  "reported_at": {
+    "timestamp": {"state": "known", "value": "2026-01-02T03:04:05.000Z"},
+    "offset": {"state": "unknown"},
+    "clock_quality": "unverified"
+  },
+  "metadata": {"example-org.host": {"slot": 3}}
+}
+```
+
+| `fact.kind` | Fields | Bounds |
+|---|---|---|
+| `started` | — | — |
+| `phase_changed` | `phase` | 1–256 characters, no control characters |
+| `error` | `message`, optional `external_code` | message 1–16384 characters, kept verbatim; code 1–128 characters, no control characters |
+| `cancelled` | optional `reason` | 1–4096 characters |
+| `channel` | `channel`, `state` (`opened`, `closed`, or `gap` with optional `detail`) | channel 1–256 characters, no control characters; detail 1–4096 characters |
+
+Stdout is the `ItemReceipt` (`result`, `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`), the same value `Recorder::append` returns. `reported_at` is the producer's claim and stays in the staged request. `accepted_at` is the recorder's local acceptance time. Neither orders the items; the position does. The serialized request may be at most `max_event_bytes` (65536). Put high-frequency samples in an attached artifact, not in individual facts.
+
+The request carries no actor and no case. The handle names the Run, its case and the actor that declared it, and every item is attributed to that declaration.
+
+Ordering and idempotency:
+
+- The handle accepts only its next position, starting at 1. Any other position is refused with `REVISION_CONFLICT` at `/position`. `expected` holds the next `position` and the `last_position`; the message names the missing positions. Nothing is staged, and the gap stays fillable.
+- The key is the producer's item key, unique within the handle. An identical retry returns the original receipt with `result` `already_accepted`, the original position and the original `accepted_at`. Fields that take a default compare equal whether or not they are spelled out.
+- The same key with a different request, including another position, is refused with `IDEMPOTENCY_KEY_REUSED` at `/key`. `expected` holds the accepted item's `position` and `request_digest`.
+- A handle that was never declared is refused with `UNKNOWN_REFERENCE` at `/handle`. A handle whose staging a crash left unallocated is refused with `OBJECT_REQUIRED`; resend the identical `begin`, then the item.
+- A position above `max_items` (100000) is refused with `INVALID_INPUT` at `/position`.
+- A sealed handle refuses new items with `REVISION_CONFLICT` at `/handle`. An identical retry of an accepted item still returns its receipt.
+
+Appending records a report. It does not start, cancel or rerun anything; a `cancelled` fact cancels nothing.
+
+### Durability and placement
+
+An appended fact is staged, not journaled. Each accepted item is one immutable file in the handle's staging directory. No item is its own journal transaction, so a stream of facts never becomes a stream of global commits, and the workspace commit lock is held only for a short read of the handle's case. Finalization seals staging and commits the Run's manifest in one transaction, which binds every item key, digest and receipt.
+
+Before the receipt is returned, the item file is written, synced, published with an exclusive link, and its directory is synced. That one file holds the request bytes, the receipt and the cursor advance. Item `p` is published only after item `p - 1` is durable, so positions stay contiguous after any crash, and the last position is the highest item file. A crash before the receipt leaves the item either absent, so a retry accepts it, or present, so a retry returns its receipt. An acknowledged item survives a crash at its position.
+
+Calls on one handle are serialized by a persistent lock file in its staging directory. That lock is separate from the workspace commit lock and is always taken first.
+
 ## Staging
 
 ```text
 state/staging/<run-id>/          0700
   handle.json                    0400, binds the directory to its handle
+  handle.lock                    per-handle lock; never removed or renamed
+  items/<position>.json          0400, one accepted item; twelve-digit position
+  keys/<sha256-of-key>.json      0400, item key to position
 ```
 
 `staging_dir` in the receipt is this directory, relative to the workspace root. Begin commits the declaration first and then allocates the directory, under the workspace commit lock and with every file and directory synced. `handle.json` holds `schema_version` (`inv.capture-staging.v1`), `handle`, `run_id`, `case_id`, `transaction_id`, `command_id`, `actor`, `producer` and `external_run_id`. Its bytes are a function of the committed declaration only. A retry verifies them, and refuses to overwrite a file bound to another declaration.
 
 Later capture operations add their own entries beside `handle.json` and never rewrite it. A transient `handle.json.tmp` exists only while the binding is published.
+
+An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. Transient `*.tmp` files exist only while one entry is published. `sealed.json` is reserved for finalization. Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
 
 Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. Recovery reports that state, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
 
@@ -68,7 +127,7 @@ Staging is durable recovery material, not cache. No cleanup path removes it: pub
 
 - **Keys.** Every mutating call carries an idempotency key. `begin` and `finalize` keys are journal command IDs. `append` and `attach` keys are item keys, unique within the handle. Derive keys from your own run state, never from the clock or a random source at retry time.
 - **Retries.** After a timeout, a crash, or a failure whose `commit_status` is `unknown`, resend the identical request with the same key. You get the original receipt. The same key with different content is a conflict.
-- **Positions.** Appended facts and attachments share one sequence per handle, starting at 1. The recorder accepts only the next position. After a restart, resend the identical `begin` to get the same handle, call `recover`, and continue after `last_position`.
+- **Positions.** Appended facts and attachments share one sequence per handle, starting at 1. The recorder accepts only the next position, and refuses any other with the expected position. After a restart, resend the identical `begin` to get the same handle, call `recover`, and continue after `last_position`.
 - **Stable bytes.** Close and flush a file before you attach it. Do not write into the staging directory.
 - **Assertions.** Your results are recorded as your assertions. An exit code of 0 or a `reported_pass` control sets no measurement validity.
 - **Readiness.** If your policy requires durable recording and `begin` fails, do not start a new effectful unit. If the recorder fails midrun, keep a bounded local spool and reconcile later. These are producer obligations; Investigation does not enforce them.

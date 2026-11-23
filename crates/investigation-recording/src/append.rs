@@ -1,14 +1,21 @@
 //! `capture.append`: add one bounded lifecycle or collection fact.
 
 use investigation_core::{
-    header::{SourceTime, UtcTimestamp},
+    header::{SourceTime, SystemClock, UtcTimestamp},
     identity::Id,
-    wire::Digest,
+    wire::{Digest, ErrorCode, Failure},
+};
+use investigation_store::{
+    Store, Workspace,
+    store::capture::items::{ItemAcceptance, ItemOperation, ItemResult, ItemSubmission},
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::key::{CaptureHandle, IdempotencyKey, Metadata, Position, ReceiptResult};
+use crate::{
+    error::RecordingError,
+    key::{CaptureHandle, IdempotencyKey, Metadata, Position, ReceiptResult},
+};
 
 /// One typed fact at the next position of a handle.
 ///
@@ -127,4 +134,124 @@ pub struct ItemReceipt {
     pub request_digest: Digest,
     /// Local acceptance time, distinct from any producer-reported time.
     pub accepted_at: UtcTimestamp,
+}
+
+const MAX_NAME_CHARS: usize = 256;
+const MAX_CODE_CHARS: usize = 128;
+const MAX_DETAIL_CHARS: usize = 4096;
+const MAX_MESSAGE_CHARS: usize = 16 * 1024;
+
+/// Stage one fact at the next position of its handle.
+pub(crate) fn append(
+    workspace: &Workspace,
+    event: &CaptureEvent,
+) -> Result<ItemReceipt, RecordingError> {
+    validate(event)?;
+    // The normalized form, so an identical retry compares equal however its
+    // JSON was spelled.
+    let request = serde_json::to_value(event).map_err(|_| {
+        Failure::new(
+            ErrorCode::IntegrityFailure,
+            "Could not encode the append request.",
+        )
+    })?;
+    let accepted = Store::open(workspace.clone()).stage_capture_item(
+        &ItemSubmission {
+            operation: ItemOperation::Append,
+            handle: event.handle.id(),
+            key: event.key.as_str().to_owned(),
+            position: event.position.get(),
+            request,
+            outcome: None,
+        },
+        &mut SystemClock,
+    )?;
+    Ok(item_receipt(&accepted)?)
+}
+
+/// The receipt of a staged item, for `append` and `attach` alike.
+pub(crate) fn item_receipt(accepted: &ItemAcceptance) -> Result<ItemReceipt, Failure> {
+    let item = &accepted.item;
+    let invalid = || {
+        Failure::new(
+            ErrorCode::IntegrityFailure,
+            "A staged capture item does not hold a valid receipt.",
+        )
+    };
+    Ok(ItemReceipt {
+        result: match accepted.result {
+            ItemResult::Accepted => ReceiptResult::Accepted,
+            ItemResult::AlreadyAccepted => ReceiptResult::AlreadyAccepted,
+        },
+        handle: CaptureHandle::from_id(item.handle).map_err(|_| invalid())?,
+        run_id: item.run_id,
+        position: Position::new(item.position).ok_or_else(invalid)?,
+        key: IdempotencyKey::new(item.key.clone()).map_err(|_| invalid())?,
+        request_digest: item.request_digest.clone(),
+        accepted_at: item.accepted_at.clone(),
+    })
+}
+
+fn validate(event: &CaptureEvent) -> Result<(), Failure> {
+    let invalid = |path: &str, message: String| {
+        Failure::new(ErrorCode::InvalidInput, message).at(path.to_owned())
+    };
+    let name = |path: &str, value: &str| {
+        if value.trim().is_empty()
+            || value.chars().count() > MAX_NAME_CHARS
+            || value.chars().any(char::is_control)
+        {
+            Err(invalid(
+                path,
+                format!("Use 1 to {MAX_NAME_CHARS} characters without control characters."),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    let text = |path: &str, value: &str, max: usize| {
+        if value.trim().is_empty() || value.chars().count() > max {
+            Err(invalid(
+                path,
+                format!("Use 1 to {max} characters, or omit the field."),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    match &event.fact {
+        LifecycleFact::Started => {}
+        LifecycleFact::PhaseChanged { phase } => name("/fact/phase", phase)?,
+        LifecycleFact::Error {
+            message,
+            external_code,
+        } => {
+            text("/fact/message", message, MAX_MESSAGE_CHARS)?;
+            if let Some(code) = external_code {
+                if code.chars().count() > MAX_CODE_CHARS {
+                    return Err(invalid(
+                        "/fact/external_code",
+                        format!("Use at most {MAX_CODE_CHARS} characters."),
+                    ));
+                }
+                name("/fact/external_code", code)?;
+            }
+        }
+        LifecycleFact::Cancelled { reason } => {
+            if let Some(reason) = reason {
+                text("/fact/reason", reason, MAX_DETAIL_CHARS)?;
+            }
+        }
+        LifecycleFact::Channel { channel, state } => {
+            name("/fact/channel", channel)?;
+            if let ChannelEvent::Gap {
+                detail: Some(detail),
+            } = state
+            {
+                text("/fact/state/detail", detail, MAX_DETAIL_CHARS)?;
+            }
+        }
+    }
+    investigation_store::opaque::validate_metadata(&event.metadata)
+        .map_err(|(message, key)| invalid(&format!("/metadata{key}"), message))
 }

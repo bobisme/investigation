@@ -181,8 +181,8 @@ impl Recorder for LocalRecorder {
         crate::begin::declare(&self.workspace, request)
     }
 
-    fn append(&self, _event: &CaptureEvent) -> Result<ItemReceipt, RecordingError> {
-        Err(unsupported(Operation::Append))
+    fn append(&self, event: &CaptureEvent) -> Result<ItemReceipt, RecordingError> {
+        crate::append::append(&self.workspace, event)
     }
 
     fn attach(&self, _artifact: &StableArtifact) -> Result<ArtifactRef, RecordingError> {

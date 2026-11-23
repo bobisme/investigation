@@ -224,7 +224,8 @@ fn external_producer_runs_against_every_recorder_form() {
     let shared = Arc::new(local.clone());
     let as_dyn: &dyn Recorder = &local;
 
-    // `begin` is durable; the later operations land separately. Until then the
+    // `begin` is durable, and `append` once a handle is resumed; the later
+    // operations land separately. Until then the
     // honest outcome is a declared Run followed by an unsupported `recover`, for
     // every way of holding a recorder. Each later flow resends the identical
     // begin, so it resumes the same Run instead of declaring another.
@@ -249,8 +250,11 @@ fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing()
     let before = tree(&root);
     let recorder = LocalRecorder::open(&root).unwrap();
     let handle: CaptureHandle = HANDLE.parse().unwrap();
+    // `append` is durable; on an undeclared handle it is refused and stages nothing.
     let event = CaptureEvent::new(handle, key("e1"), Position::FIRST, LifecycleFact::Started);
-    assert_unsupported(recorder.append(&event), Operation::Append);
+    let error = recorder.append(&event).unwrap_err();
+    assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
+    assert_eq!(error.commit_status(), CommitStatus::NotCommitted);
     let artifact = StableArtifact::file(
         handle,
         key("a1"),

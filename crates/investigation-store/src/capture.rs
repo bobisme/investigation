@@ -28,6 +28,9 @@
 //! `state/tmp`. A crash after the commit and before allocation leaves a committed
 //! handle without staging; [`Store::capture_handles`] reports that, and resending
 //! the identical `begin` allocates it.
+//!
+//! Appended facts and attachment descriptors are staged items with per-handle
+//! positions; see [`items`] for their layout and durability rules.
 
 use std::io::ErrorKind;
 
@@ -42,6 +45,10 @@ use crate::durable::sync_existing_file;
 use serde::Deserialize;
 
 /// Journal operation names in the capture request family.
+///
+/// `capture.append` and `capture.attach` are absent by design: their items are
+/// staged per handle ([`items`]) and summarized into the manifest that
+/// finalization commits, never journaled one transaction per item.
 pub const CAPTURE_OPERATIONS: &[&str] = &["capture.begin"];
 /// Root of every handle's staging directory, relative to the workspace.
 pub const STAGING_ROOT: &str = "state/staging";
@@ -528,6 +535,9 @@ fn read_all(fs: &impl DurableFs, path: &Path) -> io::Result<Vec<u8>> {
     fs.read(path)?.take(64 * 1024).read_to_end(&mut bytes)?;
     Ok(bytes)
 }
+
+#[path = "capture_items.rs"]
+pub mod items;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

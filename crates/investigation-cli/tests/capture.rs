@@ -8,7 +8,9 @@ use std::{
     process::{Command, Output, Stdio},
 };
 
-use investigation_recording::{BeginCapture, BeginReceipt, LocalRecorder, Recorder};
+use investigation_recording::{
+    BeginCapture, BeginReceipt, CaptureEvent, ItemReceipt, LocalRecorder, Recorder,
+};
 use serde_json::{Value, json};
 
 fn invoke(cwd: &Path, args: &[&str], stdin: Option<&[u8]>) -> Output {
@@ -252,4 +254,152 @@ fn capture_begin_rejections_are_structured_and_record_nothing() {
             .next()
             .is_none()
     );
+}
+
+#[test]
+fn capture_append_stages_facts_in_order_and_replays_receipts() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let begun = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "begin",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&begin_request()).unwrap()),
+        0,
+    );
+    let handle = begun["handle"].as_str().unwrap();
+    let event = |key: &str, position: u64, fact: Value| {
+        serde_json::to_vec(&json!({
+            "handle": handle, "key": key, "position": position, "fact": fact
+        }))
+        .unwrap()
+    };
+    let args = [
+        "--workspace",
+        "ws",
+        "capture",
+        "append",
+        "--input",
+        "-",
+        "--format",
+        "json",
+    ];
+    let started = event("started", 1, json!({"kind": "started"}));
+    fs::write(root.join("started.json"), &started).unwrap();
+    let first = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "append",
+            "--input",
+            "started.json",
+            "--format",
+            "json",
+        ],
+        None,
+        0,
+    );
+    // Stdout is exactly the recorder's receipt type; nothing is added.
+    let receipt: ItemReceipt = serde_json::from_value(first.clone()).unwrap();
+    assert_eq!(first["result"], "accepted");
+    assert_eq!(first["position"], 1);
+    assert_eq!(first["run_id"], begun["run_id"]);
+    assert_eq!(receipt.handle.to_string(), handle);
+
+    let retry = json_run(root, &args, Some(&started), 0);
+    assert_eq!(retry["result"], "already_accepted");
+    for field in ["position", "request_digest", "accepted_at", "key", "handle"] {
+        assert_eq!(retry[field], first[field], "{field}");
+    }
+
+    // A Rust producer resending the same request gets the identical receipt.
+    let parsed: CaptureEvent = serde_json::from_slice(&started).unwrap();
+    let native = LocalRecorder::open(root.join("ws"))
+        .unwrap()
+        .append(&parsed)
+        .unwrap();
+    assert_eq!(serde_json::to_value(&native).unwrap(), retry);
+
+    // Position 2 is missing.
+    let gap = event("phase", 3, json!({"kind": "phase_changed", "phase": "run"}));
+    let failure = json_run(root, &args, Some(&gap), 4);
+    assert_eq!(failure["error"]["code"], "REVISION_CONFLICT");
+    assert_eq!(failure["error"]["path"], "/position");
+    assert_eq!(failure["error"]["expected"]["position"], 2);
+    assert_eq!(failure["commit_status"], "not_committed");
+
+    // The same key with changed bytes conflicts.
+    let changed = event("started", 1, json!({"kind": "cancelled"}));
+    let failure = json_run(root, &args, Some(&changed), 4);
+    assert_eq!(failure["error"]["code"], "IDEMPOTENCY_KEY_REUSED");
+    assert_eq!(failure["error"]["path"], "/key");
+
+    let read_only = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "--read-only",
+            "capture",
+            "append",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&event("phase", 2, json!({"kind": "started"}))),
+        2,
+    );
+    assert_eq!(read_only["error"]["path"], "--read-only");
+
+    let output = invoke(
+        root,
+        &["--workspace", "ws", "capture", "append", "--input", "-"],
+        Some(&event(
+            "phase",
+            2,
+            json!({"kind": "phase_changed", "phase": "run"}),
+        )),
+    );
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("accepted  position 2  key phase"), "{text}");
+    assert!(
+        text.contains("nothing was started, cancelled or rerun"),
+        "{text}"
+    );
+
+    // Appends are staged: the journal holds only the declaration.
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["ok"], true);
+    let events = fs::read_dir(root.join("ws/state/cases"))
+        .unwrap()
+        .map(|case| {
+            fs::read_dir(case.unwrap().path().join("events"))
+                .unwrap()
+                .count()
+        })
+        .sum::<usize>();
+    assert_eq!(events, 1);
 }
