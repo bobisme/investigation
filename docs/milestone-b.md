@@ -17,9 +17,9 @@ The driver exports the committed tree with `git archive HEAD` to a new directory
 
 | Item | Value |
 | --- | --- |
-| Commit | `760598b`: main `b897f1a` with this bone's scenario changes, help wording and proof driver |
-| Executable SHA-256 | `33348422…aceaaaf` (debug build of `-p investigation-cli`, Rust 1.100.0, Cargo 1.100.0) |
-| `RENDERER_VERSION` | `inv.vault-renderer.v18` |
+| Commit | `80f8486` (main, after the §20.1 gap work MB.02–MB.06) |
+| Executable SHA-256 | `50082a88…c2d3a0b2` (debug build of `-p investigation-cli`, Rust 1.100.0, Cargo 1.100.0) |
+| `RENDERER_VERSION` | `inv.vault-renderer.v19` |
 | `FRESHNESS_RULES_VERSION` | 7 |
 | Command, response | `inv.command.v1` (67 operations), `inv.response.v1` |
 | Records, journal | `inv.record.v0-alpha`, `inv.event.v0-alpha.2`, index schema 4 |
@@ -27,12 +27,12 @@ The driver exports the committed tree with `git archive HEAD` to a new directory
 | Method pack, gap and next rules | `inv.method-pack.v1`, `slice-gaps.v1`, `slice-next.v2` |
 | Published schemas | 90 files under `schemas/`, checked against the binary by `check-v1-schemas.py` |
 
-## Outcomes (one run, 2026-11-23, 126 s wall time, every step passed)
+## Outcomes (one run, 2026-11-23, 140 s wall time, every step passed)
 
 | Step | Result |
 | --- | --- |
 | Neutrality guard (`check-boundaries.py`) | Passed: crate direction, no frontend under a producer library, deny-list over help, schemas, the general pack, embedded docs and a fresh workspace. |
-| Whole test suite, offline and minimal | 110 executables: 964 passed, 0 failed, 3 ignored (20 s). Doctests run in `just check`, not here. |
+| Whole test suite, offline and minimal | 114 executables: 980 passed, 0 failed, 3 ignored. Doctests run in `just check`, not here. |
 | Scenario A (debugging) | Passed. The structural audit finds the incompatible-build trial. A blindspot review dispositions all four gaps and records the scheduler question; it changes neither conclusion. The retrospective starts from `retrospective --draft` and is recorded with the closure. |
 | Scenario B (performance) | Passed: 37 fixture properties, 220 decimals checked against the sources, a blindspot review that goes stale when a comparison is superseded, and a digest-based retrospective. |
 | Scenario C (architecture choice) | Passed. A blindspot review of the accepted decision dispositions five gaps and adds a failure-model question. The 300 s → 60 s criterion change leaves both the validation review and the blindspot review stale (asserted from the digest). The retrospective starts from the digest. The case has no hypotheses, inquiries or conclusions. |
@@ -163,7 +163,7 @@ Evidence is the strongest automated witness found for each item, checked against
 | Y25 | A semantic blindspot outside the finite rules can be added as a Question/Assumption/Objection; no rule engine claims it should already have found it. | cli/drills_3_4.rs::drill_4_* ; scenario A/C/D novel gaps as Questions | met |
 | Y26 | `retrospective.record` accepts useful lessons from failed, inconclusive or successful inquiries with transfer limits; allows explicit "no observed failures" without fabricated claims. | cli/drill_lesson_transfer.rs; core/retrospective_digest.rs::lessons_from_failed_inconclusive_or_successful_work_and_explicit_none_observed | met |
 | Y27 | Closing a material case without a Retrospective fails with an actionable repair, while a non-material case may close with `retrospective_waived` and a reason; retrospective + close in one idempotent transaction works and preserves CAS semantics; recording-only cases remain exempt. | cli/drill_closure.rs::a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch, ::a_nonmaterial_case_waives_and_a_record_case_holding_data_needs_neither; investigation-store/src/closure_drill_tests.rs | met |
-| Y28 | Lessons do not silently modify method packs, prompts, agent settings, or canonical policy; restricted lessons cannot leak into public review exports. | cli/drill_lesson_transfer.rs; cli/lessons.rs::lessons_cross_cases_only_by_admission_and_explicit_consultation | partly met Gap: restricted-lesson export leak unchecked (W11.16 not built) |
+| Y28 | Lessons do not silently modify method packs, prompts, agent settings, or canonical policy; restricted lessons cannot leak into public review exports. | cli/drill_lesson_transfer.rs; cli/lessons.rs::lessons_cross_cases_only_by_admission_and_explicit_consultation | partly met — deferred by the lead: the no-silent-modification half is met; the restricted-lesson export half needs the review export, which does not exist until W11.16, and is re-checked there |
 
 **20.3 Neutral producer and method-pack fixtures**
 
@@ -190,7 +190,7 @@ Evidence is the strongest automated witness found for each item, checked against
 | Invariant | Witness on this build |
 | --- | --- |
 | Evidence is not a verdict | Every evidence read is labelled `untrusted_evidence` (first-use successor, Scenario C, Milestone A walk). A producer's reported pass promotes nothing (`producer_run.rs::exit_code_zero_and_a_reported_pass_set_no_validity_and_promote_nothing`). Blindspot reviews in A, C and D leave the reviewed conclusion or decision byte-identical. |
-| An invalid experiment is not a negative result | Scenario A keeps the unmapped-clock run invalid and refuses the incompatible-build candidate. Scenario B gates a zero difference under broken instrumentation as inconclusive. `absence_gate` tests cover failed runs. A blocked run has a unit test only (X14). |
+| An invalid experiment is not a negative result | Scenario A keeps the unmapped-clock run invalid and refuses the incompatible-build candidate. Scenario B gates a zero difference under broken instrumentation as inconclusive. `absence_gate` tests and `milestone_b_gaps_explanatory.rs` show a failed or a blocked Run refused as negative evidence through the CLI (X14). |
 | A late revision invalidates stale reviews | Scenario C: the criterion change leaves the validation review and the blindspot review stale, and the digest lists both. In Scenario D, the erratum moves the earlier judgment to `needs_review`. `freshness.rs` traces a withdrawal through every layer. |
 | Repeated formatting of one source is not independent confirmation | Scenario D: three acquisitions, one known origin, zero independent pairs, and the audit reports the shared origin. |
 | Losing a response must not duplicate a commit | Conformance lost-response cases for all three producers. `receipt KEY` in the first-use path returns the original IDs. The closure drill's crash model retries to the same IDs. |
@@ -203,7 +203,7 @@ Evidence is the strongest automated witness found for each item, checked against
 3. **Audit references cannot be copied into a review as they are (bn-dem8).** A finding such as `promoted.basis_not_current` gives the revision the basis read, and one finding can list two revisions of a record. Copying its `related_refs` into `gap_dispositions` is then refused with `REVISION_CONFLICT` or "Supply one revision per record". Scenario D maps every related reference to its current revision, as the repair asks.
 4. A second review from the same undeclared actor family raises the advisory `review.promoted_single_dependence_group`. Scenario A asserts this.
 5. The golden vault workspaces (`fixtures/vault-goldens/`) predate the new W10 steps. Rebuilding them would change every ID. The proof renders the four new workspaces live instead.
-6. The items marked "partly met" in the table remain open. The restricted-lesson export check waits for the review export (W11.16).
+6. After the §20.1 gap work (MB.02 X11/X14/X21, MB.03 X18/X27/X30, MB.04 X12/Y8, MB.05 and MB.06 Y15), every §20.1 and §20.3 item is met except Y28's export half, which waits for the review export (W11.16). MB.02 fixed run notes that dropped claimed producer times and added a Closure section to the case Overview (renderer v19); MB.06 stopped read paths from opening restricted blobs and from re-hashing unchanged blobs on every read.
 7. **Most §10.5 latency targets are missed.** §10.5 calls them engineering targets, so they do not block this milestone. The top-level goal bn-9muo (PERF.01–05) tracks them. The W05b.15 baseline ([2026-11-23](../notes/bench/2026-11-23-baseline.json), run with `just bench`) set targets of 250 ms p95 for warm reads and 150 ms for one-operation mutations, and missed 8 of them:
 
    | Fixture | Measurement | p95 | Target |
