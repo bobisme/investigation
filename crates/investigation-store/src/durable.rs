@@ -137,6 +137,19 @@ fn reclaim_publication_temporaries(directory: &Path, now: std::time::SystemTime)
         name.parse::<Id>()
             .is_ok_and(|id| id.kind() == Kind::Transaction)
     };
+    let import_id = |name: &str| name.parse::<Id>().is_ok_and(|id| id.kind() == Kind::Import);
+    // A copy of import bytes not yet published: an ingest or finalization
+    // killed mid-stream. Blob publication happens only under the commit lock
+    // this sweep holds, so an expired one is no publication in progress. A
+    // writer stalled past the grace period between its copy and its commit
+    // finds its copy gone and fails without committing.
+    let import_copy = |name: &str| {
+        ["import-", "capture-"].iter().any(|prefix| {
+            name.strip_prefix(prefix)
+                .and_then(|name| name.strip_suffix(".tmp"))
+                .is_some_and(import_id)
+        })
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(metadata) = fs::symlink_metadata(&path) else {
@@ -155,10 +168,11 @@ fn reclaim_publication_temporaries(directory: &Path, now: std::time::SystemTime)
             continue;
         };
         if metadata.is_file()
-            && name
+            && (name
                 .strip_prefix("event-")
                 .and_then(|name| name.strip_suffix(".tmp"))
                 .is_some_and(transaction_id)
+                || import_copy(name))
         {
             let _ = fs::remove_file(path);
         } else if metadata.is_dir() && name.strip_prefix("create-").is_some_and(transaction_id) {
@@ -340,6 +354,8 @@ struct MemState {
     files: Vec<(Vec<u8>, Vec<u8>, bool)>,
     calls: usize,
     fail_at: Option<usize>,
+    /// Bytes file writes may still add before the device is full.
+    free_bytes: Option<u64>,
     locks: BTreeSet<PathBuf>,
     renames: Vec<(PathBuf, PathBuf)>,
 }
@@ -356,6 +372,12 @@ impl MemoryFs {
         let mut s = self.0.borrow_mut();
         s.calls = 0;
         s.fail_at = Some(call);
+    }
+    /// Fill the device after `bytes` more bytes of file data: a write then
+    /// stores what fits and the next one fails with `StorageFull`, as a full
+    /// disk does. Removing a file frees nothing.
+    pub fn fill_after(&self, bytes: u64) {
+        self.0.borrow_mut().free_bytes = Some(bytes);
     }
     /// Paths of every lock currently held through this filesystem.
     #[cfg(test)]
@@ -393,8 +415,21 @@ impl Write for MemoryFile {
         if s.files[self.inode].2 {
             return Err(io::Error::new(io::ErrorKind::PermissionDenied, "readonly"));
         }
-        s.files[self.inode].0.extend_from_slice(b);
-        Ok(b.len())
+        let fits = match s.free_bytes {
+            Some(0) if !b.is_empty() => {
+                return Err(io::Error::new(
+                    io::ErrorKind::StorageFull,
+                    "no space left on device",
+                ));
+            }
+            Some(free) => usize::try_from(free).unwrap_or(usize::MAX).min(b.len()),
+            None => b.len(),
+        };
+        if let Some(free) = &mut s.free_bytes {
+            *free -= fits as u64;
+        }
+        s.files[self.inode].0.extend_from_slice(&b[..fits]);
+        Ok(fits)
     }
     fn flush(&mut self) -> io::Result<()> {
         Ok(())

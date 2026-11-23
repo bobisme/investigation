@@ -96,7 +96,9 @@ impl HandleLimits {
     /// Limits for handles declared by this build.
     pub const DEFAULT: Self = Self {
         max_event_bytes: 64 * 1024,
-        max_attachment_bytes: ingest::MAX_IMPORT_BYTES,
+        // Declared on each handle and returned on retries, so it stays at the
+        // value producers already see rather than following the import limit.
+        max_attachment_bytes: 64 * 1024 * 1024,
         max_items: 100_000,
     };
 }

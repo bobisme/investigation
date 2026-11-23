@@ -34,7 +34,19 @@ use derivation::{DerivedFromRequest, ResolvedDerivation};
 pub mod reference;
 use reference::{ExternalRefRequest, PreparedReference, RetentionMode, ReverifyRequest};
 
-pub const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
+#[cfg(test)]
+#[path = "ingest_streaming_tests.rs"]
+mod streaming_tests;
+
+/// Largest copied import: a local file, standard input or a producer-run
+/// artifact. Every copy streams through one fixed buffer, so this bounds the
+/// disk a copy may take, not memory. A larger local file can be hashed where it
+/// lies with `retention: reference`.
+pub const MAX_IMPORT_BYTES: u64 = 64 << 30;
+/// Bytes streamed between two progress reports of one item on the log.
+pub const PROGRESS_INTERVAL_BYTES: u64 = 64 << 20;
+/// Log target of streaming progress. Events carry byte counts only.
+pub const PROGRESS_TARGET: &str = "investigation::ingest";
 pub const MAX_ITEMS: usize = 32;
 pub const TEXT_PARSER_VERSION: &str = "inv.text.utf8.v1";
 
@@ -269,9 +281,21 @@ impl<F: DurableFs> Store<F> {
         bytes: &[u8],
         stream: Option<&mut dyn Read>,
     ) -> Result<IngestReceipt, Failure> {
+        self.ingest_observed(bytes, stream, &mut |_| {})
+    }
+
+    /// [`Self::ingest`], calling `during` with the bytes read so far of the
+    /// item being copied or hashed, after each read of it. Every item streams
+    /// through one fixed buffer and no lock is held while it does.
+    pub fn ingest_observed(
+        &mut self,
+        bytes: &[u8],
+        stream: Option<&mut dyn Read>,
+        during: &mut dyn FnMut(u64),
+    ) -> Result<IngestReceipt, Failure> {
         let (manifest, raw) = parse_manifest(bytes)?;
         let mut stages = Vec::new();
-        let result = self.ingest_inner(bytes, manifest, raw, stream, &mut stages);
+        let result = self.ingest_inner(bytes, manifest, raw, stream, &mut stages, during);
         if result
             .as_ref()
             .is_err_and(|error| error.error.code == ErrorCode::DurabilityUnknown)
@@ -291,6 +315,7 @@ impl<F: DurableFs> Store<F> {
         raw: Value,
         stream: Option<&mut dyn Read>,
         stages: &mut Vec<StagedBlob>,
+        during: &mut dyn FnMut(u64),
     ) -> Result<IngestReceipt, Failure> {
         if manifest.reverify.is_some() {
             return self.reverify(bytes, &manifest, raw, stream, stages);
@@ -299,7 +324,7 @@ impl<F: DurableFs> Store<F> {
         for (index, path) in manifest.paths.iter().enumerate() {
             if reference::reference_mode(&manifest) {
                 // Hashed where it lies; never copied, so never retained.
-                let (digest, size) = self.read_reference(path, index)?;
+                let (digest, size) = self.read_reference(path, index, during)?;
                 let label = path.to_string_lossy().into_owned();
                 prepared.push(PreparedItem {
                     reference: Some(PreparedReference {
@@ -317,7 +342,12 @@ impl<F: DurableFs> Store<F> {
                 continue;
             }
             let mut opened = self.open_import(path, index, MAX_IMPORT_BYTES)?;
-            let staged = stage_input(&mut self.fs, &self.gate, Limited::new(&mut opened.file))?;
+            let staged = stage_watched(
+                &mut self.fs,
+                &self.gate,
+                Limited::new(&mut opened.file),
+                during,
+            )?;
             stages.push(staged);
             if !opened
                 .witness
@@ -351,7 +381,12 @@ impl<F: DurableFs> Store<F> {
                     "/content",
                 )
             })?;
-            stages.push(stage_input(&mut self.fs, &self.gate, Limited::new(stream))?);
+            stages.push(stage_watched(
+                &mut self.fs,
+                &self.gate,
+                Limited::new(stream),
+                during,
+            )?);
             prepared.push(self.prepare_item(
                 stages.last().expect("just staged"),
                 name.clone(),
@@ -642,7 +677,7 @@ impl<F: DurableFs> Store<F> {
                 .fs
                 .read(&staged.temp)
                 .map_err(io_failure)?
-                .take(MAX_IMPORT_BYTES + 1);
+                .take(staged.size);
             if crate::utf8::is_valid(reader).map_err(io_failure)? {
                 TextStatus::Decoded
             } else {
@@ -1256,8 +1291,21 @@ fn stage_input(
     gate: &WriteGate,
     input: impl Read,
 ) -> Result<StagedBlob, Failure> {
+    stage_watched(fs, gate, input, &mut |_| {})
+}
+
+/// Copy `input` into a private temporary under `state/tmp` while hashing it,
+/// through one fixed buffer, reporting progress to `during` and the log. A
+/// failed copy, including a full disk, removes the partial temporary.
+fn stage_watched(
+    fs: &mut impl DurableFs,
+    gate: &WriteGate,
+    input: impl Read,
+    during: &mut dyn FnMut(u64),
+) -> Result<StagedBlob, Failure> {
     let id = new_id(&mut SystemIdSource, Kind::Import)?;
     let path = Path::new(TMP).join(format!("import-{id}.tmp"));
+    let input = Progress::new(input, during);
     stage(fs, gate, &path, input).map_err(|error| {
         // The partial copy holds no accepted bytes.
         let _ = fs.remove(&path);
@@ -1266,8 +1314,8 @@ fn stage_input(
                 Failure::new(
                     ErrorCode::InvalidInput,
                     format!(
-                        "The input exceeds the {} MiB import limit, so nothing was retained. Ingest a larger local file with retention reference.",
-                        MAX_IMPORT_BYTES >> 20
+                        "The input exceeds the {} import limit, so nothing was retained. Ingest a larger local file with retention reference.",
+                        readable_bytes(MAX_IMPORT_BYTES)
                     ),
                 )
                 .with_schema("ingest")
@@ -1283,16 +1331,36 @@ fn invalid(message: &str, path: &str) -> Failure {
         .with_schema("ingest")
 }
 
+/// A byte count in the largest binary unit that divides it, as `64 GiB`.
+fn readable_bytes(bytes: u64) -> String {
+    let mut value = bytes;
+    let mut unit = "bytes";
+    for next in ["KiB", "MiB", "GiB", "TiB"] {
+        if value < 1024 || !value.is_multiple_of(1024) {
+            break;
+        }
+        value /= 1024;
+        unit = next;
+    }
+    format!("{value} {unit}")
+}
+
 struct Limited<R> {
     input: R,
     remaining: u64,
+    limit: u64,
 }
 
 impl<R> Limited<R> {
     fn new(input: R) -> Self {
+        Self::with_limit(input, MAX_IMPORT_BYTES)
+    }
+
+    fn with_limit(input: R, limit: u64) -> Self {
         Self {
             input,
-            remaining: MAX_IMPORT_BYTES,
+            remaining: limit,
+            limit,
         }
     }
 }
@@ -1305,7 +1373,7 @@ impl<R: Read> Read for Limited<R> {
             }
             return Err(io::Error::new(
                 io::ErrorKind::FileTooLarge,
-                "Local import exceeds 64 MiB.",
+                format!("Local import exceeds {}.", readable_bytes(self.limit)),
             ));
         }
         let limit = usize::try_from(self.remaining)
@@ -1313,6 +1381,48 @@ impl<R: Read> Read for Limited<R> {
             .min(buffer.len());
         let read = self.input.read(&mut buffer[..limit])?;
         self.remaining -= read as u64;
+        Ok(read)
+    }
+}
+
+/// Counts the bytes read through it. Reports the running total to `during`
+/// after every read and to the log every [`PROGRESS_INTERVAL_BYTES`]; the log
+/// carries counts only, never content, names or paths, and reaches stderr only.
+pub(crate) struct Progress<'a, R> {
+    input: R,
+    read: u64,
+    logged: u64,
+    during: &'a mut dyn FnMut(u64),
+}
+
+impl<'a, R> Progress<'a, R> {
+    pub(crate) fn new(input: R, during: &'a mut dyn FnMut(u64)) -> Self {
+        Self {
+            input,
+            read: 0,
+            logged: 0,
+            during,
+        }
+    }
+}
+
+impl<R: Read> Read for Progress<'_, R> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.input.read(buffer)?;
+        if read == 0 {
+            // A stream long enough to report progress also reports its end.
+            if self.read > self.logged && self.logged > 0 {
+                tracing::info!(target: PROGRESS_TARGET, bytes = self.read, "stream complete");
+                self.logged = self.read;
+            }
+            return Ok(0);
+        }
+        self.read = self.read.saturating_add(read as u64);
+        (self.during)(self.read);
+        if self.read - self.logged >= PROGRESS_INTERVAL_BYTES {
+            tracing::info!(target: PROGRESS_TARGET, bytes = self.read, "streaming");
+            self.logged = self.read;
+        }
         Ok(read)
     }
 }

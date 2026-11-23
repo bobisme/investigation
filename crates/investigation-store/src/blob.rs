@@ -62,14 +62,8 @@ pub fn stage(
         size,
     })
 }
-/// `base` is the existing durable `state/blobs/sha256` directory. A new shard is synced before use.
-pub fn publish_blob(
-    fs: &mut impl DurableFs,
-    gate: &WriteGate,
-    base: &Path,
-    staged: &StagedBlob,
-) -> Result<PathBuf, BlobError> {
-    gate.check()?;
+/// Where the blob with this staged digest is published under `base`.
+fn target(base: &Path, staged: &StagedBlob) -> Result<PathBuf, BlobError> {
     if staged.digest.len() != 64
         || !staged
             .digest
@@ -78,6 +72,41 @@ pub fn publish_blob(
     {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid SHA-256 digest").into());
     }
+    Ok(base.join(&staged.digest[..2]).join(&staged.digest))
+}
+
+/// Hash the blob these staged bytes would deduplicate against, if one is
+/// already published. Call it before taking the commit lock: it reads the
+/// whole blob, and the lock must never wait on work proportional to input
+/// size. Returns whether a blob was there.
+pub fn verify_existing(
+    fs: &impl DurableFs,
+    base: &Path,
+    staged: &StagedBlob,
+) -> Result<bool, BlobError> {
+    let target = target(base, staged)?;
+    match fs.read(&target) {
+        Ok(input) => verify(input, &staged.digest, staged.size).map(|()| true),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// `base` is the existing durable `state/blobs/sha256` directory. A new shard is synced before use.
+///
+/// An existing blob of the same digest is kept and not read again, so the
+/// commit lock is never held while bytes are hashed. [`verify_existing`]
+/// checked a blob that was there before the lock was taken; one that appeared
+/// since was published by another writer from bytes it hashed as it staged
+/// them.
+pub fn publish_blob(
+    fs: &mut impl DurableFs,
+    gate: &WriteGate,
+    base: &Path,
+    staged: &StagedBlob,
+) -> Result<PathBuf, BlobError> {
+    gate.check()?;
+    let target = target(base, staged)?;
     let shard = base.join(&staged.digest[..2]);
     match fs.create_dir(&shard) {
         Ok(()) => {}
@@ -85,11 +114,9 @@ pub fn publish_blob(
         Err(e) => return Err(e.into()),
     }
     sync_directory(fs, base, gate)?;
-    let target = shard.join(&staged.digest);
     match publish(fs, &staged.temp, &target, gate) {
         Ok(()) => {}
         Err(DurableError::Io(e)) if e.kind() == io::ErrorKind::AlreadyExists => {
-            verify(fs.read(&target)?, &staged.digest, staged.size)?;
             sync_directory(fs, &shard, gate)?;
         }
         Err(e) => return Err(e.into()),
@@ -142,7 +169,17 @@ mod tests {
         let first = stage(&mut fs, &gate, Path::new("state/tmp/a"), &b"hello"[..]).unwrap();
         let target = publish_blob(&mut fs, &gate, base, &first).unwrap();
         let second = stage(&mut fs, &gate, Path::new("state/tmp/b"), &b"hello"[..]).unwrap();
+        assert!(verify_existing(&fs, base, &second).unwrap());
         assert_eq!(publish_blob(&mut fs, &gate, base, &second).unwrap(), target);
+        let other = stage(&mut fs, &gate, Path::new("state/tmp/c"), &b"another"[..]).unwrap();
+        assert!(!verify_existing(&fs, base, &other).unwrap());
+        // A published blob that disagrees with the staged size and digest is refused.
+        let mut forged = other.clone();
+        forged.digest.clone_from(&first.digest);
+        assert!(matches!(
+            verify_existing(&fs, base, &forged),
+            Err(BlobError::DigestMismatch)
+        ));
         verify_blob(&fs, &target, &first.digest, first.size).unwrap();
         assert!(matches!(
             verify_blob(&fs, &target, &"0".repeat(64), first.size),

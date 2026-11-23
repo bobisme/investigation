@@ -256,12 +256,16 @@ impl<F: DurableFs> Store<F> {
         &self,
         path: &Path,
         index: usize,
+        during: &mut dyn FnMut(u64),
     ) -> Result<(Digest, u64), Failure> {
         let mut opened = self.open_import(path, index, MAX_REFERENCE_BYTES)?;
         // One byte past the limit is enough to see a file that grew after open;
         // the witness check below then refuses it.
-        let (digest, size) =
-            hash((&mut opened.file).take(MAX_REFERENCE_BYTES + 1)).map_err(io_failure)?;
+        let (digest, size) = hash(super::Progress::new(
+            (&mut opened.file).take(MAX_REFERENCE_BYTES + 1),
+            during,
+        ))
+        .map_err(io_failure)?;
         if !opened
             .witness
             .verify_unchanged(&opened.file)
@@ -281,7 +285,7 @@ impl<F: DurableFs> Store<F> {
         if let Some(path) = manifest.paths.first() {
             let label = path.to_string_lossy().into_owned();
             if reference_mode(manifest) {
-                let (digest, size) = self.read_reference(path, 0)?;
+                let (digest, size) = self.read_reference(path, 0, &mut |_| {})?;
                 return Ok(Supplied {
                     digest,
                     size,

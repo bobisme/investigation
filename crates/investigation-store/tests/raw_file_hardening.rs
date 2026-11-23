@@ -195,7 +195,7 @@ fn sha256(bytes: &[u8]) -> String {
 #[test]
 fn a_nested_gzip_bomb_is_retained_as_its_own_bytes_and_never_expanded() {
     // 269 bytes; two gzip layers expand to 66,279 bytes and then 65 MiB of
-    // zeros, past the 64 MiB import limit.
+    // zeros.
     let bomb = fs::read(format!("{FIXTURES}/nested-bomb.gz")).unwrap();
     assert_eq!(bomb.len(), 269);
     const { assert!(!EXPANSION.decompression && !EXPANSION.archive_extraction) };
@@ -326,36 +326,9 @@ fn a_file_over_the_import_limit_is_refused_before_it_is_read() {
     assert!(most < MIB, "peak {most} bytes");
 }
 
-#[test]
-fn standard_input_over_the_import_limit_is_an_input_error_and_leaves_no_copy() {
-    let mut fixture = fixture();
-    let manifest = json!({
-        "schema_version": "inv.ingest.v1",
-        "command_id": "stdin-huge",
-        "actor": "agent:hardening-test",
-        "new_case": {"title": "Hostile inputs"},
-        "source": {"title": "Endless stream"},
-        "content": {"kind": "stdin", "name": "../../stream.bin"},
-    });
-    let mut stream = io::repeat(b'a').take(MAX_IMPORT_BYTES + 1);
-    let (failure, most) = peak(|| {
-        fixture
-            .store
-            .ingest(&serde_json::to_vec(&manifest).unwrap(), Some(&mut stream))
-            .unwrap_err()
-    });
-    assert_eq!(failure.error.code, ErrorCode::InvalidInput);
-    assert!(failure.error.message.contains("import limit"));
-    assert!(most < 2 * MIB, "peak {most} bytes");
-    let leftovers: Vec<_> = fixture
-        .tree()
-        .into_iter()
-        .filter(|path| path.to_string_lossy().contains("import-"))
-        .collect();
-    assert!(leftovers.is_empty(), "{leftovers:?}");
-    // The stream's name is a label, never a path.
-    assert!(!fixture.base.join("stream.bin").exists());
-}
+// Standard input past the import limit: with `ingest.file_bytes` at 64 GiB
+// the full-size refusal is a long run in `tests/streaming_ingest.rs`, and the
+// same refusal at a small limit is checked in `src/ingest_streaming_tests.rs`.
 
 // ---- Nesting ----------------------------------------------------------------
 

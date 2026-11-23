@@ -16,6 +16,11 @@ use std::io::Read;
 use crate::selectors::{self, QuoteResult, Selection, SelectorError, TextDerivative};
 
 pub const MAX_EXCERPT_BYTES: usize = 32 * 1024;
+/// Largest retained artifact a native selector reads. Selectors resolve over
+/// the whole artifact in memory, so this is separate from the streamed import
+/// limit: a larger artifact is retained and verifiable, but a selector cannot
+/// cite it directly.
+pub const MAX_SELECTOR_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "availability", rename_all = "snake_case")]
@@ -260,7 +265,7 @@ impl<F: DurableFs> Store<F> {
             Some(&bytes),
             &selector.selector,
             text.as_ref(),
-            ingest::MAX_IMPORT_BYTES as usize,
+            MAX_SELECTOR_ARTIFACT_BYTES as usize,
         ) {
             Ok(selection) => selection,
             Err(SelectorError::Unavailable(_)) => return Ok(proof),
@@ -326,10 +331,20 @@ impl<F: DurableFs> Store<F> {
         }
         let size = body
             .size_bytes
-            .filter(|size| *size <= ingest::MAX_IMPORT_BYTES)
-            .ok_or_else(|| {
-                integrity("Retained artifact size is absent or exceeds the ingest limit.")
-            })?;
+            .ok_or_else(|| integrity("Retained artifact size is absent."))?;
+        if size > MAX_SELECTOR_ARTIFACT_BYTES {
+            let mut failure = Failure::new(
+                ErrorCode::InvalidInput,
+                format!(
+                    "The artifact holds {size} bytes; a native selector reads at most {MAX_SELECTOR_ARTIFACT_BYTES} bytes. Its bytes stay retained and verifiable. To cite part of it, ingest that part with derived_from naming this artifact and select within the derivative."
+                ),
+            )
+            .at("/basis/selector")
+            .with_schema("evidence-selector");
+            failure.error.actual = Some(json!({"size_bytes": size}));
+            failure.error.expected = Some(json!({"max_size_bytes": MAX_SELECTOR_ARTIFACT_BYTES}));
+            return Err(failure);
+        }
         let hex = digest
             .as_str()
             .strip_prefix("sha256:")

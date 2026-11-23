@@ -24,7 +24,7 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `request.depth` | 32 | levels | Nesting of a JSON request. | `INVALID_INPUT` |
 | `command.operations` | 128 | items | Operations in one command batch. | `INVALID_INPUT` |
 | `ingest.items` | 32 | items | Paths in one ingest manifest. | `INVALID_INPUT` |
-| `ingest.file_bytes` | 64 MiB | bytes | One copied import: a local file or standard input. Checked before reading and again while copying. | `INVALID_INPUT` |
+| `ingest.file_bytes` | 64 GiB | bytes | One copied import: a local file, standard input or a producer-run artifact. Checked before reading and again while copying, through one fixed buffer at any size. | `INVALID_INPUT` |
 | `ingest.reference_bytes` | 1 TiB | bytes | One local file hashed in reference mode without copying. | `INVALID_INPUT` |
 | `ingest.derivation_inputs` | 64 | items | Input artifacts named by one derived artifact. | `INVALID_INPUT` |
 | `ingest.derivation_selectors` | 64 | items | Selectors recorded for one derived artifact. | `INVALID_INPUT` |
@@ -41,7 +41,7 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `capture.event_bytes` | 64 KiB | bytes | One capture event, for handles declared by this build. | `INVALID_INPUT` |
 | `capture.attachment_bytes` | 64 MiB | bytes | One capture attachment, for handles declared by this build. | `INVALID_INPUT` |
 | `capture.items` | 100000 | items | Items accepted by one capture handle declared by this build. | `INVALID_INPUT` |
-| `selector.artifact_bytes` | 64 MiB | bytes | A retained artifact a native selector reads. Larger recorded sizes are refused as an integrity failure. | `INTEGRITY_FAILURE` |
+| `selector.artifact_bytes` | 64 MiB | bytes | A retained artifact a native selector reads into memory. A larger artifact stays retained and verifiable; cite part of it through a derived artifact. | `INVALID_INPUT` |
 | `selector.json_bytes` | 16 MiB | bytes | An artifact parsed by the strict json_pointer reader. | `INVALID_INPUT` |
 | `selector.json_depth` | 64 | levels | Nesting of an artifact parsed by the json_pointer reader. | `INVALID_INPUT` |
 | `selector.table_columns` | 4096 | items | Fields in one row of a CSV or TSV table read by table_cell. | `INVALID_INPUT` |
@@ -55,6 +55,8 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound on the work done, which no input can exceed.
 
 **Compressed files and archives.** Compressed files and archives are retained as opaque bytes and never expanded. Entry names inside an archive are never used as paths. No decompressor or archive reader is linked, so there is no expansion ratio, expanded size, entry count or entry size to bound. A compressed file is held to the ordinary import limit at its stored size. A test fails if a decompression, archive or launcher crate enters the dependency graph.
+
+**Large inputs.** A copied import, from a local file or standard input, streams through one 64 KiB buffer while it is hashed into a private temporary under `state/tmp`; the UTF-8 check and a reference-mode hash stream the same way. Peak heap does not grow with the input: a [streaming test](../crates/investigation-store/tests/streaming_ingest.rs) measures one whole ingest of 2 MiB and of 72 MiB from a sparse file and from a generator, compares the retained bytes with the source, and with `INV_LARGE_INGEST_GIB=<n>` repeats this at `n` GiB. No lock is held while bytes are copied or hashed: a known blob that a reimport deduplicates against is verified before the commit lock is taken, and [another writer commits during each stream](../crates/investigation-store/src/ingest_streaming_tests.rs). A full disk at any point of the stream commits nothing, publishes no blob and removes the partial copy; a kill mid-stream leaves only the copy, which the 24-hour sweep below reclaims. With `-v`, progress goes to stderr as byte counts every 64 MiB; stdout holds only the receipt. A native selector still reads its artifact into memory, so it is held to `selector.artifact_bytes`.
 
 **Paths.** A local import opens beneath a configured import root with `openat2` and `RESOLVE_BENEATH`, `RESOLVE_NO_SYMLINKS` and `RESOLVE_NO_MAGICLINKS`. The import refuses `..` components, symlinks at any depth, files with more than one hard link, and anything that is not a regular file. It opens a FIFO non-blocking and refuses it. Standard input names, capture keys and artifact names are labels: staging files are named by position and digest. The capture staging directory is accepted only as `state/staging/<run-id>` for its own Run, even when it is read from the journal.
 
@@ -72,6 +74,6 @@ Append publication syncs the private file before linking it into the journal and
 
 On restart, Store reads verify canonical journal events before resolving receipts. A writer that reports uncertain durability may leave a warning for `investigation check`. Recover with the same actor and command ID. SQLite is a disposable index rebuilt from the verified journal, for example with `investigation repair index`.
 
-Crash recovery preserves capture staging and unreferenced blobs. Only `investigation repair staging` removes staging, and only for a finalized Run whose bytes the canonical store holds; a kill or power loss during it leaves the full staging or none. Under the commit lock, a writer first verifies the journal and then reclaims recognizable publication temporaries at least 24 hours old. The sweep preserves unrecognized entries and import preparations, which may be open outside that lock. A production recovery test covers each of these boundaries.
+Crash recovery preserves capture staging and unreferenced blobs. Only `investigation repair staging` removes staging, and only for a finalized Run whose bytes the canonical store holds; a kill or power loss during it leaves the full staging or none. Under the commit lock, a writer first verifies the journal and then reclaims recognizable publication temporaries at least 24 hours old. These include the private copies of import bytes that an ingest or a finalization killed mid-stream leaves under `state/tmp`. A copy modified within 24 hours may belong to a writer still streaming and is kept. Blobs are published only under that lock, so a reclaimed copy was never published; a writer stalled past the grace period finds its copy gone and fails without committing. The sweep preserves unrecognized entries. A production recovery test covers each of these boundaries.
 
 Restrictive permissions limit other OS users where the platform enforces them. They do not protect against arbitrary code running as the same OS user. Digests verify equality with recorded bytes and link journal entries. Independent anchoring is separate from local integrity checking.

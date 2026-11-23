@@ -394,7 +394,7 @@ One transaction records the following:
 
 The Run's `execution_status` is the reported state. Its `evidence_completeness` is computed from retention: `complete` when every declared artifact was retained, `partial` when some were, and `missing` when none of a nonempty inventory were. Its `evidence_validity` is `unknown`. An exit code of 0, a `completed` state or a `reported_pass` control does not change that. Ingest creates no Observation, Assessment or Conclusion. Only an attributed `measurement.assess`, Assessment or Conclusion can interpret the producer's result. The Run's `producer` is the submitting actor, and `tool` names the producer.
 
-A missing file or an `expected_sha256` mismatch affects only that item. The item reports `missing` or `rejected`, its bytes are not retained, and the receipt carries a warning. A path with `..`, an absolute path, a symlink, a file with more than one hard link, or a file over 64 MiB fails the whole request. Nothing is committed.
+A missing file or an `expected_sha256` mismatch affects only that item. The item reports `missing` or `rejected`, its bytes are not retained, and the receipt carries a warning. A path with `..`, an absolute path, a symlink, a file with more than one hard link, or a file over the `ingest.file_bytes` limit (64 GiB) fails the whole request. Nothing is committed.
 
 ### Identity and resubmission
 

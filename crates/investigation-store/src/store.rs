@@ -25,7 +25,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::{
-    blob::{BlobError, StagedBlob, publish_blob},
+    blob::{BlobError, StagedBlob, publish_blob, verify_existing},
     diag::{CommitTrace, Outcome, Stage},
     durable::{
         DurableError, DurableFile, DurableFs, LocalFs, LockError, WriteGate, publish,
@@ -289,6 +289,11 @@ impl<F: DurableFs> Store<F> {
             request,
             blobs,
         } = plan;
+        // Hash any blob these bytes deduplicate against before taking the
+        // lock, so other writers never wait on work proportional to its size.
+        for blob in blobs {
+            verify_existing(&self.fs, Path::new(BLOBS), blob).map_err(blob_failure)?;
+        }
         trace.enter(Stage::Lock);
         self.gate.check().map_err(durability_failure)?;
         let _coordination = self.coordinate()?;

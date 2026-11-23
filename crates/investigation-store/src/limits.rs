@@ -99,7 +99,7 @@ pub const LIMITS: &[Limit] = &[
         "ingest.file_bytes",
         ingest::MAX_IMPORT_BYTES,
         Bytes,
-        "One copied import: a local file or standard input. Checked before reading and again while copying.",
+        "One copied import: a local file, standard input or a producer-run artifact. Checked before reading and again while copying, through one fixed buffer at any size.",
         INVALID_INPUT,
     ),
     limit(
@@ -216,10 +216,10 @@ pub const LIMITS: &[Limit] = &[
     ),
     limit(
         "selector.artifact_bytes",
-        ingest::MAX_IMPORT_BYTES,
+        evidence_read::MAX_SELECTOR_ARTIFACT_BYTES,
         Bytes,
-        "A retained artifact a native selector reads. Larger recorded sizes are refused as an integrity failure.",
-        INTEGRITY_FAILURE,
+        "A retained artifact a native selector reads into memory. A larger artifact stays retained and verifiable; cite part of it through a derived artifact.",
+        INVALID_INPUT,
     ),
     limit(
         "selector.json_bytes",
