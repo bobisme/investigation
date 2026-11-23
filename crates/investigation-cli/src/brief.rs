@@ -33,6 +33,9 @@ pub(crate) const AFTER_HELP: &str = "\
 A bounded handoff from one verified snapshot. --max-bytes counts serialized UTF-8
 bytes of the JSON output, including the final newline. As a rough guide only, 4
 bytes of English JSON are about one model token; no tokenizer is promised.
+Text output lists the same items as that bounded JSON, one ID-first line per
+record with indented caveats and limitations, so it is shorter than the budget;
+use --format json for every field.
 
 --level sets depth, not size. compact is an index of outcomes and evidence with
 their status, freshness, caveat and contradiction. standard adds bounded
@@ -61,7 +64,7 @@ pub(crate) struct Args {
     /// How much of the case to include; compact is the shortest.
     #[arg(long, value_enum, default_value = "standard")]
     pub(crate) level: BriefLevel,
-    /// Serialized UTF-8 byte budget, including the final newline.
+    /// Byte budget of the JSON output, including the final newline; text shows the same items.
     #[arg(long, default_value_t = 16_384)]
     pub(crate) max_bytes: usize,
     /// Report the semantic delta after this transaction instead of the case.

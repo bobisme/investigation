@@ -38,6 +38,7 @@ mod snapshot;
 mod synopsis;
 mod vault;
 mod vault_reconcile;
+mod view_text;
 mod views;
 
 use std::{
@@ -616,10 +617,6 @@ fn show(
         }
     }
     let text = views::authored_text_lines(&mut view);
-    if depth == ViewDepth::Full {
-        let text = serde_json::to_string_pretty(&view).expect("full view serializes");
-        return Ok(Output::success("record_shown", view, text));
-    }
     let mut text = format!("{id}  {text}");
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
@@ -628,6 +625,11 @@ fn show(
     text.push_str(&investigation_core::likelihood::text(&view));
     text.push_str(&investigation_core::review_independence::text(&view));
     text.push_str(&investigation_core::coverage::text(&view));
+    if depth == ViewDepth::Full {
+        let next = view_text::show_full_argv(&prefix, id, at, &replay.snapshot);
+        let text = view_text::show_full(&view, &text, &next);
+        return Ok(Output::success("record_shown", view, text));
+    }
     Ok(Output::success("record_shown", view, text))
 }
 
@@ -757,7 +759,7 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
         tail.extend(pin.iter().map(String::as_str));
         failure.with_argv(brief::follow_up(&prefix, &tail))
     })?;
-    let text = serde_json::to_string_pretty(&view).expect("brief view serializes");
+    let text = view_text::brief(&view);
     Ok(Output::new(view, text))
 }
 
