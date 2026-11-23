@@ -31,4 +31,6 @@ investigation-bench = { path = "../investigation-bench" }
 jsonschema = { version = "=0.28.3", default-features = false }
 # Parses rendered vault notes in the scenario vault tests.
 pulldown-cmark = { version = "=0.13.6", default-features = false }
+# Parses generated native Base files and note frontmatter in the vault tests.
+yaml_serde = "=0.10.7"
 tempfile = "3.27"

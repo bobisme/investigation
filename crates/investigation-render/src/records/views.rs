@@ -41,7 +41,7 @@ use serde_json::Value;
 
 use super::{Facts, citing, effective_word, lifecycle, naming, refs, scalar_word, token, wire};
 use crate::{
-    PlanPath, RenderError, layout, marker,
+    PlanPath, RenderError, bases, layout, marker,
     note::{BANNER, NoteContext, VAULT_SCHEMA, level_word, text_at, value_at, wire_word},
     text::{inline_code, inline_text, table_code},
     yaml::Frontmatter,
@@ -88,30 +88,64 @@ const REASON_KEYS: &[&str] = &[
     "resolution_reason",
 ];
 
-/// One planned view note.
+/// One planned view note, and its native Base when the policy plans one.
 pub(crate) struct ViewNote {
     pub name: &'static str,
     pub path: PlanPath,
     pub rows: usize,
     pub content: String,
+    pub base: Option<(PlanPath, String)>,
 }
 
-/// The view notes of one case, in [`VIEWS`] order.
+/// The view notes of one case, in [`VIEWS`] order. With
+/// [`crate::ViewPolicy::bases`], each view that has a Base spec
+/// ([`bases::spec`]) also plans its Base, and its note says so.
 pub(crate) fn plan(notes: &NoteContext<'_>) -> Result<Vec<ViewNote>, RenderError> {
     let views = Views::new(notes)?;
+    let case_id = notes.case().case_id();
     let mut planned = Vec::new();
     for &(name, slug) in VIEWS {
-        let Some(body) = views.body(slug)? else {
+        let Some(mut body) = views.body(slug)? else {
             continue;
+        };
+        let base = match bases::spec(slug).filter(|_| notes.policy().bases) {
+            Some(spec) => {
+                body.text.push_str(&base_paragraph(name, slug));
+                Some(bases::plan(case_id, name, spec)?)
+            }
+            None => None,
         };
         planned.push(ViewNote {
             name,
-            path: layout::case_view(notes.case().case_id(), name)?,
+            path: layout::case_view(case_id, name)?,
             rows: body.rows,
             content: views.note(name, slug, &body)?,
+            base,
         });
     }
     Ok(planned)
+}
+
+/// Headings of the tables in the frontier and timeline notes whose rows are
+/// notes, so a Base can list the same rows.
+pub(crate) const FRONTIER_NOTES: &str = "Records named by an open gap";
+pub(crate) const TIMELINE_NOTES: &str = "Latest revision of each record";
+
+/// The paragraph a view note ends with when its Base is planned.
+fn base_paragraph(name: &str, slug: &str) -> String {
+    let rows = match slug {
+        "frontier" => format!("the notes in the table under {FRONTIER_NOTES:?}"),
+        "timeline" => format!("the notes in the table under {TIMELINE_NOTES:?}"),
+        _ => "the same rows as the table above".to_owned(),
+    };
+    format!(
+        "\n## Native Base\n\n{} beside this note lists {rows}, read from note properties and \
+         filtered by this case's exact ID. It needs a viewer release that the compatibility \
+         profile supports; this note does not. Editing a cell in the Base changes that note's \
+         properties, which is drift: the edited note is left in place, no longer updated, and \
+         the edit is not recorded. Editing the Base file itself is drift too.\n",
+        inline_code(&format!("{name}.base"))
+    )
 }
 
 /// A view's text after the shared opening, and its row count.
@@ -1458,6 +1492,21 @@ impl<'n, 'a> Views<'n, 'a> {
                 plural(resolved, "resolved gap is", "resolved gaps are")
             );
         }
+        self.notes_table(
+            &mut text,
+            FRONTIER_NOTES,
+            "The notes the unresolved gaps name, with how many name each (`inv_open_gaps`).",
+            |record| self.notes.open_gap_count(record.header.id).unwrap_or(0) > 0,
+            &["Record", "Kind", "Open gaps", "Effective state"],
+            |record| {
+                let count = self.notes.open_gap_count(record.header.id).unwrap_or(0);
+                vec![
+                    layout::kind_name(record.header.id.kind()).to_owned(),
+                    count.to_string(),
+                    self.effective_state(record),
+                ]
+            },
+        )?;
         Ok(Body {
             rows: gaps.len(),
             text,
@@ -1547,10 +1596,107 @@ impl<'n, 'a> Views<'n, 'a> {
                 self.overview_link()?
             );
         }
+        self.notes_table(
+            &mut text,
+            TIMELINE_NOTES,
+            "Each note of this case at its latest revision, with the time this workspace \
+             recorded that revision.",
+            |_| true,
+            &["Record", "Kind", "Revision", "Recorded"],
+            |record| {
+                let recorded = if self.notes.visible(record) {
+                    table_code(&record.header.recorded_at.to_string())
+                } else {
+                    "withheld".to_owned()
+                };
+                vec![
+                    layout::kind_name(record.header.id.kind()).to_owned(),
+                    record.header.revision.0.to_string(),
+                    recorded,
+                ]
+            },
+        )?;
         Ok(Body {
             rows: revisions.len(),
             text,
         })
+    }
+
+    /// The case record and every record of this case with a note whose
+    /// identity the audience may see, in record ID order: the notes a Base
+    /// over this case can list (view notes aside).
+    fn noted(&self) -> Vec<&'a Record> {
+        let case = self.notes.case();
+        let mut noted: Vec<&'a Record> = self
+            .records
+            .iter()
+            .copied()
+            .filter(|record| layout::record_kind(record.header.id.kind()).is_some())
+            .collect();
+        if let Some(record) = case
+            .state()
+            .current(case.case_id())
+            .filter(|record| self.notes.may_show(record, Field::Identity))
+        {
+            noted.push(record);
+        }
+        noted.sort_by_key(|record| record.header.id);
+        noted
+    }
+
+    /// The effective state a note's `inv_effective` property shows, or
+    /// `withheld` when the note withholds it.
+    fn effective_state(&self, record: &Record) -> String {
+        if !self.notes.visible(record) {
+            return "withheld".to_owned();
+        }
+        table_code(
+            self.notes
+                .effective(record)
+                .map_or("unknown", |effective| effective.freshness.as_str()),
+        )
+    }
+
+    /// A `## heading` section with one table row per note of [`Self::noted`]
+    /// that `keep` admits, in record ID order and bounded, the rows a Base
+    /// lists. The first column links the note; `row` gives the rest.
+    fn notes_table(
+        &self,
+        text: &mut String,
+        heading: &str,
+        intro: &str,
+        keep: impl Fn(&Record) -> bool,
+        headers: &[&str],
+        row: impl Fn(&Record) -> Vec<String>,
+    ) -> Result<(), RenderError> {
+        let selected: Vec<&Record> = self
+            .noted()
+            .into_iter()
+            .filter(|record| keep(record))
+            .collect();
+        let _ = write!(
+            text,
+            "\n## {heading}\n\n{intro} One row per note, in record ID order.\n\n"
+        );
+        if selected.is_empty() {
+            text.push_str("No note is listed here at this snapshot.\n");
+            return Ok(());
+        }
+        header(text, headers);
+        for record in selected.iter().take(MAX_ROWS) {
+            let mut cells = vec![self.notes.table_link(record.header.id)?];
+            cells.extend(row(record));
+            line(text, &cells);
+        }
+        if selected.len() > MAX_ROWS {
+            let _ = writeln!(
+                text,
+                "\nShowing {MAX_ROWS} of {} notes. Every record is listed under Records on {}.",
+                selected.len(),
+                self.overview_link()?
+            );
+        }
+        Ok(())
     }
 
     /// What one revision changed relative to the one before it, in words.

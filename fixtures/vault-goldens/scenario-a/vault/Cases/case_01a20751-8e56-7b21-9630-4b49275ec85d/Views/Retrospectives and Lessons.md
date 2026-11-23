@@ -23,3 +23,7 @@ What each retrospective found: methods tried, what discriminated, what misled, a
 | Retrospective | Status | Methods tried | Useful discriminators | Invalid or misleading paths | Bounded improvements and transfer limits |
 |---|---|---|---|---|---|
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Retrospectives/retro_01a20751-94b8-71f2-bbeb-59aa7355f091\|Retrospective at sequence 28]] | `recorded`, `current` | Compare a slow\/control pair and a bounded toggle\/reversal | The compatible toggle and reversal distinguished the connection\-hold mechanism\. | The unmapped clock could not order events\. | no reusable lesson: The result is scoped to a synthetic workload\. |
+
+## Native Base
+
+`Retrospectives and Lessons.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -26,3 +26,7 @@ Each measured value with its unit, conditions and validity, what cites it and th
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9a93-7371-85b5-fe18bf0557b3\|Measured 42 milliseconds]] | `42` `milliseconds` | not recorded | `valid` | 3 records | none recorded |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9ae9-71c2-b52e-735dfc9a8d2a\|Measured 35 milliseconds]] | `35` `milliseconds` | not recorded | `valid` | 3 records | none recorded |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9b3a-79e0-84f0-7c6e782a1573\|Measured 31 milliseconds]] | `31` `milliseconds` | not recorded | `valid` | 3 records | none recorded |
+
+## Native Base
+
+`Measurements.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

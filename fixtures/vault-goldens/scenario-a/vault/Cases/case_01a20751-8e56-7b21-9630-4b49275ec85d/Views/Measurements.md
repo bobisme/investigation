@@ -26,3 +26,7 @@ Each measured value with its unit, conditions and validity, what cites it and th
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | `102` `ms` | 1 variable changed | `valid` | 3 records | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9089-7dc3-a58e-ccac5e838388\|Enable release before await]] |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | `0` `count` | 1 variable changed | `valid` | 1 record | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-90d2-7011-abce-d2797597a951\|Read the scheduler-only capture]] |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | `28104` `ms` | 1 variable changed | `valid` | 4 records | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9118-7840-bfa1-9bdf129a6028\|Revert the named toggle]] |
+
+## Native Base
+
+`Measurements.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -14,3 +14,4 @@ import_roots = ["."]
 enabled = true
 include_approved_derivatives = false
 preserve_human_folders = true
+viewer_release = "1.15.1"

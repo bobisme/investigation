@@ -24,3 +24,7 @@ Each explanation's standing, its rivals and how the assessed evidence bears on i
 |---|---|---|---|---|
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8e9a-7312-8e8c-2d318d46c4eb\|A checked-out connection is held during the asynchronous wait.]] | `proposed` | 1 rival | no assessment yet | none recorded |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8eb8-7f03-b74b-ad5633c8ef75\|Scheduler delay alone accounts for the connection-hold overshoot.]] | `proposed` | 1 rival | no assessment yet | none recorded |
+
+## Native Base
+
+`Hypotheses.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

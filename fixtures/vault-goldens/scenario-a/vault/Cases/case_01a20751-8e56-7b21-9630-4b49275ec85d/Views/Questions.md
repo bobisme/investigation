@@ -23,3 +23,7 @@ What each question is for and how far it is answered. One row per question, in r
 | Question | Status | Decision relevance | Bounded answer | Next discriminator |
 |---|---|---|---|---|
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Questions/q_01a20751-8e7a-7c71-b14a-90fde312ac50\|Which factor explains the connection-hold overshoot in the retained workload?]] | `open` | importance `normal`; no decision cites it | none recorded | no open gap names it |
+
+## Native Base
+
+`Questions.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

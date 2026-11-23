@@ -21,3 +21,13 @@ Case: [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview|Was a matched p
 Open, blocked and stale uncertainty at this snapshot: every unresolved gap the structural rules emit (rule version `slice-gaps.v1`), with the prerequisite evidence each needs. One row per gap, in gap ID order, unranked. A row describes missing or stale recorded information; it is not a task, an assignment or an external board, and nothing here is dispatched. Zero gaps means these rules detected none, not that the investigation is complete. `investigation --case case_01a20751-9598-7d12-a156-045a6355965c next --format json` ranks the next steps.
 
 No unresolved gap is detected at this snapshot.
+
+## Records named by an open gap
+
+The notes the unresolved gaps name, with how many name each (`inv_open_gaps`). One row per note, in record ID order.
+
+No note is listed here at this snapshot.
+
+## Native Base
+
+`Epistemic Frontier.base` beside this note lists the notes in the table under "Records named by an open gap", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -35,6 +35,9 @@ REQUIRED = (
     "vault/Inbox",
 )
 HUMAN = {"Notes", "Boards", "Inbox"}
+# Scenarios whose workspace states a supported viewer release, so their golden vaults
+# also hold the optional native Base files; the others show the plain-Markdown default.
+VIEWER_RELEASE = {"scenario-a": "1.15.1", "scenario-c": "1.15.1"}
 
 
 def prepare(source, target):
@@ -83,7 +86,13 @@ def keep_workspace(source, scenario):
     config = (source / "investigation.toml").read_text(encoding="utf-8")
     if "enabled = false" not in config:
         raise SystemExit(f"{source}: unexpected vault policy\n{config}")
-    (target / "investigation.toml").write_text(config.replace("enabled = false", "enabled = true", 1), encoding="utf-8")
+    config = config.replace("enabled = false", "enabled = true", 1)
+    if scenario in VIEWER_RELEASE:
+        config = config.replace("preserve_human_folders = true\n",
+                                f"preserve_human_folders = true\nviewer_release = \"{VIEWER_RELEASE[scenario]}\"\n", 1)
+        if "viewer_release" not in config:
+            raise SystemExit(f"{source}: could not state the viewer release\n{config}")
+    (target / "investigation.toml").write_text(config, encoding="utf-8")
     shutil.copytree(source / "state", target / "state")
 
 

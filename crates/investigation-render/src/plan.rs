@@ -58,7 +58,12 @@ use crate::{
 /// time column also shows a Run's reported start (MB.02).
 /// v20: `Start Here.md` announcing drift says how to resolve it with
 /// `vault reconcile` and its four dispositions (W12.05).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v20";
+/// v21: native Base files beside the static table views when the view
+/// policy plans them (a supported viewer release is stated); every record
+/// note and Overview carries `inv_open_gaps`, observation notes carry
+/// `inv_value_kind`, and the frontier and timeline notes gain a table with
+/// one row per note, the rows their Bases list (W12.01).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v21";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -370,6 +375,9 @@ impl CaseRenderer for VaultRenderer {
             let content = templates::case_overview(notes, &views)?;
             for view in views {
                 plan.add(Phase::Views, view.path, view.content, None)?;
+                if let Some((path, content)) = view.base {
+                    plan.add(Phase::Views, path, content, None)?;
+                }
             }
             plan.add(
                 Phase::Views,
@@ -488,6 +496,7 @@ mod tests {
             ("start_here.rs", include_str!("start_here.rs")),
             ("records/views.rs", include_str!("records/views.rs")),
             ("records/matrix.rs", include_str!("records/matrix.rs")),
+            ("bases.rs", include_str!("bases.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),

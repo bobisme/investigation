@@ -8,6 +8,7 @@ inv_effective: "current"
 inv_mode: "explore"
 inv_focus: "research"
 inv_summary: "summary_current"
+inv_open_gaps: 0
 inv_revision: 2
 inv_render_sequence: 2
 inv_snapshot: "sha256:1d7ad980091987aed14d469d98681daf4e91199bb7afba34cb971dc311b5f3c2"

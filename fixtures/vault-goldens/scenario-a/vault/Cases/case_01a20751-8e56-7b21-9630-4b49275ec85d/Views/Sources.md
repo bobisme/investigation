@@ -29,3 +29,7 @@ Where each source came from and what has been judged about it. A judgment absent
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f8b-79b2-89dc-a61d89a191ce\|scheduler-only-test.json / scheduler-only-test.json]] | not judged | channel `local_file`, access `local_only` | 1 observation: 1 origin untraced | not judged | authenticity not judged, reliability not judged |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8fab-7173-b380-8d4052ecf224\|revert-run.json / revert-run.json]] | not judged | channel `local_file`, access `local_only` | 1 observation: 1 origin untraced | not judged | authenticity not judged, reliability not judged |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8fc7-77c1-b56f-93e264cd1b4e\|trace-unmapped-clock.json / trace-unmapped-clock.json]] | not judged | channel `local_file`, access `local_only` | no observation drawn from it | not judged | authenticity not judged, reliability not judged |
+
+## Native Base
+
+`Sources.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

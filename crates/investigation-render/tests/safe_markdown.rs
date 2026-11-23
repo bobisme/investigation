@@ -599,6 +599,11 @@ const SECTIONS: &[&str] = &[
     "Resume",
     // Links to the case's table views (W08.07).
     "Views",
+    // Note-per-row tables in the frontier and timeline views, and the
+    // paragraph beside a view's native Base (W12.01).
+    "Records named by an open gap",
+    "Latest revision of each record",
+    "Native Base",
 ];
 
 #[test]

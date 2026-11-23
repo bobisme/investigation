@@ -8,6 +8,7 @@ inv_effective: "current"
 inv_mode: "evaluate"
 inv_focus: "evaluation"
 inv_summary: "summary_current"
+inv_open_gaps: 0
 inv_revision: 2
 inv_render_sequence: 45
 inv_snapshot: "sha256:a85f2e16f1a0068e5eb9ceadbfbde69a781d5f6808db253fb25465a2349d2a21"

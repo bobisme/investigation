@@ -37,8 +37,8 @@ use investigation_core::{
     wire::{CommitResult, Receipt},
 };
 use investigation_render::{
-    RENDERER_VERSION, RenderPlan,
-    compat::{Profile, detect},
+    RENDERER_VERSION, RenderPlan, bases,
+    compat::{Profile, Tier, detect},
     layout,
     text::EXCERPT_LANGUAGE,
 };
@@ -476,6 +476,13 @@ fn scenario_vaults_need_no_community_plugin() {
     for scenario in SCENARIOS {
         for (path, bytes) in fixtures::golden(scenario) {
             notes += 1;
+            // Native Bases are a core viewer feature, not a plugin's, and
+            // optional: `scenario_vaults_use_only_features_the_compatibility_profile_lists`
+            // and `each_base_lists_the_rows_of_its_static_table_and_only_its_case`
+            // check them.
+            if path.ends_with(".base") {
+                continue;
+            }
             assert!(
                 path.ends_with(".md"),
                 "{scenario}: {path} is not plain Markdown"
@@ -536,27 +543,53 @@ fn scenario_vaults_need_no_community_plugin() {
     assert!(notes > 100 && spans > 1000, "{notes} notes, {spans} spans");
 }
 
-/// W12.02: every viewer feature the rendered vaults use is listed in the
-/// compatibility profile as emitted-capable, and the vaults need only the
-/// baseline, so an absent or unknown viewer release changes nothing.
+/// W12.02 and W12.01: every viewer feature the rendered vaults use is listed
+/// in the compatibility profile as emitted, and each vault needs only what
+/// its workspace's stated viewer release resolves to. Scenario D states no
+/// release and gets the plain-Markdown baseline; Scenarios A and C state a
+/// supported one and also get native Bases.
 #[test]
 fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
     let profile = Profile::bundled();
+    let directory = tempfile::tempdir().unwrap();
     let mut all = BTreeSet::new();
     for scenario in SCENARIOS {
         let golden = fixtures::golden(scenario);
         let found = detect(golden.iter().map(|(p, b)| (p.as_str(), b.as_slice())));
         assert_eq!(profile.unlisted(&found), Vec::<String>::new(), "{scenario}");
+        let workspace = fixtures::workspace(scenario, &directory.path().join(scenario), false);
+        let release = fixtures::open(&workspace)
+            .workspace()
+            .config()
+            .vault_policy
+            .viewer_release
+            .clone();
+        let resolved = profile.resolve(release.as_deref());
+        assert_eq!(
+            profile.gated(&found, &resolved),
+            Vec::<String>::new(),
+            "{scenario}"
+        );
+        let optional: Vec<&String> = found
+            .iter()
+            .filter(|id| profile.feature(id).unwrap().tier != Tier::Baseline)
+            .collect();
+        // Without a stated release the vault is the baseline, whatever the viewer.
+        assert_eq!(optional.is_empty(), release.is_none(), "{scenario}");
+        if release.is_none() {
+            for installed in [None, Some("0.0.1"), Some("garbage")] {
+                assert!(
+                    profile
+                        .gated(&found, &profile.resolve(installed))
+                        .is_empty()
+                );
+            }
+        }
         all.extend(found);
     }
-    // The renderer emits no optional feature yet: the baseline is the vault.
     for id in &all {
         let feature = profile.feature(id).unwrap();
-        assert_eq!(
-            feature.tier,
-            investigation_render::compat::Tier::Baseline,
-            "{id}"
-        );
+        assert_ne!(feature.tier, Tier::Unsupported, "{id}");
         assert!(
             feature.emitted,
             "{id} is used but the profile says it is not emitted"
@@ -567,18 +600,147 @@ fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
         "md.wikilinks",
         "md.tables",
         "md.block_anchors",
-    ] {
+    ]
+    .into_iter()
+    .chain(bases::FEATURES.iter().copied())
+    {
         assert!(all.contains(id), "{id} not detected in {all:?}");
     }
     // Nothing the profile calls unemitted shows up in a vault.
     for feature in profile.features.iter().filter(|f| !f.emitted) {
         assert!(!all.contains(&feature.id), "{}", feature.id);
     }
-    // With no viewer installed, or an unknown one, every vault is still fully allowed.
-    for installed in [None, Some("0.0.1"), Some("garbage")] {
-        let resolved = profile.resolve(installed);
-        assert!(profile.gated(&all, &resolved).is_empty());
+}
+
+/// A flat frontmatter block as a YAML mapping.
+fn frontmatter(note: &str) -> yaml_serde::Mapping {
+    let front = note
+        .strip_prefix("---\n")
+        .and_then(|rest| rest.split_once("\n---\n"))
+        .map_or("", |(front, _)| front);
+    yaml_serde::from_str(front).unwrap_or_default()
+}
+
+/// Whether a note's properties satisfy a Base filter, reading the filter as
+/// the syntax page describes it: a statement string, or an `and`/`or`/`not`
+/// list. Only the statement shapes the renderer emits are understood, and a
+/// compared property must be present, so a filter never relies on how a
+/// viewer treats a missing value. Groups stop at the first decisive member.
+fn holds(filter: &yaml_serde::Value, front: &yaml_serde::Mapping) -> bool {
+    use yaml_serde::Value as Y;
+    match filter {
+        Y::String(statement) => {
+            let parts: Vec<&str> = statement.splitn(3, ' ').collect();
+            let [property, operator, value] = parts[..] else {
+                panic!("unexpected statement {statement:?}");
+            };
+            let actual = front.get(property);
+            match operator {
+                "==" => {
+                    let value = value.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
+                    actual.and_then(Y::as_str) == Some(value)
+                }
+                "!=" => {
+                    let value = value.strip_prefix('"').unwrap().strip_suffix('"').unwrap();
+                    let actual = actual.unwrap_or_else(|| panic!("{property} absent: {front:?}"));
+                    actual.as_str() != Some(value)
+                }
+                ">" => {
+                    let actual = actual.unwrap_or_else(|| panic!("{property} absent: {front:?}"));
+                    actual.as_u64().unwrap() > value.parse::<u64>().unwrap()
+                }
+                other => panic!("unexpected operator {other:?}"),
+            }
+        }
+        Y::Mapping(group) => {
+            assert_eq!(group.len(), 1, "{group:?}");
+            let (key, members) = group.iter().next().unwrap();
+            let mut members = members.as_sequence().unwrap().iter();
+            match key.as_str().unwrap() {
+                "and" => members.all(|member| holds(member, front)),
+                "or" => members.any(|member| holds(member, front)),
+                "not" => !members.any(|member| holds(member, front)),
+                other => panic!("unexpected group {other:?}"),
+            }
+        }
+        other => panic!("unexpected filter {other:?}"),
     }
+}
+
+/// The link target in the first cell of each body row of the first table in
+/// `note`.
+fn first_column(note: &str) -> Vec<String> {
+    note.lines()
+        .skip_while(|line| !line.starts_with("| "))
+        .take_while(|line| line.starts_with('|'))
+        .skip(2)
+        .map(|row| {
+            let cell = row
+                .strip_prefix("| [[")
+                .expect("the first cell links a note");
+            let end = cell.find("\\|").or_else(|| cell.find("]]")).unwrap();
+            cell[..end].to_owned()
+        })
+        .collect()
+}
+
+/// W12.01: each native Base selects exactly the notes its static table lists,
+/// every one of them in the Base's case. Evaluated offline over the golden
+/// vaults' bytes; opening the Bases in the viewer is the integration gate's.
+#[test]
+fn each_base_lists_the_rows_of_its_static_table_and_only_its_case() {
+    let mut views = BTreeSet::new();
+    let mut checked = 0;
+    for scenario in SCENARIOS {
+        let golden = fixtures::golden(scenario);
+        let notes: Vec<(String, yaml_serde::Mapping)> = golden
+            .iter()
+            .filter_map(|(path, bytes)| {
+                let target = path.strip_suffix(".md")?;
+                Some((
+                    target.to_owned(),
+                    frontmatter(std::str::from_utf8(bytes).unwrap()),
+                ))
+            })
+            .collect();
+        for (path, bytes) in golden.iter().filter(|(path, _)| path.ends_with(".base")) {
+            let base: yaml_serde::Value = yaml_serde::from_slice(bytes).unwrap();
+            let table_path = format!("{}.md", path.strip_suffix(".base").unwrap());
+            let table = std::str::from_utf8(&golden[&table_path]).unwrap();
+            let slug = vault::property(table, "inv_view").unwrap();
+            let case = vault::property(table, "inv_case_id").unwrap();
+            let matched: Vec<&String> = notes
+                .iter()
+                .filter(|(_, front)| holds(&base["filters"], front))
+                .map(|(target, _)| target)
+                .collect();
+            for target in &matched {
+                assert!(
+                    target.starts_with(&format!("Cases/{case}/")),
+                    "{path}: {target} is not in its case"
+                );
+            }
+            let rows = match slug.as_str() {
+                "frontier" => &table[table.find("\n## Records named by an open gap\n").unwrap()..],
+                "timeline" => {
+                    &table[table.find("\n## Latest revision of each record\n").unwrap()..]
+                }
+                _ => table,
+            };
+            let listed = first_column(rows);
+            let mut matched_set: Vec<String> = matched.iter().map(|t| (*t).clone()).collect();
+            matched_set.sort();
+            let mut listed_set = listed.clone();
+            listed_set.sort();
+            assert_eq!(listed_set, matched_set, "{scenario}: {path}");
+            assert!(!listed.is_empty() || slug == "frontier", "{path}");
+            views.insert(slug);
+            checked += 1;
+        }
+    }
+    // Scenarios A and C together exercise every shipped Base.
+    assert_eq!(views.len(), 14, "{views:?}");
+    assert!(checked >= 20, "{checked}");
 }
 
 #[test]

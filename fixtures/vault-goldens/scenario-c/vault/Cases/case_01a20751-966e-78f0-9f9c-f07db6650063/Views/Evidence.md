@@ -28,3 +28,7 @@ Artifacts, then observations that are not measurements: whether each is original
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abdf939bb12f\|application/json]] | `original` | `verified` | 3 observations select from it | availability `retained`, use `in_use` | `internal` |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abe608999d94\|text/plain; charset=utf-8]] | `derivative` | `verified` | no observation selects from it | availability `retained`, use `in_use` | `internal` |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abf85c7c9a60\|application/json]] | `manifest` | `verified` | no observation selects from it | availability `retained`, use `in_use` | `internal` |
+
+## Native Base
+
+`Evidence.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

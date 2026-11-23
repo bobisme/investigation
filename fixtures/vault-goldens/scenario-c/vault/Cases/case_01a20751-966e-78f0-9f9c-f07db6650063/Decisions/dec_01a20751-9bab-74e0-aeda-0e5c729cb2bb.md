@@ -7,6 +7,7 @@ inv_status: "superseded"
 inv_effective: "needs_review"
 inv_disposition: "superseded"
 inv_review_freshness: "stale"
+inv_open_gaps: 0
 inv_revision: 3
 inv_render_sequence: 45
 inv_snapshot: "sha256:a85f2e16f1a0068e5eb9ceadbfbde69a781d5f6808db253fb25465a2349d2a21"

@@ -10,7 +10,8 @@
 //! string carries [`RESTRICTED`] and every internal string [`INTERNAL`], so a
 //! byte scan of the whole plan (paths and contents) finds any channel that
 //! leaks: bodies, titles, aliases, frontmatter, filenames, link labels,
-//! backlink reasons, tables, counts, the Overview and `Start Here.md`.
+//! backlink reasons, tables, counts, native Base files, the Overview and
+//! `Start Here.md`.
 
 mod support;
 
@@ -471,9 +472,21 @@ fn fixture() -> Fixture {
     }
 }
 
+/// The plan for `audience`, with native Bases planned so that their bytes
+/// are scanned too.
 fn plan(fixture: &mut Fixture, audience: Audience) -> RenderPlan {
     let snapshot = VerifiedSnapshot::read(&mut fixture.store).unwrap();
-    render(&snapshot, &ViewPolicy::for_audience(audience)).unwrap()
+    let plan = render(
+        &snapshot,
+        &ViewPolicy::for_audience(audience).with_bases(true),
+    )
+    .unwrap();
+    assert!(
+        plan.entries()
+            .iter()
+            .any(|entry| entry.path().as_str().ends_with(".base"))
+    );
+    plan
 }
 
 fn text(plan: &RenderPlan, path: &str) -> String {

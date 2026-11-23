@@ -100,6 +100,12 @@
 //!   key and cells built only from [`text`] escapers. A view with no rows is
 //!   not planned, except the frontier and the timeline. No table computes a
 //!   score or rank; the Overview links every planned view under `## Views`.
+//! - Native Bases ([`bases`]): with [`ViewPolicy::bases`], one `.base` file
+//!   beside each planned table view except the comparison matrix, filtered
+//!   by the exact case ID and the view's record kinds, listing the same rows.
+//!   [`working_policy`] turns it on only when the workspace states a viewer
+//!   release that the compatibility profile ([`compat`]) resolves to every
+//!   Base feature; otherwise the vault is plain Markdown.
 //! - `Start Here.md` ([`start_here`]): what the vault is, projection
 //!   health, who owns which folder, and per case (capped, in case ID order)
 //!   its Overview, last committed snapshot, answer, pending questions,
@@ -177,6 +183,7 @@
 //! filesystem is the only interface.
 
 pub mod attachments;
+pub mod bases;
 pub mod compat;
 pub mod drift;
 pub(crate) mod entry;

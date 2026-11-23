@@ -74,3 +74,59 @@ Every accepted record revision of this case, in acceptance order. Recorded is wh
 | 45 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Retrospectives/retro_01a20751-a300-7f50-8a52-d75e4cc8f385\|Retrospective at sequence 44]], retrospective revision 1 | created | none claimed | `2026-11-23T07:32:00.384257176Z` | `agent:scenario-c` |
 
 Showing the latest 50 of 53 revisions. Each record note lists its earlier revisions; every record is listed under Records on [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Overview|Queue architecture choice]].
+
+## Latest revision of each record
+
+Each note of this case at its latest revision, with the time this workspace recorded that revision. One row per note, in record ID order.
+
+| Record | Kind | Revision | Recorded |
+|---|---|---|---|
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Overview\|Queue architecture choice]] | case | 2 | `2026-11-23T07:32:00.384257176Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Questions/q_01a20751-968d-72e3-813e-b30bd0fb27ef\|Which queue design should the application use?]] | question | 1 | `2026-11-23T07:31:57.197426323Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Sources/src_01a20751-9862-7222-b5b5-be6a71aed8fc\|recovery-tests.json]] | source | 1 | `2026-11-23T07:31:57.666020037Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Sources/src_01a20751-9a69-73a2-9626-abc0de673288\|benchmark-samples.json]] | source | 1 | `2026-11-23T07:31:58.185173441Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9862-7222-b5b5-be7bb33a7023\|application/json]] | artifact | 1 | `2026-11-23T07:31:57.666020037Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9862-7222-b5b5-be83c7dd5f9f\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:57.666020037Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9862-7222-b5b5-be950961443e\|application/json]] | artifact | 1 | `2026-11-23T07:31:57.666020037Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abdf939bb12f\|application/json]] | artifact | 1 | `2026-11-23T07:31:58.185173441Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abe608999d94\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:58.185173441Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Evidence/art_01a20751-9a69-73a2-9626-abf85c7c9a60\|application/json]] | artifact | 1 | `2026-11-23T07:31:58.185173441Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-98a7-7a22-8ff8-16e883c19266\|Measured 110 seconds]] | observation | 1 | `2026-11-23T07:31:57.735197162Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9a93-7371-85b5-fe18bf0557b3\|Measured 42 milliseconds]] | observation | 1 | `2026-11-23T07:31:58.227024156Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9ae9-71c2-b52e-735dfc9a8d2a\|Measured 35 milliseconds]] | observation | 1 | `2026-11-23T07:31:58.313083060Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9b3a-79e0-84f0-7c6e782a1573\|Measured 31 milliseconds]] | observation | 1 | `2026-11-23T07:31:58.393918843Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Assumptions/asm_01a20751-9b82-7a50-a21c-a554143404fe\|Traffic stays below 2500000 jobs per day]] | assumption | 1 | `2026-11-23T07:31:58.466093855Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Options/opt_01a20751-96b6-7a42-a669-ccd0f950e2db\|Retain database-backed queue (do-nothing baseline)]] | option | 2 | `2026-11-23T07:31:57.271090098Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Options/opt_01a20751-96f7-7b33-9215-696ebee2589b\|Adopt managed queue]] | option | 2 | `2026-11-23T07:31:57.332231253Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Options/opt_01a20751-9731-7693-8e5a-8df2f62c07d1\|Run dedicated broker]] | option | 2 | `2026-11-23T07:31:57.392683701Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-9779-73f0-aaea-ed360f267bed\|Recovery time after acknowledged enqueue]] | criterion | 2 | `2026-11-23T07:31:59.947696277Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-9798-7bf3-b0f9-1b55cf967d83\|No acknowledged job is lost]] | criterion | 1 | `2026-11-23T07:31:57.464182594Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-97b9-7d40-ba2c-90f4a01e7341\|Operational cost estimate]] | criterion | 1 | `2026-11-23T07:31:57.496953598Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-97d6-7c00-b54e-dede5912f38b\|Enqueue latency (small synthetic benchmark)]] | criterion | 1 | `2026-11-23T07:31:57.526616467Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-97f5-7ae0-8844-6a45435ed5e3\|Team implementation effort]] | criterion | 1 | `2026-11-23T07:31:57.557593627Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-9d9a-7480-8b70-28a8773279a3\|Temporary hard requirement]] | criterion | 2 | `2026-11-23T07:31:59.265448037Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-98cb-72e2-bc37-6b98c1d353bd\|Retain database-backed queue (do-nothing baseline) against Recovery time after acknowledged enqueue]] | comparison | 1 | `2026-11-23T07:31:57.771557925Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-98ec-7f62-a71d-7ae82b0da9e6\|Retain database-backed queue (do-nothing baseline) against No acknowledged job is lost]] | comparison | 1 | `2026-11-23T07:31:57.803843396Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-990d-75f1-a5c4-dab2ffb706a4\|Retain database-backed queue (do-nothing baseline) against Operational cost estimate]] | comparison | 1 | `2026-11-23T07:31:57.837634637Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-992e-7451-93b7-92a99b859249\|Retain database-backed queue (do-nothing baseline) against Team implementation effort]] | comparison | 1 | `2026-11-23T07:31:57.870352591Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-994e-7151-a518-a0f44ef3ee82\|Adopt managed queue against Team implementation effort]] | comparison | 1 | `2026-11-23T07:31:57.902071509Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9970-71d3-be6e-bfbcdeb07d60\|Run dedicated broker against Team implementation effort]] | comparison | 1 | `2026-11-23T07:31:57.936298316Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9994-74e1-8149-10245d352d6b\|Adopt managed queue against Recovery time after acknowledged enqueue]] | comparison | 1 | `2026-11-23T07:31:57.971701916Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-99b4-7bc1-8439-60be2deb3a27\|Adopt managed queue against No acknowledged job is lost]] | comparison | 1 | `2026-11-23T07:31:58.004368352Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-99d7-73f3-87eb-2a92739eec94\|Adopt managed queue against Operational cost estimate]] | comparison | 1 | `2026-11-23T07:31:58.039510949Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-99fb-71b3-b975-fc93e62faae1\|Run dedicated broker against Recovery time after acknowledged enqueue]] | comparison | 1 | `2026-11-23T07:31:58.074910664Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9a1d-7e40-a2fd-0bac30919bf1\|Run dedicated broker against No acknowledged job is lost]] | comparison | 1 | `2026-11-23T07:31:58.109500187Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9a43-7691-9c44-d1d0a901a058\|Run dedicated broker against Operational cost estimate]] | comparison | 1 | `2026-11-23T07:31:58.147601914Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9abc-7e83-a85b-7706c94875e7\|Retain database-backed queue (do-nothing baseline) against Enqueue latency (small synthetic benchmark)]] | comparison | 1 | `2026-11-23T07:31:58.267713552Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9b0e-7e83-b721-2b41296bf72a\|Adopt managed queue against Enqueue latency (small synthetic benchmark)]] | comparison | 1 | `2026-11-23T07:31:58.349948503Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9b5e-77f3-a726-0ec2def7d893\|Run dedicated broker against Enqueue latency (small synthetic benchmark)]] | comparison | 1 | `2026-11-23T07:31:58.430240187Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-9bab-74e0-aeda-0e5c729cb2bb\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | decision | 3 | `2026-11-23T07:32:00.163558793Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-9c33-71c0-ad5d-879c9a86094b\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | decision | 1 | `2026-11-23T07:31:58.642417992Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-a224-7070-bc1a-61782ce70dba\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | decision | 1 | `2026-11-23T07:32:00.163558793Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c0a-7282-a488-cfc335111820\|Inspect the synthetic recovery evidence and unresolved constraints]] | review | 1 | `2026-11-23T07:31:58.600512834Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c97-73f0-b432-6fda2097447a\|Inspect the synthetic recovery evidence and unresolved constraints]] | review | 1 | `2026-11-23T07:31:58.741409574Z` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Retrospectives/retro_01a20751-a300-7f50-8a52-d75e4cc8f385\|Retrospective at sequence 44]] | retrospective | 1 | `2026-11-23T07:32:00.384257176Z` |
+
+## Native Base
+
+`Timeline.base` beside this note lists the notes in the table under "Latest revision of each record", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

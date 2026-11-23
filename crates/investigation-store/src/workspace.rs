@@ -80,6 +80,12 @@ pub struct VaultPolicy {
     pub include_approved_derivatives: bool,
     /// The renderer may manage generated files but preserves Notes/Boards/Inbox.
     pub preserve_human_folders: bool,
+    /// The viewer release the vault is read with, as the person states it
+    /// (for example `"1.15.1"`). The renderer resolves it against its
+    /// compatibility profile to choose optional files such as native Bases.
+    /// Absent, unparseable or unsupported means plain Markdown only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub viewer_release: Option<String>,
 }
 
 impl Default for VaultPolicy {
@@ -88,6 +94,7 @@ impl Default for VaultPolicy {
             enabled: false,
             include_approved_derivatives: false,
             preserve_human_folders: true,
+            viewer_release: None,
         }
     }
 }

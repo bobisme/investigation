@@ -23,3 +23,7 @@ What each retrospective found: methods tried, what discriminated, what misled, a
 | Retrospective | Status | Methods tried | Useful discriminators | Invalid or misleading paths | Bounded improvements and transfer limits |
 |---|---|---|---|---|---|
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Retrospectives/retro_01a20751-a300-7f50-8a52-d75e4cc8f385\|Retrospective at sequence 44]] | `recorded`, `current` | Inspect synthetic recovery trials and bounded enqueue samples | Retained and checked the recovery\-time source | none recorded | no reusable lesson: Synthetic evidence alone does not establish a transferable method |
+
+## Native Base
+
+`Retrospectives and Lessons.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

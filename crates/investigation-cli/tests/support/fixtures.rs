@@ -13,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use investigation_render::{RenderPlan, VerifiedSnapshot, ViewPolicy, layout, render};
+use investigation_render::{RenderPlan, VerifiedSnapshot, layout, render, working_policy};
 use investigation_store::{Store, Workspace};
 
 pub const SCENARIOS: [&str; 3] = ["scenario-a", "scenario-c", "scenario-d"];
@@ -87,10 +87,12 @@ pub fn open(workspace: &Path) -> Store {
 }
 
 /// The verified snapshot of a workspace and its vault plan under the
-/// default view policy, the one `vault render` uses.
+/// workspace's working view policy, the one `vault render` uses.
 pub fn plan(workspace: &Path) -> (VerifiedSnapshot, RenderPlan) {
-    let snapshot = VerifiedSnapshot::read(&mut open(workspace)).unwrap();
-    let plan = render(&snapshot, &ViewPolicy::default()).unwrap();
+    let mut store = open(workspace);
+    let policy = working_policy(store.workspace());
+    let snapshot = VerifiedSnapshot::read(&mut store).unwrap();
+    let plan = render(&snapshot, &policy).unwrap();
     (snapshot, plan)
 }
 

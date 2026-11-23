@@ -24,3 +24,15 @@ Every accepted record revision of this case, in acceptance order. Recorded is wh
 |---|---|---|---|---|---|
 | 1 | [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview\|Was a matched production sample available?]], case revision 1 | created | none claimed | `2026-11-23T07:31:56.952432045Z` | `agent:timeout-fixture` |
 | 2 | [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview\|Was a matched production sample available?]], case revision 2 | revised: `active` to `closed` | none claimed | `2026-11-23T07:31:56.990128280Z` | `agent:timeout-fixture` |
+
+## Latest revision of each record
+
+Each note of this case at its latest revision, with the time this workspace recorded that revision. One row per note, in record ID order.
+
+| Record | Kind | Revision | Recorded |
+|---|---|---|---|
+| [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview\|Was a matched production sample available?]] | case | 2 | `2026-11-23T07:31:56.990128280Z` |
+
+## Native Base
+
+`Timeline.base` beside this note lists the notes in the table under "Latest revision of each record", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

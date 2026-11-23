@@ -46,6 +46,11 @@ pub struct ViewPolicy {
     /// copied into `Attachments/` as previews ([`crate::attachments`]). Off
     /// by default; originals are never copied.
     pub derivative_previews: bool,
+    /// Whether native Base files are planned beside the static table views
+    /// ([`crate::bases`]). Off by default: only a viewer release that the
+    /// compatibility profile resolves to every Base feature turns it on
+    /// ([`crate::bases::allowed`]). The tables are complete without them.
+    pub bases: bool,
 }
 
 impl ViewPolicy {
@@ -53,6 +58,7 @@ impl ViewPolicy {
         Self {
             audience,
             derivative_previews: false,
+            bases: false,
         }
     }
 
@@ -60,6 +66,13 @@ impl ViewPolicy {
     #[must_use]
     pub const fn with_derivative_previews(mut self, allowed: bool) -> Self {
         self.derivative_previews = allowed;
+        self
+    }
+
+    /// The same policy with native Base files planned or not.
+    #[must_use]
+    pub const fn with_bases(mut self, planned: bool) -> Self {
+        self.bases = planned;
         self
     }
 
@@ -97,7 +110,8 @@ impl ViewPolicy {
         } else {
             ""
         };
-        format!("audience={}{previews}", self.audience.as_str())
+        let bases = if self.bases { ";bases" } else { "" };
+        format!("audience={}{previews}{bases}", self.audience.as_str())
     }
 }
 
@@ -132,6 +146,11 @@ mod tests {
             ViewPolicy::default()
                 .with_derivative_previews(true)
                 .fingerprint()
+        );
+        assert!(!ViewPolicy::default().bases);
+        assert_eq!(
+            ViewPolicy::default().with_bases(true).fingerprint(),
+            "audience=internal;bases"
         );
     }
 }

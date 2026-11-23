@@ -211,6 +211,25 @@ pub(crate) fn properties(notes: &NoteContext<'_>, record: &Record, front: &mut F
     reviews::properties(notes, record, front);
 }
 
+/// Flat properties every record note and Overview carries, withheld or not,
+/// so a native Base selects exactly the notes the static tables list: an
+/// observation's value kind (the Measurements and Evidence split) and how
+/// many unresolved gaps name the record (the epistemic frontier). Both are
+/// already visible in those tables for a withheld record.
+pub(crate) fn listing_properties(
+    notes: &NoteContext<'_>,
+    record: &Record,
+    front: &mut Frontmatter,
+) {
+    if record.header.id.kind() == Kind::Observation {
+        let kind = text_at(&record.body, "value.kind").unwrap_or("unspecified");
+        front.text("inv_value_kind", &wire(kind));
+    }
+    if let Some(count) = notes.open_gap_count(record.header.id) {
+        front.integer("inv_open_gaps", count as u64);
+    }
+}
+
 /// A recorded enum word for a property or a code span: kept only when it is
 /// a plain snake_case word, so authored text never reaches a property.
 fn wire(word: &str) -> String {

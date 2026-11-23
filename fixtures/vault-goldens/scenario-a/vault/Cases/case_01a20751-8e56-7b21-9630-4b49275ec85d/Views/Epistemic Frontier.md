@@ -31,3 +31,23 @@ Open, blocked and stale uncertainty at this snapshot: every unresolved gap the s
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
+
+## Records named by an open gap
+
+The notes the unresolved gaps name, with how many name each (`inv_open_gaps`). One row per note, in record ID order.
+
+| Record | Kind | Open gaps | Effective state |
+|---|---|---|---|
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-8ff0-71b3-8533-fa18bea0abb8\|The slow trace records a 28-second callback wait.]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9066-7e50-945b-fa7cf8f304ac\|Measured 28007 ms]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8e9a-7312-8e8c-2d318d46c4eb\|A checked-out connection is held during the asynchronous wait.]] | hypothesis | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8eb8-7f03-b74b-ad5633c8ef75\|Scheduler delay alone accounts for the connection-hold overshoot.]] | hypothesis | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-91b0-7003-9309-18ce4a1e3796\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | conclusion | 1 | `current` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | conclusion | 1 | `current` |
+
+## Native Base
+
+`Epistemic Frontier.base` beside this note lists the notes in the table under "Records named by an open gap", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

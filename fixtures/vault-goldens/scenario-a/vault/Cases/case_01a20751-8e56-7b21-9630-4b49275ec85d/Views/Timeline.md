@@ -74,3 +74,61 @@ Every accepted record revision of this case, in acceptance order. Recorded is wh
 | 29 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Retrospectives/retro_01a20751-94b8-71f2-bbeb-59aa7355f091\|Retrospective at sequence 28]], retrospective revision 1 | created | none claimed | `2026-11-23T07:31:56.728018350Z` | `agent:timeout-fixture` |
 
 Showing the latest 50 of 51 revisions. Each record note lists its earlier revisions; every record is listed under Records on [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Overview|Why does the synthetic lookup stall?]].
+
+## Latest revision of each record
+
+Each note of this case at its latest revision, with the time this workspace recorded that revision. One row per note, in record ID order.
+
+| Record | Kind | Revision | Recorded |
+|---|---|---|---|
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Overview\|Why does the synthetic lookup stall?]] | case | 2 | `2026-11-23T07:31:56.728018350Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Questions/q_01a20751-8e7a-7c71-b14a-90fde312ac50\|Which factor explains the connection-hold overshoot in the retained workload?]] | question | 1 | `2026-11-23T07:31:55.130700977Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f13-7960-9b4f-64bc7c2c8abc\|trace-slow.json / trace-slow.json]] | source | 1 | `2026-11-23T07:31:55.283643891Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f2f-7b91-9e8d-ce5d6130e34a\|trace-control.json / trace-control.json]] | source | 1 | `2026-11-23T07:31:55.311633479Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f4b-75f0-9fe0-76baf2f946f9\|pool-telemetry.json / pool-telemetry.json]] | source | 1 | `2026-11-23T07:31:55.338946769Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f69-7770-85c6-2269b843cae3\|reproduction.json / reproduction.json]] | source | 1 | `2026-11-23T07:31:55.369072156Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8f8b-79b2-89dc-a61d89a191ce\|scheduler-only-test.json / scheduler-only-test.json]] | source | 1 | `2026-11-23T07:31:55.403132893Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8fab-7173-b380-8d4052ecf224\|revert-run.json / revert-run.json]] | source | 1 | `2026-11-23T07:31:55.434985633Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Sources/src_01a20751-8fc7-77c1-b56f-93e264cd1b4e\|trace-unmapped-clock.json / trace-unmapped-clock.json]] | source | 1 | `2026-11-23T07:31:55.463125157Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f13-7960-9b4f-64c3cf124191\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.283643891Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f14-7590-998a-0df43ddaebdb\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.283643891Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f14-7590-998a-0e0788dd04e4\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.283643891Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f2f-7b91-9e8d-ce616e2e1134\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.311633479Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f2f-7b91-9e8d-ce72b60e6190\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.311633479Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f2f-7b91-9e8d-ce8c309b7f1a\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.311633479Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f4b-75f0-9fe0-76ce2c81289d\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.338946769Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f4b-75f0-9fe0-76d580c033d5\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.338946769Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f4b-75f0-9fe0-76e54146cf49\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.338946769Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f69-7770-85c6-22706254c975\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.369072156Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f69-7770-85c6-228ddbeb297d\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.369072156Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f69-7770-85c6-2294e7f3bf3d\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.369072156Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f8b-79b2-89dc-a623f2ea9945\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.403132893Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f8b-79b2-89dc-a63cda7c20dc\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.403132893Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8f8b-79b2-89dc-a6459e85e714\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.403132893Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fab-7173-b380-8d5a90a0aa33\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.434985633Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fab-7173-b380-8d60b30fdb6c\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.434985633Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fab-7173-b380-8d76235bebcb\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.434985633Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fc7-77c1-b56f-93f16053cec3\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.463125157Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fc7-77c1-b56f-9409803c6c7e\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:31:55.463125157Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Evidence/art_01a20751-8fc7-77c1-b56f-941c0dafcee8\|application/json]] | artifact | 1 | `2026-11-23T07:31:55.463125157Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-8ff0-71b3-8533-fa18bea0abb8\|The slow trace records a 28-second callback wait.]] | observation | 1 | `2026-11-23T07:31:55.504396751Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9066-7e50-945b-fa7cf8f304ac\|Measured 28007 ms]] | observation | 1 | `2026-11-23T07:31:55.621951107Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | observation | 1 | `2026-11-23T07:31:55.695801854Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | observation | 1 | `2026-11-23T07:31:55.767920542Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | observation | 1 | `2026-11-23T07:31:55.839938659Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8e9a-7312-8e8c-2d318d46c4eb\|A checked-out connection is held during the asynchronous wait.]] | hypothesis | 1 | `2026-11-23T07:31:55.161177723Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8eb8-7f03-b74b-ad5633c8ef75\|Scheduler delay alone accounts for the connection-hold overshoot.]] | hypothesis | 1 | `2026-11-23T07:31:55.192103036Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-91b0-7003-9309-18ce4a1e3796\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | conclusion | 1 | `2026-11-23T07:31:55.950440817Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | conclusion | 3 | `2026-11-23T07:31:56.502584127Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Reviews/rev_01a20751-93b1-7663-9a6a-e16094fc573e\|Read the retained captures for the control, toggle, and reversal.]] | review | 1 | `2026-11-23T07:31:56.463536976Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Retrospectives/retro_01a20751-94b8-71f2-bbeb-59aa7355f091\|Retrospective at sequence 28]] | retrospective | 1 | `2026-11-23T07:31:56.728018350Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Inquiries/inq_01a20751-8ed6-7190-955a-f2935f5f83c6\|Compare a slow/control pair and the synthetic toggle sequence.]] | inquiry | 2 | `2026-11-23T07:31:55.252277444Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-903f-7081-a826-e49f98c3608d\|Measure the slow capture]] | run | 1 | `2026-11-23T07:31:55.582550172Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9089-7dc3-a58e-ccac5e838388\|Enable release before await]] | run | 1 | `2026-11-23T07:31:55.656943798Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-90d2-7011-abce-d2797597a951\|Read the scheduler-only capture]] | run | 1 | `2026-11-23T07:31:55.729731775Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9118-7840-bfa1-9bdf129a6028\|Revert the named toggle]] | run | 1 | `2026-11-23T07:31:55.800487318Z` |
+| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9162-77d2-8280-ddfec6c3c8df\|Inspect trace with an unmapped, jumping clock]] | run | 1 | `2026-11-23T07:31:55.873847958Z` |
+
+## Native Base
+
+`Timeline.base` beside this note lists the notes in the table under "Latest revision of each record", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -28,3 +28,7 @@ Inquiries, then runs: the plan mode, whether a prediction was frozen before resu
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-90d2-7011-abce-d2797597a951\|Read the scheduler-only capture]] | run, intent `exploration` | no plan named | build\-7c2b and bypassed callback queue | execution `completed`, validity `valid` | no |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9118-7840-bfa1-9bdf129a6028\|Revert the named toggle]] | run, intent `exploration` | no plan named | Synthetic build family build\-7c2a\, burst\-3\-40\-concurrent\, dataset\-sim\-2\, \/items\/… | execution `completed`, validity `valid` | no |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Runs/run_01a20751-9162-77d2-8280-ddfec6c3c8df\|Inspect trace with an unmapped, jumping clock]] | run, intent `exploration` | no plan named | Unaligned wall clock | execution `completed`, validity `invalid` | no |
+
+## Native Base
+
+`Inquiries and Runs.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

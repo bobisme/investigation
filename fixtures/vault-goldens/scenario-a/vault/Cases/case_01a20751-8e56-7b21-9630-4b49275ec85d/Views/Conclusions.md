@@ -24,3 +24,7 @@ Each bounded claim with its effective disposition (from freshness and the object
 |---|---|---|---|---|
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-91b0-7003-9309-18ce4a1e3796\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | `candidate` | 1 contradicting record | not validated: no accepted review | Synthetic build family build\-7c2a\, sampled burst workload and route only\. |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | `validated` | 1 contradicting record | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Reviews/rev_01a20751-93b1-7663-9a6a-e16094fc573e\|Read the retained captures for the control, toggle, and reversal.]], `current` | Synthetic build family build\-7c2a\, sampled burst workload and route only\. |
+
+## Native Base
+
+`Conclusions.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -24,3 +24,7 @@ Validation and blindspot reviews: what each examined, the gaps it left unresolve
 |---|---|---|---|---|---|---|---|
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c0a-7282-a488-cfc335111820\|Inspect the synthetic recovery evidence and unresolved constraints]] | `validation` | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-9bab-74e0-aeda-0e5c729cb2bb\|Chosen option: Retain database-backed queue (do-nothing baseline)]] (reviewed revision 1, now 3) | `supports` | 0 checks considered, 0 assumptions | none identified | no audit named | `stale`: its read set changed |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c97-73f0-b432-6fda2097447a\|Inspect the synthetic recovery evidence and unresolved constraints]] | `validation` | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-9c33-71c0-ad5d-879c9a86094b\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | `supports` | 0 checks considered, 0 assumptions | none identified | no audit named | `stale`: its read set changed |
+
+## Native Base
+
+`Reviews and Blindspots.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

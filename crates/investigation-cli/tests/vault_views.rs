@@ -193,9 +193,18 @@ fn every_case_has_its_views_linked_from_the_overview_and_each_reads_only_its_cas
             let folder = format!("{}/{case_id}/{}/", layout::CASES, layout::VIEWS);
             let views: BTreeSet<String> = golden
                 .keys()
-                .filter(|path| path.starts_with(&folder))
+                .filter(|path| path.starts_with(&folder) && path.ends_with(".md"))
                 .cloned()
                 .collect();
+            // A native Base sits only beside a view note of the same name
+            // (`vault_fixtures` checks that it lists the same rows).
+            for base in golden
+                .keys()
+                .filter(|path| path.starts_with(&folder) && path.ends_with(".base"))
+            {
+                let note = format!("{}.md", base.strip_suffix(".base").unwrap());
+                assert!(views.contains(&note), "{scenario}: {base} has no table");
+            }
             for always in ["Epistemic Frontier", "Timeline"] {
                 let path = layout::case_view(case_id, always).unwrap().to_string();
                 assert!(views.contains(&path), "{scenario}: no {path}");

@@ -74,3 +74,62 @@ Every accepted record revision of this case, in acceptance order. Recorded is wh
 | 50 | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Questions/q_01a20751-bcc1-7333-b6fa-ffedf9386ee8\|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]], question revision 2 | revised: `open` to `answered`; reason: explicit statement that the specification\, article and blog share one origin tha… | none claimed | `2026-11-23T07:32:09.351235313Z` | `agent:scenario-d` |
 
 Showing the latest 50 of 68 revisions. Each record note lists its earlier revisions; every record is listed under Records on [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Overview|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]].
+
+## Latest revision of each record
+
+Each note of this case at its latest revision, with the time this workspace recorded that revision. One row per note, in record ID order.
+
+| Record | Kind | Revision | Recorded |
+|---|---|---|---|
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Overview\|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]] | case | 1 | `2026-11-23T07:32:05.535074759Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Questions/q_01a20751-bcc1-7333-b6fa-ffedf9386ee8\|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]] | question | 2 | `2026-11-23T07:32:09.351235313Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2\|primary-specification.txt / primary-specification.txt]] | source | 3 | `2026-11-23T07:32:07.345483998Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8\|trade-article.txt / trade-article.txt]] | source | 2 | `2026-11-23T07:32:07.203532834Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0\|blog-post.txt / blog-post.txt]] | source | 2 | `2026-11-23T07:32:07.239905664Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5\|first-party-erratum.txt / first-party-erratum.txt]] | source | 2 | `2026-11-23T07:32:07.274878584Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b926-79b2-a4e0-7bfaf67d05e0\|search-coverage-input.json / search-coverage-input.json]] | source | 1 | `2026-11-23T07:32:06.054258784Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-bf8d-7033-a2ba-1c70f423ff76\|Corvin errata register entry E-3.1-004 (not retained) / register:∕∕corvin-errata/E-3.1-004]] | source | 1 | `2026-11-23T07:32:07.693196982Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b71f-7240-9c30-625a405beefe\|text/plain]] | artifact | 1 | `2026-11-23T07:32:05.535074759Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b71f-7240-9c30-62683ce08030\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:32:05.535074759Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b71f-7240-9c30-627035e9a7bd\|application/json]] | artifact | 1 | `2026-11-23T07:32:05.535074759Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b73e-7610-82a1-e674aebe18a9\|text/plain]] | artifact | 1 | `2026-11-23T07:32:05.566055314Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b73e-7610-82a1-e684382b4dfb\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:32:05.566055314Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b73e-7610-82a1-e69bb0874481\|application/json]] | artifact | 1 | `2026-11-23T07:32:05.566055314Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b75b-76b1-af70-74db12d68b54\|text/plain]] | artifact | 1 | `2026-11-23T07:32:05.595500575Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b75b-76b1-af70-74ef5a3a0145\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:32:05.595500575Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b75b-76b1-af70-74f3758f52c4\|application/json]] | artifact | 1 | `2026-11-23T07:32:05.595500575Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b779-7ff2-a13f-13c779a08316\|text/plain]] | artifact | 1 | `2026-11-23T07:32:05.625393961Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b779-7ff2-a13f-13d1bd2db647\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:32:05.625393961Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b779-7ff2-a13f-13eb0374e9be\|application/json]] | artifact | 1 | `2026-11-23T07:32:05.625393961Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b926-79b2-a4e0-7c063f89e625\|application/json]] | artifact | 1 | `2026-11-23T07:32:06.054258784Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b926-79b2-a4e0-7c17d0ec597a\|text/plain; charset=utf-8]] | artifact | 1 | `2026-11-23T07:32:06.054258784Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-b926-79b2-a4e0-7c2b98191bc7\|application/json]] | artifact | 1 | `2026-11-23T07:32:06.054258784Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-bf8d-7033-a2ba-1c85a9f5b3a5\|art_01a20751-bf8d-7033-a2ba-1c85a9f5b3a5]] | artifact | 1 | `2026-11-23T07:32:07.693196982Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Evidence/art_01a20751-bf8d-7033-a2ba-1c94a1c691cd\|application/json]] | artifact | 1 | `2026-11-23T07:32:07.693196982Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b947-7f80-831f-df5b9f8ba215\|row 4 Maximum unacknowledged frame window .......... 64 frames]] | observation | 2 | `2026-11-23T07:32:06.802313381Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b989-7331-acb9-8fe8b60134d2\|the relay accepts a maximum unacknowledged frame window of 64 frames]] | observation | 2 | `2026-11-23T07:32:06.834828127Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b9ce-75f1-9804-b14e819b6b7a\|reports that the relay accepts a maximum unacknowledged frame window of 64 frames]] | observation | 2 | `2026-11-23T07:32:06.869802730Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-ba15-7490-94c7-4ddaf9351a49\|the sender stalled in every run once 56 frames were]] | observation | 3 | `2026-11-23T07:32:08.763961852Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-ba59-75f2-bb4b-d2a9d790948a\|the maximum unacknowledged frame window for Edition 3.1 is 48]] | observation | 2 | `2026-11-23T07:32:06.941265767Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-baa0-7921-9c01-8d70fd152bda\|A sender shall not have more than 64 frames outstanding.]] | observation | 1 | `2026-11-23T07:32:06.432410157Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bae7-7d50-9530-8010ddd8ea33\|Firmware builds numbered 3.1.x implement Edition 3.1.]] | observation | 1 | `2026-11-23T07:32:06.503606182Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bb33-7292-8023-46589a678756\|build 3.1.2]] | observation | 1 | `2026-11-23T07:32:06.579051920Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bb7f-7b50-b4ec-8a2b7665e1fc\|Affected edition: Edition 3.1 (firmware builds numbered 3.1.x).]] | observation | 1 | `2026-11-23T07:32:06.654854577Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bbcb-7c92-a80a-101425656695\|The printed value of 64 frames was carried over from a draft and is]] | observation | 1 | `2026-11-23T07:32:06.731414965Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bf10-7ad3-ac6e-68f79a57763b\|row 5 Idle session timeout ......................... 30 seconds]] | observation | 1 | `2026-11-23T07:32:07.568503313Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c1bf-7422-9e78-c01ae45ae3e7\|Measured 0 hits]] | observation | 1 | `2026-11-23T07:32:08.255222871Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c1f1-7ec1-a535-35fc4275db2b\|Measured 0 hits]] | observation | 1 | `2026-11-23T07:32:08.304534078Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c222-7142-b7fd-70db1fad4461\|Measured 0 hits]] | observation | 1 | `2026-11-23T07:32:08.354324065Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c259-7bf1-92f5-d61a6fa19346\|Measured 0 hits]] | observation | 1 | `2026-11-23T07:32:08.408713854Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-bce2-7201-8259-367fedfcd589\|The window at build 3.1.4 is 64 frames.]] | hypothesis | 1 | `2026-11-23T07:32:07.010725144Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c281-7630-87a9-5d791bfe48ad\|No further erratum changes the Edition 3.1 value.]] | hypothesis | 1 | `2026-11-23T07:32:08.448780620Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Hypotheses/hyp_01a20751-c38c-7c93-838f-689519183676\|The window at build 3.1.4 is 48 frames.]] | hypothesis | 1 | `2026-11-23T07:32:08.715908300Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-bd05-7942-ad90-0e3a23510e0b\|The specification, a trade article and a blog all state 64 frames.]] | assessment | 1 | `2026-11-23T07:32:07.044780762Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-c2aa-7e10-9238-ce60776d9f96\|The other registries returned nothing.]] | assessment | 1 | `2026-11-23T07:32:08.489475392Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-c3ea-7630-aae6-6766168a7950\|Erratum for Edition 3.1 sets 48 frames; the bench test stalled above 48 on one unit of another 3.1 build.]] | assessment | 1 | `2026-11-23T07:32:08.809183345Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c2d3-71f1-a7d0-0243e90b47ac\|No further erratum exists.]] | conclusion | 1 | `2026-11-23T07:32:08.530739663Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Conclusions/concl_01a20751-c413-7553-ba88-ddc5afdb0ca4\|conditional: 48 frames for build 3.1.4 if erratum E-3.1-004 remains in effect and the Edition 3.1 mapping holds, with th]] | conclusion | 3 | `2026-11-23T07:32:09.235521606Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Reviews/rev_01a20751-c51e-7201-b3f6-66ea0a628654\|Re-read every cited passage against its retained source and check which edition the erratum names.]] | review | 1 | `2026-11-23T07:32:09.117250946Z` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Runs/run_01a20751-c00e-7863-8f33-fe8788cb1fea\|Search Corvin errata register for errata and conformance statements]] | run | 1 | `2026-11-23T07:32:07.821705921Z` |
+
+Showing 50 of 54 notes. Every record is listed under Records on [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Overview|What is the maximum unacknowledged frame window of the Corvin relay at firmware build 3.1.4, and do three independent re]].

@@ -38,3 +38,26 @@ Open, blocked and stale uncertainty at this snapshot: every unresolved gap the s
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c1f1-7ec1-a535-35fc4275db2b\|Measured 0 hits]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c222-7142-b7fd-70db1fad4461\|Measured 0 hits]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c259-7bf1-92f5-d61a6fa19346\|Measured 0 hits]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
+
+## Records named by an open gap
+
+The notes the unresolved gaps name, with how many name each (`inv_open_gaps`). One row per note, in record ID order.
+
+| Record | Kind | Open gaps | Effective state |
+|---|---|---|---|
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b947-7f80-831f-df5b9f8ba215\|row 4 Maximum unacknowledged frame window .......... 64 frames]] | observation | 1 | `needs_review` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b989-7331-acb9-8fe8b60134d2\|the relay accepts a maximum unacknowledged frame window of 64 frames]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-b9ce-75f1-9804-b14e819b6b7a\|reports that the relay accepts a maximum unacknowledged frame window of 64 frames]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-ba15-7490-94c7-4ddaf9351a49\|the sender stalled in every run once 56 frames were]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-ba59-75f2-bb4b-d2a9d790948a\|the maximum unacknowledged frame window for Edition 3.1 is 48]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-baa0-7921-9c01-8d70fd152bda\|A sender shall not have more than 64 frames outstanding.]] | observation | 1 | `needs_review` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bae7-7d50-9530-8010ddd8ea33\|Firmware builds numbered 3.1.x implement Edition 3.1.]] | observation | 1 | `needs_review` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bb33-7292-8023-46589a678756\|build 3.1.2]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bb7f-7b50-b4ec-8a2b7665e1fc\|Affected edition: Edition 3.1 (firmware builds numbered 3.1.x).]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bbcb-7c92-a80a-101425656695\|The printed value of 64 frames was carried over from a draft and is]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-bf10-7ad3-ac6e-68f79a57763b\|row 5 Idle session timeout ......................... 30 seconds]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c1bf-7422-9e78-c01ae45ae3e7\|Measured 0 hits]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c1f1-7ec1-a535-35fc4275db2b\|Measured 0 hits]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c222-7142-b7fd-70db1fad4461\|Measured 0 hits]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Observations/obs_01a20751-c259-7bf1-92f5-d61a6fa19346\|Measured 0 hits]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Assessments/assess_01a20751-bd05-7942-ad90-0e3a23510e0b\|The specification, a trade article and a blog all state 64 frames.]] | assessment | 1 | `needs_review` |

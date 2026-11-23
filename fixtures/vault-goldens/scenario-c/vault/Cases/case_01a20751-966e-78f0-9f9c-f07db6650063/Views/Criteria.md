@@ -28,3 +28,7 @@ What each criterion measures, its threshold or preference, its version and which
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-97d6-7c00-b54e-dede5912f38b\|Enqueue latency (small synthetic benchmark)]] | `soft` | `milliseconds`: Enqueue latency \(small synthetic benchmark\) | no threshold; prefers `lower` | revision 1, `active` | no decision names it |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-97f5-7ae0-8844-6a45435ed5e3\|Team implementation effort]] | `soft` | `engineer-weeks`: Team implementation effort | no threshold; prefers `lower` | revision 1, `active` | no decision names it |
 | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Criteria/crit_01a20751-9d9a-7480-8b70-28a8773279a3\|Temporary hard requirement]] | `hard` | no unit: Temporary hard requirement | qualitative: Document incident response ownership; prefers `lower` | revision 2, `retired` | no decision names it |
+
+## Native Base
+
+`Criteria.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

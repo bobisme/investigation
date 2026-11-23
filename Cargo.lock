@@ -600,6 +600,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tracing-subscriber",
+ "yaml_serde",
 ]
 
 [[package]]

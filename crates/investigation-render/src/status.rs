@@ -16,7 +16,8 @@ use investigation_store::Workspace;
 
 use crate::{
     CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, Publisher, Released,
-    RenderError, RenderState, ViewPolicy,
+    RenderError, RenderState, ViewPolicy, bases,
+    compat::Profile,
     lock::{self, Probe},
 };
 
@@ -123,10 +124,15 @@ pub fn vault_status(workspace: &Workspace) -> Result<VaultStatus, RenderError> {
 
 /// The view policy of the working vault: the default audience, with
 /// derivative previews when the workspace's vault policy includes approved
-/// derivatives.
+/// derivatives, and native Bases when its stated `viewer_release` resolves,
+/// in the bundled compatibility profile, to every Base feature. An absent,
+/// unknown or out-of-range release gets plain Markdown only.
 pub fn working_policy(workspace: &Workspace) -> ViewPolicy {
+    let vault = &workspace.config().vault_policy;
+    let resolved = Profile::bundled().resolve(vault.viewer_release.as_deref());
     ViewPolicy::default()
-        .with_derivative_previews(workspace.config().vault_policy.include_approved_derivatives)
+        .with_derivative_previews(vault.include_approved_derivatives)
+        .with_bases(bases::allowed(&resolved))
 }
 
 /// Vault-relative paths of files outside the human-owned areas that the

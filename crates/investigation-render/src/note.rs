@@ -386,6 +386,17 @@ impl<'a> NoteContext<'a> {
             .map(|gaps| gaps.get(&id).map_or(&[][..], Vec::as_slice))
     }
 
+    /// How many distinct unresolved gaps name `id`, or `None` when the gap
+    /// inventory is unavailable: the `inv_open_gaps` property.
+    pub(crate) fn open_gap_count(&self, id: Id) -> Option<usize> {
+        self.open_gaps(id).map(|gaps| {
+            gaps.iter()
+                .map(|gap| gap.gap_id.as_str())
+                .collect::<BTreeSet<_>>()
+                .len()
+        })
+    }
+
     pub const fn case(&self) -> &'a CaseSnapshot {
         self.case
     }
@@ -546,6 +557,7 @@ impl<'a> NoteContext<'a> {
             crate::evidence::properties(self, record, &mut front);
             crate::records::properties(self, record, &mut front);
         }
+        crate::records::listing_properties(self, record, &mut front);
         front
             .integer("inv_revision", header.revision.0)
             // The generation marker (see `crate::marker`): the case head,

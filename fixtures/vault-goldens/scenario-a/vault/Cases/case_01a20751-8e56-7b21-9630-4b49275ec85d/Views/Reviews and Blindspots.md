@@ -23,3 +23,7 @@ Validation and blindspot reviews: what each examined, the gaps it left unresolve
 | Review | Kind | Subject | Verdict | Checks and assumptions reviewed | Unresolved gaps | Audit rule version | Freshness |
 |---|---|---|---|---|---|---|---|
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Reviews/rev_01a20751-93b1-7663-9a6a-e16094fc573e\|Read the retained captures for the control, toggle, and reversal.]] | `validation` | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] (reviewed revision 2, now 3) | `supports` | 0 checks considered, 0 assumptions | none identified | no audit named | `current` |
+
+## Native Base
+
+`Reviews and Blindspots.base` beside this note lists the same rows as the table above, read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

@@ -45,11 +45,22 @@ fn view<'p>(plan: &'p RenderPlan, case: Id, name: &str) -> Option<&'p str> {
         .map(|entry| std::str::from_utf8(entry.content()).unwrap())
 }
 
+/// The body rows of a note's first table.
 fn rows(note: &str) -> Vec<&str> {
     note.lines()
+        .skip_while(|line| !line.starts_with("| "))
+        .take_while(|line| line.starts_with('|'))
         .filter(|line| line.starts_with("| ") && !line.starts_with("| ---"))
         .skip(1)
         .collect()
+}
+
+/// The body rows of the table under `## heading`.
+fn section_rows<'n>(note: &'n str, heading: &str) -> Vec<&'n str> {
+    let start = note
+        .find(&format!("\n## {heading}\n"))
+        .expect("the section exists");
+    rows(&note[start..])
 }
 
 #[test]
@@ -73,6 +84,12 @@ fn a_case_gets_only_the_views_it_has_rows_for_plus_its_frontier_and_timeline() {
     let timeline = view(&plan, case_id, "Timeline").unwrap();
     assert_eq!(rows(timeline).len(), 1, "{timeline}");
     assert!(timeline.contains(" | created | "), "{timeline}");
+    // One note so far: the Overview, at its latest revision.
+    let latest = section_rows(timeline, "Latest revision of each record");
+    assert_eq!(latest.len(), 1, "{timeline}");
+    assert!(latest[0].contains("/Overview\\|") && latest[0].contains(" | case | 1 | "));
+    // No Base is planned under the default policy.
+    assert!(!timeline.contains("## Native Base"));
     let overview = std::str::from_utf8(
         plan.entry(layout::case_overview(case_id).unwrap().as_str())
             .unwrap()
@@ -134,6 +151,13 @@ fn tables_are_bounded_in_record_id_order_with_an_overflow_link() {
     assert_eq!(sequences.last(), Some(&56));
     assert!(
         timeline.contains("\nShowing the latest 50 of 56 revisions."),
+        "{timeline}"
+    );
+    // The note-per-row table is bounded the same way, in record ID order.
+    let latest = section_rows(timeline, "Latest revision of each record");
+    assert_eq!(latest.len(), 50);
+    assert!(
+        timeline.contains("\nShowing 50 of 56 notes. Every record is listed under Records on "),
         "{timeline}"
     );
 }

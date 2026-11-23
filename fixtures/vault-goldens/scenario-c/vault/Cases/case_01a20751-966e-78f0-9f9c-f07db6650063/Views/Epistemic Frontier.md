@@ -39,3 +39,28 @@ Open, blocked and stale uncertainty at this snapshot: every unresolved gap the s
 | `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9b3a-79e0-84f0-7c6e782a1573\|Measured 31 milliseconds]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
 | `review.stale_read_set` | stale after a revision | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c0a-7282-a488-cfc335111820\|Inspect the synthetic recovery evidence and unresolved constraints]] | `current_read_set` unmet | A Review read\-set contains revisions that have since changed in a way its reader must recheck\. | `could_flip_choice` |
 | `review.stale_read_set` | stale after a revision | [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c97-73f0-b432-6fda2097447a\|Inspect the synthetic recovery evidence and unresolved constraints]] | `current_read_set` unmet | A Review read\-set contains revisions that have since changed in a way its reader must recheck\. | `could_flip_choice` |
+
+## Records named by an open gap
+
+The notes the unresolved gaps name, with how many name each (`inv_open_gaps`). One row per note, in record ID order.
+
+| Record | Kind | Open gaps | Effective state |
+|---|---|---|---|
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-98a7-7a22-8ff8-16e883c19266\|Measured 110 seconds]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9a93-7371-85b5-fe18bf0557b3\|Measured 42 milliseconds]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9ae9-71c2-b52e-735dfc9a8d2a\|Measured 35 milliseconds]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Observations/obs_01a20751-9b3a-79e0-84f0-7c6e782a1573\|Measured 31 milliseconds]] | observation | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-98cb-72e2-bc37-6b98c1d353bd\|Retain database-backed queue (do-nothing baseline) against Recovery time after acknowledged enqueue]] | comparison | 2 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-98ec-7f62-a71d-7ae82b0da9e6\|Retain database-backed queue (do-nothing baseline) against No acknowledged job is lost]] | comparison | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9994-74e1-8149-10245d352d6b\|Adopt managed queue against Recovery time after acknowledged enqueue]] | comparison | 2 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-99b4-7bc1-8439-60be2deb3a27\|Adopt managed queue against No acknowledged job is lost]] | comparison | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-99fb-71b3-b975-fc93e62faae1\|Run dedicated broker against Recovery time after acknowledged enqueue]] | comparison | 2 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Comparisons/cmp_01a20751-9a1d-7e40-a2fd-0bac30919bf1\|Run dedicated broker against No acknowledged job is lost]] | comparison | 1 | `current` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-9c33-71c0-ad5d-879c9a86094b\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | decision | 1 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Decisions/dec_01a20751-a224-7070-bc1a-61782ce70dba\|Chosen option: Retain database-backed queue (do-nothing baseline)]] | decision | 1 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c0a-7282-a488-cfc335111820\|Inspect the synthetic recovery evidence and unresolved constraints]] | review | 1 | `needs_review` |
+| [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Reviews/rev_01a20751-9c97-73f0-b432-6fda2097447a\|Inspect the synthetic recovery evidence and unresolved constraints]] | review | 1 | `needs_review` |
+
+## Native Base
+
+`Epistemic Frontier.base` beside this note lists the notes in the table under "Records named by an open gap", read from note properties and filtered by this case's exact ID. It needs a viewer release that the compatibility profile supports; this note does not. Editing a cell in the Base changes that note's properties, which is drift: the edited note is left in place, no longer updated, and the edit is not recorded. Editing the Base file itself is drift too.

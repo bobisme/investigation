@@ -216,6 +216,12 @@ pub fn case_view(case_id: Id, name: &str) -> Result<PlanPath, RenderError> {
     PlanPath::new(format!("{CASES}/{case_id}/{VIEWS}/{name}.md"))
 }
 
+/// `Cases/<case-id>/Views/<name>.base`: the native Base of one view, beside
+/// its static table note. The name is a fixed view name, never data.
+pub fn case_base(case_id: Id, name: &str) -> Result<PlanPath, RenderError> {
+    PlanPath::new(format!("{CASES}/{case_id}/{VIEWS}/{name}.base"))
+}
+
 /// `Cases/<case-id>/<Folder>/<id>.md`, or `None` for kinds without a note.
 pub fn record_note(case_id: Id, id: Id) -> Result<Option<PlanPath>, RenderError> {
     record_kind(id.kind())
