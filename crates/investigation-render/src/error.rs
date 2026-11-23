@@ -10,6 +10,8 @@ pub enum RenderError {
     InvalidPath { path: String, reason: &'static str },
     /// A planner produced the same path twice, or two paths that differ only by case.
     DuplicatePath(String),
+    /// A planned note could not carry its generation marker.
+    Marker { path: String, reason: &'static str },
     /// The canonical snapshot could not be read or verified.
     Snapshot(Failure),
     /// The workspace has no vault; its vault policy is disabled.
@@ -42,6 +44,7 @@ impl RenderError {
             Self::Busy { .. } => Failure::new(ErrorCode::WorkspaceBusy, self.to_string()),
             Self::InvalidPath { .. }
             | Self::DuplicatePath(_)
+            | Self::Marker { .. }
             | Self::UnsupportedManifest { .. } => {
                 Failure::new(ErrorCode::IntegrityFailure, self.to_string())
             }
@@ -65,6 +68,10 @@ impl fmt::Display for RenderError {
             Self::DuplicatePath(path) => {
                 write!(formatter, "Renderer planned the path {path:?} twice.")
             }
+            Self::Marker { path, reason } => write!(
+                formatter,
+                "Renderer planned the note {path:?} without a valid generation marker: {reason}."
+            ),
             Self::Snapshot(failure) => write!(formatter, "{failure}"),
             Self::VaultDisabled => formatter.write_str(
                 "The workspace vault policy is disabled, so there is no vault to render.",

@@ -81,11 +81,12 @@ pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
 pub fn start_here(
     snapshot: &VerifiedSnapshot,
     policy: &ViewPolicy,
-    generation: &Generation,
+    _generation: &Generation,
 ) -> Result<String, RenderError> {
     let mut out = String::new();
     heading(&mut out, "Start Here");
-    let _ = writeln!(out, "- Generation: `{}`", generation.id());
+    // The generation itself is the `inv_generation` marker property, added
+    // by `crate::marker::stamp_plan`.
     let _ = writeln!(out, "- Renderer: `{RENDERER_VERSION}`");
     let _ = writeln!(out, "- View audience: `{}`", policy.audience.as_str());
     out.push_str("\n## Cases\n\n");
@@ -312,7 +313,11 @@ mod tests {
         for entry in plan.entries() {
             let note = std::str::from_utf8(entry.content()).unwrap();
             assert!(note.contains(BANNER), "{}", entry.path());
-            assert!(note.contains(&generation));
+            // A case note names its case head, never the workspace
+            // generation; only Start Here names the generation.
+            let case_note = entry.path().as_str().starts_with("Cases/");
+            assert_eq!(!case_note, note.contains(&generation), "{}", entry.path());
+            assert!(crate::NoteMarker::read(note.as_bytes()).is_some());
             assert!(!note.chars().any(crate::text::is_invisible_format));
             for active in [
                 "<script>",
@@ -370,7 +375,11 @@ mod tests {
                 yaml_serde::Value::Number(1.into())
             );
             assert_eq!(map["inv_schema"], "inv.vault.v1");
-            assert_eq!(map["inv_generation"], generation.as_str());
+            assert!(!map.contains_key("inv_generation"));
+            assert_eq!(
+                map["inv_snapshot"],
+                format!("sha256:{}", "cd".repeat(32)).as_str()
+            );
             assert_eq!(
                 map["tags"][0],
                 format!("investigation/{}", layout::kind_name(projected.kind())).as_str()

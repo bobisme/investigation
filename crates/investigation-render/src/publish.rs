@@ -50,7 +50,7 @@ const DIRECTORY: OFlags = OFlags::DIRECTORY
     .union(OFlags::RDONLY)
     .union(OFlags::NOFOLLOW)
     .union(OFlags::CLOEXEC);
-const TEMP_ATTEMPTS: usize = 8;
+pub(crate) const TEMP_ATTEMPTS: usize = 8;
 
 /// What is at a plan path before publication. Links are never followed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -200,7 +200,7 @@ pub struct Publisher<'lock> {
     vault: OwnedFd,
 }
 
-enum Walk {
+pub(crate) enum Walk {
     Directory(OwnedFd),
     Missing,
     Unsafe,
@@ -466,7 +466,12 @@ impl<'lock> Publisher<'lock> {
 
     /// Open each parent directory without following links, optionally creating
     /// missing ones (mode 0700).
-    fn walk(&self, path: &PlanPath, parents: &[&str], create: bool) -> Result<Walk, RenderError> {
+    pub(crate) fn walk(
+        &self,
+        path: &PlanPath,
+        parents: &[&str],
+        create: bool,
+    ) -> Result<Walk, RenderError> {
         let mut directory = openat(&self.vault, ".", DIRECTORY, Mode::empty())
             .map_err(|error| RenderError::io("vault", error))?;
         for component in parents {
@@ -492,7 +497,11 @@ impl<'lock> Publisher<'lock> {
     }
 }
 
-fn inspect(directory: &OwnedFd, path: &PlanPath, name: &str) -> Result<OnDisk, RenderError> {
+pub(crate) fn inspect(
+    directory: &OwnedFd,
+    path: &PlanPath,
+    name: &str,
+) -> Result<OnDisk, RenderError> {
     let io = |error: Errno| RenderError::io(path.as_str(), error);
     let stat = match statat(directory, name, AtFlags::SYMLINK_NOFOLLOW) {
         Ok(stat) => stat,

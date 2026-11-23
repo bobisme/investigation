@@ -14,11 +14,13 @@ use investigation_core::{
 };
 use investigation_store::journal::hash_bytes;
 
-use crate::{RenderError, VerifiedSnapshot, ViewPolicy, layout, note::NoteContext, templates};
+use crate::{
+    RenderError, VerifiedSnapshot, ViewPolicy, layout, marker, note::NoteContext, templates,
+};
 
 /// Identifies the vault renderer's output format. Bump it whenever the bytes
 /// produced for the same snapshot and policy change.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v1";
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v2";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -318,7 +320,7 @@ impl CaseRenderer for VaultRenderer {
         }
         let content = templates::start_here(snapshot, policy, &generation)?;
         plan.add(Phase::Entry, layout::start_here()?, content, None)?;
-        Ok(plan.finish())
+        marker::stamp_plan(plan.finish(), snapshot)
     }
 }
 
@@ -378,6 +380,7 @@ mod tests {
             ("note.rs", include_str!("note.rs")),
             ("text.rs", include_str!("text.rs")),
             ("yaml.rs", include_str!("yaml.rs")),
+            ("marker.rs", include_str!("marker.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),

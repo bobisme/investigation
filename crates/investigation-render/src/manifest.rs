@@ -20,9 +20,28 @@
 //!
 //! The manifest is written atomically and only after every file operation of
 //! a render, so it never claims a file before that file exists with the
-//! recorded bytes. Render generations (`updating`, `partial`, last complete)
-//! extend [`Manifest::updated`] and [`Manifest::store`]; the manifest stays
-//! the last file a render publishes.
+//! recorded bytes.
+//!
+//! ## Render generations
+//!
+//! The manifest also carries the render state ([`RenderState`]): `complete`,
+//! `updating` or `partial`, beside the last complete generation. A render
+//! writes it twice:
+//!
+//! 1. Before any vault file changes, [`Manifest::begin`] records `updating`
+//!    and, as a write-ahead intent, the hash of every planned file whose
+//!    bytes would change ([`Manifest::pending`]). Owned paths are not touched.
+//! 2. After every file operation, [`Manifest::updated`] records the outcomes:
+//!    `complete` when every entry was processed (the intent is then
+//!    discarded), `partial` otherwise (the intent is kept for the paths not
+//!    reached). This second write is the last file a render publishes.
+//!
+//! A render killed between the two leaves `updating` with its intent. The
+//! intent is what makes the next render complete: a file whose bytes equal a
+//! pending hash was written by the interrupted render, so it is treated as
+//! owned at that hash (replaced or removed like any owned file) even when the
+//! snapshot moved on meanwhile. Pending hashes accumulate across consecutive
+//! unfinished renders and are dropped per path once a render processes it.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -75,13 +94,40 @@ pub struct CompletedGeneration {
     pub heads: Vec<(Id, Snapshot)>,
 }
 
+/// Whether the files on disk are one generation.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum RenderState {
+    /// No render has run, or the last one processed every plan entry.
+    #[default]
+    Complete,
+    /// A render of `generation` started and has not recorded its outcome:
+    /// it is running, or it was killed.
+    Updating { generation: String },
+    /// A render of `generation` stopped on an error before every entry was
+    /// processed. The vault mixes generations.
+    Partial { generation: String, reason: String },
+}
+
+impl RenderState {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Complete => "complete",
+            Self::Updating { .. } => "updating",
+            Self::Partial { .. } => "partial",
+        }
+    }
+}
+
 /// Owned paths with their last generated hashes. Also the [`Ownership`]
 /// every publication of the working vault is checked against.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Manifest {
     workspace_id: Option<Id>,
     generation: Option<CompletedGeneration>,
+    state: RenderState,
     owned: BTreeMap<PlanPath, OwnedPath>,
+    /// Hashes an unfinished render may have written, per path.
+    pending: BTreeMap<PlanPath, BTreeSet<Digest>>,
 }
 
 /// How [`Manifest::load`] found the manifest.
@@ -131,6 +177,78 @@ impl Manifest {
         self.generation.as_ref()
     }
 
+    pub const fn state(&self) -> &RenderState {
+        &self.state
+    }
+
+    /// Paths an unfinished render may have written, with the hashes it
+    /// intended. Empty after a complete render.
+    pub fn pending(&self) -> impl Iterator<Item = (&PlanPath, &BTreeSet<Digest>)> {
+        self.pending.iter()
+    }
+
+    /// Whether `sha256` at `path` is bytes this renderer generated: the last
+    /// hash recorded as owned, or a hash an unfinished render intended.
+    pub fn accepts(&self, path: &PlanPath, sha256: &Digest) -> bool {
+        self.owned
+            .get(path)
+            .is_some_and(|record| &record.sha256 == sha256)
+            || self
+                .pending
+                .get(path)
+                .is_some_and(|hashes| hashes.contains(sha256))
+    }
+
+    /// Every path the manifest knows: owned or pending.
+    pub fn known_paths(&self) -> BTreeSet<PlanPath> {
+        self.owned
+            .keys()
+            .chain(self.pending.keys())
+            .cloned()
+            .collect()
+    }
+
+    /// The record to store before publishing `plan`: state `updating`, and
+    /// the hash of every planned file whose bytes would change added to the
+    /// write-ahead intent. Ownership and the last complete generation are
+    /// unchanged.
+    pub fn begin(&self, plan: &RenderPlan) -> Self {
+        let generation = plan.generation();
+        let mut next = self.clone();
+        next.workspace_id = Some(generation.workspace_id());
+        next.state = RenderState::Updating {
+            generation: generation.id().to_owned(),
+        };
+        next.add_intent(plan, &BTreeSet::new());
+        next
+    }
+
+    fn add_intent(&mut self, plan: &RenderPlan, reached: &BTreeSet<&PlanPath>) {
+        for entry in plan.entries() {
+            let path = entry.path();
+            let owned_here = self
+                .owned
+                .get(path)
+                .is_some_and(|record| &record.sha256 == entry.sha256());
+            if !owned_here && !reached.contains(path) {
+                self.pending
+                    .entry(path.clone())
+                    .or_default()
+                    .insert(entry.sha256().clone());
+            }
+        }
+    }
+
+    /// The same record marked `partial` with `reason`, for a render that
+    /// stopped on an error.
+    pub fn failed(mut self, generation: &Generation, reason: impl Into<String>) -> Self {
+        self.state = RenderState::Partial {
+            generation: generation.id().to_owned(),
+            reason: reason.into(),
+        };
+        self
+    }
+
     /// The manifest after a publication, and the paths it adopted.
     ///
     /// Written files are recorded with their new hash. A file that already
@@ -140,7 +258,10 @@ impl Manifest {
     /// leaves the previous record as it was, so drift stays visible and
     /// nothing becomes owned without proof. `report` may be partial, from a
     /// render that stopped early; only a report covering every plan entry
-    /// moves the last complete generation.
+    /// moves the last complete generation and sets the state `complete`.
+    /// Otherwise the state is `partial` and the write-ahead intent is kept
+    /// for every path the report did not reach. A file found holding bytes
+    /// an unfinished render intended is recovered, not reported as adopted.
     pub fn updated(&self, plan: &RenderPlan, report: &PublishReport) -> (Self, Vec<PlanPath>) {
         let generation = plan.generation();
         let entries: BTreeMap<&PlanPath, &PlanEntry> = plan
@@ -177,22 +298,48 @@ impl Manifest {
                     }
                     None => {
                         owned.insert(path.clone(), record());
-                        adopted.push(path.clone());
+                        if !self
+                            .pending
+                            .get(path)
+                            .is_some_and(|hashes| hashes.contains(entry.sha256()))
+                        {
+                            adopted.push(path.clone());
+                        }
                     }
                 },
                 Action::Removed | Action::Refused(_) => {}
             }
         }
         let complete = planned == plan.entries().len();
-        let manifest = Self {
+        let mut manifest = Self {
             workspace_id: Some(generation.workspace_id()),
             generation: if complete {
                 Some(CompletedGeneration::from(generation))
             } else {
                 self.generation.clone()
             },
+            state: RenderState::Complete,
             owned,
+            pending: BTreeMap::new(),
         };
+        if !complete {
+            let reached: BTreeSet<&PlanPath> = report
+                .outcomes
+                .iter()
+                .map(|outcome| &outcome.path)
+                .collect();
+            manifest.pending = self
+                .pending
+                .iter()
+                .filter(|(path, _)| !reached.contains(path))
+                .map(|(path, hashes)| (path.clone(), hashes.clone()))
+                .collect();
+            manifest.add_intent(plan, &reached);
+            manifest.state = RenderState::Partial {
+                generation: generation.id().to_owned(),
+                reason: "the render stopped before every plan entry was processed".to_owned(),
+            };
+        }
         (manifest, adopted)
     }
 
@@ -207,6 +354,13 @@ impl Manifest {
         if lock.workspace_root() != workspace.root() {
             return Err(RenderError::WrongWorkspace);
         }
+        Self::read(workspace)
+    }
+
+    /// [`Manifest::load`] without the render lock, for status reads. The
+    /// manifest is replaced atomically, so an unlocked read sees one whole
+    /// version.
+    pub(crate) fn read(workspace: &Workspace) -> Result<LoadedManifest, RenderError> {
         let rebuilt = |reason: String| {
             Ok(LoadedManifest {
                 manifest: Self::new(),
@@ -280,9 +434,23 @@ impl Manifest {
 
     /// Canonical JSON: fixed field order, owned paths sorted, trailing newline.
     pub fn to_json(&self) -> Vec<u8> {
+        let (state, target, reason) = match &self.state {
+            RenderState::Complete => (WireState::Complete, None, None),
+            RenderState::Updating { generation } => {
+                (WireState::Updating, Some(generation.clone()), None)
+            }
+            RenderState::Partial { generation, reason } => (
+                WireState::Partial,
+                Some(generation.clone()),
+                Some(reason.clone()),
+            ),
+        };
         let wire = Wire {
             schema_version: MANIFEST_VERSION.to_owned(),
             workspace_id: self.workspace_id,
+            state,
+            target,
+            reason,
             generation: self.generation.as_ref().map(|generation| WireGeneration {
                 id: generation.id.clone(),
                 renderer: generation.renderer.clone(),
@@ -305,6 +473,14 @@ impl Manifest {
                     sha256: record.sha256.clone(),
                     generation: record.generation.clone(),
                     projects: record.projects,
+                })
+                .collect(),
+            pending: self
+                .pending
+                .iter()
+                .map(|(path, hashes)| WirePending {
+                    path: path.as_str().to_owned(),
+                    sha256: hashes.iter().cloned().collect(),
                 })
                 .collect(),
         };
@@ -332,10 +508,8 @@ impl Manifest {
         }
         let wire: Wire = serde_json::from_value(value)
             .map_err(|error| Problem::Invalid(format!("the manifest is malformed: {error}")))?;
-        let mut owned = BTreeMap::new();
-        let mut folded = BTreeSet::new();
-        for record in wire.owned {
-            let path = PlanPath::new(record.path).map_err(|error| {
+        let checked = |path: String| {
+            let path = PlanPath::new(path).map_err(|error| {
                 Problem::Invalid(format!("the manifest lists an invalid path: {error}"))
             })?;
             if layout::is_human_owned(&path) {
@@ -343,6 +517,34 @@ impl Manifest {
                     "the manifest claims the human-owned path {path:?}"
                 )));
             }
+            Ok(path)
+        };
+        let state = match (wire.state, wire.target, wire.reason) {
+            (WireState::Complete, None, None) => RenderState::Complete,
+            (WireState::Updating, Some(generation), None) => RenderState::Updating { generation },
+            (WireState::Partial, Some(generation), Some(reason)) => {
+                RenderState::Partial { generation, reason }
+            }
+            _ => {
+                return Err(Problem::Invalid(
+                    "the manifest's render state is inconsistent".to_owned(),
+                ));
+            }
+        };
+        let mut pending = BTreeMap::new();
+        for record in wire.pending {
+            let path = checked(record.path)?;
+            if record.sha256.is_empty() || pending.contains_key(&path) {
+                return Err(Problem::Invalid(format!(
+                    "the manifest lists a malformed pending path {path:?}"
+                )));
+            }
+            pending.insert(path, record.sha256.into_iter().collect());
+        }
+        let mut owned = BTreeMap::new();
+        let mut folded = BTreeSet::new();
+        for record in wire.owned {
+            let path = checked(record.path)?;
             if !folded.insert(path.as_str().to_lowercase()) {
                 return Err(Problem::Invalid(format!(
                     "the manifest lists {path:?} twice"
@@ -376,7 +578,9 @@ impl Manifest {
                     })
                     .collect(),
             }),
+            state,
             owned,
+            pending,
         })
     }
 }
@@ -386,33 +590,34 @@ impl Ownership for Manifest {
         match on_disk {
             OnDisk::Absent => Decision::Write,
             OnDisk::Regular { sha256 } if sha256 == entry.sha256() => Decision::Keep,
-            OnDisk::Regular { sha256 } => match self.owned.get(entry.path()) {
-                Some(record) if &record.sha256 == sha256 => Decision::Write,
-                Some(_) => Decision::Refuse(Refusal::Drifted),
-                None => Decision::Refuse(Refusal::NotProvenOwned),
-            },
+            OnDisk::Regular { sha256 } if self.accepts(entry.path(), sha256) => Decision::Write,
+            OnDisk::Regular { .. } if self.owned.contains_key(entry.path()) => {
+                Decision::Refuse(Refusal::Drifted)
+            }
+            OnDisk::Regular { .. } => Decision::Refuse(Refusal::NotProvenOwned),
             OnDisk::Other => Decision::Refuse(Refusal::NotARegularFile),
         }
     }
 
     fn retired(&self, plan: &RenderPlan) -> Vec<PlanPath> {
         let planned: BTreeSet<&PlanPath> = plan.entries().iter().map(PlanEntry::path).collect();
-        self.owned
-            .keys()
+        self.known_paths()
+            .into_iter()
             .filter(|path| !planned.contains(path))
-            .cloned()
             .collect()
     }
 
     fn decide_removal(&self, path: &PlanPath, on_disk: &OnDisk) -> Decision {
-        match (self.owned.get(path), on_disk) {
-            (None, _) => Decision::Refuse(Refusal::NotProvenOwned),
-            (Some(_), OnDisk::Absent) => Decision::Keep,
-            (Some(record), OnDisk::Regular { sha256 }) if &record.sha256 == sha256 => {
-                Decision::Remove
-            }
-            (Some(_), OnDisk::Regular { .. }) => Decision::Refuse(Refusal::Drifted),
-            (Some(_), OnDisk::Other) => Decision::Refuse(Refusal::NotARegularFile),
+        let owned = self.owned.contains_key(path);
+        if !owned && !self.pending.contains_key(path) {
+            return Decision::Refuse(Refusal::NotProvenOwned);
+        }
+        match on_disk {
+            OnDisk::Absent => Decision::Keep,
+            OnDisk::Regular { sha256 } if self.accepts(path, sha256) => Decision::Remove,
+            OnDisk::Regular { .. } if owned => Decision::Refuse(Refusal::Drifted),
+            OnDisk::Regular { .. } => Decision::Refuse(Refusal::NotProvenOwned),
+            OnDisk::Other => Decision::Refuse(Refusal::NotARegularFile),
         }
     }
 }
@@ -437,8 +642,33 @@ enum Problem {
 struct Wire {
     schema_version: String,
     workspace_id: Option<Id>,
+    /// Absent in manifests written before render states existed.
+    #[serde(default)]
+    state: WireState,
+    /// The generation being (or last) attempted while not complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    target: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
     generation: Option<WireGeneration>,
     owned: Vec<WireOwned>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pending: Vec<WirePending>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum WireState {
+    #[default]
+    Complete,
+    Updating,
+    Partial,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WirePending {
+    path: String,
+    sha256: Vec<Digest>,
 }
 
 #[derive(Serialize, Deserialize)]

@@ -5,7 +5,7 @@
 //! 1. flat `inv_` frontmatter ([`crate::yaml`]);
 //! 2. an H1 display title, never an identity;
 //! 3. the tool-owned projection banner;
-//! 4. a basis table: ID, kind, case, exact revision, snapshot and generation;
+//! 4. a basis table: ID, kind, case, exact revision and snapshot;
 //! 5. `## Summary`: short claim, applicability, effective state and caveats;
 //! 6. `## Typed links`: what the record relies on and what cites it, each
 //!    with the body field that holds the reference;
@@ -35,7 +35,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    CaseSnapshot, Generation, PlanPath, RenderError, ViewPolicy, layout,
+    CaseSnapshot, Generation, PlanPath, RenderError, ViewPolicy, layout, marker,
     text::{display_text, inline_code, inline_text},
     yaml::Frontmatter,
 };
@@ -284,9 +284,10 @@ impl<'a> NoteContext<'a> {
         }
         front
             .integer("inv_revision", header.revision.0)
-            .integer("inv_render_sequence", head.sequence)
-            .text("inv_snapshot", head.head_hash.as_str())
-            .text("inv_generation", self.generation.id())
+            // The generation marker (see `crate::marker`): the case head,
+            // never the workspace generation, so other cases never churn.
+            .integer(marker::SEQUENCE_KEY, head.sequence)
+            .text(marker::SNAPSHOT_KEY, head.head_hash.as_str())
             .text("inv_schema", VAULT_SCHEMA);
         if visible {
             front.timestamp("inv_updated", &header.recorded_at);
@@ -363,11 +364,6 @@ impl<'a> NoteContext<'a> {
             "| Snapshot | sequence {}, head {} |",
             head.sequence,
             inline_code(head.head_hash.as_str())
-        );
-        let _ = writeln!(
-            out,
-            "| Generation | {} |",
-            inline_code(self.generation.id())
         );
         Ok(())
     }

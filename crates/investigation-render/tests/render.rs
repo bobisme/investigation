@@ -11,9 +11,9 @@ use investigation_core::{
     wire::{CommitResult, Receipt},
 };
 use investigation_render::{
-    Action, Audience, CaseRenderer, Generation, NoManifest, Phase, PlanBuilder, PlanPath,
-    Publisher, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan, VaultRenderer,
-    VerifiedSnapshot, ViewPolicy, render, render_vault,
+    Action, Audience, CaseRenderer, Generation, NoManifest, NoteMarker, Phase, PlanBuilder,
+    PlanPath, Publisher, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan,
+    VaultRenderer, VerifiedSnapshot, ViewPolicy, render, render_vault,
 };
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
@@ -127,12 +127,20 @@ fn same_snapshot_and_policy_yield_a_byte_identical_plan() {
     assert_eq!(first.generation().renderer(), RENDERER_VERSION);
     assert_eq!(first.generation().heads().len(), 1);
 
-    // Every file carries the banner and its generation; authored titles appear
-    // only as escaped display text.
+    // Every file carries the banner and a generation marker: case notes their
+    // case head, Start Here the generation. Authored titles appear only as
+    // escaped display text.
+    let head = first.generation().heads()[0].1.clone();
     for entry in entries {
         let text = std::str::from_utf8(entry.content()).unwrap();
         assert!(text.contains("tool-owned projection"));
-        assert!(text.contains(first.generation().id()));
+        let expected = if entry.path().as_str() == "Start Here.md" {
+            NoteMarker::Generation(first.generation().id().to_owned())
+        } else {
+            assert!(!text.contains(first.generation().id()));
+            NoteMarker::Case(head.clone())
+        };
+        assert_eq!(NoteMarker::read(entry.content()), Some(expected));
     }
     let overview = std::str::from_utf8(first.entry(&overview).unwrap().content()).unwrap();
     assert!(overview.contains("\n# Render fixture\n"));

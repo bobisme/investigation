@@ -75,6 +75,39 @@ impl RenderLock {
     }
 }
 
+/// What [`probe`] found.
+pub(crate) enum Probe {
+    /// No render is running. The guard, when present, holds the lock until
+    /// dropped, so no render can start while the caller reads.
+    Idle { _guard: Option<File> },
+    /// Another render holds the lock.
+    Running,
+}
+
+/// Whether a render is running, without waiting and without creating the
+/// lock file. A free lock is taken and returned, so the caller's reads are
+/// not interleaved with a render that starts meanwhile.
+pub(crate) fn probe(workspace: &Workspace) -> Result<Probe, RenderError> {
+    let local = open_local(workspace.root())?;
+    let fd = match openat(
+        &local,
+        "render.lock",
+        OFlags::RDWR | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    ) {
+        Ok(fd) => fd,
+        // No render has ever run here.
+        Err(Errno::NOENT) => return Ok(Probe::Idle { _guard: None }),
+        Err(error) => return Err(RenderError::io(RENDER_LOCK, error)),
+    };
+    let file = File::from(fd);
+    match file.try_lock() {
+        Ok(()) => Ok(Probe::Idle { _guard: Some(file) }),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(Probe::Running),
+        Err(std::fs::TryLockError::Error(error)) => Err(RenderError::io(RENDER_LOCK, error)),
+    }
+}
+
 /// Open the workspace's `local/` directory, refusing a symbolic link.
 pub(crate) fn open_local(root: &Path) -> Result<OwnedFd, RenderError> {
     let directory = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC;

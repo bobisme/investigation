@@ -42,6 +42,17 @@
 //!   listings. A lost manifest is rebuilt conservatively.
 //! - [`lock`]: [`RenderLock`] serializes renders. It is a separate file from
 //!   the commit lock, so commits continue while a render runs.
+//! - [`marker`]: every Markdown note names the snapshot it reflects in flat
+//!   frontmatter ([`NoteMarker`]): a case note its case head
+//!   (`inv_render_sequence`, `inv_snapshot`), `Start Here.md` the generation
+//!   (`inv_generation`). [`marker::stamp_plan`] adds or verifies them after
+//!   the templates run, so they are the only place a note names its basis
+//!   snapshot, and a commit to one case never changes another case's notes.
+//! - Generations: the manifest carries the render state
+//!   ([`RenderState`]: complete, updating, partial) and a write-ahead intent
+//!   of planned hashes, stored before the first vault write and again, last,
+//!   after the final one. A render killed at any file leaves a state the next
+//!   render completes. [`sweep`] removes the temporaries such a render leaves.
 //!
 //! Seams for later work:
 //!
@@ -51,13 +62,11 @@
 //!   snapshot.
 //! - Safe Markdown rendering: replace [`text`] with context-specific escapers
 //!   behind the same call sites.
-//! - Render generations: [`Manifest::store`] is the last write of a render;
-//!   [`Manifest::updated`] already keeps the last complete generation and
-//!   accepts a partial report. [`Generation`] binds a plan to its snapshot heads,
-//!   renderer version and policy. [`Phase`] gives the publish order (records,
-//!   then views, then the entry note); the observer passed to
-//!   [`Publisher::publish`] sees every step, for progress state and for
-//!   crash-at-each-file tests.
+//! - Vault status (`vault status`): [`vault_status`] reports
+//!   [`VaultState`] (unrendered, complete, updating, partial) and the last
+//!   complete generation from the manifest and the lock alone;
+//!   [`VaultStatus::is_current`] compares it with the generation of today's
+//!   snapshot. [`RenderReport::swept`] lists cleaned leftovers.
 //! - Drift: [`Refusal::Drifted`] marks an owned file whose bytes differ from
 //!   the manifest hash; it is left in place and stays owned at the old hash,
 //!   so it is refused again on every render until reconciled. Drift handling
@@ -77,11 +86,14 @@ pub mod error;
 pub mod layout;
 pub mod lock;
 pub mod manifest;
+pub mod marker;
 pub mod note;
 pub mod plan;
 pub mod policy;
 pub mod publish;
 pub mod snapshot;
+pub mod status;
+pub mod sweep;
 pub mod templates;
 pub mod text;
 pub mod yaml;
@@ -94,8 +106,9 @@ pub use error::RenderError;
 pub use lock::RenderLock;
 pub use manifest::{
     CompletedGeneration, LoadedManifest, MANIFEST_VERSION, Manifest, ManifestStatus, OwnedPath,
-    RENDER_MANIFEST,
+    RENDER_MANIFEST, RenderState,
 };
+pub use marker::NoteMarker;
 pub use plan::{
     CaseRenderer, Generation, Phase, PlanBuilder, PlanEntry, PlanPath, RENDERER_VERSION,
     RenderPlan, VaultRenderer, render,
@@ -106,6 +119,8 @@ pub use publish::{
     Publisher, Refusal,
 };
 pub use snapshot::{CaseSnapshot, VerifiedSnapshot};
+pub use status::{VaultState, VaultStatus, vault_status};
+pub use sweep::{Swept, SweptAction};
 
 /// Default wait for another render to finish before reporting busy.
 pub const RENDER_LOCK_WAIT: Duration = Duration::from_secs(2);
@@ -121,6 +136,8 @@ pub struct RenderReport {
     /// Files outside the human-owned roots that the manifest does not own.
     /// They are preserved and never adopted silently.
     pub unknown: Vec<String>,
+    /// Temporary files a killed render had left, cleaned before publishing.
+    pub swept: Vec<Swept>,
 }
 
 /// Lock, read one verified snapshot, plan it and publish it into `vault/`
@@ -128,10 +145,20 @@ pub struct RenderReport {
 ///
 /// The render lock is taken first, so two renders never interleave and a
 /// later render never publishes an older snapshot over a newer one. The
-/// commit lock is held only inside [`VerifiedSnapshot::read`]. The manifest
-/// is written after every file operation; when a file operation fails, the
-/// outcomes reached so far are still recorded before the error is returned,
-/// so files already written stay owned.
+/// commit lock is held only inside [`VerifiedSnapshot::read`]. Then, in order:
+///
+/// 1. leftovers of a killed render are swept ([`sweep`]);
+/// 2. the manifest is stored as `updating`, with the planned hashes as a
+///    write-ahead intent ([`Manifest::begin`]); no vault file has changed yet;
+/// 3. the plan is published: records, then views, then the entry note, then
+///    retired paths are removed;
+/// 4. the manifest is stored with the outcomes, `complete` or `partial`
+///    ([`Manifest::updated`]). It is the last file the render writes.
+///
+/// When a file operation fails, the outcomes reached so far are still
+/// recorded, with state `partial` and the error as its reason, before the
+/// error is returned. A render killed at any point leaves `updating` (or the
+/// earlier manifest), from which the next render completes.
 pub fn render_vault<F: DurableFs>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
@@ -144,6 +171,15 @@ pub fn render_vault<F: DurableFs>(
     let workspace = store.workspace();
     let loaded = Manifest::load(workspace, &lock)?;
     let publisher = Publisher::open(workspace, &lock)?;
+
+    let mut targets = loaded.manifest.known_paths();
+    targets.extend(plan.entries().iter().map(|entry| entry.path().clone()));
+    let mut swept = sweep::sweep_local(workspace)?;
+    swept.extend(publisher.sweep(&targets, &|path, sha256| {
+        loaded.manifest.accepts(path, sha256)
+    })?);
+
+    loaded.manifest.begin(&plan).store(workspace, &lock)?;
     let mut reached = Vec::new();
     let published = publisher.publish(&plan, &loaded.manifest, &mut |step| {
         reached.push(step.outcome.clone());
@@ -157,9 +193,12 @@ pub fn render_vault<F: DurableFs>(
                 outcomes: reached,
             };
             let (manifest, _) = loaded.manifest.updated(&plan, &partial);
-            // The render error is the one to report; a failed manifest write
-            // only leaves files it would have claimed foreign, never lost.
-            let _ = manifest.store(workspace, &lock);
+            // The render error is the one to report. A failed manifest write
+            // leaves the `updating` record, whose intent still covers every
+            // file this render may have written.
+            let _ = manifest
+                .failed(plan.generation(), error.to_string())
+                .store(workspace, &lock);
             return Err(error);
         }
     };
@@ -171,5 +210,6 @@ pub fn render_vault<F: DurableFs>(
         manifest: loaded.status,
         adopted,
         unknown,
+        swept,
     })
 }
