@@ -94,6 +94,25 @@ pub fn wikilink(path: &PlanPath, display: &str) -> String {
     format!("[[{target}|{label}]]")
 }
 
+/// A wikilink to one block of a planned note, such as an excerpt anchor.
+/// The anchor is generated, never data: letters, digits and dashes only.
+pub fn block_link(path: &PlanPath, anchor: &str, display: &str) -> String {
+    debug_assert!(
+        !anchor.is_empty()
+            && anchor
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-'),
+        "block anchor {anchor:?} is not generated"
+    );
+    let link = wikilink(path, display);
+    let target = link_target(path);
+    link.replacen(
+        &format!("[[{target}|"),
+        &format!("[[{target}#^{anchor}|"),
+        1,
+    )
+}
+
 /// Stable lowercase kind word for `inv_kind` and tags, independent of folder
 /// names and display labels.
 pub const fn kind_name(kind: Kind) -> &'static str {

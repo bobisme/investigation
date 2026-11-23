@@ -61,6 +61,12 @@
 //!   [`templates`] on top of [`note::NoteContext`]; paths stay in [`layout`].
 //!   Bump [`RENDERER_VERSION`] whenever output bytes change for the same
 //!   snapshot.
+//! - Evidence-family notes: [`evidence`] adds Source, Artifact and
+//!   Observation sections (acquisition, source assessment, role, integrity,
+//!   lineage to the original acquisitions, derivation record, quoted evidence
+//!   with explicit limits, evidentiary use). Recorded quotes are the only
+//!   captured text in the vault, as bounded excerpts in a labelled callout;
+//!   retained bytes are never read by the planner.
 //! - Safe Markdown rendering: every new authored or captured string goes
 //!   through the [`text`] function for its context; block excerpts use
 //!   [`text::fenced_block`]. Add hostile cases to
@@ -95,6 +101,7 @@
 
 pub mod drift;
 pub mod error;
+pub mod evidence;
 pub mod layout;
 pub mod lock;
 pub mod manifest;

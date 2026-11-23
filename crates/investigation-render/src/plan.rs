@@ -20,7 +20,7 @@ use crate::{
 
 /// Identifies the vault renderer's output format. Bump it whenever the bytes
 /// produced for the same snapshot and policy change.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v3";
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v4";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -378,6 +378,7 @@ mod tests {
             ("templates.rs", include_str!("templates.rs")),
             ("policy.rs", include_str!("policy.rs")),
             ("note.rs", include_str!("note.rs")),
+            ("evidence.rs", include_str!("evidence.rs")),
             ("text.rs", include_str!("text.rs")),
             ("yaml.rs", include_str!("yaml.rs")),
             ("marker.rs", include_str!("marker.rs")),

@@ -30,11 +30,14 @@ fn case_link(case_id: Id) -> Result<String, RenderError> {
     ))
 }
 
-/// One record's note: the shared skeleton with every fixed section.
+/// One record's note: the shared skeleton with every fixed section, and the
+/// per-type sections between the summary and the typed links.
 pub fn record_note(notes: &NoteContext<'_>, record: &Record) -> Result<String, RenderError> {
     let mut out = String::new();
     notes.open_note(&mut out, record)?;
-    notes.sections(&mut out, record)?;
+    notes.summary_section(&mut out, record)?;
+    crate::evidence::sections(notes, &mut out, record)?;
+    notes.reference_sections(&mut out, record)?;
     Ok(out)
 }
 
@@ -416,15 +419,21 @@ mod tests {
                     .lines()
                     .filter(|line| line.starts_with("## "))
                     .collect();
+                // Per-type sections sit between the summary and the links.
+                assert_eq!(headings.first(), Some(&"## Summary"), "{}", entry.path());
                 assert_eq!(
-                    headings,
+                    headings[headings.len().saturating_sub(3)..],
                     [
-                        "## Summary",
                         "## Typed links",
                         "## Evidence selectors",
                         "## Next action or blocker"
                     ]
                 );
+                let evidence_family = matches!(
+                    projected.kind(),
+                    Kind::Source | Kind::Artifact | Kind::Observation
+                );
+                assert_eq!(evidence_family, headings.len() > 4, "{}", entry.path());
             }
             kinds.insert(record.header.id.kind());
         }
