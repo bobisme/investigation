@@ -1,0 +1,14 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-file-analysis", "version": "0.2.0"},
+  "external_run_id": "analysis-001",
+  "intent": {"label": "extract statements from one document"},
+  "execution": {"state": "completed", "exit_code": 0},
+  "artifacts": [{"role": "original-output", "path": "./report.json", "media_type": "application/json"}],
+  "assertions": [
+    {"kind": "extracted_statement", "name": "s1", "value": "The queue is drained every second."},
+    {"kind": "extracted_statement", "name": "s2", "value": "Retries are capped at four."}
+  ],
+  "controls": [{"name": "line-numbers-checked", "producer_result": "reported_pass"}],
+  "limitations": ["Plain text only; tables were skipped"]
+}

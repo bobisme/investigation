@@ -1,0 +1,9 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-trace-capture", "version": "0.3.0"},
+  "external_run_id": "trace-002",
+  "intent": {"label": "capture one signal"},
+  "execution": {"state": "unknown"},
+  "artifacts": [{"role": "original-output", "path": "./series.csv", "media_type": "text/csv", "expected_sha256": "0000000000000000000000000000000000000000000000000000000000000000"}],
+  "limitations": ["The capture stopped without a final report; the digest the producer expected does not match"]
+}

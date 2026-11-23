@@ -1,0 +1,18 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-simulation", "version": "1.0.0"},
+  "external_run_id": "sim-001",
+  "intent": {"label": "simulate a bounded queue"},
+  "execution": {"state": "completed", "exit_code": 0},
+  "environment": {"model": "bounded-queue"},
+  "artifacts": [
+    {"role": "original-output", "path": "./parameters.json", "media_type": "application/json"},
+    {"role": "original-output", "path": "./snapshots.json", "media_type": "application/json"}
+  ],
+  "assertions": [
+    {"kind": "parameter", "name": "arrival_rate", "value": 2.5, "unit": "items/step"},
+    {"kind": "state_snapshot", "name": "step-3", "value": {"step": 3, "queue": 2}}
+  ],
+  "controls": [{"name": "seed-replayed", "producer_result": "reported_pass"}],
+  "limitations": ["Three steps; steady state not reached"]
+}

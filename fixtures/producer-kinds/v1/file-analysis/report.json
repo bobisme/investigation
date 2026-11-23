@@ -1,0 +1,4 @@
+{"document": "notes.txt", "statements": [
+  {"id": "s1", "text": "The queue is drained every second.", "line": 3},
+  {"id": "s2", "text": "Retries are capped at four.", "line": 9}
+]}

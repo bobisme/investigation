@@ -1,0 +1,16 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-benchmark", "version": "0.1.0"},
+  "external_run_id": "bench-001",
+  "intent": {"label": "time a synthetic operation"},
+  "execution": {"state": "completed", "exit_code": 0},
+  "environment": {"workload": "fixture-small"},
+  "artifacts": [{"role": "original-output", "path": "./samples.json", "media_type": "application/json"}],
+  "assertions": [
+    {"kind": "reported_metric", "name": "latency.p50", "value": 12.4, "unit": "ms"},
+    {"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms"},
+    {"kind": "reported_metric", "name": "throughput", "value": 410, "unit": "ops/s"}
+  ],
+  "controls": [{"name": "warmup-discarded", "producer_result": "reported_pass"}],
+  "limitations": ["Five samples only"]
+}

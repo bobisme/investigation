@@ -1,0 +1,13 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-trace-capture", "version": "0.3.0"},
+  "external_run_id": "trace-001",
+  "intent": {"label": "capture one signal"},
+  "execution": {"state": "completed", "exit_code": 0, "started_at": "2026-01-01T00:00:00Z", "ended_at": "2026-01-01T00:00:01Z", "clock_quality": "synchronized"},
+  "artifacts": [{"role": "original-output", "path": "./series.csv", "media_type": "text/csv"}],
+  "assertions": [
+    {"kind": "time_series", "name": "level", "value": {"samples": 4, "interval": 1}, "unit": "ms"},
+    {"kind": "selected_region", "name": "peak", "value": {"type": "external_selector", "namespace": "example-org.trace", "schema_uri": "urn:example:trace-window", "schema_version": "1", "value": {"from": 2, "to": 2}}}
+  ],
+  "limitations": ["Clock quality is the producer's own claim"]
+}

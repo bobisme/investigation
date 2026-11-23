@@ -1,0 +1,13 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-file-analysis", "version": "0.2.0"},
+  "external_run_id": "analysis-002",
+  "intent": {"label": "extract statements from one document"},
+  "execution": {"state": "completed", "exit_code": 0},
+  "artifacts": [
+    {"role": "original-output", "path": "./report.json", "media_type": "application/json"},
+    {"role": "original-output", "path": "./appendix-report.json", "media_type": "application/json"}
+  ],
+  "assertions": [{"kind": "extracted_statement", "name": "s1", "value": "The queue is drained every second."}],
+  "limitations": ["The appendix report was declared but not produced"]
+}

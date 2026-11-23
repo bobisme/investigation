@@ -1,0 +1,14 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-benchmark", "version": "0.1.0"},
+  "external_run_id": "bench-002",
+  "intent": {"label": "time a synthetic operation"},
+  "execution": {"state": "failed", "exit_code": 1, "error": "worker exited before the last sample"},
+  "environment": {"workload": "fixture-small"},
+  "artifacts": [
+    {"role": "original-output", "path": "./samples.json", "media_type": "application/json"},
+    {"role": "log", "path": "./never-written.log"}
+  ],
+  "assertions": [{"kind": "reported_metric", "name": "latency.p50", "value": 12.4, "unit": "ms"}],
+  "limitations": ["Run aborted; the log was never written"]
+}

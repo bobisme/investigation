@@ -1,0 +1,13 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "kinds-simulation", "version": "1.0.0"},
+  "external_run_id": "sim-002",
+  "intent": {"label": "simulate a bounded queue"},
+  "execution": {"state": "cancelled"},
+  "artifacts": [
+    {"role": "original-output", "path": "./parameters.json", "media_type": "application/json"},
+    {"role": "original-output", "path": "./snapshots-partial.json", "media_type": "application/json"}
+  ],
+  "assertions": [{"kind": "parameter", "name": "arrival_rate", "value": 2.5, "unit": "items/step"}],
+  "limitations": ["Cancelled before the snapshots were written"]
+}
