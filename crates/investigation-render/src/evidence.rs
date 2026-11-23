@@ -38,6 +38,7 @@ use investigation_core::{
     external_ref::{self, RetentionState},
     header::{Knowledge, SourceTime},
     identity::Kind,
+    selector_attest::{SelectorStateBasis, selector_state},
     source_ops::{self, EvidentiaryUse, SourceJudgment, UseState, WithdrawalScope},
     state::Record,
 };
@@ -891,9 +892,13 @@ fn excerpts_section(
         let quote = observation.body["basis"]["text_quote"]["state"]
             .as_str()
             .unwrap_or("unknown");
+        let attested = selector_state(state, observation)
+            .filter(|view| view.basis == SelectorStateBasis::Attested)
+            .map(|view| format!(" (attested {})", inline_code(&wire_word(&view.state))))
+            .unwrap_or_default();
         let _ = writeln!(
             out,
-            "- {}: {} selector, validation {}, quote {}, citing revision {}",
+            "- {}: {} selector, validation {}{attested}, quote {}, citing revision {}",
             crate::layout::block_link(&path, &anchored.anchor, &display),
             inline_code(&wire_word(&anchored.selector.selector)),
             inline_code(&wire_word(&anchored.selector.validation)),
@@ -947,9 +952,10 @@ const fn selector_meaning(validation: SelectorValidation) -> Option<&'static str
         }
         SelectorValidation::Ambiguous => Some("The selector matches more than one span."),
         SelectorValidation::NotFound => Some("The selector matches nothing in the retained bytes."),
-        SelectorValidation::Unavailable => {
-            Some("The bytes were unavailable when the selector was checked.")
-        }
+        SelectorValidation::Unavailable => Some(
+            "The core could not check the selector: the bytes were not retained, or the core has \
+             no reader for this selector type. It is not verified.",
+        ),
     }
 }
 
@@ -1081,6 +1087,30 @@ fn quoted_source(
         );
     }
     out.push('\n');
+    let attested =
+        selector_state(state, record).filter(|view| view.basis == SelectorStateBasis::Attested);
+    if let Some(view) = &attested {
+        let _ = writeln!(
+            out,
+            "- Attested selector state: {}, not checked by the core{}",
+            inline_code(&wire_word(&view.state)),
+            if view.disagreement {
+                "; the attestations disagree and the least favourable is shown"
+            } else {
+                ""
+            }
+        );
+        for attestation in &view.attestations {
+            let _ = writeln!(
+                out,
+                "  - {} by {} with validator {} version {}",
+                inline_code(&wire_word(&attestation.outcome)),
+                inline_code(&attestation.attested_by.to_string()),
+                inline_code(&attestation.validator.name),
+                inline_code(&attestation.validator.version)
+            );
+        }
+    }
     let _ = writeln!(
         out,
         "- Quote state: {}",
@@ -1130,6 +1160,9 @@ fn quoted_source(
     let _ = writeln!(out, "- {}", quote_meaning(text_quote.state));
     if let Some(meaning) = selector_meaning(selector.validation) {
         let _ = writeln!(out, "- {meaning}");
+    }
+    if let Some(view) = &attested {
+        let _ = writeln!(out, "- {}", view.meaning);
     }
     out.push_str(
         "- A quote shows what the cited bytes say. It does not show that the statement is true, \

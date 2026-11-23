@@ -497,6 +497,7 @@ const PROJECTED: &[&str] = &[
     "confidence",
     "coverage",
     "measurement_validity",
+    "selector_validation",
     "observation_validity",
     "measurement_flags",
     "evidentiary_use",

@@ -5,7 +5,7 @@ use investigation_core::{
     command::Reference,
     evidence::{
         ArtifactAvailability, ArtifactBody, ArtifactIntegrity, ObservationBasisRequest,
-        SelectorRequest, SelectorValidation, TextQuoteRequest,
+        SelectorKind, SelectorRequest, SelectorValidation, TextQuoteRequest,
     },
     input,
     observation_ops::ObservationProof,
@@ -271,7 +271,14 @@ impl<F: DurableFs> Store<F> {
             Err(error) => return Err(selection_failure(error)),
         };
         proof.selector_validation = SelectorValidation::Verified;
-        if let (Some(quote), Some(_), Selection::Bytes { start, end }) = (quote, text, selection) {
+        // A quote is checked inside a selection the reader already proved to
+        // be text: a decoded-text derivative, a table cell or a code blob.
+        let textual = text.is_some()
+            || matches!(
+                selector.selector,
+                SelectorKind::TableCell { .. } | SelectorKind::CodeSpan { .. }
+            );
+        if let (Some(quote), true, Selection::Bytes { start, end }) = (quote, textual, selection) {
             let result = selectors::verify_quote(
                 Some(&bytes[start..end]),
                 &quote.exact,
@@ -366,19 +373,29 @@ fn derivative(body: &ArtifactBody) -> Option<TextDerivative> {
 }
 
 fn selection_failure(error: SelectorError) -> Failure {
+    let unavailable = matches!(error, SelectorError::Unavailable(_));
     let (code, message) = match error {
         SelectorError::Unavailable(reason) => (ErrorCode::GateFailed, reason.into()),
         SelectorError::Invalid(reason) => (ErrorCode::InvalidInput, reason),
-        SelectorError::Ambiguous { matches } => (
+        SelectorError::Ambiguous {
+            matches,
+            what,
+            repair,
+        } => (
             ErrorCode::GateFailed,
-            format!("Quote has {matches} exact matches. Add prefix or suffix context."),
+            format!("{what} has {matches} exact matches. {repair}"),
         ),
         SelectorError::TooLarge { size, limit } => (
             ErrorCode::InvalidInput,
             format!("Selection has {size} bytes. Select at most {limit} bytes."),
         ),
     };
-    Failure::new(code, message)
+    let mut failure = Failure::new(code, message)
         .at("/basis/selector")
-        .with_schema("evidence-selector")
+        .with_schema("evidence-selector");
+    if unavailable {
+        // The selector is not refuted: the core cannot check it here.
+        failure.error.actual = Some(json!({"validation": "unavailable"}));
+    }
+    failure
 }

@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use investigation_core::coverage;
+use investigation_core::{coverage, selector_attest};
 
 use super::Facts;
 use crate::{
@@ -45,6 +45,24 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     }
     if coverage::is_plan(f.record) {
         coverage_section(f);
+    }
+    if selector_attest::is_attestation(f.record) {
+        f.heading("Selector validation");
+        f.out.push_str(
+            "- An attributed attestation by a named reader, not a check by the core. The \
+             Observation and the validation the core recorded are unchanged.\n",
+        );
+        f.word("Outcome", "selector_attestation.outcome");
+        f.text("Validator", "selector_attestation.validator.name");
+        f.text(
+            "Validator version",
+            "selector_attestation.validator.version",
+        );
+        f.word(
+            "Recorded by the core",
+            "selector_attestation.recorded_validation",
+        );
+        f.text("Rationale", "selector_attestation.rationale");
     }
     Ok(())
 }

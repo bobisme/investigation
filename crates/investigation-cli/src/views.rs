@@ -435,6 +435,13 @@ pub(crate) fn project_record(
                     .map(|view| json!(view))
                     .unwrap_or_else(|_| json!({"state":"unknown","basis":"unreadable"})),
             );
+            // The displayed selector state: the core's own result, or
+            // attributed attestations labelled as such. Never omitted.
+            if let Some(view) =
+                investigation_core::selector_attest::selector_state(&replay.state, record)
+            {
+                out.insert("selector_validation".into(), json!(view));
+            }
         }
         Kind::Assessment | Kind::Comparison | Kind::Conclusion | Kind::Decision => {
             out.insert(

@@ -1,5 +1,10 @@
 //! Bounded native selection over already-retained bytes. No path is reopened.
-use investigation_core::{evidence::SelectorKind, input};
+use investigation_core::{
+    evidence::{SelectorKind, TABLE_CSV_READER, TABLE_TSV_READER},
+    input,
+};
+
+use crate::delimited::{self, CellQuery, Format};
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,8 +21,17 @@ pub enum Selection {
 pub enum SelectorError {
     Unavailable(&'static str),
     Invalid(String),
-    Ambiguous { matches: usize },
-    TooLarge { size: usize, limit: usize },
+    /// More than one target matches. `what` names it and `repair` says how
+    /// to cite one of them.
+    Ambiguous {
+        matches: usize,
+        what: &'static str,
+        repair: &'static str,
+    },
+    TooLarge {
+        size: usize,
+        limit: usize,
+    },
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QuoteResult {
@@ -70,31 +84,70 @@ pub fn resolve(
             }
             let s = std::str::from_utf8(bytes)
                 .map_err(|_| invalid("text derivative is not valid UTF-8"))?;
-            let a = usize::try_from(*start_line).map_err(|_| invalid("line index too large"))?;
-            let b = usize::try_from(*end_line).map_err(|_| invalid("line index too large"))?;
-            let mut offset = 0;
-            let mut total = 0;
-            let mut start = None;
-            let mut end = None;
-            for line in s.split_inclusive('\n') {
-                total += 1;
-                if total == a {
-                    start = Some(offset);
-                }
-                offset += line.len();
-                if total == b {
-                    end = Some(offset);
-                }
+            Some(line_span(s, *start_line, *end_line)?)
+        }
+        SelectorKind::CodeSpan {
+            blob_digest,
+            start_line,
+            end_line,
+            ..
+        } => {
+            // Only the exact blob can be read: repository, commit and path are
+            // recorded claims the core does not check against any tool.
+            if crate::journal::hash_bytes(bytes) != *blob_digest {
+                return Err(SelectorError::Unavailable(
+                    "The cited artifact is not the blob named by blob_digest, so the code span cannot be checked (external_unverified). Import the blob's exact bytes and cite that artifact, or attach an attributed validation with selector.attest.",
+                ));
             }
-            if a == 0 || a > b || b > total {
-                return Err(invalid(&format!(
-                    "line range must be 1..={total} and inclusive"
-                )));
-            }
-            Some((
-                start.expect("valid line start"),
-                end.expect("valid line end"),
-            ))
+            let s =
+                std::str::from_utf8(bytes).map_err(|_| invalid("code blob is not valid UTF-8"))?;
+            Some(line_span(s, *start_line, *end_line)?)
+        }
+        SelectorKind::TableCell {
+            row_identity,
+            row_index,
+            column,
+            extraction_version,
+            key_column,
+            ..
+        } => {
+            let format = match extraction_version.as_str() {
+                TABLE_CSV_READER => Format::Csv,
+                TABLE_TSV_READER => Format::Tsv,
+                _ => {
+                    return Err(SelectorError::Unavailable(
+                        "extraction_version names no core table reader, so the cell cannot be checked. The core reads inv.table.csv.v1 and inv.table.tsv.v1 tables; another extraction needs an attributed validation with selector.attest.",
+                    ));
+                }
+            };
+            let key = match (row_identity, key_column) {
+                (Some(identity), Some(key)) => Some((key.as_str(), identity.as_str())),
+                (Some(_), None) => {
+                    return Err(SelectorError::Unavailable(
+                        "row_identity cannot be checked without key_column, the header of the column that holds it. Add key_column, or cite the row by row_index.",
+                    ));
+                }
+                (None, _) => None,
+            };
+            Some(delimited::locate(
+                bytes,
+                format,
+                CellQuery {
+                    column,
+                    row_index: *row_index,
+                    key,
+                },
+            )?)
+        }
+        SelectorKind::TimeWindow { .. } => {
+            return Err(SelectorError::Unavailable(
+                "A time_window's meaning is determined by source metadata; the core checks its shape only and cannot resolve it against bytes. Cite a derivative a trusted reader extracted for the window, or attach an attributed validation with selector.attest.",
+            ));
+        }
+        SelectorKind::ExternalSelector { .. } => {
+            return Err(SelectorError::Unavailable(
+                "An external_selector is opaque to the core, which loads and runs no validator. Its validation is unavailable until an attributed validation is attached with selector.attest.",
+            ));
         }
         SelectorKind::TextQuote {
             exact,
@@ -105,7 +158,11 @@ pub fn resolve(
             match verify_quote(Some(bytes), exact, prefix.as_deref(), suffix.as_deref())? {
                 QuoteResult::Verified { start, end } => Some((start, end)),
                 QuoteResult::Ambiguous { matches } => {
-                    return Err(SelectorError::Ambiguous { matches });
+                    return Err(SelectorError::Ambiguous {
+                        matches,
+                        what: "Quote",
+                        repair: "Add prefix or suffix context.",
+                    });
                 }
                 QuoteResult::NotFound => return Err(invalid("quote was not found")),
             }
@@ -133,11 +190,6 @@ pub fn resolve(
             }
             return Ok(Selection::Json(value.clone()));
         }
-        _ => {
-            return Err(SelectorError::Unavailable(
-                "selector parser is not implemented",
-            ));
-        }
     };
     let (start, end) = range.expect("native range");
     let size = end - start;
@@ -151,6 +203,34 @@ pub fn resolve(
 }
 fn invalid(s: &str) -> SelectorError {
     SelectorError::Invalid(s.to_owned())
+}
+/// Byte span of one-based inclusive lines `a..=b`, line ends included.
+fn line_span(s: &str, a: u64, b: u64) -> Result<(usize, usize), SelectorError> {
+    let a = usize::try_from(a).map_err(|_| invalid("line index too large"))?;
+    let b = usize::try_from(b).map_err(|_| invalid("line index too large"))?;
+    let mut offset = 0;
+    let mut total = 0;
+    let mut start = None;
+    let mut end = None;
+    for line in s.split_inclusive('\n') {
+        total += 1;
+        if total == a {
+            start = Some(offset);
+        }
+        offset += line.len();
+        if total == b {
+            end = Some(offset);
+        }
+    }
+    if a == 0 || a > b || b > total {
+        return Err(invalid(&format!(
+            "line range must be 1..={total} and inclusive"
+        )));
+    }
+    Ok((
+        start.expect("valid line start"),
+        end.expect("valid line end"),
+    ))
 }
 fn require_text(bytes: &[u8], meta: Option<&TextDerivative>) -> Result<(), SelectorError> {
     let meta = meta.ok_or(SelectorError::Unavailable("text derivative is unavailable"))?;
@@ -339,6 +419,67 @@ mod tests {
             ));
         }
         assert!(resolve(Some(br#"{"a":1,"a":2}"#), &s("/a"), None, 100).is_err());
+    }
+    #[test]
+    fn remaining_selectors_resolve_natively_or_are_unavailable_never_verified() {
+        let code = b"a\nb\nc\n";
+        let digest = crate::journal::hash_bytes(code);
+        let span = |blob_digest| SelectorKind::CodeSpan {
+            repository: "r".into(),
+            commit: "c".into(),
+            blob_digest,
+            path: "p".into(),
+            start_line: 2,
+            end_line: 3,
+        };
+        assert_eq!(
+            resolve(Some(code), &span(digest), None, 100),
+            Ok(Selection::Bytes { start: 2, end: 6 })
+        );
+        let other = crate::journal::hash_bytes(b"other");
+        assert!(matches!(
+            resolve(Some(code), &span(other), None, 100),
+            Err(SelectorError::Unavailable(_))
+        ));
+        let cell = |extraction_version: &str, key_column: Option<&str>| SelectorKind::TableCell {
+            table: "t".into(),
+            row_identity: Some("x".into()),
+            row_index: None,
+            column: "v".into(),
+            extraction_version: extraction_version.into(),
+            key_column: key_column.map(Into::into),
+        };
+        let table = b"k\tv\nx\t7\n";
+        assert_eq!(
+            resolve(Some(table), &cell(TABLE_TSV_READER, Some("k")), None, 100),
+            Ok(Selection::Bytes { start: 6, end: 7 })
+        );
+        for unavailable in [
+            cell("producer-export-1", Some("k")),
+            cell(TABLE_TSV_READER, None),
+            SelectorKind::TimeWindow {
+                start: serde_json::from_value(serde_json::json!("0")).unwrap(),
+                end: serde_json::from_value(serde_json::json!("1")).unwrap(),
+                unit: "s".into(),
+                coordinate_origin: "start".into(),
+                channel: "c".into(),
+            },
+            SelectorKind::ExternalSelector {
+                namespace: "n.x".into(),
+                schema_uri: "urn:x".into(),
+                schema_version: "1".into(),
+                value: serde_json::json!({"frame": 1}),
+                validator: Some("reader".into()),
+            },
+        ] {
+            assert!(
+                matches!(
+                    resolve(Some(table), &unavailable, None, 100),
+                    Err(SelectorError::Unavailable(_))
+                ),
+                "{unavailable:?}"
+            );
+        }
     }
     #[test]
     fn exact_quote_detects_overlaps_and_context() {

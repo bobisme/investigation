@@ -44,12 +44,21 @@ pub enum SelectorKind {
         pointer: String,
         parser: Option<String>,
     },
+    /// A cell of a named table. `extraction_version` names the reader that
+    /// produced the table; the core resolves only its own declared delimited
+    /// readers, `inv.table.csv.v1` and `inv.table.tsv.v1`, and never guesses a
+    /// delimiter. `row_index` is zero-based over data rows after the header row;
+    /// `row_identity` is the exact value of `key_column` in the selected row.
     TableCell {
         table: String,
         row_identity: Option<String>,
         row_index: Option<u64>,
         column: String,
         extraction_version: String,
+        /// Header of the column that holds `row_identity`. Without it a
+        /// `row_identity` cannot be checked and the selector stays `unavailable`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        key_column: Option<String>,
     },
     TimeWindow {
         start: DecimalString,
@@ -145,8 +154,31 @@ impl SelectorKind {
             } if row_identity.is_none() && row_index.is_none() => {
                 Err(SelectorBlocker::TableRowRequired)
             }
+            Self::TableCell {
+                table,
+                column,
+                extraction_version,
+                key_column,
+                row_identity,
+                ..
+            } if blank(table)
+                || blank(column)
+                || blank(extraction_version)
+                || key_column.as_deref().is_some_and(blank)
+                || row_identity.as_deref().is_some_and(str::is_empty) =>
+            {
+                Err(SelectorBlocker::DescriptorIncomplete)
+            }
             Self::TimeWindow { start, end, .. } if start.numeric_cmp(end) != Ordering::Less => {
                 Err(SelectorBlocker::InvalidTimeWindow)
+            }
+            Self::TimeWindow {
+                unit,
+                coordinate_origin,
+                channel,
+                ..
+            } if blank(unit) || blank(coordinate_origin) || blank(channel) => {
+                Err(SelectorBlocker::DescriptorIncomplete)
             }
             Self::CodeSpan {
                 start_line,
@@ -155,9 +187,56 @@ impl SelectorKind {
             } if *start_line == 0 || start_line > end_line => {
                 Err(SelectorBlocker::InvalidLineRange)
             }
+            Self::CodeSpan {
+                repository,
+                commit,
+                path,
+                ..
+            } if blank(repository) || blank(commit) || blank(path) => {
+                Err(SelectorBlocker::DescriptorIncomplete)
+            }
+            Self::ExternalSelector {
+                namespace,
+                schema_uri,
+                schema_version,
+                validator,
+                ..
+            } if blank(namespace)
+                || blank(schema_uri)
+                || blank(schema_version)
+                || validator.as_deref().is_some_and(blank) =>
+            {
+                Err(SelectorBlocker::DescriptorIncomplete)
+            }
             _ => Ok(()),
         }
     }
+
+    /// The wire name of the selector type, as in `{"type": ...}`.
+    pub const fn type_name(&self) -> &'static str {
+        match self {
+            Self::Whole => "whole",
+            Self::ByteRange { .. } => "byte_range",
+            Self::TextLines { .. } => "text_lines",
+            Self::TextQuote { .. } => "text_quote",
+            Self::JsonPointer { .. } => "json_pointer",
+            Self::TableCell { .. } => "table_cell",
+            Self::TimeWindow { .. } => "time_window",
+            Self::CodeSpan { .. } => "code_span",
+            Self::ExternalSelector { .. } => "external_selector",
+        }
+    }
+}
+
+/// The core's comma-separated table reader: RFC 4180 fields, a header row,
+/// CRLF or LF row ends, every row as wide as the header.
+pub const TABLE_CSV_READER: &str = "inv.table.csv.v1";
+/// The core's tab-separated table reader: IANA `text/tab-separated-values`
+/// fields with no quoting, a header row, every row as wide as the header.
+pub const TABLE_TSV_READER: &str = "inv.table.tsv.v1";
+
+fn blank(text: &str) -> bool {
+    text.trim().is_empty()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -168,6 +247,7 @@ pub enum SelectorBlocker {
     InvalidJsonPointer,
     TableRowRequired,
     InvalidTimeWindow,
+    DescriptorIncomplete,
 }
 
 impl SelectorBlocker {
@@ -179,6 +259,7 @@ impl SelectorBlocker {
             Self::InvalidJsonPointer => "SELECTOR_JSON_POINTER_INVALID",
             Self::TableRowRequired => "SELECTOR_TABLE_ROW_REQUIRED",
             Self::InvalidTimeWindow => "SELECTOR_TIME_WINDOW_INVALID",
+            Self::DescriptorIncomplete => "SELECTOR_DESCRIPTOR_INCOMPLETE",
         }
     }
 }

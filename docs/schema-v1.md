@@ -67,6 +67,28 @@ To reverify, supply the bytes in a manifest with `case_id`, one path or stdin co
 - On a match, copied bytes become `retained` and `verified`; in reference mode the Artifact stays `external` and becomes `verified`. Dependents stay current. The item reports `reverified`.
 - On a mismatch, integrity becomes `mismatch`. The recorded digest and size do not change, and the supplied bytes are not retained. The item reports `reverification_failed`, the receipt carries a warning, and records that cite the Artifact become `needs_review` with trigger `external_mismatch`. To keep the changed bytes, ingest them as a separate acquisition.
 
+## Evidence selectors
+
+Every selector is stored with the `validation` the core computed when the Observation was accepted. The core reads retained bytes only, with its own bounded readers, and never loads or runs a reader named in a selector or a manifest. A selector the core cannot check is stored `unavailable`, never `verified`.
+
+- `table_cell` is checked when `extraction_version` names a core reader: `inv.table.csv.v1` (RFC 4180 fields, `"` quoting with `""` escapes) or `inv.table.tsv.v1` (tab separated, no quoting). The delimiter comes from that declaration and is never guessed. The first row is the header. Every row must be as wide as the header, CRLF or LF ends a row, and at most 4096 columns are read. `column` and the optional `key_column` must each equal exactly one header cell, and `row_identity` the `key_column` value of exactly one data row. Comparison is byte for byte, with no trimming or case folding. `row_index` is zero-based over the data rows after the header. When both are given they must name the same row. The selection is the cell's bytes inside any enclosing quotes, with escapes kept. Another `extraction_version`, or a `row_identity` without `key_column`, is `unavailable`. A missing column or row is refused at `/basis/selector`, and a repeated header or identity is `ambiguous`.
+- `code_span` is checked when the cited Artifact is the blob itself: its SHA-256 equals `blob_digest`, the digest of the file's exact bytes (not a version-control object ID). The bytes must be UTF-8. Lines are one-based and inclusive, as for `text_lines`. `repository`, `commit` and `path` are recorded claims and are not checked. A span whose blob is not retained is `unavailable` (external, unverified).
+- `time_window` gets structural checks only: `start` is below `end`, and `unit`, `coordinate_origin` and `channel` are not blank. Its meaning comes from source metadata, so it is always `unavailable`.
+- `external_selector` is opaque. `namespace`, `schema_uri`, `schema_version` and any `validator` must not be blank. It is always `unavailable`. The `validator` it declares is a claim, not a check.
+
+The refusal of blank descriptor fields applies to new writes only. Journal replay, `check`, `repair index`, reads and identical retries never re-validate an accepted selector, so a selector accepted before the refusal existed stays readable as recorded.
+
+A text Observation on a `table_cell` or `code_span` that the core checked also gets its quote checked inside the selection. `evidence read` with a selector the core cannot check fails with `GATE_FAILED`, `actual.validation: unavailable` and a repair. It shows no excerpt.
+
+`selector.attest` records an attributed check by a named reader: the exact current `observation_ref`, the exact selector request the Observation records, an `outcome` (`verified`, `ambiguous` or `not_found`), the `validator` name and version, an optional `extraction_ref` (a derivative of the cited Artifact) and a rationale. Each attestation is a new Annotation with role `selector_validation`. The Observation is not revised, and its recorded validation does not change. Only a selector recorded `unavailable` or `unverified` can be attested. The core's own result always stands. `show` and `explain` give each source-backed Observation a `selector_validation` with the displayed `state`, `recorded` (what the core computed), `basis` (`core` or `attested`), the current attestations (the latest per actor and validator name), `attestations_kept` and `disagreement`. When attestations disagree, the least favourable outcome is shown. Vault notes label an attested state "not checked by the core". Attestation never satisfies direct support: promotion gates still require the core's verification of retained bytes.
+
+Interchange mapping, for the W3C Web Annotation export (internal identity stays digest-bound):
+
+- `table_cell` maps to an RFC 7111 `FragmentSelector`. RFC 7111 counts from one and counts the header line as row 1, so `row = row_index + 2` and `col` is the one-based position of the `column` header. `row_identity` and `key_column` have no RFC 7111 form: resolve them to the row first, or keep them as an extension.
+- `time_window` maps to a Media Fragments `FragmentSelector` (`t=start,end`) only when `unit` is seconds and `coordinate_origin` is the media start. `channel` and other units stay an extension.
+- `code_span` maps to an RFC 5147 `FragmentSelector` (`line=start_line-1,end_line`), applied to the blob identified by `blob_digest`. `repository`, `commit` and `path` go on the source as a claim.
+- `external_selector` has no W3C equivalent. Export it as an extension selector that carries `namespace`, `schema_uri`, `schema_version` and `value` unchanged.
+
 ## Informative absence and practical equivalence
 
 An Assessment or Comparison may carry an optional `absence` block when it treats "nothing was seen" as evidence. Every field is optional, so the absence itself is always recordable. The gate (rule version `absence-gate.v1`) needs all three of these:

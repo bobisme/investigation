@@ -1105,12 +1105,20 @@
         },
         {
           "additionalProperties": false,
+          "description": "A cell of a named table. `extraction_version` names the reader that\nproduced the table; the core resolves only its own declared delimited\nreaders, `inv.table.csv.v1` and `inv.table.tsv.v1`, and never guesses a\ndelimiter. `row_index` is zero-based over data rows after the header row;\n`row_identity` is the exact value of `key_column` in the selected row.",
           "properties": {
             "column": {
               "type": "string"
             },
             "extraction_version": {
               "type": "string"
+            },
+            "key_column": {
+              "description": "Header of the column that holds `row_identity`. Without it a\n`row_identity` cannot be checked and the selector stays `unavailable`.",
+              "type": [
+                "string",
+                "null"
+              ]
             },
             "row_identity": {
               "type": [

@@ -60,6 +60,7 @@ pub mod review_ops;
 pub mod review_packet;
 pub mod search_coverage;
 pub mod search_text;
+pub mod selector_attest;
 pub mod source_ops;
 pub mod stall;
 pub mod state;

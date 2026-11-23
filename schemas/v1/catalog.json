@@ -64,6 +64,7 @@
     "run.reconcile": "operations/run.reconcile.schema.json",
     "run.record": "operations/run.record.schema.json",
     "run.start": "operations/run.start.schema.json",
+    "selector.attest": "operations/selector.attest.schema.json",
     "source.assess": "operations/source.assess.schema.json",
     "source.withdraw": "operations/source.withdraw.schema.json"
   },
@@ -159,6 +160,7 @@
         "observation.add",
         "observation.correct",
         "observation.retract",
+        "selector.attest",
         "source.withdraw"
       ],
       "stage": "observe"
