@@ -91,6 +91,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("vault render", Effect::Write),
     ("vault status", Effect::Read),
     ("vault conflicts", Effect::Read),
+    // Creates one new file under the vault's human-owned Boards/; never
+    // replaces a file and records nothing.
+    ("vault copy-map", Effect::Write),
     // Writes files into a new directory, inside exports/ or outside the
     // workspace; never changes canonical state.
     ("export", Effect::Write),

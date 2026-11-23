@@ -37,6 +37,7 @@ mod shortcuts;
 mod snapshot;
 mod synopsis;
 mod vault;
+mod vault_copy_map;
 mod vault_reconcile;
 mod view_text;
 mod views;

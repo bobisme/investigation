@@ -67,7 +67,8 @@ use crate::{
 /// case gains `Map.canvas` with `Map Legend.md` and `Map Left Out.md`, and
 /// its Overview a `## Map` section (W12.03). The policy fingerprint names
 /// the stated viewer release (`;viewer=<release>`) instead of `;bases`.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v22";
+/// v23: the Map Legend's copy hint names `vault copy-map` (W12.04).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v23";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

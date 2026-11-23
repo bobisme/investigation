@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_8961c7fe0f8fadcb246fc1591c5226b51716ebd2f84d761b33185848428bf8b8"
+inv_generation: "gen_5dbbdc81a949d585f99988de69d739b63ec6f5c994bcf2a52a4f34515b9c100d"
 ---
 # Start Here
 
@@ -9,12 +9,12 @@ inv_generation: "gen_8961c7fe0f8fadcb246fc1591c5226b51716ebd2f84d761b33185848428
 
 This vault is a read-only view of the Investigation workspace that contains it. The workspace journal is the record; every note here is projected from one verified snapshot of it, and nothing written in the vault changes it. The notes are plain Markdown with wikilinks, and nothing here needs a community plugin.
 
-- Renderer: `inv.vault-renderer.v22`
+- Renderer: `inv.vault-renderer.v23`
 - View audience: `internal`
 
 ## Projection health
 
-- Generation: `gen_8961c7fe0f8fadcb246fc1591c5226b51716ebd2f84d761b33185848428bf8b8` (the `inv_generation` property of this note)
+- Generation: `gen_5dbbdc81a949d585f99988de69d739b63ec6f5c994bcf2a52a4f34515b9c100d` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
 - Each case note names the case head its exact content was rendered at, in `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose content changed, so a note that later commits left unchanged keeps an older sequence than its case's below. While a render runs, notes can briefly mix generations; once it completes, every note is one that render confirmed.

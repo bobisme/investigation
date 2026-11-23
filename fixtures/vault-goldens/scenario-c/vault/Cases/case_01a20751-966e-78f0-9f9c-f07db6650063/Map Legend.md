@@ -45,4 +45,4 @@ At most 8 records per column and 96 arrows. In each column, records linked to a 
 
 ## Your own copy
 
-The map is regenerated on every render; editing it is drift. To keep an editable copy, duplicate it into `Boards/`. Rendering never writes there, and nothing drawn on a board is recorded.
+The map is regenerated on every render; editing it is drift. To keep an editable copy, run `investigation vault copy-map --to Boards/<name>.canvas`. Rendering never writes in `Boards/`, and nothing drawn on a board is recorded.

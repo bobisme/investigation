@@ -45,7 +45,8 @@ Examples:
   investigation vault render --format json
   investigation vault status --format json
   investigation vault conflicts --format json
-  investigation vault reconcile PATH --disposition preserve-as-note --dry-run --format json";
+  investigation vault reconcile PATH --disposition preserve-as-note --dry-run --format json
+  investigation vault copy-map --to Boards/my-map.canvas --format json";
 
 #[derive(clap::Subcommand)]
 pub(crate) enum VaultCommand {
@@ -63,6 +64,9 @@ pub(crate) enum VaultCommand {
     /// Resolve listed drifted files: preserve-as-note, propose-change, discard or release-path.
     #[command(after_help = crate::vault_reconcile::AFTER_HELP)]
     Reconcile(crate::vault_reconcile::ReconcileArgs),
+    /// Copy a case's generated map into Boards/ as a canvas you own; never replaces a file.
+    #[command(after_help = crate::vault_copy_map::AFTER_HELP)]
+    CopyMap(crate::vault_copy_map::CopyMapArgs),
 }
 
 pub(crate) fn run(
@@ -70,12 +74,16 @@ pub(crate) fn run(
     global: &Global,
     command: VaultCommand,
 ) -> Result<Output, Failure> {
+    if let VaultCommand::CopyMap(args) = &command {
+        return crate::vault_copy_map::run(store, global, args);
+    }
     let scope = Scope::select(store, global)?;
     match command {
         VaultCommand::Render => render(store, &scope),
         VaultCommand::Status => status(store, &scope),
         VaultCommand::Conflicts => conflicts(store.workspace(), &scope),
         VaultCommand::Reconcile(args) => crate::vault_reconcile::run(store, global, args),
+        VaultCommand::CopyMap(_) => unreachable!("handled before the scope is selected"),
     }
 }
 
@@ -116,7 +124,7 @@ impl Scope {
 
 /// A failed render: what stopped it, that the journal is unchanged, and the
 /// command to run next.
-fn render_failure(workspace: &Workspace, error: &RenderError) -> Failure {
+pub(crate) fn render_failure(workspace: &Workspace, error: &RenderError) -> Failure {
     let mut failure = error.to_failure();
     match error {
         RenderError::Busy { .. } => failure.with_argv(argv(workspace, &["vault", "render"])),

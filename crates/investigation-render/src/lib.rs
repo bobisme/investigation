@@ -195,6 +195,7 @@
 pub mod attachments;
 pub mod bases;
 pub mod compat;
+pub mod copy_map;
 pub mod drift;
 pub(crate) mod entry;
 pub mod error;

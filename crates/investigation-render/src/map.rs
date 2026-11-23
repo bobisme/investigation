@@ -904,8 +904,8 @@ fn legend(
     );
     out.push_str(
         "\n## Your own copy\n\nThe map is regenerated on every render; editing it is drift. To \
-         keep an editable copy, duplicate it into `Boards/`. Rendering never writes there, and \
-         nothing drawn on a board is recorded.\n",
+         keep an editable copy, run `investigation vault copy-map --to Boards/<name>.canvas`. \
+         Rendering never writes in `Boards/`, and nothing drawn on a board is recorded.\n",
     );
     Ok(out)
 }
