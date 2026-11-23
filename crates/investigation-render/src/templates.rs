@@ -38,6 +38,7 @@ pub fn record_note(notes: &NoteContext<'_>, record: &Record) -> Result<String, R
 pub(crate) fn case_overview(
     notes: &NoteContext<'_>,
     views: &[crate::records::views::ViewNote],
+    map: Option<&crate::map::CaseMap>,
 ) -> Result<String, RenderError> {
     let case = notes.case();
     let case_id = case.case_id();
@@ -65,6 +66,9 @@ pub(crate) fn case_overview(
                 if view.rows == 1 { "row" } else { "rows" }
             );
         }
+    }
+    if let Some(map) = map {
+        out.push_str(&map.overview_section());
     }
     out.push_str("\n## Records\n");
     let mut any = false;

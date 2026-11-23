@@ -25,7 +25,8 @@ use investigation_core::{
     wire::{CommitResult, Receipt},
 };
 use investigation_render::{
-    Audience, RenderPlan, VaultRenderer, VerifiedSnapshot, ViewPolicy, layout, render, render_vault,
+    Audience, RenderPlan, VaultRenderer, VerifiedSnapshot, ViewPolicy, compat::Profile, layout,
+    render, render_vault,
 };
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
@@ -472,13 +473,15 @@ fn fixture() -> Fixture {
     }
 }
 
-/// The plan for `audience`, with native Bases planned so that their bytes
-/// are scanned too.
+/// The plan for `audience` with a supported viewer release, so native
+/// Bases, the case map and its notes are planned and their bytes scanned
+/// with everything else.
 fn plan(fixture: &mut Fixture, audience: Audience) -> RenderPlan {
     let snapshot = VerifiedSnapshot::read(&mut fixture.store).unwrap();
+    let viewer = Profile::bundled().resolve(Some(&Profile::bundled().pinned_release.version));
     let plan = render(
         &snapshot,
-        &ViewPolicy::for_audience(audience).with_bases(true),
+        &ViewPolicy::for_audience(audience).with_viewer(viewer),
     )
     .unwrap();
     assert!(
@@ -488,6 +491,20 @@ fn plan(fixture: &mut Fixture, audience: Audience) -> RenderPlan {
     );
     plan
 }
+
+/// Relation words that come from a record's content.
+const CONTENT_LABELS: &[&str] = &[
+    "supports",
+    "contradicts",
+    "non-diagnostic for",
+    "inconclusive for",
+    "assesses",
+    "judged against: meets",
+    "judged against: fails",
+    "judged against: partially meets",
+    "judged against: unknown",
+    "judged against: not applicable",
+];
 
 fn text(plan: &RenderPlan, path: &str) -> String {
     String::from_utf8(plan.entry(path).unwrap().content().to_vec()).unwrap()
@@ -562,6 +579,27 @@ fn no_vault_byte_carries_text_above_the_audience() {
                 assert!(note.contains(&format!("\n# {id}\n")), "{note}");
             }
         }
+        // The case map is planned and scanned above. Its edges from a
+        // withheld record never carry a relation word taken from content.
+        let map = text(&plan, layout::case_map(fixture.case).unwrap().as_str());
+        let map: Value = serde_json::from_str(&map).unwrap();
+        let mut edges = 0;
+        for edge in map["edges"].as_array().unwrap() {
+            edges += 1;
+            let from: Id = edge["fromNode"].as_str().unwrap().parse().unwrap();
+            let label = edge["label"].as_str().unwrap();
+            if withheld && fixture.restricted.iter().any(|&(_, id)| id == from) {
+                assert!(!CONTENT_LABELS.contains(&label), "{audience:?}: {edge}");
+            }
+        }
+        // Not vacuous where the audience may see the case's own records; a
+        // public audience sees internal records as placeholders whose
+        // lineage is withheld, so no edge is drawn from them.
+        assert_eq!(
+            edges > 0,
+            audience != Audience::Public,
+            "{audience:?}: {edges} edges"
+        );
         let overview = text(
             &plan,
             layout::case_overview(fixture.secret_case).unwrap().as_str(),

@@ -82,7 +82,8 @@ pub struct VaultPolicy {
     pub preserve_human_folders: bool,
     /// The viewer release the vault is read with, as the person states it
     /// (for example `"1.15.1"`). The renderer resolves it against its
-    /// compatibility profile to choose optional files such as native Bases.
+    /// compatibility profile to choose optional files: native Bases and the
+    /// case map.
     /// Absent, unparseable or unsupported means plain Markdown only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub viewer_release: Option<String>,

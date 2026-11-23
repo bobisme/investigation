@@ -139,6 +139,10 @@ Plain Markdown tables over this case at this snapshot, readable in any text view
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Epistemic Frontier|Epistemic Frontier]]: 9 rows
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Timeline|Timeline]]: 51 rows
 
+## Map
+
+[[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Map.canvas|Case map]] is a bounded picture of this case with an explanation focus: 16 records and 15 labelled arrows. Its [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Map Legend|legend]] explains every label and [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Map Left Out|Map Left Out]] says what it leaves out. The notes and tables are the record; the map only arranges links to them.
+
 ## Records
 
 ### Questions

@@ -72,8 +72,15 @@ fn publish(store: &mut Store, policy: &ViewPolicy) -> RenderReport {
     .unwrap()
 }
 
+/// A policy that allows the Base features and nothing else, so these tests
+/// see Bases alone (the case map has its own tests).
 fn on() -> ViewPolicy {
-    ViewPolicy::default().with_bases(true)
+    let profile = investigation_render::compat::Profile::bundled();
+    let mut viewer = profile.resolve(Some(&profile.pinned_release.version));
+    viewer
+        .optional
+        .retain(|feature| investigation_render::bases::FEATURES.contains(&feature.as_str()));
+    ViewPolicy::default().with_viewer(viewer)
 }
 
 #[test]
@@ -132,7 +139,8 @@ fn the_working_policy_plans_bases_only_for_a_supported_stated_release() {
             None => original.clone(),
         };
         fs::write(&config, text).unwrap();
-        working_policy(&Workspace::open(&root).unwrap()).bases
+        working_policy(&Workspace::open(&root).unwrap())
+            .allows_all(investigation_render::bases::FEATURES)
     };
     assert!(!stated(None));
     for supported in ["1.12.7", "1.15.1", "v1.14"] {

@@ -94,8 +94,9 @@ pub struct Profile {
     pub features: Vec<Feature>,
 }
 
-/// What the renderer may use for one installed release.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What the renderer may use for one installed release. The default is the
+/// baseline: no release, no optional feature.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Resolved {
     /// `None` when the release is absent, unparseable or outside the range.
     pub release: Option<String>,
@@ -308,6 +309,9 @@ fn detect_canvas(text: &str, found: &mut BTreeSet<String>) {
             Some("file") => "canvas.file_nodes".into(),
             _ => "canvas.other_nodes".into(),
         });
+        if node.get("color").is_some() {
+            found.insert("canvas.colors".into());
+        }
     }
     for edge in canvas
         .get("edges")
@@ -317,6 +321,9 @@ fn detect_canvas(text: &str, found: &mut BTreeSet<String>) {
     {
         if edge.get("label").is_some() {
             found.insert("canvas.labeled_edges".into());
+        }
+        if edge.get("color").is_some() {
+            found.insert("canvas.colors".into());
         }
     }
 }
@@ -420,7 +427,7 @@ mod tests {
     fn detection_reads_markdown_base_and_canvas_bytes() {
         let note = "---\ninv_kind: \"case\"\naliases:\n  - \"x\"\n---\n# T\n\nSee [[a]].\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nline ^b-1\n\n```inv-excerpt\n[[not a link]]\n```\n";
         let base = "filters:\n  and:\n    - 'inv_kind == \"x\"'\nproperties:\n  inv_status:\n    displayName: \"S\"\nviews:\n  - type: table\n    name: V\n    sort:\n      - property: x\n    order:\n      - file.name\n";
-        let canvas = r#"{"nodes":[{"type":"file","id":"a","file":"a.md"},{"type":"text","id":"b"}],"edges":[{"id":"e","label":"supports"}]}"#;
+        let canvas = r#"{"nodes":[{"type":"file","id":"a","file":"a.md"},{"type":"text","id":"b"}],"edges":[{"id":"e","label":"supports","color":"4"}]}"#;
         let found = detect([
             ("a.md", note.as_bytes()),
             ("v.base", base.as_bytes()),
@@ -443,11 +450,15 @@ mod tests {
             "canvas.file_nodes",
             "canvas.other_nodes",
             "canvas.labeled_edges",
+            "canvas.colors",
         ] {
             assert!(found.contains(id), "{id} in {found:?}");
         }
         assert!(!found.contains("md.embeds") && !found.contains("md.tags"));
         let unlisted = Profile::bundled().unlisted(&found);
-        assert_eq!(unlisted, ["base.row_sort_key", "canvas.other_nodes"]);
+        assert_eq!(
+            unlisted,
+            ["base.row_sort_key", "canvas.colors", "canvas.other_nodes"]
+        );
     }
 }

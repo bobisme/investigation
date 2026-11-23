@@ -39,7 +39,7 @@ use investigation_core::{
 use investigation_render::{
     RENDERER_VERSION, RenderPlan, bases,
     compat::{Profile, Tier, detect},
-    layout,
+    layout, map,
     text::EXCERPT_LANGUAGE,
 };
 use investigation_store::Store;
@@ -475,6 +475,11 @@ fn scenario_vaults_need_no_community_plugin() {
     let mut spans = 0;
     for scenario in SCENARIOS {
         for (path, bytes) in fixtures::golden(scenario) {
+            // A case map is a core Canvas file (W12.03): checked against
+            // JSON Canvas and the compatibility profile in `vault_map`.
+            if path.ends_with(&format!("/{}", layout::MAP)) {
+                continue;
+            }
             notes += 1;
             // Native Bases are a core viewer feature, not a plugin's, and
             // optional: `scenario_vaults_use_only_features_the_compatibility_profile_lists`
@@ -543,11 +548,12 @@ fn scenario_vaults_need_no_community_plugin() {
     assert!(notes > 100 && spans > 1000, "{notes} notes, {spans} spans");
 }
 
-/// W12.02 and W12.01: every viewer feature the rendered vaults use is listed
-/// in the compatibility profile as emitted, and each vault needs only what
-/// its workspace's stated viewer release resolves to. Scenario D states no
-/// release and gets the plain-Markdown baseline; Scenarios A and C state a
-/// supported one and also get native Bases.
+/// W12.02, W12.01 and W12.03: every viewer feature the rendered vaults use is
+/// listed in the compatibility profile as emitted, and each vault needs only
+/// what its workspace's stated viewer release resolves to. Scenario D states
+/// no release and gets the plain-Markdown baseline; Scenarios A and C state a
+/// supported one and also get native Bases and case maps, which no
+/// unsupported or absent release unlocks.
 #[test]
 fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
     let profile = Profile::bundled();
@@ -574,15 +580,25 @@ fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
             .iter()
             .filter(|id| profile.feature(id).unwrap().tier != Tier::Baseline)
             .collect();
-        // Without a stated release the vault is the baseline, whatever the viewer.
-        assert_eq!(optional.is_empty(), release.is_none(), "{scenario}");
-        if release.is_none() {
-            for installed in [None, Some("0.0.1"), Some("garbage")] {
-                assert!(
-                    profile
-                        .gated(&found, &profile.resolve(installed))
-                        .is_empty()
-                );
+        match release {
+            // The baseline vault: nothing optional, so nothing is gated
+            // whatever the viewer.
+            None => {
+                assert_eq!(optional, Vec::<&String>::new(), "{scenario}");
+                for installed in [None, Some("0.0.1"), Some("garbage")] {
+                    assert!(
+                        profile
+                            .gated(&found, &profile.resolve(installed))
+                            .is_empty()
+                    );
+                }
+            }
+            // Both optional file families, and nothing an absent release allows.
+            Some(_) => {
+                for id in bases::FEATURES.iter().chain(map::FEATURES) {
+                    assert!(found.contains(*id), "{scenario}: {id} in {found:?}");
+                }
+                assert!(!profile.gated(&found, &profile.resolve(None)).is_empty());
             }
         }
         all.extend(found);
@@ -591,7 +607,7 @@ fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
         let feature = profile.feature(id).unwrap();
         assert_ne!(feature.tier, Tier::Unsupported, "{id}");
         assert!(
-            feature.emitted,
+            profile.feature(id).unwrap().emitted,
             "{id} is used but the profile says it is not emitted"
         );
     }
@@ -606,7 +622,8 @@ fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
     {
         assert!(all.contains(id), "{id} not detected in {all:?}");
     }
-    // Nothing the profile calls unemitted shows up in a vault.
+    // Nothing the profile calls unemitted shows up in a vault: no colour, no
+    // text, link or group canvas node.
     for feature in profile.features.iter().filter(|f| !f.emitted) {
         assert!(!all.contains(&feature.id), "{}", feature.id);
     }

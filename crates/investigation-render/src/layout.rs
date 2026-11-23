@@ -222,6 +222,21 @@ pub fn case_base(case_id: Id, name: &str) -> Result<PlanPath, RenderError> {
     PlanPath::new(format!("{CASES}/{case_id}/{VIEWS}/{name}.base"))
 }
 
+/// The file name of a case's generated map, beside its Overview.
+pub const MAP: &str = "Map.canvas";
+
+/// `Cases/<case-id>/Map.canvas`: the generated case map. Tool-owned like
+/// every file under `Cases/`; a person's own canvases belong in `Boards/`.
+pub fn case_map(case_id: Id) -> Result<PlanPath, RenderError> {
+    PlanPath::new(format!("{CASES}/{case_id}/{MAP}"))
+}
+
+/// `Cases/<case-id>/<name>`: a fixed note beside the case map. The name is
+/// a constant of the renderer, never data.
+pub fn case_map_note(case_id: Id, name: &str) -> Result<PlanPath, RenderError> {
+    PlanPath::new(format!("{CASES}/{case_id}/{name}"))
+}
+
 /// `Cases/<case-id>/<Folder>/<id>.md`, or `None` for kinds without a note.
 pub fn record_note(case_id: Id, id: Id) -> Result<Option<PlanPath>, RenderError> {
     record_kind(id.kind())

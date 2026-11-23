@@ -87,7 +87,9 @@ pub fn open(workspace: &Path) -> Store {
 }
 
 /// The verified snapshot of a workspace and its vault plan under the
-/// workspace's working view policy, the one `vault render` uses.
+/// workspace's working view policy, the one `vault render` uses (Scenarios
+/// A and C state a supported viewer release, so their vaults carry native
+/// Bases and case maps; Scenario D states none and stays the baseline).
 pub fn plan(workspace: &Path) -> (VerifiedSnapshot, RenderPlan) {
     let mut store = open(workspace);
     let policy = working_policy(store.workspace());

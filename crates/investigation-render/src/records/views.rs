@@ -97,8 +97,8 @@ pub(crate) struct ViewNote {
     pub base: Option<(PlanPath, String)>,
 }
 
-/// The view notes of one case, in [`VIEWS`] order. With
-/// [`crate::ViewPolicy::bases`], each view that has a Base spec
+/// The view notes of one case, in [`VIEWS`] order. When the view policy
+/// allows every Base feature, each view that has a Base spec
 /// ([`bases::spec`]) also plans its Base, and its note says so.
 pub(crate) fn plan(notes: &NoteContext<'_>) -> Result<Vec<ViewNote>, RenderError> {
     let views = Views::new(notes)?;
@@ -108,7 +108,7 @@ pub(crate) fn plan(notes: &NoteContext<'_>) -> Result<Vec<ViewNote>, RenderError
         let Some(mut body) = views.body(slug)? else {
             continue;
         };
-        let base = match bases::spec(slug).filter(|_| notes.policy().bases) {
+        let base = match bases::spec(slug).filter(|_| notes.policy().allows_all(bases::FEATURES)) {
             Some(spec) => {
                 body.text.push_str(&base_paragraph(name, slug));
                 Some(bases::plan(case_id, name, spec)?)

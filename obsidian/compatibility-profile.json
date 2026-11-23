@@ -33,6 +33,20 @@
       "consulted": "2026-11-23",
       "revision": "newest desktop release 1.15.1 dated 2026-11-12",
       "observed": "1.15.0 changed Bases filter editing only (reorder, move between all-views and this-view); no change to the .base file keys relied on"
+    },
+    {
+      "id": "canvas",
+      "url": "https://obsidian.md/help/plugins/canvas",
+      "consulted": "2026-11-23",
+      "revision": "page carries no version or date; consulted while 1.15.1 was the newest desktop release",
+      "observed": "canvases are saved as .canvas files in the open JSON Canvas format; note cards can be dragged from the file explorer; a line may carry a label describing the relationship between two cards; cards and lines may be coloured"
+    },
+    {
+      "id": "json-canvas-1.0",
+      "url": "https://jsoncanvas.org/spec/1.0/",
+      "consulted": "2026-11-23",
+      "revision": "version 1.0",
+      "observed": "top level: optional nodes and edges arrays, nodes in ascending z order; every node: id, type (text, file, link, group), integer x, y, width, height, optional color; file node: file (a path within the system), optional subpath starting with #; edge: id, fromNode, toNode, optional fromSide/toSide (top, right, bottom, left), fromEnd (default none), toEnd (default arrow), color and label"
     }
   ],
   "baseline": "Markdown notes with flat inv_ YAML properties, wikilinks, block anchors and Markdown tables. Used whenever the installed release is absent, unparseable or outside supported_range.",
@@ -56,10 +70,11 @@
     {"id": "base.summaries", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "documented top-level key"},
     {"id": "base.view_other", "tier": "unsupported", "emitted": false, "doc": "bases-syntax", "source": "cards, list, map and kanban are not described by the syntax page; never emitted"},
     {"id": "base.row_sort_key", "tier": "unsupported", "emitted": false, "doc": "bases-syntax", "source": "not documented as of the consulted page (plan 12.5: detect by release, never assume); never emitted until a release is recorded that documents it"},
-    {"id": "canvas.file", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6; JSON Canvas"},
-    {"id": "canvas.file_nodes", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6"},
-    {"id": "canvas.labeled_edges", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6; labels carry evidence meaning, not colour"},
-    {"id": "canvas.other_nodes", "tier": "unsupported", "emitted": false, "doc": null, "source": "text, link and group nodes are not emitted: essential evidence must not live in text-only nodes"},
+    {"id": "canvas.file", "tier": "optional", "emitted": true, "min_release": "1.12.7", "doc": "json-canvas-1.0", "source": "plan 12.6; Cases/<case-id>/Map.canvas, JSON Canvas 1.0 (the canvas page names the format)"},
+    {"id": "canvas.file_nodes", "tier": "optional", "emitted": true, "min_release": "1.12.7", "doc": "json-canvas-1.0", "source": "plan 12.6; every node is a file node pointing at a generated note"},
+    {"id": "canvas.labeled_edges", "tier": "optional", "emitted": true, "min_release": "1.12.7", "doc": "canvas", "source": "plan 12.6; labels carry evidence meaning, never colour (no color key is emitted)"},
+    {"id": "canvas.other_nodes", "tier": "unsupported", "emitted": false, "doc": "json-canvas-1.0", "source": "text, link and group nodes are not emitted: essential evidence must not live in text-only nodes; the legend and the left-out list are generated notes shown as file nodes"},
+    {"id": "canvas.colors", "tier": "unsupported", "emitted": false, "doc": "json-canvas-1.0", "source": "plan 12.6: colour alone may not encode support/refutation or meets/fails, so no node or edge carries a color"},
     {"id": "cli.available", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "cli", "source": "detected at run time; never required"}
   ]
 }

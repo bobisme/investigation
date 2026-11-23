@@ -2,7 +2,7 @@
 //! plan out.
 //!
 //! Nothing in this module (or in [`crate::layout`], [`crate::templates`],
-//! [`crate::note`], [`crate::text`], [`crate::yaml`] and [`crate::policy`]) may touch the filesystem, read a clock, or use
+//! [`crate::note`], [`crate::text`], [`crate::yaml`], [`crate::policy`] and [`crate::map`]) may touch the filesystem, read a clock, or use
 //! randomness or hash-order iteration. A test scans these sources to keep it
 //! that way. Identical inputs therefore give byte-identical plans.
 
@@ -63,7 +63,11 @@ use crate::{
 /// note and Overview carries `inv_open_gaps`, observation notes carry
 /// `inv_value_kind`, and the frontier and timeline notes gain a table with
 /// one row per note, the rows their Bases list (W12.01).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v21";
+/// v22: when the view policy allows the `canvas.*` viewer features, each
+/// case gains `Map.canvas` with `Map Legend.md` and `Map Left Out.md`, and
+/// its Overview a `## Map` section (W12.03). The policy fingerprint names
+/// the stated viewer release (`;viewer=<release>`) instead of `;bases`.
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v22";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -372,12 +376,16 @@ impl CaseRenderer for VaultRenderer {
                 plan.add(Phase::Records, path, content, Some(id))?;
             }
             let views = crate::records::views::plan(notes)?;
-            let content = templates::case_overview(notes, &views)?;
+            let map = crate::map::plan(notes, &views)?;
+            let content = templates::case_overview(notes, &views, map.as_ref())?;
             for view in views {
                 plan.add(Phase::Views, view.path, view.content, None)?;
                 if let Some((path, content)) = view.base {
                     plan.add(Phase::Views, path, content, None)?;
                 }
+            }
+            for (path, content) in map.into_iter().flat_map(|map| map.files) {
+                plan.add(Phase::Views, path, content, None)?;
             }
             plan.add(
                 Phase::Views,
@@ -497,6 +505,8 @@ mod tests {
             ("records/views.rs", include_str!("records/views.rs")),
             ("records/matrix.rs", include_str!("records/matrix.rs")),
             ("bases.rs", include_str!("bases.rs")),
+            ("map.rs", include_str!("map.rs")),
+            ("compat.rs", include_str!("compat.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),

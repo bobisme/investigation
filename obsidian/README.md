@@ -85,3 +85,15 @@ against the golden notes' frontmatter. It confirms that the matching notes are
 exactly the rows of the static table, all in one case. Scenarios A and C state
 release 1.15.1. Scenario D states no release, so it shows the default.
 Opening the Bases in the viewer is the job of the W12.07 integration gate.
+
+## Case map
+
+When the stated release allows `canvas.file`, `canvas.file_nodes` and
+`canvas.labeled_edges`, each case gets `Cases/<case-id>/Map.canvas` (JSON
+Canvas 1.0) with `Map Legend.md` and `Map Left Out.md` beside it. Every node is
+a file node pointing at a generated note, every edge carries its relation in
+words, and nothing is coloured. The columns follow the case's focus
+(explanation, evaluation, research or measurement), each capped at 8 records,
+with at most 96 edges; the left-out note says what the bounds dropped and links
+the tables that list it. The map is tool-owned and regenerated on every render;
+copy it into `Boards/` to keep an editable version.

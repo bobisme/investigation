@@ -5,6 +5,8 @@ use investigation_core::{
     header::{Classification, ClassificationLevel},
 };
 
+use crate::compat::Resolved;
+
 /// The audience a plan is built for. Records classified above it are rendered
 /// as placeholders that reveal no authored content.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -46,11 +48,10 @@ pub struct ViewPolicy {
     /// copied into `Attachments/` as previews ([`crate::attachments`]). Off
     /// by default; originals are never copied.
     pub derivative_previews: bool,
-    /// Whether native Base files are planned beside the static table views
-    /// ([`crate::bases`]). Off by default: only a viewer release that the
-    /// compatibility profile resolves to every Base feature turns it on
-    /// ([`crate::bases::allowed`]). The tables are complete without them.
-    pub bases: bool,
+    /// The optional viewer features this plan may use, resolved from the
+    /// compatibility profile ([`crate::compat`]). The default is the
+    /// baseline: plain Markdown, no optional feature.
+    pub viewer: Resolved,
 }
 
 impl ViewPolicy {
@@ -58,7 +59,10 @@ impl ViewPolicy {
         Self {
             audience,
             derivative_previews: false,
-            bases: false,
+            viewer: Resolved {
+                release: None,
+                optional: std::collections::BTreeSet::new(),
+            },
         }
     }
 
@@ -69,11 +73,24 @@ impl ViewPolicy {
         self
     }
 
-    /// The same policy with native Base files planned or not.
+    /// The same policy with the optional viewer features `viewer` allows.
     #[must_use]
-    pub const fn with_bases(mut self, planned: bool) -> Self {
-        self.bases = planned;
+    pub fn with_viewer(mut self, viewer: Resolved) -> Self {
+        self.viewer = viewer;
         self
+    }
+
+    /// Whether the plan may use one optional viewer feature, by its
+    /// compatibility-profile ID such as `canvas.file`.
+    pub fn allows(&self, feature: &str) -> bool {
+        self.viewer.optional.contains(feature)
+    }
+
+    /// Whether the plan may use every one of `features`: how optional
+    /// files that need several features (native Bases, the case map) are
+    /// gated.
+    pub fn allows_all(&self, features: &[&str]) -> bool {
+        features.iter().all(|feature| self.allows(feature))
     }
 
     /// The core audience policy templates pass to
@@ -110,8 +127,12 @@ impl ViewPolicy {
         } else {
             ""
         };
-        let bases = if self.bases { ";bases" } else { "" };
-        format!("audience={}{previews}{bases}", self.audience.as_str())
+        let viewer = self
+            .viewer
+            .release
+            .as_deref()
+            .map_or_else(String::new, |release| format!(";viewer={release}"));
+        format!("audience={}{previews}{viewer}", self.audience.as_str())
     }
 }
 
@@ -141,16 +162,17 @@ mod tests {
             ViewPolicy::for_audience(Audience::Restricted).fingerprint()
         );
         assert_eq!(ViewPolicy::default().fingerprint(), "audience=internal");
+        let viewer = crate::compat::Profile::bundled().resolve(Some("1.15.1"));
+        let with_viewer = ViewPolicy::default().with_viewer(viewer);
+        assert_eq!(with_viewer.fingerprint(), "audience=internal;viewer=1.15.1");
+        assert!(with_viewer.allows("canvas.file") && !ViewPolicy::default().allows("canvas.file"));
         assert_ne!(
             ViewPolicy::default().fingerprint(),
             ViewPolicy::default()
                 .with_derivative_previews(true)
                 .fingerprint()
         );
-        assert!(!ViewPolicy::default().bases);
-        assert_eq!(
-            ViewPolicy::default().with_bases(true).fingerprint(),
-            "audience=internal;bases"
-        );
+        assert!(!ViewPolicy::default().allows_all(crate::bases::FEATURES));
+        assert!(!ViewPolicy::default().allows_all(crate::map::FEATURES));
     }
 }

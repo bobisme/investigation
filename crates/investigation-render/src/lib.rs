@@ -30,8 +30,9 @@
 //!   evidence selectors with excerpt anchors, next action or blocker).
 //!   Authored text passes through the context-specific escapers in [`text`]
 //!   and [`yaml`]; links come only from [`layout::wikilink`].
-//! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for
-//!   and whether derivative previews are allowed.
+//! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for,
+//!   whether derivative previews are allowed, and the optional viewer
+//!   features [`compat`] resolves for the recorded viewer release.
 //! - Who owns what: [`layout::VAULT_AREAS`] is the one ownership table.
 //!   `Start Here.md` prints it, and every rule below enforces it through
 //!   [`layout::area`]. `Notes/`, `Boards/`, `Inbox/` and hidden folders are a
@@ -100,12 +101,18 @@
 //!   key and cells built only from [`text`] escapers. A view with no rows is
 //!   not planned, except the frontier and the timeline. No table computes a
 //!   score or rank; the Overview links every planned view under `## Views`.
-//! - Native Bases ([`bases`]): with [`ViewPolicy::bases`], one `.base` file
+//! - Native Bases ([`bases`]): when the view policy allows every
+//!   [`bases::FEATURES`] ([`ViewPolicy::allows_all`]), one `.base` file
 //!   beside each planned table view except the comparison matrix, filtered
 //!   by the exact case ID and the view's record kinds, listing the same rows.
 //!   [`working_policy`] turns it on only when the workspace states a viewer
 //!   release that the compatibility profile ([`compat`]) resolves to every
 //!   Base feature; otherwise the vault is plain Markdown.
+//! - Case map ([`map`]): `Cases/<case-id>/Map.canvas`, a bounded JSON Canvas
+//!   of file nodes and labelled edges with a mode-sensitive focus, planned
+//!   only when the view policy allows the `canvas.*` features, with
+//!   `Map Legend.md` and `Map Left Out.md` beside it and a `## Map` section
+//!   in the Overview.
 //! - `Start Here.md` ([`start_here`]): what the vault is, projection
 //!   health, who owns which folder, and per case (capped, in case ID order)
 //!   its Overview, last committed snapshot, answer, pending questions,
@@ -194,6 +201,7 @@ pub mod incremental;
 pub mod layout;
 pub mod lock;
 pub mod manifest;
+pub mod map;
 pub mod marker;
 pub mod note;
 pub mod plan;

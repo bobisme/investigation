@@ -7,11 +7,11 @@
 //! comparison matrix, which stays a static table in v1.
 //!
 //! - Optional. Nothing here is needed to read the vault: the static tables
-//!   hold the same rows. A Base is planned only when the view policy asks
-//!   for it ([`crate::ViewPolicy::bases`]), and the working vault asks only
-//!   when the stated viewer release resolves, in the compatibility profile,
-//!   to every feature in [`FEATURES`] ([`allowed`]). An absent or unknown
-//!   release gets no Base files at all.
+//!   hold the same rows. A Base is planned only when the view policy allows
+//!   every feature in [`FEATURES`] ([`crate::ViewPolicy::allows_all`]), which
+//!   the working vault's policy does only when the stated viewer release
+//!   resolves to them in the compatibility profile ([`allowed`]). An absent
+//!   or unknown release gets no Base files at all.
 //! - Exact case. Every Base filters `inv_case_id == "<case-id>"` and the
 //!   record kinds of its view, never a folder, so a note of another case
 //!   never appears in it.

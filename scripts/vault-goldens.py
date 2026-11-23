@@ -36,7 +36,8 @@ REQUIRED = (
 )
 HUMAN = {"Notes", "Boards", "Inbox"}
 # Scenarios whose workspace states a supported viewer release, so their golden vaults
-# also hold the optional native Base files; the others show the plain-Markdown default.
+# also hold the optional native Base files and case maps; the others show the plain-Markdown
+# default.
 VIEWER_RELEASE = {"scenario-a": "1.15.1", "scenario-c": "1.15.1"}
 
 
