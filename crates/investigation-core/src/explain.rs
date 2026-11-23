@@ -161,6 +161,27 @@ pub struct SearchCoverage {
     pub total_hits: Option<u64>,
     pub examined_hits: Option<u64>,
     pub empty_hits: Option<u64>,
+    /// Collections, partitions or sections of the corpus that were searchable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub collections: Vec<String>,
+    /// Date or edition range the searchable corpus covered, as stated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub date_range: Option<String>,
+    /// Result count per exact query. `hits: 0` is an explicit empty result;
+    /// an absent `hits` was not recorded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub query_results: Vec<QueryResult>,
+    /// What was deliberately or necessarily not searched.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub not_searched: Vec<String>,
+}
+/// Result count for one exact query, stored as the recorder stated it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QueryResult {
+    pub query: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hits: Option<u64>,
 }
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

@@ -748,6 +748,27 @@
       ],
       "type": "object"
     },
+    "QueryResult": {
+      "additionalProperties": false,
+      "description": "Result count for one exact query, stored as the recorder stated it.",
+      "properties": {
+        "hits": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
     "Reference": {
       "anyOf": [
         {
@@ -1085,8 +1106,22 @@
     "SearchCoverage": {
       "additionalProperties": false,
       "properties": {
+        "collections": {
+          "description": "Collections, partitions or sections of the corpus that were searchable.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "corpus": {
           "type": "string"
+        },
+        "date_range": {
+          "description": "Date or edition range the searchable corpus covered, as stated.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "empty_hits": {
           "format": "uint64",
@@ -1122,9 +1157,23 @@
           },
           "type": "array"
         },
+        "not_searched": {
+          "description": "What was deliberately or necessarily not searched.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "queries": {
           "items": {
             "type": "string"
+          },
+          "type": "array"
+        },
+        "query_results": {
+          "description": "Result count per exact query. `hits: 0` is an explicit empty result;\nan absent `hits` was not recorded.",
+          "items": {
+            "$ref": "#/$defs/QueryResult"
           },
           "type": "array"
         },

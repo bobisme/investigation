@@ -60,6 +60,10 @@ Checks of `builtin-blindspot.v1`:
 
 To add a check, add a `CheckSpec` to a family in `crates/investigation-core/src/blindspot/` and list the family in `FAMILIES`. The module documentation gives the rules, and its tests check every registered spec.
 
+## Search coverage
+
+A Run that searched a corpus records an optional `search_coverage` block with `run.record` or `run.reconcile`: corpus identity, `revision_bounds`, `date_range`, `collections`, exact `queries` and `filters`, inclusion and exclusion rules, `total_hits`, `examined_hits`, `empty_hits`, a result count per query in `query_results`, and `not_searched`. Counts are stored as given and never inferred. A recorded `0` is an explicit empty result; an absent count was not recorded. An empty result supports an absence claim only within the stated bounds. An absence Observation links to the search Run through `run_ref`. The Run `summary` view shows the coverage line. Readers use `investigation_core::search_coverage`: `search_coverage(state, run_id)`, `cited_coverage(state, observation)`, `states_empty_result` and `states_bounds`. They report what was recorded and never judge adequacy; that judgement belongs to the absence gate.
+
 ## Classification
 
 Records are `internal` unless a stricter level is requested. Renderers use the effective level, not the stored label. A derivative is at least as strict as its inputs, and a case raised above `internal` raises every record in it. `classification.raise` applies to every revision of its subject. `classification.downgrade` clears one exact revision. It requires a reviewed transformation: exact inputs and digests, the transformation and version, redaction decisions, the output digest and a whole-output review. Pattern matching alone is rejected. The downgrade stops applying if a covered input later becomes stricter. Both changes are annotations with role `classification`; the subject record is not rewritten. `show`, `brief` and `evidence read` use the default `internal` audience. Classification is handling policy for this tool's outputs, not access control.

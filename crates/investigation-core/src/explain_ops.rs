@@ -761,7 +761,7 @@ fn run_shape(payload: &RunRecord) -> Result<(), Failure> {
         ));
     }
     if let Some(coverage) = &payload.search_coverage {
-        text(&coverage.corpus, "/search_coverage/corpus")?;
+        crate::search_coverage::validate(coverage, "/search_coverage")?;
         if matches!((coverage.examined_hits, coverage.total_hits), (Some(examined), Some(total)) if examined > total)
             || matches!((coverage.empty_hits, coverage.examined_hits), (Some(empty), Some(examined)) if empty > examined)
         {
@@ -1505,6 +1505,28 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
         });
         run
     };
+    let registry_search = || {
+        let mut run = outcome();
+        run["intent"] = json!({"kind": "exploration", "intent": "Search a registry for errata."});
+        run["result_assertion"] = json!("No matching erratum was found in the searched registry.");
+        run["evidence_completeness"] = json!("partial");
+        run["search_coverage"] = json!({
+            "corpus": "Example errata registry",
+            "revision_bounds": "Snapshot taken before the search.",
+            "queries": ["part 7 erratum"],
+            "filters": ["edition 3"],
+            "inclusion_rules": ["Published errata only."],
+            "exclusion_rules": ["Forum posts."],
+            "total_hits": 0,
+            "examined_hits": 0,
+            "empty_hits": 0,
+            "collections": ["errata"],
+            "date_range": "2020 to 2026",
+            "query_results": [{"query": "part 7 erratum", "hits": 0}],
+            "not_searched": ["Unpublished drafts."]
+        });
+        run
+    };
     let assessment = || {
         json!({
             "subject_ref": exact_example(Kind::Hypothesis),
@@ -1725,7 +1747,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             "Supply the current run and preserve its original intent and producer.",
             "Reconcile the original attempt only. A repeated attempt needs a new run.",
             ["observation.add"],
-            json!({"run_ref": exact_example(Kind::Run), "outcome": outcome(), "rationale": "The producer returned a terminal status."}),
+            json!({"run_ref": exact_example(Kind::Run), "outcome": registry_search(), "rationale": "The producer returned a terminal status."}),
             |payload: &RunReconcile| {
                 text(&payload.rationale, "/rationale")?;
                 run_shape(&payload.outcome)

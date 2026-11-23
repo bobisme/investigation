@@ -696,6 +696,12 @@ pub(crate) fn record_summary(record: &Record) -> String {
     };
     let mut seen = std::collections::BTreeSet::new();
     let mut parts = Vec::new();
+    let coverage = investigation_core::search_coverage::recorded_coverage(&record.body)
+        .filter(|_| record.header.id.kind() == Kind::Run)
+        .map(|coverage| investigation_core::search_coverage::summary(&coverage));
+    if let Some(line) = &coverage {
+        parts.push(line.as_str());
+    }
     for key in preferred {
         if let Some(text) = value_at(&record.body, key).and_then(Value::as_str)
             && !text.trim().is_empty()
@@ -1019,6 +1025,30 @@ mod tests {
         let summary = record_summary(&record);
         assert!(summary.len() <= SUMMARY_MAX_BYTES);
         assert_eq!(summary, ""); // no partial inclusion of the oversized first field
+    }
+
+    #[test]
+    fn run_summary_shows_search_coverage_counts_as_stored() {
+        let record = Record {
+            header: serde_json::from_value(json!({
+                "id":"run_00000000-0000-7000-8000-000000000001",
+                "case_id":"case_00000000-0000-7000-8000-000000000002",
+                "schema_version":"inv.record.v0-alpha","created_by":"agent:test",
+                "actor_descriptor_self_reported":null,"created_at":"2026-01-01T00:00:00.0Z",
+                "recorded_at":"2026-01-01T00:00:00.0Z","recorded_by":"agent:test",
+                "observed_at":null,"acquired_at":null,"acceptance_sequence":1,
+                "revision":1,"history":[],"classification":{"level":"internal","reason":null,"tags":[]},
+                "provenance":{"references":[]},"extensions":{}
+            })).unwrap(),
+            body: json!({"search_coverage":{"corpus":"Registry","queries":["q"],"filters":[],
+                "inclusion_rules":[],"exclusion_rules":[],"total_hits":0}}),
+        };
+        let summary = record_summary(&record);
+        assert!(summary.contains("corpus Registry"), "{summary}");
+        assert!(
+            summary.contains("total 0, examined not recorded"),
+            "{summary}"
+        );
     }
 
     #[test]

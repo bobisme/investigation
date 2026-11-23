@@ -42,6 +42,7 @@ pub mod retrospective_digest;
 mod retrospective_ops;
 pub mod review;
 pub mod review_ops;
+pub mod search_coverage;
 pub mod search_text;
 pub mod source_ops;
 pub mod state;
