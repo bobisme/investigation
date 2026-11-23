@@ -423,7 +423,9 @@
       },
       {
         "operations": [
-          "annotation.add"
+          "annotation.add",
+          "classification.downgrade",
+          "classification.raise"
         ],
         "stage": "record"
       },

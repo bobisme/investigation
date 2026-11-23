@@ -7,6 +7,8 @@ pub mod basis;
 pub mod case;
 mod case_ops;
 pub mod catalog;
+pub mod classification;
+mod classification_ops;
 pub mod command;
 pub mod decision_ops;
 pub mod evaluate;

@@ -5,9 +5,10 @@
 
 use investigation_core::{
     basis::basis_digest,
+    classification::{AudiencePolicy, Classifier, Field},
     command::RevisionRef,
     decision_ops::{self, EffectiveDecision},
-    header::{ClassificationLevel, display_title},
+    header::display_title,
     identity::{Id, Kind},
     measurement_ops,
     review::EffectiveDisposition,
@@ -222,19 +223,12 @@ fn project_record(
     depth: ViewDepth,
     effective: &EffectiveStateInput,
 ) -> Value {
-    let restricted =
-        |record: &Record| record.header.classification.level == ClassificationLevel::Restricted;
-    let artifact =
-        serde_json::from_value::<RevisionRef>(record.body["basis"]["artifact_ref"].clone()).ok();
-    if restricted(record)
-        || replay
-            .state
-            .current(record.header.id)
-            .is_some_and(restricted)
-        || artifact
-            .and_then(|reference| replay.state.current(reference.id))
-            .is_some_and(restricted)
-    {
+    // Effective classification includes derivation inputs, case floor, raises
+    // and reviewed downgrades; the recorded label alone is never enough.
+    let classifier = Classifier::new(&replay.state);
+    let policy = AudiencePolicy::default();
+    let hidden = |record: &Record| !classifier.may_show(record, Field::Title, &policy);
+    if hidden(record) {
         return json!({
             "id":record.header.id, "type":record.header.id.kind().to_string(),
             "title":"Restricted record", "summary_available":false,
@@ -253,6 +247,7 @@ fn project_record(
         None
     };
     let title = selected_option
+        .filter(|option| !hidden(option))
         .map(record_title)
         .unwrap_or_else(|| record_title(record));
     let summary = record_summary(record);
@@ -349,6 +344,7 @@ fn project_record(
                 if let Ok(reference) =
                     serde_json::from_value::<RevisionRef>(artifact.body["source"].clone())
                     && let Some(source) = replay.state.revision(reference)
+                    && !hidden(source)
                 {
                     out.insert("source_title".into(), json!(record_title(source)));
                 }

@@ -1,0 +1,589 @@
+{
+  "$defs": {
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "DowngradeReview": {
+      "additionalProperties": false,
+      "properties": {
+        "coverage": {
+          "$ref": "#/$defs/ReviewCoverage"
+        },
+        "examined": {
+          "description": "Exact records the reviewer examined; must include the subject.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array"
+        },
+        "limitations": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 32,
+          "type": "array"
+        },
+        "method": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "method",
+        "coverage",
+        "examined"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RedactionAction": {
+      "oneOf": [
+        {
+          "enum": [
+            "removed",
+            "masked",
+            "generalized"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "retained",
+          "description": "Kept unchanged after review; the rationale says why it is safe.",
+          "type": "string"
+        }
+      ]
+    },
+    "RedactionDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/RedactionAction"
+        },
+        "rationale": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "scope": {
+          "description": "What the decision covers, e.g. a field, region or kind of content.",
+          "maxLength": 512,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "action",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "ReviewCoverage": {
+      "description": "How thoroughly the reviewer examined the transformed output.",
+      "oneOf": [
+        {
+          "const": "whole_output",
+          "description": "The reviewer examined the whole transformed output.",
+          "type": "string"
+        },
+        {
+          "const": "pattern_matching_only",
+          "description": "Only automated pattern matching ran. Never sufficient for a downgrade;\nlisted so producers can report it honestly and receive a repair.",
+          "type": "string"
+        }
+      ]
+    },
+    "ReviewedTransformation": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "description": "Every input whose effective level is above the requested level.",
+          "items": {
+            "$ref": "#/$defs/TransformationInput"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "type": "array"
+        },
+        "output_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required when the subject is an artifact with retained bytes."
+        },
+        "redaction_decisions": {
+          "items": {
+            "$ref": "#/$defs/RedactionDecision"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "type": "array"
+        },
+        "selectors": {
+          "default": [],
+          "description": "Portions of the inputs the transformation and review addressed.",
+          "items": {
+            "$ref": "#/$defs/SelectorRequest"
+          },
+          "maxItems": 64,
+          "type": "array"
+        },
+        "transformation": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputs",
+        "transformation",
+        "version",
+        "redaction_decisions"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorKind": {
+      "description": "The actual discriminated union. `EvidenceSelector` binds this to a digest\nand a core-computed validation result.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "whole",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "start": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "byte_range",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parser_version": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "text_lines",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start_line",
+            "end_line",
+            "encoding",
+            "parser_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exact": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "suffix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "text_quote",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "exact"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "parser": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pointer": {
+              "type": "string"
+            },
+            "type": {
+              "const": "json_pointer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "pointer"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "extraction_version": {
+              "type": "string"
+            },
+            "row_identity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "row_index": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "const": "table_cell",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "extraction_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "coordinate_origin": {
+              "type": "string"
+            },
+            "end": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "start": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "type": {
+              "const": "time_window",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end",
+            "unit",
+            "coordinate_origin",
+            "channel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "blob_digest": {
+              "$ref": "#/$defs/Digest"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "code_span",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "repository",
+            "commit",
+            "blob_digest",
+            "path",
+            "start_line",
+            "end_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "schema_uri": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "type": {
+              "const": "external_selector",
+              "type": "string"
+            },
+            "validator": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "namespace",
+            "schema_uri",
+            "schema_version",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SelectorRequest": {
+      "additionalProperties": false,
+      "description": "Request form deliberately lacks a validation field.",
+      "properties": {
+        "artifact_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SelectorVersion"
+        },
+        "selector": {
+          "$ref": "#/$defs/SelectorKind"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_digest",
+        "selector"
+      ],
+      "type": "object"
+    },
+    "SelectorVersion": {
+      "description": "The selector schema is versioned independently from record and command schemas.",
+      "enum": [
+        "inv.selector.v1"
+      ],
+      "type": "string"
+    },
+    "TransformationInput": {
+      "additionalProperties": false,
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Required for an input with retained bytes; must match them."
+        },
+        "input_ref": {
+          "$ref": "#/$defs/Reference",
+          "description": "The subject itself or one of its exact derivation inputs."
+        }
+      },
+      "required": [
+        "input_ref"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:classification.downgrade",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "level": {
+      "$ref": "#/$defs/ClassificationLevel",
+      "description": "Less strict than the subject's current effective level."
+    },
+    "reason": {
+      "maxLength": 2048,
+      "minLength": 1,
+      "type": "string"
+    },
+    "review": {
+      "$ref": "#/$defs/DowngradeReview"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/Reference",
+      "description": "Exact current revision of the derivative or record being cleared."
+    },
+    "tags": {
+      "default": [],
+      "items": {
+        "maxLength": 64,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "type": "array"
+    },
+    "transformation": {
+      "$ref": "#/$defs/ReviewedTransformation"
+    }
+  },
+  "required": [
+    "subject_ref",
+    "level",
+    "reason",
+    "transformation",
+    "review"
+  ],
+  "title": "ClassificationDowngrade",
+  "type": "object"
+}

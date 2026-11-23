@@ -207,7 +207,10 @@ pub enum SchemaVersion {
     #[serde(rename = "inv.record.v0-alpha")]
     RecordV0Alpha,
 }
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize, JsonSchema)]
+// Ordered from least to most strict; comparisons rely on declaration order.
+#[derive(
+    Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum ClassificationLevel {
     Public,

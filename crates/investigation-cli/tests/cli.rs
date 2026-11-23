@@ -1055,3 +1055,118 @@ fn measurement_validity_is_attributed_gates_support_and_is_shown_beside_each_use
     let (_, refused) = request_review("claim-invalid", 3, 5);
     assert_eq!(refused["error"]["code"], "GATE_FAILED");
 }
+
+#[test]
+fn classification_propagates_to_derivatives_and_hides_restricted_titles_by_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    fs::write(root.join("notes.txt"), "Codename Bluebird ships first\n").unwrap();
+    let start = run(
+        root,
+        &[
+            "start",
+            "Which plan ships first?",
+            "--attach",
+            "notes.txt",
+            "--command-id",
+            "classified-case",
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let case = start["created"][0]["id"].as_str().unwrap();
+    let original = start["items"][0]["artifact_id"].as_str().unwrap();
+    let derivative = start["items"][0]["derivative_id"].as_str().unwrap();
+    let digest = &start["items"][0]["digest"];
+    let selector = json!({"schema_version":"inv.selector.v1","artifact_digest":digest,
+        "selector":{"type":"text_lines","start_line":1,"end_line":1,"encoding":"utf-8","parser_version":"inv.text.utf8.v1"}});
+    let record = |key: &str, operations: Value, exit| {
+        run(
+            root,
+            &["record", "--input", "-", "--json"],
+            Some(
+                &json!({"schema_version":"inv.command.v1","command_id":key,"case_id":case,
+                "actor":ACTOR,"preconditions":[],"operations":operations}),
+            ),
+            exit,
+        )
+    };
+    let observation = record(
+        "observe",
+        json!([{"op":"observation.add","payload":{
+            "value":{"kind":"text","statement":"Codename Bluebird ships first."},
+            "basis":{"kind":"source","artifact_ref":{"id":derivative,"revision":1},"selector":selector,
+                "text_quote":{"exact":"Codename Bluebird ships first"}},
+            "validity":"valid","quality":[],"limitations":[],"evidence_kind":"observational","variables_changed":[]
+        }}]),
+        0,
+    )["created"][0]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let brief = run(root, &["brief", "--json"], None, 0);
+    assert!(brief.to_string().contains("Bluebird"));
+
+    // Raising the original makes its derivative and the observation restricted.
+    record(
+        "raise",
+        json!([{"op":"classification.raise","payload":{
+            "subject_ref":{"id":original,"revision":1},"level":"restricted","reason":"Unannounced plan name."
+        }}]),
+        0,
+    );
+    for id in [original, derivative, observation.as_str()] {
+        for depth in ["title", "summary", "full"] {
+            let shown = run(root, &["show", id, "--depth", depth, "--json"], None, 0);
+            assert_eq!(shown["content_state"], "restricted", "{id} {depth}");
+            assert!(!shown.to_string().contains("Bluebird"), "{shown}");
+        }
+    }
+    for level in ["compact", "standard", "deep"] {
+        let brief = run(root, &["brief", "--level", level, "--json"], None, 0);
+        assert!(!brief.to_string().contains("Bluebird"), "{brief}");
+    }
+    fs::write(
+        root.join("selector.json"),
+        serde_json::to_vec(&selector).unwrap(),
+    )
+    .unwrap();
+    let read = run(
+        root,
+        &[
+            "evidence",
+            "read",
+            derivative,
+            "--selector-file",
+            "selector.json",
+            "--json",
+        ],
+        None,
+        5,
+    );
+    assert_eq!(read["error"]["code"], "GATE_FAILED");
+
+    // Lowering the derivative needs a reviewed transformation.
+    let rejected = record(
+        "unreviewed-downgrade",
+        json!([{"op":"classification.downgrade","payload":{
+            "subject_ref":{"id":derivative,"revision":1},"level":"internal","reason":"Looks fine."
+        }}]),
+        2,
+    );
+    assert_eq!(rejected["commit_status"], "not_committed");
+    let shown = run(root, &["show", derivative, "--json"], None, 0);
+    assert_eq!(shown["content_state"], "restricted");
+}

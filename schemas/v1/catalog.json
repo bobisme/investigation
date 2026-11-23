@@ -11,6 +11,8 @@
     "case.create": "operations/case.create.schema.json",
     "case.pause": "operations/case.pause.schema.json",
     "case.reopen": "operations/case.reopen.schema.json",
+    "classification.downgrade": "operations/classification.downgrade.schema.json",
+    "classification.raise": "operations/classification.raise.schema.json",
     "comparison.add": "operations/comparison.add.schema.json",
     "comparison.retract": "operations/comparison.retract.schema.json",
     "comparison.revise": "operations/comparison.revise.schema.json",
@@ -145,7 +147,9 @@
     },
     {
       "operations": [
-        "annotation.add"
+        "annotation.add",
+        "classification.downgrade",
+        "classification.raise"
       ],
       "stage": "record"
     },

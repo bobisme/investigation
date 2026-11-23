@@ -1,12 +1,12 @@
 //! Digest-bound reads and observation verification over retained snapshots.
 use super::*;
 use investigation_core::{
+    classification::{AudiencePolicy, Classifier, Field},
     command::Reference,
     evidence::{
         ArtifactAvailability, ArtifactBody, ArtifactIntegrity, ObservationBasisRequest,
         SelectorRequest, SelectorValidation, TextQuoteRequest,
     },
-    header::ClassificationLevel,
     input,
     observation_ops::ObservationProof,
     state::Record,
@@ -122,7 +122,12 @@ impl<F: DurableFs> Store<F> {
         artifact: &Record,
         selector: SelectorRequest,
     ) -> Result<EvidenceRead, Failure> {
-        if artifact.header.classification.level == ClassificationLevel::Restricted {
+        // Effective level: a derivative of restricted bytes is restricted too.
+        if !Classifier::new(&replay.state).may_show(
+            artifact,
+            Field::Content,
+            &AudiencePolicy::default(),
+        ) {
             return Err(Failure::new(
                 ErrorCode::GateFailed,
                 "Restricted source content is unavailable in this excerpt.",

@@ -51,7 +51,9 @@ pub struct Operation {
 }
 
 /// An exact revision already issued by the store.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(deny_unknown_fields)]
 pub struct RevisionRef {
     pub id: Id,
