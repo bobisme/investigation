@@ -141,6 +141,41 @@ pub(crate) fn run(args: Args) -> Result<Output, Failure> {
     Ok(Output::success("docs_page", value, page.body.to_owned()))
 }
 
+/// Split one shell command line into words. Handles quotes; stops at a
+/// pipe, redirection, separator or line continuation.
+#[cfg(test)]
+pub(crate) fn words(line: &str) -> Vec<String> {
+    let mut words = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut started = false;
+    for c in line.chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => current.push(c),
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                started = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    words.push(std::mem::take(&mut current));
+                    started = false;
+                }
+            }
+            (None, '|' | '<' | '>' | ';' | '&' | '\\') => break,
+            (None, c) => {
+                current.push(c);
+                started = true;
+            }
+        }
+    }
+    if started {
+        words.push(current);
+    }
+    words
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -180,40 +215,6 @@ mod tests {
         "json", "md", "toml", "txt", "log", "sqlite", "py", "rs", "sh", "yaml", "yml", "csv",
         "html", "webp",
     ];
-
-    /// Split one shell command line into words. Handles quotes; stops at a
-    /// pipe, redirection, separator or line continuation.
-    fn words(line: &str) -> Vec<String> {
-        let mut words = Vec::new();
-        let mut current = String::new();
-        let mut quote = None;
-        let mut started = false;
-        for c in line.chars() {
-            match (quote, c) {
-                (Some(q), c) if c == q => quote = None,
-                (Some(_), c) => current.push(c),
-                (None, '\'' | '"') => {
-                    quote = Some(c);
-                    started = true;
-                }
-                (None, c) if c.is_whitespace() => {
-                    if started {
-                        words.push(std::mem::take(&mut current));
-                        started = false;
-                    }
-                }
-                (None, '|' | '<' | '>' | ';' | '&' | '\\') => break,
-                (None, c) => {
-                    current.push(c);
-                    started = true;
-                }
-            }
-        }
-        if started {
-            words.push(current);
-        }
-        words
-    }
 
     /// Inline code spans and the lines of fenced code blocks.
     fn code(markdown: &str) -> Vec<String> {

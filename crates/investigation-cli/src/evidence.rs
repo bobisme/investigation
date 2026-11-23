@@ -30,7 +30,9 @@ use crate::{Global, Output, read_input, receipt_output, with_workspace_repair};
 pub(crate) enum EvidenceCommand {
     /// Verify and read a bounded selection over retained bytes.
     Read {
+        /// Artifact ID from a source or ingest receipt; a unique typed prefix works.
         artifact: String,
+        /// Read the selector (byte, line or text range) from FILE, or - for stdin.
         #[arg(long, value_name = "FILE|-")]
         selector_file: PathBuf,
     },

@@ -58,6 +58,7 @@ Examples:
 
 #[derive(clap::Args)]
 pub(crate) struct Args {
+    /// How much of the case to include; compact is the shortest.
     #[arg(long, value_enum, default_value = "standard")]
     pub(crate) level: BriefLevel,
     /// Serialized UTF-8 byte budget, including the final newline.

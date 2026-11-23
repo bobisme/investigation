@@ -64,6 +64,7 @@ pub(crate) enum IntegrationCommand {
         after_help = "Example: investigation integration show --target agents-block --format json"
     )]
     Show {
+        /// What to install: agents-block (managed block) or skill-file (owned file).
         #[arg(long, value_enum)]
         target: Target,
     },
@@ -80,6 +81,7 @@ pub(crate) enum IntegrationCommand {
 
 #[derive(clap::Args)]
 pub(crate) struct ChangeArgs {
+    /// What to install: agents-block (managed block) or skill-file (owned file).
     #[arg(long, value_enum)]
     target: Target,
     /// The instructions file to change; nothing else is written.

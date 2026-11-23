@@ -13,6 +13,9 @@ mod explain;
 mod first_use;
 mod frontier;
 mod guide;
+#[cfg(test)]
+mod help_lint;
+mod help_teach;
 mod inherited_trust;
 mod integration;
 mod lessons;
@@ -41,9 +44,7 @@ use std::{
     process::ExitCode,
 };
 
-use clap::{
-    ColorChoice, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum, error::ErrorKind,
-};
+use clap::{ColorChoice, FromArgMatches, Parser, Subcommand, ValueEnum, error::ErrorKind};
 use investigation_core::{
     PROGRAM_NAME,
     authored_text::escape_for_terminal,
@@ -70,6 +71,7 @@ const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
 The workspace preserves evidence and attributed revisions. Writes return a durable receipt.
 
+Examples:
 Start a case from a local file in the working directory:
   investigation init ./casework --no-vault --import-root . --format json
   investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json
@@ -224,6 +226,7 @@ enum Commands {
     Docs(docs::Args),
     /// Rank up to three snapshot-bound investigative gaps.
     Next {
+        /// Most gaps to return, from 1 to 3.
         #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=3))]
         limit: u8,
     },
@@ -244,12 +247,15 @@ enum Commands {
         after_help = "Use the original command ID and actor.\nExample: investigation receipt create-case-1 --actor agent:investigator --format json"
     )]
     Receipt {
+        /// Command ID (key) of the original write.
         #[arg(value_name = "KEY")]
         key: String,
     },
     /// Read a case record at title, summary, or full depth.
     Show {
+        /// Record to read: a full ID or a unique typed prefix.
         id: String,
+        /// How much of the record to print.
         #[arg(long, value_enum, default_value = "summary")]
         depth: ViewDepth,
         /// Inspect an exact historical revision.
@@ -1110,7 +1116,7 @@ fn main() -> ExitCode {
     let args: Vec<_> = env::args_os().collect();
     logging::init(&args);
     let format = requested_format(&args);
-    let parser = shortcuts::augment(Cli::command());
+    let parser = help_teach::command_tree();
     let parsed = parser.try_get_matches_from(args);
     let output = match parsed {
         Ok(mut matches) => {
