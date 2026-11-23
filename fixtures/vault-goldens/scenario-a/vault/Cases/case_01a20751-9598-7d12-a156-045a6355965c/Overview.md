@@ -86,6 +86,13 @@ This note reflects sequence 2. Run these in the workspace that holds this vault;
 - `investigation --case case_01a20751-9598-7d12-a156-045a6355965c frontier --format json`
 - `investigation --case case_01a20751-9598-7d12-a156-045a6355965c next --format json`
 
+## Views
+
+Plain Markdown tables over this case at this snapshot, readable in any text viewer. None computes an overall score or rank.
+
+- [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Views/Epistemic Frontier|Epistemic Frontier]]: 0 rows
+- [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Views/Timeline|Timeline]]: 2 rows
+
 ## Records
 
 No records beyond the case itself.

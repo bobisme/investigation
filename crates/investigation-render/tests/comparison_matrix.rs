@@ -192,7 +192,7 @@ fn every_cell_is_stated_and_a_missing_cell_is_labelled() {
     let text = note(&plan, built.case, built.question);
     let section = matrix(&text);
     for expected in [
-        "missing: no comparison recorded",
+        "unknown: no comparison recorded",
         "preference, not a measurement",
         "outcome `partially_meets`",
         "unknown",
@@ -209,6 +209,25 @@ fn every_cell_is_stated_and_a_missing_cell_is_labelled() {
     for forbidden in ["total", "weighted score", "rank 1", "winner"] {
         assert!(!section.contains(forbidden), "{forbidden}\n{section}");
     }
+    // The case's Comparison Matrix view shows the same table, the missing
+    // cell as unknown and every recorded cell linked to its comparison.
+    let view = std::str::from_utf8(
+        plan.entry(
+            layout::case_view(built.case, "Comparison Matrix")
+                .unwrap()
+                .as_str(),
+        )
+        .expect("a Comparison Matrix view")
+        .content(),
+    )
+    .unwrap();
+    let view_matrix = matrix(view);
+    assert_eq!(
+        view_matrix.trim_end(),
+        section.trim_end(),
+        "the view and the question note differ"
+    );
+    assert!(!view.contains("missing: no comparison recorded"), "{view}");
 }
 
 #[test]

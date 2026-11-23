@@ -108,7 +108,12 @@ fn same_snapshot_and_policy_yield_a_byte_identical_plan() {
 
     // Stable order: records, then views, then the entry note; paths sorted within a phase.
     let entries = first.entries();
-    assert_eq!(entries.len(), 4, "two questions, one overview, Start Here");
+    assert_eq!(
+        entries.len(),
+        7,
+        "two questions, one overview, the Questions, Epistemic Frontier and Timeline views, \
+         Start Here"
+    );
     assert!(
         entries
             .windows(2)
@@ -152,7 +157,7 @@ fn same_snapshot_and_policy_yield_a_byte_identical_plan() {
     question(&mut store, "q3", case_id, "What would refute it?");
     let later = render(&VerifiedSnapshot::read(&mut store).unwrap(), &policy).unwrap();
     assert_ne!(later.generation().id(), first.generation().id());
-    assert_eq!(later.entries().len(), 5);
+    assert_eq!(later.entries().len(), 8);
 }
 
 #[test]
@@ -201,7 +206,7 @@ fn a_commit_succeeds_while_a_render_is_in_progress() {
     .unwrap()
     .publish;
     assert_eq!(committed.get(), Some(4));
-    assert_eq!(report.written(), 4);
+    assert_eq!(report.written(), 7);
     assert_eq!(report.refused(), 0);
     // The render published the snapshot it read; the next one sees the commit.
     assert_eq!(report.generation.heads()[0].1.sequence, 3);
@@ -304,7 +309,11 @@ fn publisher_never_overwrites_unowned_files_or_follows_symlinks() {
             .file_type()
             .is_symlink()
     );
-    assert_eq!(report.written(), 2, "the two question notes");
+    assert_eq!(
+        report.written(),
+        5,
+        "the two question notes and the three views"
+    );
 }
 
 #[test]

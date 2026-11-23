@@ -305,6 +305,14 @@ impl<'a> NoteContext<'a> {
         self.withheld_gaps.contains(gap_id)
     }
 
+    /// Unresolved gaps with `id` among their subjects, in inventory order,
+    /// or `None` when the gap inventory is unavailable at this snapshot.
+    pub(crate) fn open_gaps(&self, id: Id) -> Option<&[Gap]> {
+        self.gaps
+            .as_ref()
+            .map(|gaps| gaps.get(&id).map_or(&[][..], Vec::as_slice))
+    }
+
     pub const fn case(&self) -> &'a CaseSnapshot {
         self.case
     }

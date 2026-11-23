@@ -72,6 +72,7 @@ mod retrospective;
 mod review;
 pub(crate) mod reviews;
 mod run;
+pub(crate) mod views;
 
 /// The first per-type heading of each kind, also used when it is withheld.
 const fn heading(kind: Kind) -> &'static str {

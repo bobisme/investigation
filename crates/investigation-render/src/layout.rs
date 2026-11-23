@@ -11,6 +11,8 @@ pub const START_HERE: &str = "Start Here.md";
 pub const CASES: &str = "Cases";
 pub const OVERVIEW: &str = "Overview.md";
 pub const ATTACHMENTS: &str = "Attachments";
+/// The folder of a case's static summary tables, beside its record folders.
+pub const VIEWS: &str = "Views";
 
 /// Who may write in one area of the vault.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,6 +208,12 @@ pub fn start_here() -> Result<PlanPath, RenderError> {
 
 pub fn case_overview(case_id: Id) -> Result<PlanPath, RenderError> {
     PlanPath::new(format!("{CASES}/{case_id}/{OVERVIEW}"))
+}
+
+/// `Cases/<case-id>/Views/<name>.md`: one static table view of a case. The
+/// name is a fixed view name from the renderer, never data.
+pub fn case_view(case_id: Id, name: &str) -> Result<PlanPath, RenderError> {
+    PlanPath::new(format!("{CASES}/{case_id}/{VIEWS}/{name}.md"))
 }
 
 /// `Cases/<case-id>/<Folder>/<id>.md`, or `None` for kinds without a note.

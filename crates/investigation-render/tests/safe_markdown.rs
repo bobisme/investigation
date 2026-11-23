@@ -558,6 +558,8 @@ const SECTIONS: &[&str] = &[
     "Contradicting accounts",
     "Open questions",
     "Resume",
+    // Links to the case's table views (W08.07).
+    "Views",
 ];
 
 #[test]
@@ -605,6 +607,7 @@ fn hostile_titles_render_into_inert_vault_notes() {
 
         let mut headings = 0;
         let mut cells = 0;
+        let mut columns = 0;
         let mut quotes = 0;
         let mut masked = String::new();
         let mut last = 0;
@@ -648,8 +651,20 @@ fn hostile_titles_render_into_inert_vault_notes() {
                     | Tag::FootnoteDefinition(_),
                 ) => panic!("{event:?} in {path}"),
                 Event::Start(Tag::TableCell) => cells += 1,
-                Event::End(TagEnd::TableHead | TagEnd::TableRow) => {
-                    assert_eq!(cells, 2, "{path}: a table row has two cells");
+                Event::End(TagEnd::TableHead) => {
+                    // A record note's tables are label and value; a view's
+                    // table has its own columns, the same on every row.
+                    if !path.contains("/Views/") {
+                        assert_eq!(cells, 2, "{path}: a table row has two cells");
+                    }
+                    columns = cells;
+                    cells = 0;
+                }
+                Event::End(TagEnd::TableRow) => {
+                    assert_eq!(
+                        cells, columns,
+                        "{path}: a row has as many cells as its header"
+                    );
                     cells = 0;
                 }
                 Event::Start(Tag::BlockQuote(_)) => quotes += 1,

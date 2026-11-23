@@ -148,6 +148,23 @@ This note reflects sequence 45. Run these in the workspace that holds this vault
 - `investigation --case case_01a20751-966e-78f0-9f9c-f07db6650063 frontier --format json`
 - `investigation --case case_01a20751-966e-78f0-9f9c-f07db6650063 next --format json`
 
+## Views
+
+Plain Markdown tables over this case at this snapshot, readable in any text viewer. None computes an overall score or rank.
+
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Questions|Questions]]: 1 row
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Options|Options]]: 3 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Criteria|Criteria]]: 6 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Comparison Matrix|Comparison Matrix]]: 3 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Sources|Sources]]: 2 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Evidence|Evidence]]: 6 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Measurements|Measurements]]: 4 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Decisions|Decisions]]: 3 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Reviews and Blindspots|Reviews and Blindspots]]: 2 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Retrospectives and Lessons|Retrospectives and Lessons]]: 1 row
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Epistemic Frontier|Epistemic Frontier]]: 17 rows
+- [[Cases/case_01a20751-966e-78f0-9f9c-f07db6650063/Views/Timeline|Timeline]]: 53 rows
+
 ## Records
 
 ### Questions

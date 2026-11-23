@@ -38,7 +38,11 @@ use crate::{
 /// v13: authored record notes show their inherited trust level and its
 /// stated limit in the basis table (W10.18).
 /// v14: run notes show the verification level beside the chronology (W07.10).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v14";
+/// v15: static summary table views under `Cases/<case-id>/Views/` (the
+/// comparison matrix, reviews, epistemic frontier, timeline and the other
+/// §12.5 views), linked from a `## Views` section of the Overview, and a
+/// matrix cell with no comparison reads `unknown` (W08.07).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v15";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -316,8 +320,8 @@ pub trait CaseRenderer {
     }
 }
 
-/// The working vault layout: one note per record, one overview per case and
-/// `Start Here.md`.
+/// The working vault layout: one note per record, one overview and a set of
+/// static table views per case, and `Start Here.md`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct VaultRenderer;
 
@@ -346,7 +350,11 @@ impl CaseRenderer for VaultRenderer {
                 let content = templates::record_note(notes, record)?;
                 plan.add(Phase::Records, path, content, Some(id))?;
             }
-            let content = templates::case_overview(notes)?;
+            let views = crate::records::views::plan(notes)?;
+            let content = templates::case_overview(notes, &views)?;
+            for view in views {
+                plan.add(Phase::Views, view.path, view.content, None)?;
+            }
             plan.add(
                 Phase::Views,
                 layout::case_overview(case.case_id())?,
@@ -462,6 +470,8 @@ mod tests {
             ("yaml.rs", include_str!("yaml.rs")),
             ("marker.rs", include_str!("marker.rs")),
             ("start_here.rs", include_str!("start_here.rs")),
+            ("records/views.rs", include_str!("records/views.rs")),
+            ("records/matrix.rs", include_str!("records/matrix.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),

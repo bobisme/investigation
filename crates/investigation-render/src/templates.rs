@@ -35,7 +35,10 @@ pub fn record_note(notes: &NoteContext<'_>, record: &Record) -> Result<String, R
     Ok(out)
 }
 
-pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
+pub(crate) fn case_overview(
+    notes: &NoteContext<'_>,
+    views: &[crate::records::views::ViewNote],
+) -> Result<String, RenderError> {
     let case = notes.case();
     let case_id = case.case_id();
     let state = case.state();
@@ -47,6 +50,21 @@ pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
             crate::records::pack_fields_section(notes, &mut out, record);
         }
         None => heading(&mut out, &case_id.to_string()),
+    }
+    if !views.is_empty() {
+        out.push_str(
+            "\n## Views\n\nPlain Markdown tables over this case at this snapshot, readable in any \
+             text viewer. None computes an overall score or rank.\n\n",
+        );
+        for view in views {
+            let _ = writeln!(
+                out,
+                "- {}: {} {}",
+                layout::wikilink(&view.path, view.name),
+                view.rows,
+                if view.rows == 1 { "row" } else { "rows" }
+            );
+        }
     }
     out.push_str("\n## Records\n");
     let mut any = false;

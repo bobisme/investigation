@@ -92,6 +92,13 @@
 //!   measurement, evaluation or research), and the `brief`/`frontier`
 //!   commands to resume. It reuses core rules (freshness overview, objection
 //!   policy, synopsis status, `next` ranking) and never the CLI crate.
+//! - Table views: `records::views` plans one static Markdown table note per
+//!   §12.5 view under `Cases/<case-id>/Views/` (questions through the
+//!   comparison matrix, reviews, epistemic frontier and timeline), each with
+//!   its default columns, bounded rows with an overflow link, a stable sort
+//!   key and cells built only from [`text`] escapers. A view with no rows is
+//!   not planned, except the frontier and the timeline. No table computes a
+//!   score or rank; the Overview links every planned view under `## Views`.
 //! - `Start Here.md` ([`start_here`]): what the vault is, projection
 //!   health, who owns which folder, and per case (capped, in case ID order)
 //!   its Overview, last committed snapshot, answer, pending questions,

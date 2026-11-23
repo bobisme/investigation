@@ -144,7 +144,7 @@ fn a_foreign_file_inside_a_case_folder_survives_any_number_of_renders() {
     let (mut store, case_id) = workspace(directory.path());
     let first = render(&mut store);
     assert_eq!(first.manifest, ManifestStatus::Missing);
-    assert_eq!(first.publish.written(), 4);
+    assert_eq!(first.publish.written(), 7);
     assert!(first.unknown.is_empty(), "{:?}", first.unknown);
 
     let vault = vault(&store);
@@ -184,8 +184,8 @@ fn a_foreign_file_inside_a_case_folder_survives_any_number_of_renders() {
     let report = render_fixed(&mut store, &only_entry);
     assert_eq!(
         report.publish.removed(),
-        8,
-        "seven questions and the overview"
+        11,
+        "seven questions, the overview and three views"
     );
     assert_eq!(report.publish.refused(), 0);
     let left: Vec<_> = tree(&vault).into_keys().collect();
@@ -463,7 +463,7 @@ fn the_manifest_round_trips_and_tampering_only_makes_it_more_cautious() {
     assert_eq!(record.generation, first.publish.generation.id());
     let text: Value = serde_json::from_slice(&manifest.to_json()).unwrap();
     assert_eq!(text["schema_version"], MANIFEST_VERSION);
-    assert_eq!(text["owned"].as_array().unwrap().len(), 4);
+    assert_eq!(text["owned"].as_array().unwrap().len(), 7);
 
     let other = Workspace::init(&directory.path().join("other"), true)
         .unwrap()

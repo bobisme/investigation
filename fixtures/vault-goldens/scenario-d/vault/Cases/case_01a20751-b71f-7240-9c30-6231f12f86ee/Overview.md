@@ -103,6 +103,21 @@ This note reflects sequence 50. Run these in the workspace that holds this vault
 - `investigation --case case_01a20751-b71f-7240-9c30-6231f12f86ee frontier --format json`
 - `investigation --case case_01a20751-b71f-7240-9c30-6231f12f86ee next --format json`
 
+## Views
+
+Plain Markdown tables over this case at this snapshot, readable in any text viewer. None computes an overall score or rank.
+
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Questions|Questions]]: 1 row
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Hypotheses|Hypotheses]]: 3 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Sources|Sources]]: 6 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Evidence|Evidence]]: 28 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Measurements|Measurements]]: 4 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Inquiries and Runs|Inquiries and Runs]]: 5 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Conclusions|Conclusions]]: 2 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Reviews and Blindspots|Reviews and Blindspots]]: 1 row
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Epistemic Frontier|Epistemic Frontier]]: 18 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Timeline|Timeline]]: 68 rows
+
 ## Records
 
 ### Questions

@@ -196,7 +196,7 @@ fn state_words(state: CellState) -> &'static str {
         CellState::Qualitative => "qualitative, not a measurement",
         CellState::Unknown => "unknown",
         CellState::NotApplicable => "not applicable",
-        CellState::Missing => "missing: no comparison recorded",
+        CellState::Missing => "unknown: no comparison recorded",
         CellState::Multiple => "multiple current comparisons, unresolved",
         CellState::NeedsReview => "needs review: comparison is out of date",
         CellState::OutOfScope => "out of scope",

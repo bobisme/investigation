@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_1687068e38c51d099c28998e35f5dac33399fdc6c5f31357522973d53da2770b"
+inv_generation: "gen_4ae3975947c83a9bfd80cc7abdca9803d805cf002581cc044808e09f1f49328d"
 ---
 # Start Here
 
@@ -9,12 +9,12 @@ inv_generation: "gen_1687068e38c51d099c28998e35f5dac33399fdc6c5f31357522973d53da
 
 This vault is a read-only view of the Investigation workspace that contains it. The workspace journal is the record; every note here is projected from one verified snapshot of it, and nothing written in the vault changes it. The notes are plain Markdown with wikilinks, and nothing here needs a community plugin.
 
-- Renderer: `inv.vault-renderer.v14`
+- Renderer: `inv.vault-renderer.v15`
 - View audience: `internal`
 
 ## Projection health
 
-- Generation: `gen_1687068e38c51d099c28998e35f5dac33399fdc6c5f31357522973d53da2770b` (the `inv_generation` property of this note)
+- Generation: `gen_4ae3975947c83a9bfd80cc7abdca9803d805cf002581cc044808e09f1f49328d` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
 - While a render runs, notes can briefly mix generations. A note whose `inv_render_sequence` is older than its case's sequence below is from an earlier render.
