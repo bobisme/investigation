@@ -1348,3 +1348,95 @@ fn withdrawn_evidence_stays_readable_labeled_and_out_of_new_use() {
     let help = run(root, &["schema", "source.withdraw", "--json"], None, 0);
     assert!(help.to_string().contains("not erasure"), "{help}");
 }
+
+#[test]
+fn producer_run_envelope_ingests_against_its_fixture_directory() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../fixtures/producer-run/v1")
+        .canonicalize()
+        .unwrap();
+    let config = root.join("investigation.toml");
+    let configured = fs::read_to_string(&config).unwrap().replace(
+        "import_roots = []",
+        &format!("import_roots = [{:?}]", fixture.display().to_string()),
+    );
+    fs::write(config, configured).unwrap();
+
+    let schema = run(root, &["schema", "producer-run", "--json"], None, 0);
+    assert_eq!(schema["schema"]["title"], "ProducerRun");
+    let example = schema["example"].clone();
+    let envelope: Value =
+        serde_json::from_slice(&fs::read(fixture.join("envelope.json")).unwrap()).unwrap();
+    assert_eq!(example, envelope, "the published example is the fixture");
+
+    let envelope_path = fixture.join("envelope.json");
+    let envelope_arg = envelope_path.to_str().unwrap();
+    let receipt = run(
+        root,
+        &[
+            "ingest",
+            "--input",
+            envelope_arg,
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(receipt["result"], "committed");
+    assert_eq!(receipt["run_outcome"], "imported");
+    assert_eq!(receipt["execution"], "completed");
+    assert_eq!(receipt["evidence_completeness"], "complete");
+    assert_eq!(receipt["measurement_validity"], "unknown");
+    assert_eq!(receipt["artifacts"][0]["outcome"], "imported");
+    let run_id = receipt["run"]["id"].as_str().unwrap();
+    let shown = run(
+        root,
+        &["show", run_id, "--depth", "full", "--json"],
+        None,
+        0,
+    );
+    let body = &shown["record"]["body"];
+    assert_eq!(body["evidence_validity"], "unknown");
+    assert_eq!(
+        body["producer_run"]["assertions"][0]["validity_claim"],
+        "producer_reported"
+    );
+    assert_eq!(
+        body["producer_run"]["controls"][0]["producer_result"],
+        "reported_pass"
+    );
+
+    // The same envelope again records nothing new.
+    let again = run(
+        root,
+        &[
+            "ingest",
+            "--input",
+            envelope_arg,
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(again["result"], "already_committed");
+    assert_eq!(again["run"], receipt["run"]);
+
+    // An unsupported version of the family is an explicit failure.
+    let mut future = envelope;
+    future["schema_version"] = json!("inv.producer-run.v2");
+    let rejected = run(
+        root,
+        &["ingest", "--input", "-", "--actor", ACTOR, "--json"],
+        Some(&future),
+        2,
+    );
+    assert_eq!(rejected["error"]["path"], "/schema_version");
+    assert_eq!(rejected["commit_status"], "not_committed");
+}

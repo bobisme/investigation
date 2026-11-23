@@ -10,11 +10,15 @@ use investigation_core::{
     input,
     wire::{ErrorCode, Failure},
 };
+use investigation_store::opaque::{EnvelopeProbe, probe_envelope};
 use investigation_store::{
     Store,
     store::{
         evidence_read::Excerpt,
-        ingest::{self, IngestReceipt, StreamContent},
+        ingest::{
+            self, IngestReceipt, StreamContent,
+            producer_run::{ProducerRunReceipt, ProducerRunSubmission},
+        },
     },
 };
 use serde_json::json;
@@ -34,6 +38,9 @@ pub(crate) enum EvidenceCommand {
 
 pub(crate) fn ingest(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Failure> {
     let bytes = read_input(path)?;
+    if probe_envelope(&bytes) != EnvelopeProbe::NotAnEnvelope {
+        return producer_run(store, global, &bytes);
+    }
     let (manifest, _) = ingest::parse_manifest(&bytes)?;
     select_actor(
         store.workspace(),
@@ -53,6 +60,62 @@ pub(crate) fn ingest(store: &mut Store, global: &Global, path: &Path) -> Result<
         return submit(store, &bytes, Some(&mut io::stdin().lock()));
     }
     submit(store, &bytes, None)
+}
+
+/// Ingest an `inv.producer-run.v1` envelope. The envelope names no actor,
+/// case or command: the actor comes from --actor or settings, --case selects an
+/// existing case (else a minimal record case is created), and the command ID is
+/// derived from the request content.
+fn producer_run(store: &mut Store, global: &Global, bytes: &[u8]) -> Result<Output, Failure> {
+    let mut submission = ProducerRunSubmission::new(select_actor(
+        store.workspace(),
+        global.actor.as_ref(),
+        None,
+    )?);
+    if let Some(selector) = global.case.as_deref() {
+        submission.case_id = Some(select_case(store, Some(selector))?);
+    }
+    let ProducerRunReceipt {
+        receipt,
+        case_id,
+        run,
+        run_outcome,
+        envelope,
+        artifacts,
+        execution,
+        evidence_completeness,
+        measurement_validity,
+    } = store
+        .ingest_producer_run(bytes, &submission)
+        .map_err(|failure| with_workspace_repair(store.workspace(), failure))?;
+    let mut out = receipt_output(store.workspace(), receipt);
+    out.text.push_str(&format!(
+        "
+run {}  revision {}  {}  execution {}  evidence {}  validity {}",
+        run.id,
+        run.revision,
+        json!(run_outcome).as_str().unwrap_or_default(),
+        json!(execution).as_str().unwrap_or_default(),
+        json!(evidence_completeness).as_str().unwrap_or_default(),
+        json!(measurement_validity).as_str().unwrap_or_default(),
+    ));
+    for item in &artifacts {
+        out.text.push_str(&format!(
+            "
+{}  {}",
+            item.item,
+            json!(item.outcome).as_str().unwrap_or_default()
+        ));
+    }
+    out.value["case_id"] = json!(case_id);
+    out.value["run"] = json!(run);
+    out.value["run_outcome"] = json!(run_outcome);
+    out.value["envelope"] = json!(envelope);
+    out.value["artifacts"] = json!(artifacts);
+    out.value["execution"] = json!(execution);
+    out.value["evidence_completeness"] = json!(evidence_completeness);
+    out.value["measurement_validity"] = json!(measurement_validity);
+    Ok(out)
 }
 
 pub(crate) fn start(

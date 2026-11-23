@@ -1,0 +1,15 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "example-benchmark", "version": "0.1.0", "instance": "local-a"},
+  "external_run_id": "bench-run-002",
+  "intent": {"label": "compare two queue settings", "external_plan_digest": null},
+  "execution": {"state": "completed", "exit_code": 0, "started_at": null, "ended_at": null, "clock_quality": "unknown"},
+  "environment": {"revision": "build-abc123", "workload": "fixture-small", "machine": "controlled-fixture"},
+  "artifacts": [
+    {"role": "original-output", "path": "./bench-result.json", "expected_sha256": null, "media_type": "application/json", "classification": "internal"}
+  ],
+  "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms", "validity_claim": "producer_reported"}],
+  "controls": [{"name": "steady-load", "producer_result": "reported_pass"}],
+  "receipts": [],
+  "limitations": ["Single synthetic workload; representative production profile not established"]
+}

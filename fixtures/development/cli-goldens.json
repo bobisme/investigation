@@ -460,7 +460,9 @@
       "error",
       "ingest",
       "ingest-receipt",
-      "evidence-selector"
+      "evidence-selector",
+      "producer-run",
+      "producer-run-receipt"
     ]
   }
 }

@@ -22,6 +22,8 @@ use crate::{blob::stage, import_paths::ImportRoot};
 
 #[path = "acquisition.rs"]
 pub mod acquisition;
+#[path = "producer_run.rs"]
+pub mod producer_run;
 use acquisition::{AcquisitionKeyRequest, ItemFacts, ItemOutcome, ItemPlan, PriorAcquisition};
 
 #[path = "derivation.rs"]
@@ -532,29 +534,9 @@ fn resolve_acquisition(
     let Some(request) = &manifest.source.acquisition_key else {
         return Ok(acquisition::unkeyed(facts.len()));
     };
-    let target = manifest.case_id.zip(visible.target);
-    let homes: Vec<(Id, &CaseReplay, Id)> = visible
-        .others
-        .cases
-        .iter()
-        .map(|(case_id, case)| (*case_id, case))
-        .chain(target)
-        .filter_map(|(case_id, case)| {
-            acquisition::records_attempt(&case.state, request).map(|source| (case_id, case, source))
-        })
-        .collect();
-    let (home, home_case, source) = match homes.as_slice() {
-        [] => return Ok(acquisition::fresh(request, facts)),
-        [only] => *only,
-        _ => {
-            return Err(integrity(
-                "One acquisition is recorded in more than one case.",
-            ));
-        }
+    let Some((home, home_case, source)) = home_of(manifest.case_id, request, &visible)? else {
+        return Ok(acquisition::fresh(request, facts));
     };
-    if manifest.case_id.is_some_and(|target| target != home) {
-        return Err(acquisition::other_case(home, source));
-    }
     let plans = acquisition::resolve(
         home,
         home_case,
@@ -568,6 +550,39 @@ fn resolve_acquisition(
         return Err(acquisition::other_case(home, source));
     }
     Ok(plans)
+}
+
+/// The one case that records this acquisition attempt, with the Source through
+/// which it does. Refuses a target case other than that one.
+fn home_of<'v>(
+    case_id: Option<Id>,
+    request: &AcquisitionKeyRequest,
+    visible: &Visible<'v>,
+) -> Result<Option<(Id, &'v CaseReplay, Id)>, Failure> {
+    let target = case_id.zip(visible.target);
+    let homes: Vec<(Id, &CaseReplay, Id)> = visible
+        .others
+        .cases
+        .iter()
+        .map(|(case_id, case)| (*case_id, case))
+        .chain(target)
+        .filter_map(|(case_id, case)| {
+            acquisition::records_attempt(&case.state, request).map(|source| (case_id, case, source))
+        })
+        .collect();
+    let home = match homes.as_slice() {
+        [] => return Ok(None),
+        [only] => *only,
+        _ => {
+            return Err(integrity(
+                "One acquisition is recorded in more than one case.",
+            ));
+        }
+    };
+    if case_id.is_some_and(|target| target != home.0) {
+        return Err(acquisition::other_case(home.0, home.2));
+    }
+    Ok(Some(home))
 }
 
 /// When nothing is new, the transaction whose receipt answers the request.
@@ -601,7 +616,9 @@ fn create_records(
         None => new_id(acceptance.ids, Kind::Case)?,
     };
     let mut builder = IngestRecords {
-        manifest,
+        actor: &manifest.actor,
+        descriptor: manifest.actor_descriptor.as_ref(),
+        classification: manifest.classification,
         case_id,
         timestamp: acceptance.clock.now_utc(),
         sequence: acceptance.sequence,
@@ -816,7 +833,10 @@ fn add_text_derivative(
 }
 
 struct IngestRecords<'a> {
-    manifest: &'a Manifest,
+    actor: &'a Actor,
+    descriptor: Option<&'a ActorDescriptor>,
+    /// Level of the records added or revised next.
+    classification: ClassificationLevel,
     case_id: Id,
     timestamp: UtcTimestamp,
     sequence: u64,
@@ -834,12 +854,12 @@ impl IngestRecords<'_> {
         body: impl Serialize,
         refs: Vec<Id>,
     ) -> Result<(), Failure> {
-        let actor = self.manifest.actor.clone();
+        let actor = self.actor.clone();
         let kind = id.kind();
         let level = if kind == Kind::Case {
             ClassificationLevel::Internal
         } else {
-            self.manifest.classification
+            self.classification
         };
         let acquired_at = matches!(kind, Kind::Source | Kind::Artifact).then(|| SourceTime {
             timestamp: Knowledge::Known(self.timestamp.to_string()),
@@ -852,7 +872,7 @@ impl IngestRecords<'_> {
                 case_id: self.case_id,
                 schema_version: SchemaVersion::RecordV0Alpha,
                 created_by: actor.clone(),
-                actor_descriptor_self_reported: self.manifest.actor_descriptor.clone(),
+                actor_descriptor_self_reported: self.descriptor.cloned(),
                 created_at: self.timestamp.clone(),
                 recorded_at: self.timestamp.clone(),
                 recorded_by: actor,
@@ -893,8 +913,8 @@ impl IngestRecords<'_> {
         header.revision = Revision(revision);
         header.acceptance_sequence = self.sequence;
         header.recorded_at = self.timestamp.clone();
-        header.recorded_by = self.manifest.actor.clone();
-        header.classification.level = self.manifest.classification;
+        header.recorded_by = self.actor.clone();
+        header.classification.level = self.classification;
         let reference = RevisionRef {
             id: header.id,
             revision,

@@ -31,6 +31,7 @@ pub mod method_pack;
 pub mod method_pack_ops;
 pub mod objection_policy;
 pub mod observation_ops;
+pub mod producer_run;
 pub mod retrospective;
 mod retrospective_ops;
 pub mod review;

@@ -8,7 +8,6 @@ use investigation_core::{
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::key::{CaptureHandle, IdempotencyKey, Metadata, Position};
 
@@ -151,59 +150,15 @@ impl ChannelInventory {
     }
 }
 
-/// A producer-reported result, such as a metric.
-///
-/// It is retained as the producer's assertion. Only an attributed Assessment or
-/// Conclusion can promote it to an investigative interpretation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct ProducerAssertion {
-    /// Assertion kind, such as `reported_metric`.
-    pub kind: String,
-    /// Name, such as `latency.p99`.
-    pub name: String,
-    /// Reported value.
-    pub value: Value,
-    /// Unit, when meaningful.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unit: Option<String>,
-}
-
-impl ProducerAssertion {
-    /// An assertion without a unit.
-    pub fn new(kind: impl Into<String>, name: impl Into<String>, value: Value) -> Self {
-        Self {
-            kind: kind.into(),
-            name: name.into(),
-            value,
-            unit: None,
-        }
-    }
-}
-
-/// A control the producer reports with its own result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-#[non_exhaustive]
-pub struct ProducerControl {
-    /// Control name.
-    pub name: String,
-    /// Producer's result, such as `reported_pass`. It is not proof of method.
-    pub producer_result: String,
-}
-
-impl ProducerControl {
-    /// A control and its reported result.
-    pub fn new(name: impl Into<String>, producer_result: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            producer_result: producer_result.into(),
-        }
-    }
-}
+/// Producer results and controls are the envelope types of
+/// `inv.producer-run.v1`, so a producer that records through this API and one
+/// that writes a single envelope make identical, attributed statements.
+pub use investigation_core::producer_run::{ProducerAssertion, ProducerControl};
 
 /// Reference to an external receipt about the action.
+///
+/// The capture form of the envelope's `ProducerReceipt`: the same fields, with
+/// the receipt bytes named by an attached item key instead of an artifact path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]

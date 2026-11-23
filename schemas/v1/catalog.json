@@ -184,6 +184,8 @@
     "evidence-selector": "evidence-selector.schema.json",
     "ingest": "ingest.schema.json",
     "ingest-receipt": "ingest-receipt.schema.json",
+    "producer-run": "producer-run.schema.json",
+    "producer-run-receipt": "producer-run-receipt.schema.json",
     "receipt": "receipt.schema.json",
     "record": "command.schema.json"
   }

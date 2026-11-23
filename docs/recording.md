@@ -73,6 +73,73 @@ Staging is durable recovery material, not cache. No cleanup path removes it: pub
 - **Assertions.** Your results are recorded as your assertions. An exit code of 0 or a `reported_pass` control sets no measurement validity.
 - **Readiness.** If your policy requires durable recording and `begin` fails, do not start a new effectful unit. If the recorder fails midrun, keep a bounded local spool and reconcile later. These are producer obligations; Investigation does not enforce them.
 
+## One-shot envelope `inv.producer-run.v1`
+
+A producer that has already finished can describe the whole run in one JSON document instead of calling the capture operations. `investigation ingest --input ENVELOPE` recognizes it by `schema_version`. Rust callers use `Store::ingest_producer_run`. `investigation schema producer-run` returns the JSON Schema and the schematic example below. The example is relative to a fixture directory ([fixtures/producer-run/v1](../fixtures/producer-run/v1)). Ingest resolves `path` beneath the configured `import_roots`.
+
+```json
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {"name": "example-benchmark", "version": "0.1.0", "instance": "local-a"},
+  "external_run_id": "bench-run-002",
+  "intent": {"label": "compare two queue settings", "external_plan_digest": null},
+  "execution": {"state": "completed", "exit_code": 0, "started_at": null, "ended_at": null, "clock_quality": "unknown"},
+  "environment": {"revision": "build-abc123", "workload": "fixture-small", "machine": "controlled-fixture"},
+  "artifacts": [
+    {"role": "original-output", "path": "./bench-result.json", "expected_sha256": null, "media_type": "application/json", "classification": "internal"}
+  ],
+  "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms", "validity_claim": "producer_reported"}],
+  "controls": [{"name": "steady-load", "producer_result": "reported_pass"}],
+  "receipts": [],
+  "limitations": ["Single synthetic workload; representative production profile not established"]
+}
+```
+
+| Field | Required | Meaning |
+|---|---|---|
+| `producer` | yes | `name` (1–128 ASCII letters, digits, `.`, `_`, `-`), optional `version` and `instance`. Self-reported attribution. |
+| `external_run_id` | yes | The producer's stable ID for this attempt. With `producer.name` it identifies the attempt. |
+| `intent` | yes | `label` (1–256 characters) and an optional `external_plan_digest`, retained unchecked. |
+| `execution` | yes | `state` (`declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`), optional `exit_code`, `started_at`, `ended_at` (verbatim text; RFC 3339 recommended), `clock_quality` (default `unknown`) and `error`. |
+| `environment` | no | String map of reported facts, at most 64 entries. Keys follow the `producer.name` rule. |
+| `artifacts` | no | At most 32. `role`, relative `path`, optional `expected_sha256` (64 lowercase hex), `media_type`, `classification` (default `internal`). |
+| `assertions` | no | At most 256. `kind`, `name`, `value` (any JSON up to 16 KiB), optional `unit`. `validity_claim` may only be `producer_reported`. |
+| `controls` | no | At most 64. `name` and `producer_result`, such as `reported_pass`. |
+| `receipts` | no | At most 32. `kind` plus an `artifact` (the `path` of an entry in `artifacts`) or a `reference` locator, or both. |
+| `limitations` | no | At most 64 statements. |
+| `classification` | no | Level of the envelope and the Run, default `internal`. The recorded level is the highest of this and every artifact's level. |
+| `metadata` | no | Inert namespaced metadata, allowed at the top level and on each artifact, assertion, control and receipt. It is subject to the opaque-metadata bounds. |
+
+Unknown fields are errors. Producer extensions go in `metadata`. An envelope larger than 512 KiB is refused. An unsupported version of the family, for example `inv.producer-run.v2`, is refused with a structured error. To keep such bytes, ingest the file through an `inv.ingest.v1` manifest. It is then retained opaquely with a diagnostic.
+
+### What ingest records
+
+One transaction records the following:
+
+- A minimal `record`-mode case titled with `intent.label`, when `--case` is not given.
+- A Source and an Artifact for the envelope bytes, with acquisition item `envelope`. Every assertion, control and receipt is therefore retained source content that a later Observation can cite with a JSON selector.
+- A Source and an Artifact for each retained artifact, with item `artifact:` plus the path without its `./` prefix.
+- One Run. Its `producer_run` section holds the producer's statements exactly as sent, with `attribution: producer_reported`. It also holds the computed `retention` of each declared artifact (`retained` with exact IDs and digest, `missing`, or `rejected` with the actual digest) and the envelope's IDs.
+
+The Run's `execution_status` is the reported state. Its `evidence_completeness` is computed from retention: `complete` when every declared artifact was retained, `partial` when some were, and `missing` when none of a nonempty inventory were. Its `evidence_validity` is `unknown`. An exit code of 0, a `completed` state or a `reported_pass` control does not change that. Ingest creates no Observation, Assessment or Conclusion. Only an attributed `measurement.assess`, Assessment or Conclusion can interpret the producer's result. The Run's `producer` is the submitting actor, and `tool` names the producer.
+
+A missing file or an `expected_sha256` mismatch affects only that item. The item reports `missing` or `rejected`, its bytes are not retained, and the receipt carries a warning. A path with `..`, an absolute path, a symlink, a file with more than one hard link, or a file over 64 MiB fails the whole request. Nothing is committed.
+
+### Identity and resubmission
+
+The submitting actor comes from `--actor` or the workspace settings. The command ID is derived from the request content, so an identical resubmission returns the original receipt. The attempt follows the acquisition identity rules in [the v1 contract](schema-v1.md):
+
+- The same content from another actor, or after an investigator reconciled the Run, records nothing. Every item reports `deduplicated`.
+- A changed envelope revises the same Run and the envelope Source. A changed artifact declaration revises that artifact's Source. Changed bytes add a retained Artifact. Each one reports `revised`. Investigator-owned Run fields, such as `evidence_validity` and the declaration sequence, are carried forward. Earlier artifact references stay on the Run.
+- An artifact that was retained earlier and is missing or rejected now keeps its retained entry when its bytes still satisfy `expected_sha256`.
+- An attempt belongs to the case that first recorded it. Changed content without `--case` for that case is refused at `/external_run_id`.
+
+The receipt (`producer-run-receipt`) adds `case_id`, the `run` revision, `run_outcome`, an `envelope` item, one item per declared artifact (`imported`, `deduplicated`, `revised`, `missing` or `rejected`), the reported `execution`, the computed `evidence_completeness`, and the Run's `measurement_validity`.
+
+### Relation to the capture operations
+
+`ProducerAssertion` and `ProducerControl` are the same types in the envelope and in `FinalizeCapture`. `ExternalReceipt` has the fields of the envelope's receipt, but names its bytes by an attached item key instead of a path. The envelope's `producer` fields match `ProducerIdentity`. The envelope's name rule is stricter: it does not allow `:` or `/`, because the name becomes the acquisition namespace.
+
 ## Compatibility
 
 The crate is pre-1.0 and versioned with the workspace. Its public surface is the `Recorder` trait, `LocalRecorder`, the request, receipt and value types it defines, and the core contract types it re-exports at its root. Store internals are never exposed. Request, receipt and enum types are `#[non_exhaustive]`: build requests with `new` constructors and set optional fields directly, and match enums with a wildcard arm. New fields, variants and trait methods (with default bodies) are additive. A breaking change needs a minor version bump and a migration note in this file. Serialized forms follow the [v1 rules](schema-v1.md): additive optional fields only.

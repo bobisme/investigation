@@ -23,6 +23,8 @@ const WIRE_SCHEMAS: &[&str] = &[
     "ingest",
     "ingest-receipt",
     "evidence-selector",
+    "producer-run",
+    "producer-run-receipt",
 ];
 const RESERVED_WIRE_SCHEMAS: &[&str] = &["capture"];
 
@@ -54,6 +56,10 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
     let wire = match name {
         "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
         "ingest-receipt" => Some(investigation_store::store::ingest::receipt_schema()),
+        "producer-run" => Some(investigation_store::store::ingest::producer_run::envelope_schema()),
+        "producer-run-receipt" => {
+            Some(investigation_store::store::ingest::producer_run::receipt_schema())
+        }
         _ => wire_schema(name),
     };
     if let Some(schema) = wire {
@@ -69,14 +75,27 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 "evidence-selector" => {
                     "Choose a digest-bound selection for investigation evidence read."
                 }
+                "producer-run" => {
+                    "Record one completed producer run with investigation ingest --input ENVELOPE."
+                }
+                "producer-run-receipt" => {
+                    "Inspect the Run, retained items and outcomes from a producer-run ingest."
+                }
                 _ => "Inspect the shape of an error and its repair guidance.",
             };
-            let text = format!("{name}  {purpose}\n{}", pretty(&schema));
-            Output::success(
-                "schema",
-                json!({"name": name, "purpose": purpose, "schema": schema}),
-                text,
-            )
+            let mut text = format!("{name}  {purpose}\n{}", pretty(&schema));
+            let mut value = json!({"name": name, "purpose": purpose, "schema": schema});
+            if name == "producer-run" {
+                let (example, behavior) = producer_run_example();
+                text.push_str(&format!(
+                    "\nSchematic example (paths resolve beneath configured import roots)\n{}\nBehavior: {}",
+                    pretty(&example),
+                    behavior.join(" ")
+                ));
+                value["example"] = example;
+                value["behavior"] = json!(behavior);
+            }
+            Output::success("schema", value, text)
         });
     }
 
@@ -182,6 +201,36 @@ fn list(catalog: &Catalog, include_deferred: bool) -> Output {
         value["reserved_wire_schemas"] = json!(RESERVED_WIRE_SCHEMAS);
     }
     Output::success("schema_list", value, text.join("\n"))
+}
+
+/// The plan's schematic envelope. It is relative to an existing fixture
+/// directory: put the directory in `import_roots` and `ingest` resolves the path.
+fn producer_run_example() -> (Value, [&'static str; 6]) {
+    (
+        json!({
+            "schema_version": "inv.producer-run.v1",
+            "producer": {"name": "example-benchmark", "version": "0.1.0", "instance": "local-a"},
+            "external_run_id": "bench-run-002",
+            "intent": {"label": "compare two queue settings", "external_plan_digest": null},
+            "execution": {"state": "completed", "exit_code": 0, "started_at": null, "ended_at": null, "clock_quality": "unknown"},
+            "environment": {"revision": "build-abc123", "workload": "fixture-small", "machine": "controlled-fixture"},
+            "artifacts": [
+                {"role": "original-output", "path": "./bench-result.json", "expected_sha256": null, "media_type": "application/json", "classification": "internal"}
+            ],
+            "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms", "validity_claim": "producer_reported"}],
+            "controls": [{"name": "steady-load", "producer_result": "reported_pass"}],
+            "receipts": [],
+            "limitations": ["Single synthetic workload; representative production profile not established"]
+        }),
+        [
+            "Records one Run plus a Source and Artifact for the envelope bytes and for each retained artifact, in one transaction.",
+            "Without --case it creates a minimal record-mode case. The actor comes from --actor or settings; the command ID is derived from the content.",
+            "producer.name and external_run_id identify the attempt: identical content records nothing, changed content revises the same Run and Sources.",
+            "Assertions, controls and receipts stay attributed producer claims on the Run; no Observation, Assessment or Conclusion is created.",
+            "Execution state and exit code set no measurement validity; the Run's evidence_validity stays unknown.",
+            "A missing artifact or an expected_sha256 mismatch affects that item only and makes the Run's evidence completeness partial.",
+        ],
+    )
 }
 
 fn raw(schema: Value) -> Output {

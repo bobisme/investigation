@@ -364,7 +364,7 @@ fn request_wire_shapes_are_pinned() {
         "execution": {"state": "failed", "exit_code": 3, "error": "worker exited"},
         "channels": [{"channel": "trace", "completeness": "partial"}],
         "declared_artifacts": ["result", "extract"],
-        "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms"}],
+        "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms", "validity_claim": "producer_reported"}],
         "controls": [{"name": "steady-load", "producer_result": "reported_pass"}],
         "receipts": [{"kind": "signed-statement", "artifact": "statement"}],
         "limitations": ["Single synthetic workload"]

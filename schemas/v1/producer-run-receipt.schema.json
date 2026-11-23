@@ -1,0 +1,449 @@
+{
+  "$defs": {
+    "CommitResult": {
+      "enum": [
+        "committed",
+        "already_committed"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "EvidenceCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Guidance": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/GuidanceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "argv"
+      ],
+      "type": "object"
+    },
+    "GuidanceKind": {
+      "enum": [
+        "local_read"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "MeasurementValidity": {
+      "enum": [
+        "unknown",
+        "valid",
+        "invalid",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "ProducerItemOutcome": {
+      "description": "What ingest did with the envelope, the Run or one declared artifact.",
+      "oneOf": [
+        {
+          "const": "imported",
+          "description": "New records.",
+          "type": "string"
+        },
+        {
+          "const": "deduplicated",
+          "description": "Already recorded with the same content; nothing new.",
+          "type": "string"
+        },
+        {
+          "const": "revised",
+          "description": "A known item with changed content: a new revision or retained version.",
+          "type": "string"
+        },
+        {
+          "const": "missing",
+          "description": "No file at the declared path beneath any import root.",
+          "type": "string"
+        },
+        {
+          "const": "rejected",
+          "description": "The bytes differ from `expected_sha256`; nothing was retained.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProducerItemReceipt": {
+      "properties": {
+        "artifact_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "diagnostics": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Digest of the retained bytes, or of the rejected bytes."
+        },
+        "expected_sha256": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item": {
+          "description": "`envelope`, or `artifact:` plus the normalized path.",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/ProducerItemOutcome"
+        },
+        "path": {
+          "description": "Declared path, for an artifact.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "outcome"
+      ],
+      "type": "object"
+    },
+    "Projection": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "$ref": "#/$defs/ProjectionStatus"
+        },
+        "vault": {
+          "$ref": "#/$defs/ProjectionStatus"
+        }
+      },
+      "required": [
+        "index",
+        "vault"
+      ],
+      "type": "object"
+    },
+    "ProjectionStatus": {
+      "enum": [
+        "current",
+        "pending",
+        "degraded",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "ReceiptArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact",
+        "digest",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "ReceiptObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "quote_state": {
+          "$ref": "#/$defs/TextQuoteState"
+        },
+        "selector_validation": {
+          "$ref": "#/$defs/SelectorValidation"
+        }
+      },
+      "required": [
+        "observation",
+        "selector_validation",
+        "quote_state"
+      ],
+      "type": "object"
+    },
+    "RecordChange": {
+      "additionalProperties": false,
+      "properties": {
+        "client_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorValidation": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "TextQuoteState": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable",
+        "not_applicable"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:producer-run-receipt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Receipt of a producer-run ingest.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ProducerItemReceipt"
+      },
+      "type": "array"
+    },
+    "case_id": {
+      "$ref": "#/$defs/Id"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "created": {
+      "items": {
+        "$ref": "#/$defs/RecordChange"
+      },
+      "type": "array"
+    },
+    "envelope": {
+      "$ref": "#/$defs/ProducerItemReceipt"
+    },
+    "evidence_completeness": {
+      "$ref": "#/$defs/EvidenceCompleteness",
+      "description": "Retention completeness of the declared artifacts, computed by ingest."
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionStatus",
+      "description": "Execution state exactly as the producer reported it."
+    },
+    "measurement_validity": {
+      "$ref": "#/$defs/MeasurementValidity",
+      "description": "The Run's recorded measurement validity. Ingest records `unknown` and\nnever changes it: no producer statement, exit code or control result\nsets measurement validity."
+    },
+    "next": {
+      "items": {
+        "$ref": "#/$defs/Guidance"
+      },
+      "type": "array"
+    },
+    "observation_checks": {
+      "items": {
+        "$ref": "#/$defs/ReceiptObservation"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "result": {
+      "$ref": "#/$defs/CommitResult"
+    },
+    "run": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "The Run revision this receipt describes."
+    },
+    "run_outcome": {
+      "$ref": "#/$defs/ProducerItemOutcome"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ResponseVersion"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/Snapshot"
+    },
+    "transaction_id": {
+      "$ref": "#/$defs/Id"
+    },
+    "updated": {
+      "items": {
+        "$ref": "#/$defs/RecordChange"
+      },
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "result",
+    "command_id",
+    "transaction_id",
+    "snapshot",
+    "created",
+    "updated",
+    "projection",
+    "warnings",
+    "next",
+    "case_id",
+    "run",
+    "run_outcome",
+    "envelope",
+    "artifacts",
+    "execution",
+    "evidence_completeness",
+    "measurement_validity"
+  ],
+  "title": "ProducerRunReceipt",
+  "type": "object"
+}

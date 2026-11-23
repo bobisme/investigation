@@ -1,6 +1,6 @@
 # Investigation v1 contracts
 
-The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`. The published JSON Schemas cover commands, normal and import receipts, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
+The public transaction envelope is `inv.command.v1`. Writes and structured errors use `inv.response.v1`. Local import manifests use `inv.ingest.v1`, and completed producer runs use `inv.producer-run.v1`. The published JSON Schemas cover commands, normal, import and producer-run receipts, producer-run envelopes, structured errors, evidence selectors, and each active operation's payload. The catalog also lists reserved names so later implementations can claim them without collisions. [Published catalog](../schemas/v1/catalog.json)
 
 ## Using the contract
 
@@ -9,6 +9,10 @@ The public transaction envelope is `inv.command.v1`. Writes and structured error
 Put optional producer metadata in `source.metadata` on an ingest manifest. The Source record retains that object as opaque JSON and identifies the original bytes separately. Its contents carry neither additional authority nor effects. Required unsupported envelope versions produce a structured rejection before a transaction is committed.
 
 Put a producer namespace and stable external ID in `source.acquisition_key` to name one logical acquisition. Each path or stdin name is one item of it. A later ingest of the same key and item reuses the recorded Source. If the description and bytes are unchanged, nothing is committed and the item reports `deduplicated` with a `prior` link. A changed description gives the next revision of that Source, and changed bytes give it another retained Artifact. Either one reports `revised`, never a new acquisition. An acquisition belongs to the case that first recorded it, and a reimport cannot lower its classification. Without a key, each ingest is its own acquisition. Identical bytes still share one stored blob, but acquisitions are never merged. The key is a producer claim, not verified identity. Runtime validation enforces revision preconditions, selector integrity, actor attribution and promotion rules.
+
+## Producer runs
+
+A producer that finished a run can describe it in one `inv.producer-run.v1` envelope and submit it with `investigation ingest --input ENVELOPE`. The `producer-run` and `producer-run-receipt` wire schemas publish the envelope and its receipt, and `investigation schema producer-run` shows a schematic example. [Envelope contract](recording.md#one-shot-envelope-invproducer-runv1)
 
 ## Measurement fields
 

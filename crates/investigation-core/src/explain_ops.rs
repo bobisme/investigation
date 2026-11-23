@@ -970,6 +970,8 @@ const RUN_META: &[&str] = &[
     "ordering_receipt",
     // Capture binding (handle, producer identity, staging) set by `capture.begin`.
     "capture",
+    // Producer statements of a Run ingested from an `inv.producer-run.v1` envelope.
+    crate::producer_run::PRODUCER_RUN_KEY,
 ];
 
 fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {

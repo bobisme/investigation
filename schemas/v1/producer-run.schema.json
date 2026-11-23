@@ -1,0 +1,407 @@
+{
+  "$defs": {
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ProducerArtifact": {
+      "additionalProperties": false,
+      "description": "One declared original artifact.",
+      "properties": {
+        "classification": {
+          "$ref": "#/$defs/ClassificationLevel",
+          "default": "internal"
+        },
+        "expected_sha256": {
+          "default": null,
+          "description": "Lowercase hex SHA-256 the producer expects. A mismatch rejects this item\nonly; its bytes are not retained.",
+          "pattern": "^[0-9a-f]{64}$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "media_type": {
+          "default": null,
+          "maxLength": 256,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "path": {
+          "description": "Relative path, resolved beneath a configured import root. `./` prefixes\nare ignored; `..`, absolute paths and symlinks are refused.",
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": "string"
+        },
+        "role": {
+          "description": "Producer vocabulary, such as `original-output`, `log` or `receipt`.",
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        }
+      },
+      "required": [
+        "role",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ProducerAssertion": {
+      "additionalProperties": false,
+      "description": "A producer-reported result, such as a metric.\n\nIt is retained as the producer's assertion. Only an attributed Assessment or\nConclusion can promote it to an investigative interpretation.",
+      "properties": {
+        "kind": {
+          "description": "Assertion kind, such as `reported_metric`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Name, such as `latency.p99`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "unit": {
+          "description": "Unit, when meaningful.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validity_claim": {
+          "$ref": "#/$defs/ValidityClaim",
+          "default": "producer_reported",
+          "description": "Always `producer_reported`."
+        },
+        "value": {
+          "description": "Reported value, retained verbatim."
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ProducerControl": {
+      "additionalProperties": false,
+      "description": "A control the producer reports with its own result.",
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Control name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "producer_result": {
+          "description": "Producer's result, such as `reported_pass`. It is not proof of method.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "producer_result"
+      ],
+      "type": "object"
+    },
+    "ProducerDescriptor": {
+      "additionalProperties": false,
+      "description": "Self-reported producer identity. Attribution, not authentication.",
+      "properties": {
+        "instance": {
+          "description": "Instance label, such as a host-local name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Producer namespace; it scopes acquisition identity and is never interpreted.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProducerExecution": {
+      "additionalProperties": false,
+      "description": "Execution as the producer reports it. A `completed` state or an exit code of\n0 says how the action ended; it implies nothing about measurement validity.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality",
+          "default": "unknown",
+          "description": "Quality of the producer's clock for both times."
+        },
+        "ended_at": {
+          "default": null,
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "description": "Original error text, preserved verbatim.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "default": null,
+          "description": "Reported start time, verbatim; RFC 3339 is recommended.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/ExecutionStatus"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "ProducerIntent": {
+      "additionalProperties": false,
+      "description": "What the producer meant to do.",
+      "properties": {
+        "external_plan_digest": {
+          "default": null,
+          "description": "The producer's own digest of an external plan; retained, not checked.",
+          "maxLength": 256,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "type": "object"
+    },
+    "ProducerReceipt": {
+      "additionalProperties": false,
+      "description": "Reference to an external receipt about the action, retained unverified.",
+      "properties": {
+        "artifact": {
+          "description": "`path` of the entry in `artifacts` that holds the receipt bytes.",
+          "maxLength": 1024,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "description": "Receipt format, as named by the producer.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "reference": {
+          "description": "External locator, retained as an unverified reference.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ProducerRunVersion": {
+      "description": "Producer-run envelope versions.",
+      "enum": [
+        "inv.producer-run.v1"
+      ],
+      "type": "string"
+    },
+    "ValidityClaim": {
+      "description": "How valid the producer says an assertion is. The only accepted claim is\n`producer_reported`: a producer cannot declare its own result verified.",
+      "enum": [
+        "producer_reported"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:producer-run",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One completed producer attempt, described by the producer.",
+  "properties": {
+    "artifacts": {
+      "description": "Original artifacts. Paths resolve beneath the workspace import roots.",
+      "items": {
+        "$ref": "#/$defs/ProducerArtifact"
+      },
+      "type": "array"
+    },
+    "assertions": {
+      "description": "The producer's own results, retained as its attributed claims.",
+      "items": {
+        "$ref": "#/$defs/ProducerAssertion"
+      },
+      "type": "array"
+    },
+    "classification": {
+      "$ref": "#/$defs/ClassificationLevel",
+      "default": "internal",
+      "description": "Level of the envelope, its Source and the Run. The recorded level is the\nhighest of this and every artifact's level."
+    },
+    "controls": {
+      "description": "Controls the producer reports with its own result. Not proof of method.",
+      "items": {
+        "$ref": "#/$defs/ProducerControl"
+      },
+      "type": "array"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Reported environment facts such as a revision or workload label.",
+      "type": "object"
+    },
+    "execution": {
+      "$ref": "#/$defs/ProducerExecution"
+    },
+    "external_run_id": {
+      "description": "The producer's stable identifier for this attempt. With `producer.name`\nit names one logical acquisition: ingesting the same pair again maps onto\nthe recorded Run, and a changed envelope revises it.",
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "intent": {
+      "$ref": "#/$defs/ProducerIntent"
+    },
+    "limitations": {
+      "description": "Limitations the producer states.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Inert namespaced metadata such as `example-org.instrument`.",
+      "type": "object"
+    },
+    "producer": {
+      "$ref": "#/$defs/ProducerDescriptor"
+    },
+    "receipts": {
+      "description": "References to external receipts about the action, unverified.",
+      "items": {
+        "$ref": "#/$defs/ProducerReceipt"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ProducerRunVersion"
+    }
+  },
+  "required": [
+    "schema_version",
+    "producer",
+    "external_run_id",
+    "intent",
+    "execution"
+  ],
+  "title": "ProducerRun",
+  "type": "object"
+}

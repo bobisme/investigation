@@ -17,7 +17,8 @@ pub const MAX_METADATA_KEY_CHARS: usize = 128;
 pub const MAX_PROBE_BYTES: u64 = 1024 * 1024;
 const ENVELOPE_FAMILY: &str = "inv.producer-run.";
 /// Producer envelope versions this build can interpret.
-pub const SUPPORTED_ENVELOPE_VERSIONS: &[&str] = &["inv.producer-run.v1"];
+pub const SUPPORTED_ENVELOPE_VERSIONS: &[&str] =
+    &[investigation_core::producer_run::PRODUCER_RUN_V1];
 
 /// Return a message and JSON pointer suffix when metadata exceeds a bound.
 pub fn validate_metadata(metadata: &BTreeMap<String, Value>) -> Result<(), (String, String)> {
