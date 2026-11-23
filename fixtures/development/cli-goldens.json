@@ -347,7 +347,8 @@
           "assessment.add",
           "assessment.retract",
           "assessment.supersede",
-          "assumption.assess"
+          "assumption.assess",
+          "measurement.assess"
         ],
         "stage": "assess"
       },

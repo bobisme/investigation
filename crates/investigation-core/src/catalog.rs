@@ -504,6 +504,7 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::decision_ops::operations())
         .chain(crate::retrospective_ops::operations())
         .chain(crate::observation_ops::operations())
+        .chain(crate::measurement_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")
@@ -514,7 +515,6 @@ const RESERVED_OPERATIONS: &[&str] = &[
     "coverage.define",
     "coverage.link",
     "coverage.revise",
-    "measurement.assess",
     "source.assess",
     "source.withdraw",
 ];

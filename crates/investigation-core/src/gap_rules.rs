@@ -240,7 +240,8 @@ pub fn enumerate_gaps(
             continue;
         }
         let observation_ref = reference(observation);
-        if observation.body.get("validity").and_then(Value::as_str) == Some("invalid")
+        let validity = crate::measurement_ops::effective_validity(state, observation);
+        if validity == crate::evidence::MeasurementValidity::Invalid
             || selector_not_found(&observation.body)
         {
             gaps.push(make_gap(GapFields {
@@ -257,11 +258,7 @@ pub fn enumerate_gaps(
     time_sensitive: false,
     creation_sequence: observation.header.acceptance_sequence,
 }));
-        } else if observation
-            .body
-            .get("validity")
-            .and_then(Value::as_str)
-            .is_none_or(|validity| validity == "unknown")
+        } else if validity == crate::evidence::MeasurementValidity::Unknown
             || observation.body.get("measurement_assessment").is_none()
         {
             gaps.push(make_gap(GapFields {

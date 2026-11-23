@@ -1050,7 +1050,8 @@ fn ensure_observation_usable(
                 &["status", "lifecycle", "rationale", "withdrawal_reason"],
             )?;
             let source = current(ctx, artifact.source, Kind::Source, path)?;
-            body.validity == MeasurementValidity::Valid
+            crate::measurement_ops::effective_validity(ctx.state(), observation)
+                == MeasurementValidity::Valid
                 && selector.validation == crate::evidence::SelectorValidation::Verified
                 && matches!(
                     text_quote.state,

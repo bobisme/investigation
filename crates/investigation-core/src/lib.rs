@@ -19,6 +19,7 @@ pub mod gap_rules;
 pub mod header;
 pub mod identity;
 pub mod input;
+pub mod measurement_ops;
 pub mod method_pack;
 pub mod observation_ops;
 pub mod retrospective;

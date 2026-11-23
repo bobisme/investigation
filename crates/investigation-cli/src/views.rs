@@ -9,6 +9,7 @@ use investigation_core::{
     decision_ops::{self, EffectiveDecision},
     header::{ClassificationLevel, display_title},
     identity::{Id, Kind},
+    measurement_ops,
     review::EffectiveDisposition,
     review_ops,
     state::Record,
@@ -292,6 +293,25 @@ fn project_record(
             .unwrap_or_else(|| json!({"state":"unknown"})),
     );
     out.insert("gaps".into(), json!(effective.gaps));
+    // Measurement validity is shown wherever an Observation is read or cited;
+    // `unknown` is reported, never omitted.
+    match record.header.id.kind() {
+        Kind::Observation => {
+            out.insert(
+                "measurement_validity".into(),
+                measurement_ops::validity_view(&replay.state, record)
+                    .map(|view| json!(view))
+                    .unwrap_or_else(|_| json!({"state":"unknown","basis":"unreadable"})),
+            );
+        }
+        Kind::Assessment | Kind::Comparison | Kind::Conclusion | Kind::Decision => {
+            out.insert(
+                "observation_validity".into(),
+                json!(measurement_ops::cited_validity(&replay.state, record)),
+            );
+        }
+        _ => {}
+    }
     out.insert(
         "recorded_caveats".into(),
         record

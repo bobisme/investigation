@@ -340,7 +340,8 @@ fn references_outside_the_closed_vocabulary_are_rejected() {
             "/cards/0/operations/1",
         ),
         (
-            "operations = [\"measurement.assess\"]",
+            // Any operation still reserved in the catalog; pick another when this one activates.
+            "operations = [\"coverage.define\"]",
             PackErrorKind::UnknownReference,
             "/cards/0/operations/0",
         ),

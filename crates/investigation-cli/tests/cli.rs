@@ -905,3 +905,153 @@ fn layered_read_and_brief_use_verified_scope_and_exact_bytes() {
     assert_eq!(missing_case["error"]["code"], "CASE_REQUIRED");
     assert_eq!(missing_case["error"]["actual"].as_array().unwrap().len(), 2);
 }
+
+#[test]
+fn measurement_validity_is_attributed_gates_support_and_is_shown_beside_each_use() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let config = root.join("investigation.toml");
+    fs::write(
+        &config,
+        fs::read_to_string(&config)
+            .unwrap()
+            .replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    fs::write(root.join("reading.txt"), "Reading 12.5 units\n").unwrap();
+    let start = run(
+        root,
+        &[
+            "start",
+            "Can the reading be interpreted?",
+            "--attach",
+            "reading.txt",
+            "--command-id",
+            "validity-case",
+            "--actor",
+            ACTOR,
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let case = start["created"][0]["id"].as_str().unwrap();
+    let artifact = start["items"][0]["derivative_id"].as_str().unwrap();
+    let selector = json!({"schema_version":"inv.selector.v1","artifact_digest":start["items"][0]["digest"],"selector":{"type":"text_lines","start_line":1,"end_line":1,"encoding":"utf-8","parser_version":"inv.text.utf8.v1"}});
+    let submit = |key: &str, actor: &str, op: &str, payload: Value, preconditions: Value, exit| {
+        let command = json!({
+            "schema_version":"inv.command.v1", "command_id":key, "case_id":case,
+            "actor":actor, "preconditions":preconditions, "operations":[{"op":op,"payload":payload}]
+        });
+        run(
+            root,
+            &["record", "--input", "-", "--json"],
+            Some(&command),
+            exit,
+        )
+    };
+    let observed = submit(
+        "observe",
+        ACTOR,
+        "observation.add",
+        json!({
+            "value":{"kind":"text","statement":"The recorded reading is 12.5 units."},
+            "basis":{"kind":"source","artifact_ref":{"id":artifact,"revision":1},"selector":selector,
+                "text_quote":{"exact":"Reading 12.5 units"}},
+            "validity":"unknown","quality":[],"limitations":[],"evidence_kind":"observational","variables_changed":[]
+        }),
+        json!([]),
+        0,
+    );
+    let observation = observed["created"][0]["id"].as_str().unwrap();
+    let at = |revision: u64| json!({"id":observation,"revision":revision});
+    let shown = run(root, &["show", observation, "--json"], None, 0);
+    assert_eq!(shown["measurement_validity"]["state"], "unknown");
+    assert_eq!(shown["measurement_validity"]["basis"], "none");
+
+    // Review readiness is where direct support must be a valid measurement.
+    let request_review = |key: &str, revision: u64, exit| {
+        let claim = json!({
+            "statement":"The reading is 12.5 units.", "scope":"This recorded reading.",
+            "significance":"Check the setup before reuse.", "support_refs":[at(revision)],
+            "contradiction_refs":[], "caveats":["One reading."]
+        });
+        let created = submit(key, ACTOR, "conclusion.create", claim, json!([]), 0);
+        let conclusion = created["created"][0]["id"].as_str().unwrap().to_owned();
+        let shown = run(
+            root,
+            &["show", &conclusion, "--depth", "full", "--json"],
+            None,
+            0,
+        );
+        let basis = &shown["review_basis"];
+        let mut preconditions = basis["read_set"].as_array().cloned().unwrap_or_default();
+        preconditions.push(basis["subject_ref"].clone());
+        let response = submit(
+            &format!("{key}-review"),
+            ACTOR,
+            "conclusion.request_review",
+            json!({"conclusion_ref": basis["subject_ref"]}),
+            json!(preconditions),
+            exit,
+        );
+        (conclusion, response)
+    };
+    let (_, refused) = request_review("claim-unknown", 1, 5);
+    assert_eq!(refused["error"]["code"], "GATE_FAILED");
+    assert_eq!(
+        refused["error"]["path"],
+        "/operations/0/payload/support_refs"
+    );
+
+    let judgment = |revision: u64, validity: &str| {
+        json!({
+            "observation_ref": at(revision), "channel": null, "validity": validity,
+            "verification": [{"kind":"equivalent","justification":"The setup reproduced a known reference value."}],
+            "rationale": "Judged from the recorded setup.", "limits": []
+        })
+    };
+    let assessed = submit(
+        "assess-valid",
+        "agent:reviewer",
+        "measurement.assess",
+        judgment(1, "valid"),
+        json!([]),
+        0,
+    );
+    assert_eq!(assessed["updated"][0]["revision"], 2);
+    let (conclusion, ready) = request_review("claim-valid", 2, 0);
+    assert_eq!(ready["result"], "committed");
+    let shown = run(root, &["show", &conclusion, "--json"], None, 0);
+    assert_eq!(shown["observation_validity"][0]["state"], "valid");
+    assert_eq!(shown["observation_validity"][0]["basis"], "assessed");
+
+    submit(
+        "assess-invalid",
+        "agent:second-reviewer",
+        "measurement.assess",
+        judgment(2, "invalid"),
+        json!([]),
+        0,
+    );
+    let shown = run(
+        root,
+        &["show", observation, "--depth", "full", "--json"],
+        None,
+        0,
+    );
+    assert_eq!(
+        shown["record"]["body"]["value"]["statement"],
+        "The recorded reading is 12.5 units."
+    );
+    assert_eq!(shown["measurement_validity"]["state"], "invalid");
+    assert_eq!(shown["measurement_validity"]["judgments_kept"], 2);
+    assert_eq!(shown["measurement_validity"]["disagreement"], true);
+    let shown = run(root, &["show", &conclusion, "--json"], None, 0);
+    assert_eq!(shown["effective_status"]["state"], "needs_review");
+    assert_eq!(shown["observation_validity"][0]["state"], "invalid");
+    assert_eq!(shown["observation_validity"][0]["current_revision"], 3);
+    let (_, refused) = request_review("claim-invalid", 3, 5);
+    assert_eq!(refused["error"]["code"], "GATE_FAILED");
+}

@@ -700,7 +700,7 @@ fn qualification(
         object.remove(key);
     }
     let body: ObservationBody = decode(&body)?;
-    if body.validity != MeasurementValidity::Valid {
+    if crate::measurement_ops::effective_validity(state, record) != MeasurementValidity::Valid {
         return Err(gate(
             "/support_refs",
             "An invalid or unevaluated observation cannot provide direct support.",

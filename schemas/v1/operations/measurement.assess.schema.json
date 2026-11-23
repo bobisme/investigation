@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "MeasurementValidity": {
+      "enum": [
+        "unknown",
+        "valid",
+        "invalid",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "VerificationRequest": {
+      "description": "What a judgment relies on. Controls and instrument checks cite exact,\ncurrent revisions; the core records whether each one qualifies.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A comparable Observation. It qualifies only when its own effective\nvalidity is `valid` and its recorded Run environment equals\n`expected_environment`, or the assessed Observation's recorded Run\nenvironment when `expected_environment` is null.",
+          "properties": {
+            "expected_environment": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "control",
+              "type": "string"
+            },
+            "observation_ref": {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "observation_ref",
+            "rationale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An Observation or Artifact showing that the instrument or setup behaved\nas specified. A cited Observation must itself be effectively `valid`.",
+          "properties": {
+            "evidence_ref": {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            "kind": {
+              "const": "instrument_check",
+              "type": "string"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "evidence_ref",
+            "rationale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "An explicitly justified equivalent verification without a recorded\ncontrol. It is labeled `assessor_justified`, never `qualified`.",
+          "properties": {
+            "evidence_refs": {
+              "default": [],
+              "items": {
+                "$ref": "#/$defs/RevisionRef"
+              },
+              "type": "array"
+            },
+            "justification": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "equivalent",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "justification"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:measurement.assess",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "channel": {
+      "description": "Named channel or series within the Observation. Null judges the whole Observation.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limits": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "observation_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact current Observation revision being judged."
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "validity": {
+      "$ref": "#/$defs/MeasurementValidity"
+    },
+    "verification": {
+      "default": [],
+      "description": "Instrument checks, controls or justified equivalents relied on.\n`valid` and `partial` need at least one that qualifies.",
+      "items": {
+        "$ref": "#/$defs/VerificationRequest"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "observation_ref",
+    "validity",
+    "rationale"
+  ],
+  "title": "MeasurementAssess",
+  "type": "object"
+}

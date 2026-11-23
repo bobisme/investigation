@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::{
     catalog::Catalog,
     command::{Command, Reference, RevisionRef},
-    header::{Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
+    header::{Actor, Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
     identity::{Id, IdSource, Kind},
     observation_ops::ObservationProof,
     wire::{Digest, ErrorCode, Failure, RecordChange, Snapshot},
@@ -375,6 +375,11 @@ impl OperationContext<'_> {
 
     pub fn acceptance_sequence(&self) -> u64 {
         self.acceptance_sequence
+    }
+
+    /// The attributed command actor. This is a claim, not authentication.
+    pub fn actor(&self) -> &Actor {
+        &self.command.actor
     }
 
     pub fn state(&self) -> &State {

@@ -32,6 +32,7 @@
     "inquiry.create": "operations/inquiry.create.schema.json",
     "inquiry.freeze": "operations/inquiry.freeze.schema.json",
     "inquiry.retire": "operations/inquiry.retire.schema.json",
+    "measurement.assess": "operations/measurement.assess.schema.json",
     "objection.raise": "operations/objection.raise.schema.json",
     "objection.resolve": "operations/objection.resolve.schema.json",
     "objection.withdraw": "operations/objection.withdraw.schema.json",
@@ -55,7 +56,6 @@
     "coverage.define",
     "coverage.link",
     "coverage.revise",
-    "measurement.assess",
     "source.assess",
     "source.withdraw"
   ],
@@ -69,7 +69,8 @@
         "assessment.add",
         "assessment.retract",
         "assessment.supersede",
-        "assumption.assess"
+        "assumption.assess",
+        "measurement.assess"
       ],
       "stage": "assess"
     },
