@@ -451,3 +451,188 @@ fn malformed_requests_are_refused_before_anything_changes() {
     }
     assert_eq!(case.state.sequence(), before);
 }
+
+/// A new Observation of the fixture Artifact, recorded the way the fixture
+/// records one: it reads the Artifact and its Source as they are now.
+fn observe_again(case: &mut Case, f: &Fixture) -> RevisionRef {
+    let body = case.state.revision(f.observation).unwrap().body.clone();
+    case.image(Kind::Observation, body, None)
+}
+
+/// Review the current conclusion again and validate it with that review.
+fn revalidate(case: &mut Case, f: &Fixture) -> (RevisionRef, RevisionRef) {
+    let review = case.validate(case.current(f.conclusion));
+    let current = case.current(f.conclusion);
+    let mut reads =
+        required_read_set(&case.state, case.state.current(f.conclusion.id).unwrap()).unwrap();
+    reads.extend([current, review]);
+    let conclusion = case
+        .run(
+            vec![op(
+                "conclusion.validate",
+                json!({"conclusion_ref": current, "review_ref": review}),
+            )],
+            &reads,
+        )
+        .records[0]
+        .reference();
+    (conclusion, review)
+}
+
+fn gap_subjects(case: &Case, rule: &str) -> BTreeSet<Id> {
+    let snapshot = crate::wire::Snapshot {
+        sequence: case.state.sequence(),
+        head_hash: format!("sha256:{}", "0".repeat(64)).parse().unwrap(),
+    };
+    crate::gap_rules::enumerate_gaps(&case.state, &snapshot, case.case)
+        .unwrap()
+        .gaps
+        .into_iter()
+        .filter(|gap| gap.rule_id == rule)
+        .map(|gap| gap.subject_refs[0].id)
+        .collect()
+}
+
+#[test]
+fn records_read_after_a_partial_withdrawal_stay_current_until_the_source_changes_again() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let withdrawn = case.one(
+        "source.withdraw",
+        withdraw_source(
+            f.source,
+            json!({"extent":"partial","statement":"The second benchmark table only."}),
+        ),
+    );
+    // Created after the withdrawal: read with it in effect.
+    let fresh = case.one("hypothesis.create", json!({
+        "question_ref":f.question,"statement":"The broker meets the latency limit.",
+        "applicability":"Projected load","assumption_refs":[],"possible_falsifiers":["p99 above 25 ms"],"rival_refs":[]
+    }));
+    let observation = observe_again(&mut case, &f);
+    let assessment = case.one(
+        "assessment.add",
+        json!({
+            "subject_ref": fresh, "evidence_refs": [observation], "relation": "supports",
+            "rationale": "The retained p99 is below the limit."
+        }),
+    );
+    assert_eq!(
+        evidentiary_use(&case.state, case.state.current(observation.id).unwrap()).state,
+        UseState::PartiallyWithdrawn
+    );
+    for reference in [observation, assessment] {
+        let result = case.freshness(reference);
+        assert_eq!(result.freshness, Freshness::Current, "{result:#?}");
+    }
+    // Revalidated after it: the conclusion and its new review are current and
+    // every gate agrees; the review that read the old revision does not.
+    let (conclusion, review) = revalidate(&mut case, &f);
+    for reference in [conclusion, review] {
+        let result = case.freshness(reference);
+        assert_eq!(result.freshness, Freshness::Current, "{result:#?}");
+    }
+    let record = case.state.current(f.conclusion.id).unwrap();
+    assert_eq!(
+        effective_disposition(&case.state, record),
+        EffectiveDisposition::Current
+    );
+    let body: crate::review_ops::ValidationReviewBody =
+        serde_json::from_value(case.state.current(review.id).unwrap().body.clone()).unwrap();
+    validation_review_current(&case.state, record, &body).unwrap();
+    assert!(!gap_subjects(&case, "freshness.needs_review").contains(&conclusion.id));
+    let stale_reads = gap_subjects(&case, "review.stale_read_set");
+    assert!(!stale_reads.contains(&review.id));
+    assert!(stale_reads.contains(&f.conclusion_review.id));
+    // Records that read the pre-withdrawal revision still need review.
+    for reference in [f.artifact, f.observation, f.assessment, f.conclusion_review] {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(
+            (reason.trigger.clone(), reason.cause),
+            (Trigger::Withdrawn, withdrawn)
+        );
+    }
+
+    // A later source change is new to all of them.
+    let assessed = case.one(
+        "source.assess",
+        json!({
+            "source_ref": withdrawn,
+            "currency": {"judgment":"outdated","rationale":"A newer release changed the queue."}
+        }),
+    );
+    let concern = Trigger::SourceConcern {
+        dimensions: vec!["currency".into()],
+    };
+    for reference in [observation, assessment, conclusion, review, f.assessment] {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(
+            (reason.trigger.clone(), reason.cause),
+            (concern.clone(), assessed)
+        );
+    }
+    let record = case.state.current(f.conclusion.id).unwrap();
+    assert_eq!(
+        effective_disposition(&case.state, record),
+        EffectiveDisposition::NeedsReview
+    );
+    // Read after the concern too: current again.
+    let again = observe_again(&mut case, &f);
+    assert_eq!(case.freshness(again).freshness, Freshness::Current);
+    // An entire withdrawal is new to every reader, whenever it read.
+    let entire = case.one(
+        "source.withdraw",
+        withdraw_source(assessed, json!({"extent":"entire"})),
+    );
+    for reference in [again, observation, conclusion] {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(
+            (reason.trigger.clone(), reason.cause),
+            (Trigger::Withdrawn, entire)
+        );
+    }
+}
+
+/// A partial withdrawal names its part in words, not by selector, so the core
+/// cannot tell that an Observation quotes another part. Such an Observation
+/// needs review until a later revision of it is accepted with the withdrawal
+/// in effect; the attributed measurement judgment is that acknowledgement.
+/// Records that read the Observation before the withdrawal still need review.
+#[test]
+fn a_later_judgment_acknowledges_a_partial_withdrawal_for_that_observation_only() {
+    let mut case = Case::new();
+    let f = case.fixture();
+    let withdrawn = case.one(
+        "source.withdraw",
+        withdraw_source(
+            f.source,
+            json!({"extent":"partial","statement":"The second benchmark table only."}),
+        ),
+    );
+    assert_eq!(
+        case.freshness(f.observation).freshness,
+        Freshness::NeedsReview
+    );
+    let judged = apply_as(
+        &mut case,
+        "agent:reviewer",
+        vec![op(
+            "measurement.assess",
+            json!({
+                "observation_ref": f.observation, "channel": null, "validity": "valid",
+                "verification": [{"kind":"equivalent","justification":"The quoted table is not the withdrawn one."}],
+                "rationale": "The observation reads the first table.", "limits": []
+            }),
+        )],
+    )
+    .unwrap();
+    assert_eq!(judged.id, f.observation.id);
+    assert_eq!(case.freshness(judged).freshness, Freshness::Current);
+    for reference in [f.assessment, f.conclusion, f.comparison, f.decision] {
+        let reason = only_reason(case.freshness(reference));
+        assert_eq!(
+            (reason.trigger.clone(), reason.cause),
+            (Trigger::Withdrawn, withdrawn)
+        );
+    }
+}

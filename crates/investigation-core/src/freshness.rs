@@ -36,7 +36,10 @@ use crate::{
 /// Version 2 judges Observations by effective validity and keeps
 /// classification changes out of the Overview. Version 3 makes a blindspot
 /// review that read a structural audit stale when the check set changes.
-pub const FRESHNESS_RULES_VERSION: u32 = 3;
+/// Version 4 acknowledges a partial withdrawal or a raised source concern for
+/// a record whose current revision was accepted at or after it: that record
+/// read the Source or Artifact with the change in effect.
+pub const FRESHNESS_RULES_VERSION: u32 = 4;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -237,6 +240,12 @@ pub struct FreshnessReason {
     /// The current revision of the record whose change or state is the cause.
     pub cause: RevisionRef,
     pub path: Vec<DependencyStep>,
+    /// Acceptance sequence of the evidentiary-use change behind the trigger
+    /// (`source_ops::UseChange::since`). A record accepted at or after it read
+    /// the cited material with the change in effect and acknowledges the
+    /// reason. `None` for every other trigger.
+    #[serde(skip)]
+    since: Option<u64>,
 }
 
 type ReasonKey = (Id, u64, String);
@@ -248,7 +257,14 @@ impl FreshnessReason {
             trigger,
             cause,
             path,
+            since: None,
         }
+    }
+
+    /// Whether a record whose current revision was accepted at `read_at` read
+    /// the cause with this change already in effect.
+    fn acknowledged_at(&self, read_at: u64) -> bool {
+        self.since.is_some_and(|since| since <= read_at)
     }
 
     fn key(&self) -> ReasonKey {
@@ -300,6 +316,11 @@ pub struct RecordFreshness {
     pub lifecycle: Option<String>,
     pub freshness: Freshness,
     pub reasons: Vec<FreshnessReason>,
+    /// Reasons this record acknowledges because it was accepted with the
+    /// change in effect. They do not affect its freshness but still reach its
+    /// dependents, which judge them against their own acceptance.
+    #[serde(skip)]
+    acknowledged: Vec<FreshnessReason>,
 }
 
 impl RecordFreshness {
@@ -812,62 +833,82 @@ fn edge_change(
     case: Id,
     scope: Option<Id>,
     edge: &DependencyEdge,
-) -> Option<(Trigger, RevisionRef)> {
+) -> Option<(Change, RevisionRef)> {
     let current = state
         .current(edge.target.id)
         .filter(|record| record.header.case_id == case);
     let (Some(current), Some(cited)) = (current, state.revision(edge.target)) else {
-        return Some((Trigger::MissingDependency, edge.target));
+        return Some((Change::from(Trigger::MissingDependency), edge.target));
     };
     // A judgment about a subject stays a record of that subject when the
     // subject is later rejected or superseded; only its claim matters.
     let subject = edge.propagation == Propagation::ChangeOnly && edge.field == "subject_ref";
     revision_change(state, cited, current, scope, subject)
-        .map(|trigger| (trigger, current.reference()))
+        .map(|change| (change, current.reference()))
+}
+
+/// A trigger and, for an evidentiary-use change, when it happened.
+#[derive(Clone, Debug, PartialEq)]
+struct Change {
+    trigger: Trigger,
+    since: Option<u64>,
+}
+
+impl From<Trigger> for Change {
+    fn from(trigger: Trigger) -> Self {
+        Self {
+            trigger,
+            since: None,
+        }
+    }
 }
 
 /// The trigger, if any, that the change from `cited` to `current` (two
-/// revisions of one record) raises for a record that cites `cited`.
+/// revisions of one record) raises for a record that cites `cited`, with the
+/// sequence of an evidentiary-use change (see [`FreshnessReason`]).
 fn revision_change(
     state: &State,
     cited: &Record,
     current: &Record,
     scope: Option<Id>,
     subject: bool,
-) -> Option<Trigger> {
+) -> Option<Change> {
     if current.header.revision == cited.header.revision {
         return None;
     }
     if current.header.id.kind() == Kind::Assumption
         && cited.body["status"] != current.body["status"]
     {
-        return Some(Trigger::AssumptionDisposition {
+        return Some(Change::from(Trigger::AssumptionDisposition {
             from: text(&cited.body["status"]).map(str::to_owned),
             to: text(&current.body["status"]).map(str::to_owned),
-        });
+        }));
     }
     // Withdrawals and source judgments are use fields, outside the substantive
     // basis; each new withdrawal or newly raised concern is its own trigger.
-    if !subject && let Some(trigger) = crate::source_ops::use_trigger(cited, current) {
-        return Some(trigger);
+    if !subject && let Some(change) = crate::source_ops::use_change(cited, current) {
+        return Some(Change {
+            trigger: change.trigger,
+            since: change.since,
+        });
     }
     // Reverifying a reference: a mismatch is its own trigger, and a match
     // that only records the verification (or retains the same bytes) is not a
     // change to what dependents cite.
     if let Some(change) = crate::external_ref::verification_change(cited, current) {
-        return change;
+        return change.map(Change::from);
     }
     if let Some(trigger) = end_state(current)
         && end_state(cited).is_none()
         && !subject
     {
-        return Some(trigger);
+        return Some(Change::from(trigger));
     }
     if let Some(trigger) = measurement_change(state, cited, current) {
-        return Some(trigger);
+        return Some(Change::from(trigger));
     }
     if substantive(cited, scope) != substantive(current, scope) {
-        return Some(Trigger::MaterialRevision);
+        return Some(Change::from(Trigger::MaterialRevision));
     }
     None
 }
@@ -877,7 +918,9 @@ fn revision_change(
 /// to it: lifecycle or attribution metadata, a matching reverification, a
 /// Source or Artifact judgment that raises no concern, or a measurement
 /// judgment that keeps or raises effective validity. A missing record or
-/// revision is [`Trigger::MissingDependency`].
+/// revision is [`Trigger::MissingDependency`]. A plain citation was read while
+/// the cited revision was current, so every later withdrawal or raised concern
+/// is new to it; only the index knows when a dependent was accepted.
 pub fn successor_change(state: &State, case: Id, cited: RevisionRef) -> Option<Trigger> {
     let current = state
         .current(cited.id)
@@ -885,7 +928,7 @@ pub fn successor_change(state: &State, case: Id, cited: RevisionRef) -> Option<T
     let (Some(current), Some(historic)) = (current, state.revision(cited)) else {
         return Some(Trigger::MissingDependency);
     };
-    revision_change(state, historic, current, None, false)
+    revision_change(state, historic, current, None, false).map(|change| change.trigger)
 }
 
 /// The current same-case revision of a cited record when every change since
@@ -1035,6 +1078,9 @@ fn lifecycle(record: &Record) -> Option<String> {
 #[derive(Clone, Debug, PartialEq)]
 struct Node {
     reference: RevisionRef,
+    /// Acceptance sequence of the assessed revision: when its author read
+    /// what it cites.
+    read_at: u64,
     lifecycle: Option<String>,
     inactive: bool,
     targets: BTreeSet<Id>,
@@ -1052,21 +1098,35 @@ impl Node {
         let mut local = Vec::new();
         let mut inherit = Vec::new();
         let mut targets = BTreeSet::new();
+        let read_at = record.header.acceptance_sequence;
         match dependency_edges(record) {
             Ok(edges) => {
                 let scope = scope_option(record);
                 for edge in edges {
                     targets.insert(edge.target.id);
                     match edge_change(state, case, scope, &edge) {
-                        Some((trigger, cause)) => local.push(FreshnessReason::local(
-                            trigger,
-                            cause,
-                            vec![DependencyStep {
-                                record: record.header.id,
-                                field: edge.field.to_owned(),
-                                cites: edge.target,
-                            }],
-                        )),
+                        Some((change, cause)) => {
+                            let reason = FreshnessReason {
+                                since: change.since,
+                                ..FreshnessReason::local(
+                                    change.trigger,
+                                    cause,
+                                    vec![DependencyStep {
+                                        record: record.header.id,
+                                        field: edge.field.to_owned(),
+                                        cites: edge.target,
+                                    }],
+                                )
+                            };
+                            // An acknowledged use change leaves the cited
+                            // record's own basis to judge.
+                            if reason.acknowledged_at(read_at)
+                                && edge.propagation == Propagation::Inherit
+                            {
+                                inherit.push((edge.field, edge.target));
+                            }
+                            local.push(reason);
+                        }
                         None if edge.propagation == Propagation::Inherit => {
                             inherit.push((edge.field, edge.target));
                         }
@@ -1097,6 +1157,7 @@ impl Node {
         }
         Self {
             reference: record.reference(),
+            read_at,
             lifecycle: lifecycle(record),
             inactive: out_of_use(record),
             targets,
@@ -1213,7 +1274,11 @@ fn resolve(
         if cycle.is_some_and(|members| members.contains(&cited.id)) {
             continue;
         }
-        for inherited in results.get(&cited.id).map_or(&[][..], |r| &r.reasons) {
+        let inherited = results
+            .get(&cited.id)
+            .into_iter()
+            .flat_map(|result| result.reasons.iter().chain(&result.acknowledged));
+        for inherited in inherited {
             let mut path = vec![DependencyStep {
                 record: node.reference.id,
                 field: (*field).to_owned(),
@@ -1229,7 +1294,9 @@ fn resolve(
             );
         }
     }
-    let reasons: Vec<_> = reasons.into_values().collect();
+    let (acknowledged, reasons): (Vec<_>, Vec<_>) = reasons
+        .into_values()
+        .partition(|reason| reason.acknowledged_at(node.read_at));
     RecordFreshness {
         record: node.reference,
         lifecycle: node.lifecycle.clone(),
@@ -1239,6 +1306,7 @@ fn resolve(
             .max()
             .unwrap_or(Freshness::Current),
         reasons,
+        acknowledged,
     }
 }
 

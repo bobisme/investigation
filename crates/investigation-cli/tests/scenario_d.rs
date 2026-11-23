@@ -820,6 +820,21 @@ fn walk(variant: &str) -> (Walk, Outcome) {
                 .any(|reason| reason["trigger"]["kind"] == "withdrawn"
                     && reason["cause"]["id"] == w.documents[SPEC].source.as_str())
         );
+        // The quote read before the withdrawal needs review; a quote of a row
+        // the withdrawal leaves alone, recorded after it, was read with the
+        // withdrawal in effect and is current (W06b.16).
+        assert_eq!(
+            w.show(&spec_quote, "full")["freshness"]["effective"],
+            "needs_review"
+        );
+        let idle = w.quote(
+            SPEC,
+            "row 5  Idle session timeout ......................... 30 seconds",
+            &[],
+        );
+        let idle = w.show(&idle, "full");
+        assert_eq!(idle["evidentiary_use"]["state"], "partially_withdrawn");
+        assert_eq!(idle["freshness"]["effective"], "current", "{idle:#}");
     } else {
         assert!(withdrawals.is_empty());
         assert_eq!(use_state, "in_use");
@@ -1151,17 +1166,12 @@ fn walk(variant: &str) -> (Walk, Outcome) {
     let validated = w.review_and_validate(&conclusion);
     let shown = w.show(&validated, "full");
     assert_eq!(shown["record"]["body"]["status"], "validated");
-    // Product gap (reported with W06b.14): a partial withdrawal marks every
-    // record whose read closure reaches the withdrawn Source `needs_review`,
-    // including records created and reviewed after the withdrawal, because an
-    // Artifact keeps citing the Source revision it was collected under. The
-    // baseline conclusion cites the superseded prior judgment as its
-    // contradiction, so its review reads the specification. Nothing else may
-    // make it stale.
-    stale_only_through(&shown["freshness"], &w.documents[SPEC].source);
-    if !applies {
-        assert_eq!(shown["freshness"]["effective"], "current");
-    }
+    // The conclusion and its review were recorded after the partial
+    // withdrawal and the currency concern, so both were read in effect: the
+    // conclusion is current although its contradiction, the prior judgment,
+    // stays `needs_review` (freshness rules version 4, W06b.16).
+    assert_eq!(shown["freshness"]["effective"], "current", "{shown:#}");
+    assert_eq!(shown["freshness"]["reasons"], json!([]), "{shown:#}");
     for caveat in &caveats {
         assert!(
             shown["recorded_caveats"]
@@ -1226,20 +1236,6 @@ fn walk(variant: &str) -> (Walk, Outcome) {
         "trusted": after,
     });
     (w, outcome)
-}
-
-/// Current, or `needs_review` only because `source` was withdrawn.
-fn stale_only_through(freshness: &Value, source: &str) {
-    if freshness["effective"] == "current" {
-        return;
-    }
-    assert_eq!(freshness["effective"], "needs_review", "{freshness:#}");
-    let reasons = freshness["reasons"].as_array().unwrap();
-    assert!(!reasons.is_empty(), "{freshness:#}");
-    for reason in reasons {
-        assert_eq!(reason["trigger"]["kind"], "withdrawn", "{freshness:#}");
-        assert_eq!(reason["cause"]["id"], source, "{freshness:#}");
-    }
 }
 
 fn summary_counts(w: &Walk, assessment: &Value) -> Value {

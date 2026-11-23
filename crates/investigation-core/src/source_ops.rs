@@ -15,7 +15,10 @@
 //! These fields record evidentiary use, not what the record describes. The
 //! freshness index excludes them from the substantive basis and reacts to them
 //! explicitly ([`use_trigger`]): each new withdrawal and each newly raised
-//! assessment concern marks dependents `needs_review`.
+//! assessment concern marks dependents `needs_review`. A dependent whose
+//! current revision was accepted after a partial withdrawal or a raised
+//! concern read the record with it in effect, so that change is not new to it
+//! ([`UseChange::since`]); an `entire` withdrawal is new to every dependent.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -82,9 +85,13 @@ pub enum WithdrawalReason {
 pub enum WithdrawalScope {
     /// The whole record leaves evidentiary use.
     Entire,
-    /// Only the named part is withdrawn; the rest stays usable. Dependents are
-    /// still marked for review, because the core cannot tell which part each
-    /// one relies on.
+    /// Only the named part is withdrawn; the rest stays usable. The part is a
+    /// statement, not a selector, so the core cannot tell which part a
+    /// dependent relies on: every dependent accepted before the withdrawal is
+    /// marked for review, including one that quotes another part. A dependent
+    /// revision accepted after it, such as a new observation, a measurement
+    /// judgment or a revalidation, read the record with the withdrawal in
+    /// effect and is not.
     Partial { statement: String },
 }
 
@@ -915,26 +922,88 @@ fn concerns(record: &Record) -> BTreeSet<SourceDimension> {
         .unwrap_or_default()
 }
 
+/// A change in evidentiary use between a cited and the current revision of a
+/// Source or Artifact, and when it happened.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct UseChange {
+    pub trigger: Trigger,
+    /// Acceptance sequence of the latest withdrawal or concern-raising judgment
+    /// behind the trigger, when a reader accepted at or after it read the
+    /// record with the change in effect. `None` for an `entire` withdrawal and
+    /// unreadable use data: no later reading makes those current.
+    pub since: Option<u64>,
+}
+
 /// Freshness trigger for a change in evidentiary use between the cited and the
 /// current revision of a Source or Artifact: a new withdrawal, or a newly
 /// raised authenticity, reliability or currency concern. Unreadable use data
 /// errs toward review.
 pub(crate) fn use_trigger(cited: &Record, current: &Record) -> Option<Trigger> {
+    use_change(cited, current).map(|change| change.trigger)
+}
+
+/// [`use_trigger`] with the sequence of the change. When new partial
+/// withdrawals and a newly raised concern are both present, the later event
+/// names the trigger and `since` covers both.
+pub(crate) fn use_change(cited: &Record, current: &Record) -> Option<UseChange> {
     if !matches!(current.header.id.kind(), Kind::Source | Kind::Artifact) {
         return None;
     }
-    let count = |record: &Record| withdrawals(&record.body).map(|log| log.len());
-    match (count(cited), count(current)) {
-        (Ok(before), Ok(after)) if after <= before => {}
-        _ => return Some(Trigger::Withdrawn),
-    }
+    let unacknowledgeable = |trigger| {
+        Some(UseChange {
+            trigger,
+            since: None,
+        })
+    };
+    let withdrawn = match (withdrawals(&cited.body), withdrawals(&current.body)) {
+        (Ok(before), Ok(after)) if after.len() <= before.len() => None,
+        (Ok(before), Ok(after)) => {
+            let new = &after[before.len()..];
+            if entirely_withdrawn(current)
+                || new.iter().any(|item| item.scope == WithdrawalScope::Entire)
+            {
+                return unacknowledgeable(Trigger::Withdrawn);
+            }
+            new.iter().map(|item| item.accepted_at_sequence).max()
+        }
+        _ => return unacknowledgeable(Trigger::Withdrawn),
+    };
     if assessment_log(&current.body).is_err() {
-        return Some(Trigger::UnreadableBasis);
+        return unacknowledgeable(Trigger::UnreadableBasis);
     }
     let before = concerns(cited);
-    let raised: Vec<String> = concerns(current)
-        .difference(&before)
-        .map(|dimension| dimension.as_str().to_owned())
-        .collect();
-    (!raised.is_empty()).then_some(Trigger::SourceConcern { dimensions: raised })
+    let now = standing(current).ok()?;
+    let mut raised = Vec::new();
+    let mut raised_at = None;
+    for dimension in now.dimensions.iter().filter(|d| d.concern) {
+        if before.contains(&dimension.dimension) {
+            continue;
+        }
+        raised.push(dimension.dimension.as_str().to_owned());
+        raised_at = dimension
+            .current
+            .iter()
+            .filter(|judgment| judgment.concern)
+            .map(|judgment| judgment.accepted_at_sequence)
+            .chain(raised_at)
+            .max();
+    }
+    let concern = (!raised.is_empty()).then_some(Trigger::SourceConcern { dimensions: raised });
+    match (withdrawn, concern) {
+        (Some(at), Some(concern)) if raised_at.is_some_and(|raised| raised > at) => {
+            Some(UseChange {
+                trigger: concern,
+                since: raised_at,
+            })
+        }
+        (Some(at), concern) => Some(UseChange {
+            trigger: Trigger::Withdrawn,
+            since: Some(at).max(concern.and(raised_at)),
+        }),
+        (None, Some(concern)) => Some(UseChange {
+            trigger: concern,
+            since: raised_at,
+        }),
+        (None, None) => None,
+    }
 }

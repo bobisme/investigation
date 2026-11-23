@@ -83,7 +83,7 @@
         },
         {
           "additionalProperties": false,
-          "description": "Only the named part is withdrawn; the rest stays usable. Dependents are\nstill marked for review, because the core cannot tell which part each\none relies on.",
+          "description": "Only the named part is withdrawn; the rest stays usable. The part is a\nstatement, not a selector, so the core cannot tell which part a\ndependent relies on: every dependent accepted before the withdrawal is\nmarked for review, including one that quotes another part. A dependent\nrevision accepted after it, such as a new observation, a measurement\njudgment or a revalidation, read the record with the withdrawal in\neffect and is not.",
           "properties": {
             "extent": {
               "const": "partial",
