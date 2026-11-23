@@ -2,7 +2,10 @@
 
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
-use investigation_core::identity::{Id, Kind};
+use investigation_core::{
+    attempt,
+    identity::{Id, Kind},
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -109,22 +112,9 @@ impl std::error::Error for InvalidValue {}
 
 const KEY_RULE: &str = "1 to 128 characters without control characters";
 const RUN_RULE: &str = "1 to 256 characters without control characters";
-const NAME_RULE: &str =
-    "1 to 128 ASCII letters, digits, '.', '_', '-', ':' or '/', starting with a letter or digit";
 
 fn bounded_text(value: &str, max: usize) -> bool {
     !value.is_empty() && value.chars().count() <= max && !value.chars().any(char::is_control)
-}
-
-fn producer_name(value: &str) -> bool {
-    value.len() <= 128
-        && value
-            .bytes()
-            .next()
-            .is_some_and(|first| first.is_ascii_alphanumeric())
-        && value.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-' | b':' | b'/')
-        })
 }
 
 macro_rules! validated_string {
@@ -222,17 +212,108 @@ validated_string!(
     |value| bounded_text(value, 256)
 );
 
-validated_string!(
-    /// A producer namespace such as `example-benchmark`.
-    ///
-    /// The recorder never interprets the name. It only scopes idempotency and
-    /// attribution, and the core contains no knowledge of any particular producer.
-    ProducerName,
-    "producer name",
-    128,
-    NAME_RULE,
-    producer_name
-);
+/// A producer namespace such as `example-benchmark`.
+///
+/// The recorder never interprets the name. It only scopes idempotency and
+/// attribution, and the core contains no knowledge of any particular producer.
+///
+/// The rule is [`attempt::is_producer_name`], the same one the producer-run
+/// envelope's `producer.name` and an ingest acquisition `namespace` follow, so
+/// one producer can record an attempt by either path under one name. `:` and
+/// `/` are refused. Deserialization also accepts the `:` and `/` names that
+/// capture recordings made before the rules were aligned may hold
+/// ([`attempt::is_recorded_producer_name`]), so stored requests replay,
+/// recover and finalize; `capture.begin` refuses such a name for any new
+/// declaration.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(into = "String")]
+pub struct ProducerName(String);
+
+impl ProducerName {
+    /// Validate and wrap a value.
+    pub fn new(value: impl Into<String>) -> Result<Self, InvalidValue> {
+        let value = value.into();
+        if attempt::is_producer_name(&value) {
+            Ok(Self(value))
+        } else {
+            Err(Self::invalid())
+        }
+    }
+
+    /// The validated value.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Whether a new attempt may use this name. Only a name read back from a
+    /// recording made before the rules were aligned can fail this.
+    pub fn is_current(&self) -> bool {
+        attempt::is_producer_name(&self.0)
+    }
+
+    fn invalid() -> InvalidValue {
+        InvalidValue {
+            field: "producer name",
+            rule: attempt::PRODUCER_NAME_RULE,
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ProducerName {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
+        if attempt::is_recorded_producer_name(&value) {
+            Ok(Self(value))
+        } else {
+            Err(serde::de::Error::custom(Self::invalid()))
+        }
+    }
+}
+
+impl TryFrom<String> for ProducerName {
+    type Error = InvalidValue;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl FromStr for ProducerName {
+    type Err = InvalidValue;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Self::new(value)
+    }
+}
+
+impl From<ProducerName> for String {
+    fn from(value: ProducerName) -> Self {
+        value.0
+    }
+}
+
+impl fmt::Display for ProducerName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+/// The published v1 capture schemas froze this schema without a `pattern`, so
+/// the character rule is stated in `description` and enforced at runtime.
+impl JsonSchema for ProducerName {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "ProducerName".into()
+    }
+
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({
+            "type": "string",
+            "minLength": 1,
+            "maxLength": attempt::PRODUCER_NAME_MAX_CHARS,
+            "description": attempt::PRODUCER_NAME_RULE,
+        })
+    }
+}
 
 /// Self-reported producer identity. It is attribution, not authentication.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

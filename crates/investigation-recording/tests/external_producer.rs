@@ -620,7 +620,10 @@ fn invalid_values_are_refused_before_reaching_a_recorder() {
     assert!(ExternalRunId::new("r".repeat(257)).is_err());
     assert!(ProducerName::new("-leading").is_err());
     assert!(ProducerName::new("has space").is_err());
-    assert!(ProducerName::new("example-org/bench.v2").is_ok());
+    // One rule with the producer-run envelope and acquisition namespaces.
+    assert!(ProducerName::new("example-org/bench.v2").is_err());
+    assert!(ProducerName::new("example-org:bench").is_err());
+    assert!(ProducerName::new("example-org.bench_v2").is_ok());
     assert_eq!(Position::new(0), None);
     assert_eq!(Position::FIRST.next().map(Position::get), Some(2));
     assert_eq!(Position::new(u64::MAX).and_then(Position::next), None);

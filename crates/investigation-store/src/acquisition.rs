@@ -28,7 +28,7 @@ use crate::{
     store::{Store, integrity, show_argv},
 };
 
-pub const MAX_NAMESPACE_CHARS: usize = 128;
+pub const MAX_NAMESPACE_CHARS: usize = investigation_core::attempt::PRODUCER_NAME_MAX_CHARS;
 pub const MAX_EXTERNAL_ID_CHARS: usize = 256;
 
 /// Producer namespace plus stable external ID of one logical acquisition attempt.
@@ -38,9 +38,11 @@ pub const MAX_EXTERNAL_ID_CHARS: usize = 256;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AcquisitionKeyRequest {
+    /// A producer name, under the same rule as a capture producer name and an
+    /// envelope's `producer.name`.
     #[schemars(
         length(min = 1, max = 128),
-        regex(pattern = r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+        regex(pattern = investigation_core::attempt::PRODUCER_NAME_PATTERN)
     )]
     pub namespace: String,
     #[schemars(length(min = 1, max = 256))]
@@ -57,18 +59,12 @@ impl AcquisitionKeyRequest {
     }
 
     pub(super) fn validate(&self) -> Result<(), Failure> {
-        let namespace_ok = !self.namespace.is_empty()
-            && self.namespace.chars().count() <= MAX_NAMESPACE_CHARS
-            && self
-                .namespace
-                .starts_with(|c: char| c.is_ascii_alphanumeric())
-            && self
-                .namespace
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
-        if !namespace_ok {
+        if !investigation_core::attempt::is_producer_name(&self.namespace) {
             return Err(invalid(
-                "Use a namespace of 1–128 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit.",
+                &format!(
+                    "Use a namespace of {}.",
+                    investigation_core::attempt::PRODUCER_NAME_RULE
+                ),
                 "/source/acquisition_key/namespace",
             ));
         }

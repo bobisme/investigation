@@ -1,0 +1,1 @@
+{"key":"legacy-dup/begin","actor":"agent:legacy-producer","producer":{"name":"example-bench","version":"0.1.0"},"external_run_id":"legacy-dup","intent":{"label":"legacy duplicate attempt"},"case":{"kind":"new_record_case","title":"Legacy duplicate"}}

@@ -53,6 +53,8 @@ Idempotency:
 - The key is the journal command ID. Resending the identical request returns the original receipt with `commit.result` `already_committed` and the same Run, handle and staging. Fields that take a default compare equal whether or not they are spelled out.
 - The same key and actor with a different request is refused with `IDEMPOTENCY_KEY_REUSED` at `/command_id`.
 - The producer name and external run ID identify one logical attempt. A second `begin` for that pair under another key or actor is refused with `IDEMPOTENCY_KEY_REUSED` at `/external_run_id`. The error names the original command ID, Run and handle, and its repair argv looks up the original receipt.
+- An attempt that a producer-run envelope already recorded is refused the same way. See [Attempt identity](#attempt-identity).
+- `producer.name` has 1–128 ASCII letters, digits, `.`, `_` or `-`, and starts with a letter or digit. A name with `:`, `/` or a non-ASCII character is refused at `/producer/name`.
 
 The limits are fixed when the handle is declared: 65536 bytes per appended event, 67108864 bytes per attachment and 100000 positions. A later build with other defaults returns the original limits on a retry.
 
@@ -361,16 +363,40 @@ The submitting actor comes from `--actor` or the workspace settings. The command
 - A changed envelope revises the same Run and the envelope Source. A changed artifact declaration revises that artifact's Source. Changed bytes add a retained Artifact. Each one reports `revised`. Investigator-owned Run fields, such as `evidence_validity` and the declaration sequence, are carried forward. Earlier artifact references stay on the Run.
 - An artifact that was retained earlier and is missing or rejected now keeps its retained entry when its bytes still satisfy `expected_sha256`.
 - An attempt belongs to the case that first recorded it. Changed content without `--case` for that case is refused at `/external_run_id`.
+- A changed envelope cannot replace a terminal execution status (`completed`, `failed`, `cancelled` or `blocked`) that the Run records. This includes a status that an investigator set with `run.reconcile`. The envelope is refused with `GATE_FAILED` at `/execution/state`. The error names the Run and the recorded status. `run.reconcile` applies the same rule. A status of `declared`, `running` or `unknown` can change to any status. A different outcome is a separate attempt, so give it its own external run ID.
+- An attempt that `capture.begin` already declared is refused. See [Attempt identity](#attempt-identity).
 
 The receipt (`producer-run-receipt`) adds `case_id`, the `run` revision, `run_outcome`, an `envelope` item, one item per declared artifact (`imported`, `deduplicated`, `revised`, `missing` or `rejected`), the reported `execution`, the computed `evidence_completeness`, and the Run's `measurement_validity`.
 
 ### Relation to the capture operations
 
-`ProducerAssertion` and `ProducerControl` are the same types in the envelope and in `FinalizeCapture`. `ExternalReceipt` has the fields of the envelope's receipt, but names its bytes by an attached item key instead of a path. The envelope's `producer` fields match `ProducerIdentity`. The envelope's name rule is stricter: it does not allow `:` or `/`, because the name becomes the acquisition namespace.
+`ProducerAssertion` and `ProducerControl` are the same types in the envelope and in `FinalizeCapture`. `ExternalReceipt` has the fields of the envelope's receipt, but names its bytes by an attached item key instead of a path. The envelope's `producer` fields match `ProducerIdentity`, and both follow one name rule.
+
+## Attempt identity
+
+A producer name plus an external run ID identifies one logical attempt. The capture operations and the producer-run envelope use the same identity, and one attempt has one Run. One definition in `investigation_core::attempt` holds the rules, and both paths use it:
+
+- **Name rule.** `is_producer_name` defines the producer name: 1–128 ASCII letters, digits, `.`, `_` or `-`, starting with a letter or digit. The recording crate's `ProducerName`, the envelope's `producer.name` and an ingest `acquisition_key.namespace` all use this rule. `:`, `/` and non-ASCII characters are refused. The published v1 envelope and ingest schemas have the pattern `^[A-Za-z0-9][A-Za-z0-9._-]*$`. The capture schemas were published without a pattern, so they state the rule in `description`, and the recorder enforces it.
+- **Recorded identity.** `recorded_attempt` reads the attempt of a Run from the fields that the recording stored. For a capture, these are `capture.producer` and `capture.external_run_id`. For an envelope, these are `producer_run.producer.name` and `producer_run.external_run_id`.
+- **One Run per attempt.** `capture begin` for an attempt that an envelope already recorded is refused with `IDEMPOTENCY_KEY_REUSED` at `/external_run_id`. The same refusal applies to an envelope for an attempt that `capture begin` already declared, even after the capture was finalized. In both cases, `error.expected` gives the existing `run_id`, `case_id`, `recorded_by` (`capture.begin` or `producer-run`) and the capture `handle` if there is one. The repair argv runs `capture recover --handle` for a capture Run and `show` for an envelope Run. To continue a capture, use its handle. To revise an envelope Run, ingest a changed envelope. To record a separate attempt, use another external run ID. The same external run ID under another producer name is a different attempt.
+
+### Recordings made before the rules were aligned
+
+Earlier builds allowed `:` and `/` in a capture producer name, and allowed one capture Run and one envelope Run for the same attempt. Recorded identities do not change:
+
+- Journals replay and verify as recorded. `ProducerName` deserialization accepts the `:` and `/` names that stored requests and finalization records hold (`is_recorded_producer_name`). Thus `recover`, `finalize`, `append` and `attach` continue to work on such a handle. An identical retry of its `begin` returns the original receipt. `ProducerName::is_current` reports whether a new attempt can use a name.
+- A new `begin` with such a name is refused at `/producer/name`. `ProducerName::new` and `FromStr` refuse it in Rust.
+- A workspace that already holds both a capture Run and an envelope Run for one attempt keeps both. Each path continues to use its own Run: a resubmitted envelope maps onto the envelope Run, and a `begin` maps onto the capture Run.
+
+The `crates/investigation-recording/tests/fixtures/legacy-attempt-identity` workspace was recorded by the build before this change. The `attempt_identity` tests replay it.
 
 ## Compatibility
 
 The crate is pre-1.0 and versioned with the workspace. Its public surface is the `Recorder` trait, `LocalRecorder`, the request, receipt and value types it defines, and the core contract types it re-exports at its root. Store internals are never exposed. Request, receipt and enum types are `#[non_exhaustive]`: build requests with `new` constructors and set optional fields directly, and match enums with a wildcard arm. New fields, variants and trait methods (with default bodies) are additive. A breaking change needs a minor version bump and a migration note in this file. Serialized forms follow the [v1 rules](schema-v1.md): additive optional fields only.
+
+Migration notes:
+
+- **Producer name rule (W07.18).** `ProducerName::new` and `FromStr` no longer accept `:` or `/`. Rename such a producer, for example `example-org:bench/v1` to `example-org.bench.v1`, before it declares a new attempt. Existing recordings with the old name stay readable and can be finalized. See [Attempt identity](#attempt-identity).
 
 ## Producer adapter protocol `inv.producer-adapter.v1`
 

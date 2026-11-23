@@ -1027,7 +1027,10 @@ fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> R
         old.execution_status,
         ExecutionStatus::Declared | ExecutionStatus::Running | ExecutionStatus::Unknown
     );
-    if !open_execution && old.execution_status != payload.outcome.execution_status {
+    if !crate::attempt::keeps_terminal_status(
+        old.execution_status,
+        payload.outcome.execution_status,
+    ) {
         return Err(blocked(
             "/outcome/execution_status",
             "Preserve the original terminal execution status.",

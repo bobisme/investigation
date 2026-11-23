@@ -1,0 +1,1 @@
+{"schema_version":"inv.producer-run.v1","producer":{"name":"example-bench","version":"0.1.0"},"external_run_id":"legacy-dup","intent":{"label":"legacy duplicate attempt"},"execution":{"state":"completed","exit_code":0},"limitations":["Recorded before attempt identity was unified"]}

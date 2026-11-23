@@ -112,9 +112,11 @@ impl ProducerRun {
 #[serde(deny_unknown_fields)]
 pub struct ProducerDescriptor {
     /// Producer namespace; it scopes acquisition identity and is never interpreted.
+    /// A capture producer name and an ingest acquisition namespace follow the
+    /// same rule.
     #[schemars(
         length(min = 1, max = 128),
-        regex(pattern = r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+        regex(pattern = crate::attempt::PRODUCER_NAME_PATTERN)
     )]
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -366,7 +368,12 @@ impl ProducerRun {
     /// Check bounds and cross-references that the JSON Schema cannot express.
     /// Metadata bounds are checked by the store's opaque-content policy.
     pub fn validate(&self) -> Result<(), EnvelopeError> {
-        token(&self.producer.name, NAME_CHARS, "/producer/name")?;
+        if !crate::attempt::is_producer_name(&self.producer.name) {
+            return Err(error(
+                format!("Use {}.", crate::attempt::PRODUCER_NAME_RULE),
+                "/producer/name",
+            ));
+        }
         optional(
             self.producer.version.as_ref(),
             NAME_CHARS,

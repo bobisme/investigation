@@ -36,9 +36,10 @@
 use std::io::ErrorKind;
 
 use investigation_core::{
+    attempt::{self, AttemptIdentity, AttemptPath},
     command::{Command, CommandVersion, Operation as CommandOperation},
     header::ClassificationLevel,
-    state::{validate_and_apply, validate_and_apply_composed},
+    state::{Record, validate_and_apply, validate_and_apply_composed},
 };
 
 use super::*;
@@ -230,6 +231,7 @@ impl<F: DurableFs> Store<F> {
                     if let Some(prior) = prior_declaration(visible, declaration) {
                         return Err(prior);
                     }
+                    current_name(declaration)?;
                     let (accepted, binding) =
                         declare(state, catalog, acceptance, declaration, existing)?;
                     declared = Some(binding);
@@ -461,42 +463,119 @@ fn declaration_path(mut failure: Failure, new_case: bool) -> Failure {
     failure
 }
 
-/// The same logical attempt declared earlier under another key or actor.
-fn prior_declaration(visible: Visible<'_>, declaration: &CaptureDeclaration) -> Option<Failure> {
-    let cases = visible
+/// Every Run in the visible cases that records `identity`, by either path.
+///
+/// One attempt has one Run. Workspaces written before the paths shared an
+/// identity may hold one Run per path; callers prefer the Run of their own path.
+pub(super) fn recorded_attempts<'v>(
+    visible: &Visible<'v>,
+    identity: AttemptIdentity<'_>,
+) -> Vec<(&'v CaseReplay, &'v Record, AttemptPath)> {
+    visible
         .target
         .into_iter()
-        .chain(visible.others.cases.values());
-    for case in cases {
-        for record in case.state.records() {
-            let capture = &record.body["capture"];
-            if record.header.id.kind() != Kind::Run
-                || capture["producer"] != declaration.producer.as_str()
-                || capture["external_run_id"] != declaration.external_run_id.as_str()
-            {
-                continue;
-            }
-            let event = declaring_event(case, &case.state, record.header.id).ok()?;
-            let mut failure = Failure::new(
-                ErrorCode::IdempotencyKeyReused,
-                "This producer already declared this external run ID under another command ID or actor. Resend that begin request to get its handle.",
+        .chain(visible.others.cases.values())
+        .flat_map(|case| case.state.records().map(move |record| (case, record)))
+        .filter(|(_, record)| record.header.id.kind() == Kind::Run)
+        .filter_map(|(case, record)| {
+            let (recorded, path) = attempt::recorded_attempt(&record.body)?;
+            (recorded == identity).then_some((case, record, path))
+        })
+        .collect()
+}
+
+/// Refusal of a capture or envelope for an attempt that the other path
+/// already recorded, naming the existing Run.
+pub(super) fn recorded_by_other_path(record: &Record, path: AttemptPath) -> Failure {
+    let run_id = record.header.id;
+    let case_id = record.header.case_id;
+    let (message, argv, handle) = match path {
+        AttemptPath::Capture => {
+            let handle = record.body[attempt::CAPTURE_KEY]["handle"].clone();
+            let argv = handle
+                .as_str()
+                .and_then(|handle| handle.parse::<Id>().ok())
+                .map_or_else(|| show_argv(run_id, case_id), recover_argv);
+            (
+                format!(
+                    "Run {run_id} already records this producer and external run ID through capture.begin. Continue that capture through its handle, or describe a separate attempt with another external run ID."
+                ),
+                argv,
+                handle,
             )
-            .at("/external_run_id")
-            .with_argv(receipt_argv(&event.actor, &event.command_id));
-            failure.error.expected = Some(json!({
-                "command_id": event.command_id,
-                "actor": event.actor,
-                "run_id": record.header.id,
-                "handle": capture["handle"],
-            }));
-            failure.error.actual = Some(json!({
-                "command_id": declaration.command_id,
-                "actor": declaration.actor,
-            }));
-            return Some(failure);
         }
+        AttemptPath::ProducerRun => (
+            format!(
+                "Run {run_id} already records this producer and external run ID from a producer-run envelope. Ingest a changed envelope to revise it, or declare a separate attempt with another external run ID."
+            ),
+            show_argv(run_id, case_id),
+            Value::Null,
+        ),
+    };
+    let mut failure = Failure::new(ErrorCode::IdempotencyKeyReused, message)
+        .at("/external_run_id")
+        .with_argv(argv);
+    failure.error.expected = Some(json!({
+        "run_id": run_id,
+        "case_id": case_id,
+        "recorded_by": match path {
+            AttemptPath::Capture => "capture.begin",
+            AttemptPath::ProducerRun => "producer-run",
+        },
+        "handle": handle,
+    }));
+    failure
+}
+
+/// The same logical attempt declared earlier under another key or actor, or
+/// recorded by a producer-run envelope.
+fn prior_declaration(visible: Visible<'_>, declaration: &CaptureDeclaration) -> Option<Failure> {
+    let identity = AttemptIdentity {
+        producer: &declaration.producer,
+        external_run_id: &declaration.external_run_id,
+    };
+    let recorded = recorded_attempts(&visible, identity);
+    let Some((case, record, _)) = recorded
+        .iter()
+        .find(|(_, _, path)| *path == AttemptPath::Capture)
+    else {
+        return recorded
+            .first()
+            .map(|(_, record, path)| recorded_by_other_path(record, *path));
+    };
+    let capture = &record.body[attempt::CAPTURE_KEY];
+    let event = declaring_event(case, &case.state, record.header.id).ok()?;
+    let mut failure = Failure::new(
+        ErrorCode::IdempotencyKeyReused,
+        "This producer already declared this external run ID under another command ID or actor. Resend that begin request to get its handle.",
+    )
+    .at("/external_run_id")
+    .with_argv(receipt_argv(&event.actor, &event.command_id));
+    failure.error.expected = Some(json!({
+        "command_id": event.command_id,
+        "actor": event.actor,
+        "run_id": record.header.id,
+        "handle": capture["handle"],
+    }));
+    failure.error.actual = Some(json!({
+        "command_id": declaration.command_id,
+        "actor": declaration.actor,
+    }));
+    Some(failure)
+}
+
+/// A new declaration's producer name follows the shared rule. Retries of a
+/// declaration recorded before the rules were aligned never reach this check:
+/// the journal answers them with the original receipt.
+fn current_name(declaration: &CaptureDeclaration) -> Result<(), Failure> {
+    if attempt::is_producer_name(&declaration.producer) {
+        return Ok(());
     }
-    None
+    Err(Failure::new(
+        ErrorCode::InvalidInput,
+        format!("Use a producer name of {}.", attempt::PRODUCER_NAME_RULE),
+    )
+    .at("/producer/name"))
 }
 
 pub(crate) fn declaring_event<'a>(

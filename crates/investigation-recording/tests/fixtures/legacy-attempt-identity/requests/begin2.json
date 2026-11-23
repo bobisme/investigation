@@ -1,0 +1,1 @@
+{"key":"legacy-run-2/begin","actor":"agent:legacy-producer","producer":{"name":"example-org:bench/v1"},"external_run_id":"legacy-run-2","intent":{"label":"legacy in-flight run"},"case":{"kind":"existing","case_id":"case_01a20705-6925-7992-9c18-27cfcf473025"}}

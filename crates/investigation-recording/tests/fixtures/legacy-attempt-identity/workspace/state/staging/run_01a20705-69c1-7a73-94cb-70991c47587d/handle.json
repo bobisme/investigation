@@ -1,0 +1,11 @@
+{
+  "schema_version": "inv.capture-staging.v1",
+  "handle": "handle_01a20705-69c0-7760-8a50-307dcdfacff4",
+  "run_id": "run_01a20705-69c1-7a73-94cb-70991c47587d",
+  "case_id": "case_01a20705-69c1-7a73-94cb-708581fbb37b",
+  "transaction_id": "tx_01a20705-69c1-7a73-94cb-70a789205134",
+  "command_id": "legacy-dup/begin",
+  "actor": "agent:legacy-producer",
+  "producer": "example-bench",
+  "external_run_id": "legacy-dup"
+}

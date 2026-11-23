@@ -4,6 +4,7 @@
 pub const PROGRAM_NAME: &str = "investigation";
 
 pub mod absence_gate;
+pub mod attempt;
 pub mod basis;
 pub mod blindspot;
 pub mod blindspot_review;

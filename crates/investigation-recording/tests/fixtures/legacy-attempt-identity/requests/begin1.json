@@ -1,0 +1,1 @@
+{"key":"legacy-run-1/begin","actor":"agent:legacy-producer","producer":{"name":"example-org:bench/v1","version":"0.1.0"},"external_run_id":"legacy-run-1","intent":{"label":"legacy colon-slash run"},"case":{"kind":"new_record_case","title":"Legacy capture runs"}}

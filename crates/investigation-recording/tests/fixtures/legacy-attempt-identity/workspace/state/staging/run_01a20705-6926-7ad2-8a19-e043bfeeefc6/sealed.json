@@ -1,0 +1,13 @@
+{
+  "schema_version": "inv.capture-seal.v1",
+  "handle": "handle_01a20705-6925-7992-9c18-27be4d0fdea6",
+  "run_id": "run_01a20705-6926-7ad2-8a19-e043bfeeefc6",
+  "command_id": "legacy-run-1/finalize",
+  "request_digest": "sha256:6c78fe57e0514477d0624e86ebca940a68fdc52fe7ea0c9ce50d19d94b4b4c24",
+  "sealed_position": 1,
+  "snapshot": {
+    "sequence": 1,
+    "head_hash": "sha256:a874c4885ad2e0acdfa8c8bc79ca3f774858ec93852c9849e191a04ad00fd273"
+  },
+  "manifest_digest": "sha256:2a148888cf4d54580e140df233f4f6d53ca846ab3797f758a2ade52029718727"
+}

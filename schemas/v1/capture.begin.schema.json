@@ -142,7 +142,7 @@
       "type": "object"
     },
     "ProducerName": {
-      "description": "1 to 128 ASCII letters, digits, '.', '_', '-', ':' or '/', starting with a letter or digit",
+      "description": "1–128 ASCII letters, digits, '.', '_' or '-', starting with a letter or digit",
       "maxLength": 128,
       "minLength": 1,
       "type": "string"

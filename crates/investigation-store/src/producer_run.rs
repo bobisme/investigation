@@ -21,6 +21,7 @@
 use std::collections::BTreeSet;
 
 use investigation_core::{
+    attempt::{self, AttemptIdentity, AttemptPath},
     case::CaseCreate,
     command::{Reference, RevisionRef},
     evidence::{
@@ -603,6 +604,7 @@ impl RunContext<'_> {
     ) -> Result<Prepared, Failure> {
         let run = self.run;
         let level = run.level();
+        refuse_captured_attempt(run, visible)?;
         let home = home_of(self.submission.case_id, self.request, visible).map_err(relocate)?;
         let plan = |label: &str, digest: &Digest, described: &Digest, level| {
             let facts = [acquisition::ItemFacts {
@@ -909,6 +911,7 @@ impl RunContext<'_> {
                     });
                 }
             } else {
+                keep_terminal_status(previous, run.execution.state)?;
                 builder.classification = level.max(previous.header.classification.level);
                 builder.revise(previous, body)?;
             }
@@ -939,6 +942,59 @@ impl RunContext<'_> {
             warnings: self.warnings.to_vec(),
         }))
     }
+}
+
+/// One attempt has one Run: an attempt that `capture.begin` declared is not
+/// recorded again from an envelope. A workspace written before the paths shared
+/// an identity may hold an envelope Run as well; that Run stays the envelope's.
+fn refuse_captured_attempt(run: &ProducerRun, visible: &Visible<'_>) -> Result<(), Failure> {
+    let identity = AttemptIdentity {
+        producer: &run.producer.name,
+        external_run_id: &run.external_run_id,
+    };
+    let recorded = capture::recorded_attempts(visible, identity);
+    if recorded
+        .iter()
+        .any(|(_, _, path)| *path == AttemptPath::ProducerRun)
+    {
+        return Ok(());
+    }
+    match recorded.first() {
+        Some((_, record, path)) => {
+            Err(capture::recorded_by_other_path(record, *path).with_schema(SCHEMA))
+        }
+        None => Ok(()),
+    }
+}
+
+/// A changed envelope keeps the Run's terminal execution status, by the rule
+/// `run.reconcile` applies ([`attempt::keeps_terminal_status`]).
+fn keep_terminal_status(previous: &Record, reported: ExecutionStatus) -> Result<(), Failure> {
+    let recorded: ExecutionStatus = input::decode(&previous.body["execution_status"])
+        .map_err(|_| integrity("The recorded Run has no valid execution status."))?;
+    if attempt::keeps_terminal_status(recorded, reported) {
+        return Ok(());
+    }
+    let run = previous.reference();
+    let status = |status: ExecutionStatus| match serde_json::to_value(status) {
+        Ok(Value::String(name)) => name,
+        _ => format!("{status:?}"),
+    };
+    let mut failure = Failure::new(
+        ErrorCode::GateFailed,
+        format!(
+            "Run {} already records the terminal execution status {}; a changed envelope cannot replace it with {}. Describe a separate attempt with another external run ID.",
+            run.id,
+            status(recorded),
+            status(reported),
+        ),
+    )
+    .at("/execution/state")
+    .with_argv(crate::store::show_argv(run.id, previous.header.case_id))
+    .with_schema(SCHEMA);
+    failure.error.expected = Some(json!({"run": run, "execution_status": status(recorded)}));
+    failure.error.actual = Some(json!({"execution_status": status(reported)}));
+    Err(failure)
 }
 
 /// Point an acquisition conflict at the envelope field that names the attempt.
