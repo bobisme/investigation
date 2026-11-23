@@ -18,6 +18,7 @@ use crate::{
         ArtifactAvailability, ArtifactBody, ArtifactIntegrity, MeasurementValidity,
         ObservationBasis, ObservationBody, SelectorValidation, TextQuoteState,
     },
+    freshness::{Freshness, FreshnessIndex},
     header::Knowledge,
     identity::{Id, Kind},
     objection_policy::{open_objections, raised_after_review},
@@ -1279,10 +1280,17 @@ pub fn validation_review_current(
         .with_schema("review.submit"));
     }
     let required = required_read_set(state, target)?;
-    if required
-        .iter()
-        .any(|revision| !review.read_set.contains(revision))
-    {
+    // A reviewed Source or Artifact revision still covers its current revision
+    // when only judgments that raise no concern were added since.
+    let covered = |revision: &RevisionRef| {
+        review.read_set.iter().any(|read| {
+            read == revision
+                || (read.id == revision.id
+                    && crate::source_ops::benign_successor(state, case, *read)
+                        .is_some_and(|current| current.reference() == *revision))
+        })
+    };
+    if !required.iter().all(covered) {
         let mut failure = gate(
             "/read_set",
             "The reviewed dependency closure is stale or incomplete.",
@@ -1291,7 +1299,11 @@ pub fn validation_review_current(
         return Err(failure);
     }
     for reference in &review.read_set {
-        if inactive(current(state, case, *reference, "/read_set")?) {
+        let examined = match crate::source_ops::benign_successor(state, case, *reference) {
+            Some(record) => record,
+            None => current(state, case, *reference, "/read_set")?,
+        };
+        if inactive(examined) {
             return Err(gate(
                 "/read_set",
                 "A dependency examined by the reviewer is no longer eligible.",
@@ -1531,36 +1543,48 @@ fn objection_change(
 }
 
 /// Effective status against this exact State. Record lifecycle stays canonical;
-/// freshness is a read-time judgment.
+/// freshness is a read-time judgment from [`FreshnessIndex`]. Builds an index
+/// for the record's case; use [`effective_disposition_with`] to share one.
 pub fn effective_disposition(state: &State, record: &Record) -> EffectiveDisposition {
-    fn compute(state: &State, record: &Record) -> Result<EffectiveDisposition, Failure> {
+    let index = FreshnessIndex::build(state, record.header.case_id);
+    effective_disposition_with(state, &index, record)
+}
+
+/// Effective status using an index built for `state` and the record's case.
+/// Open critical objections on the record, the subject it reviews or its
+/// dependency closure dispute it. Otherwise the index decides whether it needs
+/// review, and unsupported material assumptions in its closure make it
+/// conditional.
+pub fn effective_disposition_with(
+    state: &State,
+    index: &FreshnessIndex,
+    record: &Record,
+) -> EffectiveDisposition {
+    fn compute(
+        state: &State,
+        index: &FreshnessIndex,
+        record: &Record,
+    ) -> Result<EffectiveDisposition, Failure> {
         let kind = record.header.id.kind();
         let case = record.header.case_id;
         let subject = record.header.id;
-        if !critical_objections(state, case, subject, &[])?.is_empty() {
+        let freshness = index.assess(state, record);
+        if freshness.freshness == Freshness::Disputed
+            || !critical_objections(state, case, subject, &[])?.is_empty()
+        {
             return Ok(EffectiveDisposition::Disputed);
         }
+        let stale = freshness.needs_review();
         if kind == Kind::Review {
             let reference: RevisionRef = decode(&record.body["subject_ref"])?;
-            let target = state
-                .current(reference.id)
-                .filter(|target| target.header.case_id == case)
-                .ok_or_else(integrity)?;
             if !critical_objections(state, case, reference.id, &[])?.is_empty() {
                 return Ok(EffectiveDisposition::Disputed);
             }
-            if record.body["kind"] == "validation" {
-                let body: ValidationReviewBody = decode(&record.body)?;
-                validation_review_current(state, target, &body)?;
+            return Ok(if stale {
+                EffectiveDisposition::NeedsReview
             } else {
-                current(state, case, reference, "/subject_ref")?;
-                for reference in decode::<Vec<RevisionRef>>(&record.body["read_set"])? {
-                    if inactive(current(state, case, reference, "/read_set")?) {
-                        return Ok(EffectiveDisposition::NeedsReview);
-                    }
-                }
-            }
-            return Ok(EffectiveDisposition::Current);
+                EffectiveDisposition::Current
+            });
         }
         if !matches!(
             kind,
@@ -1569,39 +1593,62 @@ pub fn effective_disposition(state: &State, record: &Record) -> EffectiveDisposi
         {
             return Ok(EffectiveDisposition::Current);
         }
-        let read_set = required_read_set(state, record)?;
-        if !critical_objections(state, case, subject, &read_set)?.is_empty() {
+        // The exact closure cannot be walked when a cited revision changed;
+        // the index has already judged whether that change matters.
+        let read_set = required_read_set(state, record).ok();
+        if let Some(read_set) = &read_set
+            && !critical_objections(state, case, subject, read_set)?.is_empty()
+        {
             return Ok(EffectiveDisposition::Disputed);
         }
+        // A challenge raised after promotion disputes the subject; it is not
+        // just a stale review awaiting refresh, so it outranks needs_review.
         if (kind == Kind::Conclusion && record.body["status"] == "validated")
             || (kind == Kind::Decision
                 && (record.body["status"] == "accepted" || record.body["lifecycle"] == "accepted"))
         {
             let review: RevisionRef = decode(&record.body["review_ref"])?;
-            let review_record = current(state, case, review, "/review_ref")?;
+            let review_record = state
+                .revision(review)
+                .filter(|review| review.header.case_id == case)
+                .ok_or_else(integrity)?;
             let review: ValidationReviewBody = decode(&review_record.body)?;
-            // A challenge raised after promotion disputes the subject; it is
-            // not just a stale review awaiting refresh.
             if raised_after_review(state, record, &review)? {
                 return Ok(EffectiveDisposition::Disputed);
             }
-            validation_review_current(state, record, &review)?;
         }
-        if read_set
-            .iter()
-            .filter(|reference| reference.id.kind() == Kind::Assumption)
-            .any(|reference| {
-                state.current(reference.id).is_some_and(|assumption| {
-                    assumption.body["materiality"] == "material"
-                        && assumption.body["status"] != "supported"
-                })
+        if stale {
+            return Ok(EffectiveDisposition::NeedsReview);
+        }
+        let assumptions: Vec<Id> = match read_set {
+            Some(read_set) => read_set
+                .iter()
+                .filter(|reference| reference.id.kind() == Kind::Assumption)
+                .map(|reference| reference.id)
+                .collect(),
+            None => {
+                let scope = MembershipScope::Subject {
+                    case_id: case,
+                    subject_id: subject,
+                };
+                membership(state, MembershipRule::MaterialAssumptions, scope)?
+                    .members
+                    .iter()
+                    .map(|member| member.id)
+                    .collect()
+            }
+        };
+        if assumptions.iter().any(|id| {
+            state.current(*id).is_some_and(|assumption| {
+                assumption.body["materiality"] == "material"
+                    && assumption.body["status"] != "supported"
             })
-        {
+        }) {
             return Ok(EffectiveDisposition::Conditional);
         }
         Ok(EffectiveDisposition::Current)
     }
-    compute(state, record).unwrap_or(EffectiveDisposition::NeedsReview)
+    compute(state, index, record).unwrap_or(EffectiveDisposition::NeedsReview)
 }
 
 pub(crate) fn operations() -> Vec<OperationDescriptor> {

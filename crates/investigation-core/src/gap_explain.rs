@@ -139,6 +139,25 @@ const RULES: &[RuleSpec] = &[
         persistence: "Stops when a Comparison covers the pair, or the Option or Criterion leaves scope.",
     },
     RuleSpec {
+        rule_id: "freshness.needs_review",
+        subject_kinds: &[
+            Kind::Assessment,
+            Kind::Comparison,
+            Kind::Conclusion,
+            Kind::Decision,
+        ],
+        status: GapStatus::StaleDueToRevision,
+        condition: "A live Assessment, Comparison, Conclusion or Decision has effective freshness needs_review in the dependency index: a record it relies on, directly or transitively, was withdrawn, retracted, retired, rejected or superseded, was materially revised, became invalid or less valid, or was newly judged doubtful, or a reviewed membership or closure changed. Lifecycle-only and benign judgment revisions do not emit it.",
+        inspected_fields: &[
+            "every exact revision reference in the record body and the records it cites",
+            "substantive basis of each cited record",
+            "withdrawals, source_assessment and effective measurement validity of cited records",
+            "validation review memberships and read_set",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when the record is replaced, retracted or superseded, or the change it relies on is reverted; the reason lists each cause and the dependency path to it.",
+    },
+    RuleSpec {
         rule_id: "hypothesis.no_assessment",
         subject_kinds: &[Kind::Hypothesis],
         status: GapStatus::RequiresSource,

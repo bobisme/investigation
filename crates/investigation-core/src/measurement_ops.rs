@@ -684,7 +684,8 @@ fn assess(payload: MeasurementAssess, ctx: &mut OperationContext<'_>) -> Result<
     Ok(())
 }
 
-const fn rank(validity: MeasurementValidity) -> u8 {
+/// Conservative order of effective validity: `invalid` < `partial` < `unknown` < `valid`.
+pub(crate) const fn validity_rank(validity: MeasurementValidity) -> u8 {
     match validity {
         MeasurementValidity::Invalid => 0,
         MeasurementValidity::Partial => 1,
@@ -694,7 +695,9 @@ const fn rank(validity: MeasurementValidity) -> u8 {
 }
 
 fn lowest(values: impl IntoIterator<Item = MeasurementValidity>) -> Option<MeasurementValidity> {
-    values.into_iter().min_by_key(|validity| rank(*validity))
+    values
+        .into_iter()
+        .min_by_key(|validity| validity_rank(*validity))
 }
 
 fn still_current(state: &State, case: crate::identity::Id, reference: RevisionRef) -> bool {
@@ -801,7 +804,7 @@ pub fn validity_view(state: &State, record: &Record) -> Result<ValidityView, Fai
     }
     let mut disagreement = whole_values
         .iter()
-        .map(|value| rank(*value))
+        .map(|value| validity_rank(*value))
         .collect::<BTreeSet<_>>()
         .len()
         > 1;
@@ -810,7 +813,7 @@ pub fn validity_view(state: &State, record: &Record) -> Result<ValidityView, Fai
         .map(|(channel, values)| {
             disagreement |= values
                 .iter()
-                .map(|value| rank(*value))
+                .map(|value| validity_rank(*value))
                 .collect::<BTreeSet<_>>()
                 .len()
                 > 1;

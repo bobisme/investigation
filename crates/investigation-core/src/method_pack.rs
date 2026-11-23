@@ -62,6 +62,7 @@ pub const GAP_RULE_TRIGGERS: &[&str] = &[
     "decision.hard_criterion_cell_missing",
     "decision.hard_criterion_cell_unknown",
     "decision.option_criterion_cell_missing",
+    "freshness.needs_review",
     "hypothesis.no_assessment",
     "inquiry.confirmatory_plan_unfrozen",
     "observation.invalid_or_missing_source_match",

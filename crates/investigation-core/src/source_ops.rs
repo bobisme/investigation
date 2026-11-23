@@ -651,6 +651,21 @@ pub fn use_successor(state: &State, case: Id, cited: RevisionRef) -> Option<&Rec
     (without_use(&historic.body) == without_use(&current.body)).then_some(current)
 }
 
+/// The current revision of a cited Source or Artifact when it differs from the
+/// cited revision only by judgments that raise no concern: no new withdrawal
+/// and no newly raised authenticity, reliability or currency concern. A reader
+/// of the cited revision has read everything that matters in this one.
+pub fn benign_successor(state: &State, case: Id, cited: RevisionRef) -> Option<&Record> {
+    let current = use_successor(state, case, cited)?;
+    let historic = state.revision(cited)?;
+    use_trigger(historic, current).is_none().then_some(current)
+}
+
+/// Whether `after` differs from `before` only in evidentiary-use fields.
+pub(crate) fn use_only_change(before: &Record, after: &Record) -> bool {
+    without_use(&before.body) == without_use(&after.body)
+}
+
 /// Current revisions of a record and the Artifacts and Sources it derives
 /// from, nearest first. Observations start from their basis Artifact.
 fn lineage(state: &State, record: &Record) -> Vec<Record> {

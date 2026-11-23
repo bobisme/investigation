@@ -29,6 +29,7 @@ use investigation_core::{
     PROGRAM_NAME,
     command::Command as RecordCommand,
     command::RevisionRef,
+    freshness::FreshnessIndex,
     gap_rules::{enumerate_gaps, rank_next},
     header::Actor,
     identity::{ResolveError, resolve_prefix},
@@ -399,8 +400,9 @@ fn show(
         Some(revision) => replay.state.revision(RevisionRef { id, revision }),
         None => replay.state.current(id),
     };
+    let index = FreshnessIndex::build(&replay.state, case);
     let effective = record
-        .map(|record| views::effective_state(store, &replay, record))
+        .map(|record| views::effective_state(store, &replay, &index, record))
         .unwrap_or_default();
     let projected = if at.is_some() {
         views::show_record_revision(&replay, id, at, depth, &effective)
@@ -464,10 +466,11 @@ fn brief(
     ]);
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case)?;
     let next = rank_next(&inventory, 3);
+    let index = FreshnessIndex::build(&replay.state, case);
     let mut effective = replay
         .state
         .current(case)
-        .map(|record| views::effective_state(store, &replay, record))
+        .map(|record| views::effective_state(store, &replay, &index, record))
         .unwrap_or_default();
     let outcomes: Vec<_> = replay
         .state
@@ -480,12 +483,21 @@ fn brief(
             )
         })
         .collect();
+    let evidence = replay.state.records().filter(|record| {
+        matches!(
+            record.header.id.kind(),
+            investigation_core::identity::Kind::Observation
+                | investigation_core::identity::Kind::Comparison
+        )
+    });
     let record_effective: std::collections::BTreeMap<_, _> = outcomes
         .iter()
+        .copied()
+        .chain(evidence)
         .map(|record| {
             (
                 record.header.id,
-                views::effective_state(store, &replay, record),
+                views::effective_state(store, &replay, &index, record),
             )
         })
         .collect();

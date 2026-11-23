@@ -12,6 +12,7 @@ use crate::{
         ArtifactAvailability, ArtifactBody, ArtifactIntegrity, MeasurementValidity,
         ObservationBasis, ObservationBody, ObservationValue, SelectorValidation,
     },
+    freshness::FreshnessIndex,
     identity::{Id, Kind},
     objection_policy::{
         AcceptanceChallenges, ObjectionAcknowledgmentInput, acknowledge, acknowledgment_policy,
@@ -652,6 +653,16 @@ pub enum EffectiveComparison {
 }
 /// Recompute against the current snapshot; no lifecycle flag is silently rewritten.
 pub fn effective_comparison(s: &State, r: &Record) -> Result<EffectiveComparison, Failure> {
+    effective_comparison_with(s, &FreshnessIndex::build(s, r.header.case_id), r)
+}
+/// As [`effective_comparison`], with an index built for `s` and this case. A
+/// cited change the index judges irrelevant, such as a lifecycle-only Option
+/// revision or a criterion re-scoped to other options, keeps the cell current.
+pub fn effective_comparison_with(
+    s: &State,
+    index: &FreshnessIndex,
+    r: &Record,
+) -> Result<EffectiveComparison, Failure> {
     if r.header.id.kind() != Kind::Comparison {
         return Err(fail("/comparison", "Expected a comparison."));
     }
@@ -659,28 +670,35 @@ pub fn effective_comparison(s: &State, r: &Record) -> Result<EffectiveComparison
     if b.retracted {
         return Ok(EffectiveComparison::Retracted);
     }
-    let case = r.header.case_id;
-    if exact(s, case, b.option_ref, Kind::Option, "/option_ref").is_err()
-        || exact(s, case, b.criterion_ref, Kind::Criterion, "/criterion_ref").is_err()
-        || b.evidence_refs
-            .iter()
-            .chain(&b.assumption_refs)
-            .any(|v| exact(s, case, *v, v.id.kind(), "/references").is_err())
-    {
-        return Ok(EffectiveComparison::NeedsReview);
-    }
-    Ok(EffectiveComparison::Current)
+    Ok(if index.assess(s, r).needs_review() {
+        EffectiveComparison::NeedsReview
+    } else {
+        EffectiveComparison::Current
+    })
 }
 pub fn effective_decision(s: &State, r: &Record) -> Result<EffectiveDecision, Failure> {
+    effective_decision_with(s, &FreshnessIndex::build(s, r.header.case_id), r)
+}
+/// As [`effective_decision`], with an index built for `s` and this case. An
+/// accepted decision needs review when the index finds a relevant change in
+/// its reviewed basis: cells, criteria, options, evidence, assumptions, or the
+/// review and its scoped memberships.
+pub fn effective_decision_with(
+    s: &State,
+    index: &FreshnessIndex,
+    r: &Record,
+) -> Result<EffectiveDecision, Failure> {
     let b: DecisionBody = decode(&r.body)?;
     match b.lifecycle {
         DecisionLifecycle::Proposed => Ok(EffectiveDecision::Proposed),
         DecisionLifecycle::Superseded => Ok(EffectiveDecision::Superseded),
         DecisionLifecycle::Accepted => {
-            if b.review_ref
-                .is_none_or(|x| current_review(s, r, x).is_err())
-                || check_cells(s, r.header.case_id, &b).is_err()
-            {
+            let supported = b
+                .review_ref
+                .and_then(|review| s.revision(review))
+                .and_then(|review| decode::<ValidationReviewBody>(&review.body).ok())
+                .is_some_and(|review| review.verdict == ValidationVerdict::Supports);
+            if !supported || index.assess(s, r).needs_review() {
                 Ok(EffectiveDecision::NeedsReview)
             } else if b.hard_conditions.is_empty() {
                 Ok(EffectiveDecision::Accepted)

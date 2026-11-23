@@ -24,14 +24,18 @@ use serde_json::{Value, json};
 use crate::{
     basis::{MembershipBasis, MembershipRule, basis_digest},
     command::RevisionRef,
+    evidence::MeasurementValidity,
     identity::{Id, Kind},
+    measurement_ops::{MEASUREMENT_ASSESSMENT_KEY, effective_validity, validity_rank},
     review_ops::{promotion_memberships, required_read_set},
     state::{Record, State},
     wire::{ErrorCode, Failure},
 };
 
 /// Version of the trigger, relevance and propagation rules in this module.
-pub const FRESHNESS_RULES_VERSION: u32 = 1;
+/// Version 2 judges Observations by effective validity and keeps
+/// classification changes out of the Overview.
+pub const FRESHNESS_RULES_VERSION: u32 = 2;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -106,6 +110,13 @@ pub enum Trigger {
     MaterialRevision,
     /// A cited measurement is now assessed as invalid.
     InvalidMeasurement,
+    /// A cited Observation's effective validity got worse without becoming
+    /// invalid, for example `valid` to `partial`. Judgments that keep or raise
+    /// effective validity do not change freshness.
+    ValidityLowered {
+        from: MeasurementValidity,
+        to: MeasurementValidity,
+    },
     /// A cited source is newly judged doubtful or not authentic, unreliable,
     /// or outdated or superseded (`source.assess`).
     SourceConcern { dimensions: Vec<String> },
@@ -118,6 +129,9 @@ pub enum Trigger {
     CriticalObjection,
     /// A scoped set captured by a validation review changed membership.
     MembershipChanged { rule: MembershipRule },
+    /// An objection to the reviewed subject was raised after its validation
+    /// review. The cause is the objection; it disputes the subject.
+    ObjectionRaisedAfterReview,
     /// The current dependency closure includes a record the review did not read.
     BasisExpanded,
     /// A cited record is absent from the case.
@@ -136,6 +150,11 @@ impl Trigger {
                 from.as_deref().unwrap_or("-"),
                 to.as_deref().unwrap_or("-")
             ),
+            Self::ValidityLowered { from, to } => format!(
+                "validity_lowered:{}:{}",
+                wire(from).unwrap_or_default(),
+                wire(to).unwrap_or_default()
+            ),
             Self::MembershipChanged { rule } => format!(
                 "membership_changed:{}",
                 serde_json::to_value(rule)
@@ -143,19 +162,53 @@ impl Trigger {
                     .and_then(|value| value.as_str().map(str::to_owned))
                     .unwrap_or_default()
             ),
-            other => serde_json::to_value(other)
-                .ok()
-                .and_then(|value| value["kind"].as_str().map(str::to_owned))
-                .unwrap_or_default(),
+            other => trigger_kind(other),
+        }
+    }
+
+    /// A short, stable description of the trigger for text output.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::SourceConcern { dimensions } => {
+                format!("source concern raised ({})", dimensions.join(", "))
+            }
+            Self::AssumptionDisposition { from, to } => format!(
+                "assumption disposition changed ({} to {})",
+                from.as_deref().unwrap_or("none"),
+                to.as_deref().unwrap_or("none")
+            ),
+            Self::ValidityLowered { from, to } => format!(
+                "measurement validity lowered ({} to {})",
+                wire(from).unwrap_or_default(),
+                wire(to).unwrap_or_default()
+            ),
+            Self::MembershipChanged { rule } => format!(
+                "reviewed membership changed ({})",
+                wire(rule).unwrap_or_default()
+            ),
+            other => trigger_kind(other).replace('_', " "),
         }
     }
 
     fn severity(&self) -> Freshness {
         match self {
-            Self::CriticalObjection => Freshness::Disputed,
+            Self::CriticalObjection | Self::ObjectionRaisedAfterReview => Freshness::Disputed,
             _ => Freshness::NeedsReview,
         }
     }
+}
+
+fn wire(value: &impl Serialize) -> Option<String> {
+    serde_json::to_value(value)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+}
+
+fn trigger_kind(trigger: &Trigger) -> String {
+    serde_json::to_value(trigger)
+        .ok()
+        .and_then(|value| value["kind"].as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 /// One link in a reason chain: `record` cites `cites` through `field`.
@@ -193,6 +246,22 @@ impl FreshnessReason {
 
     fn key(&self) -> ReasonKey {
         (self.cause.id, self.cause.revision, self.trigger.key())
+    }
+
+    /// One line for text output: the trigger, its cause and the dependency
+    /// path, for example `withdrawn: src_… r2 via obs_… basis.artifact_ref -> art_… source`.
+    pub fn describe(&self) -> String {
+        let mut text = format!(
+            "{}: {} r{}",
+            self.trigger.describe(),
+            self.cause.id,
+            self.cause.revision
+        );
+        for (index, step) in self.path.iter().enumerate() {
+            text.push_str(if index == 0 { " via " } else { " -> " });
+            text.push_str(&format!("{} {}", step.record, step.field));
+        }
+        text
     }
 
     /// Shorter chains win; ties break on the chain's IDs, fields and revisions.
@@ -234,6 +303,13 @@ impl RecordFreshness {
             self.lifecycle.as_deref().unwrap_or("recorded"),
             self.freshness.as_str()
         )
+    }
+
+    /// Whether any reason asks for review again, whatever else disputes it.
+    pub fn needs_review(&self) -> bool {
+        self.reasons
+            .iter()
+            .any(|reason| reason.freshness == Freshness::NeedsReview)
     }
 }
 
@@ -521,23 +597,56 @@ fn end_state(record: &Record) -> Option<Trigger> {
     }
 }
 
-fn invalid_measurement(record: &Record) -> bool {
-    let body = &record.body;
-    match record.header.id.kind() {
+/// A measurement trigger between the cited and current revision. Observation
+/// validity is the effective validity computed by `measurement_ops`, so an
+/// attributed judgment affects dependents only when it makes validity worse.
+fn measurement_change(state: &State, cited: &Record, current: &Record) -> Option<Trigger> {
+    match current.header.id.kind() {
         Kind::Observation => {
-            body["validity"] == "invalid"
-                || body["measurement_assessment"] == "invalid"
-                || body["measurement_assessment"]["validity"] == "invalid"
+            let before = effective_validity(state, cited);
+            let after = effective_validity(state, current);
+            if after == MeasurementValidity::Invalid && before != MeasurementValidity::Invalid {
+                Some(Trigger::InvalidMeasurement)
+            } else if validity_rank(after) < validity_rank(before) {
+                Some(Trigger::ValidityLowered {
+                    from: before,
+                    to: after,
+                })
+            } else {
+                None
+            }
         }
-        Kind::Run => body["evidence_validity"] == "invalid",
-        _ => false,
+        Kind::Run => (current.body["evidence_validity"] == "invalid"
+            && cited.body["evidence_validity"] != "invalid")
+            .then_some(Trigger::InvalidMeasurement),
+        _ => None,
     }
+}
+
+/// Observations whose effective validity can change without a new revision of
+/// their own, because a verification they rest on changed.
+fn judged(record: &Record) -> bool {
+    record.header.id.kind() == Kind::Observation
+        && record
+            .body
+            .get(MEASUREMENT_ASSESSMENT_KEY)
+            .is_some_and(|log| !log.is_null())
+}
+
+/// Ended records are history, and classification changes are handling
+/// metadata: both are tracked but are not part of the case Overview.
+fn out_of_use(record: &Record) -> bool {
+    end_state(record).is_some()
+        || (record.header.id.kind() == Kind::Annotation
+            && record.body["role"] == crate::classification::CHANGE_ROLE)
 }
 
 /// Lifecycle and attribution fields for kinds without a versioned review basis.
 /// Every other body field is treated as substantive, which errs toward review.
 fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
     match kind {
+        // Attributed validity judgments are compared through effective
+        // validity in `measurement_change`, not as part of the basis.
         Kind::Observation => &[
             "status",
             "lifecycle",
@@ -547,6 +656,7 @@ fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
             "correction_reason",
             "rationale",
             "corrects",
+            MEASUREMENT_ASSESSMENT_KEY,
         ],
         Kind::Artifact | Kind::Source => &[
             "status",
@@ -664,8 +774,8 @@ fn edge_change(
     {
         return Some((trigger, cause));
     }
-    if invalid_measurement(current) && !invalid_measurement(cited) {
-        return Some((Trigger::InvalidMeasurement, cause));
+    if let Some(trigger) = measurement_change(state, cited, current) {
+        return Some((trigger, cause));
     }
     if substantive(cited, scope) != substantive(current, scope) {
         return Some((Trigger::MaterialRevision, cause));
@@ -723,6 +833,28 @@ fn review_basis(state: &State, case: Id, record: &Record) -> Vec<FreshnessReason
                 .cloned()
         };
         let (before, after) = (find(&stored), find(&now));
+        // A newly open objection disputes the subject (objection policy); a
+        // resolved one only means the review read a different set.
+        if let (Some(before), Some(after)) = (&before, &after)
+            && after.rule == MembershipRule::OpenObjections
+        {
+            let raised: Vec<_> = after
+                .members
+                .iter()
+                .filter(|member| !before.members.iter().any(|old| old.id == member.id))
+                .filter_map(|member| state.current(member.id))
+                .collect();
+            if !raised.is_empty() {
+                reasons.extend(raised.into_iter().map(|objection| {
+                    FreshnessReason::local(
+                        Trigger::ObjectionRaisedAfterReview,
+                        objection.reference(),
+                        Vec::new(),
+                    )
+                }));
+                continue;
+            }
+        }
         if before.as_ref().map(|m| (&m.scope, &m.digest))
             != after.as_ref().map(|m| (&m.scope, &m.digest))
             && let Some(membership) = before.or(after)
@@ -838,7 +970,7 @@ impl Node {
         Self {
             reference: record.reference(),
             lifecycle: lifecycle(record),
-            inactive: end_state(record).is_some(),
+            inactive: out_of_use(record),
             targets,
             local,
             inherit,
@@ -1086,6 +1218,14 @@ impl FreshnessIndex {
         for id in &changed {
             dirty.extend(self.dependents.get(id).into_iter().flatten().copied());
         }
+        // Effective validity reads the current state of cited verifications, so
+        // dependents of judged Observations are reassessed on every change.
+        for record in state
+            .records()
+            .filter(|record| record.header.case_id == case && judged(record))
+        {
+            dirty.extend(self.dependents(record.header.id).collect::<Vec<_>>());
+        }
         dirty.extend(
             self.nodes
                 .keys()
@@ -1143,6 +1283,19 @@ impl FreshnessIndex {
         self.results.get(&id)
     }
 
+    /// Effective freshness of any revision of a record of this case: the
+    /// indexed result for a current revision, otherwise the historical revision
+    /// assessed against this snapshot. History is not rewritten either way.
+    pub fn assess(&self, state: &State, record: &Record) -> RecordFreshness {
+        if let Some(result) = self.results.get(&record.header.id)
+            && result.record == record.reference()
+        {
+            return result.clone();
+        }
+        let node = Node::assess(state, self.case_id, record, &self.objections);
+        resolve(&node, None, &self.results)
+    }
+
     /// Every current record, in ID order.
     pub fn records(&self) -> impl Iterator<Item = &RecordFreshness> {
         self.results.values()
@@ -1194,6 +1347,7 @@ impl FreshnessIndex {
 
 #[cfg(test)]
 mod tests {
+    mod judgments;
     mod source_use;
 
     use super::*;
@@ -1533,11 +1687,13 @@ mod tests {
     fn source_withdrawal_reaches_every_dependent_layer_with_a_reason_chain() {
         let mut case = Case::new();
         let f = case.fixture();
-        // W06b.06 owns `source.withdraw`; its accepted image marks the Source withdrawn.
-        let mut body = case.state.revision(f.source).unwrap().body.clone();
-        body["status"] = json!("withdrawn");
-        body["withdrawal_reason"] = json!("The publisher retracted the benchmark.");
-        let withdrawn = case.image(Kind::Source, body, Some(f.source));
+        let withdrawn = case.one(
+            "source.withdraw",
+            json!({
+                "source_ref": f.source, "reason": "retracted_by_origin", "scope": {"extent":"entire"},
+                "rationale": "The publisher retracted the benchmark.", "evidence_refs": []
+            }),
+        );
 
         let affected = [
             f.artifact,
@@ -1789,26 +1945,33 @@ mod tests {
         for result in case.index.records() {
             assert_eq!(result.freshness, Freshness::Current, "{result:#?}");
         }
-        case.one("objection.raise", json!({
+        // An objection raised after the validation review disputes the
+        // validated conclusion (objection policy), not merely its review.
+        let raised = case.one("objection.raise", json!({
             "subject_ref":f.conclusion,"statement":"One benchmark is thin.","scope":"The conclusion.",
             "severity":"material","evidence_refs":{"state":"unknown"}
         }));
         let review = only_reason(case.freshness(f.conclusion_review));
-        assert_eq!(
-            review.trigger,
-            Trigger::MembershipChanged {
-                rule: MembershipRule::OpenObjections
-            }
-        );
-        assert_eq!(review.cause, case.current(f.conclusion));
+        assert_eq!(review.trigger, Trigger::ObjectionRaisedAfterReview);
+        assert_eq!(review.cause, raised);
         let conclusion = only_reason(case.freshness(f.conclusion));
         assert_eq!(conclusion.path[0].field, "review_ref");
+        assert_eq!(case.freshness(f.conclusion).label(), "validated / disputed");
         assert_eq!(
-            case.freshness(f.conclusion).label(),
-            "validated / needs_review"
+            crate::review_ops::effective_disposition(
+                &case.state,
+                case.state.current(f.conclusion.id).unwrap()
+            ),
+            crate::review::EffectiveDisposition::Disputed
         );
-        assert_eq!(case.freshness(f.note).freshness, Freshness::NeedsReview);
+        assert_eq!(case.freshness(f.note).freshness, Freshness::Disputed);
         assert_eq!(case.freshness(f.decision).freshness, Freshness::Current);
+        assert_eq!(case.index.overview().disputed, 3);
+        // Resolving it restores the open set the review captured.
+        case.one("objection.resolve", json!({
+            "objection_ref":raised,"reason":"A second benchmark agrees.","evidence_refs":[f.observation]
+        }));
+        assert_eq!(case.freshness(f.conclusion).label(), "validated / current");
     }
 
     #[test]

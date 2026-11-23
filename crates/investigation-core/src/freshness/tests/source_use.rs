@@ -2,9 +2,18 @@
 //! operations, observed through the freshness index and the evidence gates.
 
 use super::*;
-use crate::source_ops::{UseState, evidentiary_use, standing, withdrawn_lineage};
+use crate::{
+    decision_ops::{EffectiveDecision, effective_decision},
+    review::EffectiveDisposition,
+    review_ops::{effective_disposition, validation_review_current},
+    source_ops::{UseState, evidentiary_use, standing, withdrawn_lineage},
+};
 
-fn apply_as(case: &mut Case, actor: &str, ops: Vec<Value>) -> Result<RevisionRef, Failure> {
+pub(super) fn apply_as(
+    case: &mut Case,
+    actor: &str,
+    ops: Vec<Value>,
+) -> Result<RevisionRef, Failure> {
     let sequence = case.state.sequence() + 1;
     let command: Command = serde_json::from_value(json!({
         "schema_version":"inv.command.v1","case_id":case.case,"actor":actor,
@@ -24,6 +33,20 @@ fn apply_as(case: &mut Case, actor: &str, ops: Vec<Value>) -> Result<RevisionRef
     case.state.apply(&accepted)?;
     case.settle();
     Ok(accepted.records[0].reference())
+}
+
+/// `freshness.needs_review` gaps at the case's current snapshot.
+fn freshness_gaps(case: &Case) -> Vec<crate::gap_rules::Gap> {
+    let snapshot = crate::wire::Snapshot {
+        sequence: case.state.sequence(),
+        head_hash: format!("sha256:{}", "0".repeat(64)).parse().unwrap(),
+    };
+    crate::gap_rules::enumerate_gaps(&case.state, &snapshot, case.case)
+        .unwrap()
+        .gaps
+        .into_iter()
+        .filter(|gap| gap.rule_id == "freshness.needs_review")
+        .collect()
 }
 
 fn try_one(case: &mut Case, name: &str, payload: Value) -> Result<RevisionRef, Failure> {
@@ -107,6 +130,33 @@ fn real_source_withdrawal_reaches_every_dependent_layer_without_erasure() {
         case.freshness(f.source).lifecycle.as_deref(),
         Some("withdrawn")
     );
+
+    // The gap inventory surfaces each stale judgment with its reason chain.
+    let stale = freshness_gaps(&case);
+    assert_eq!(
+        stale
+            .iter()
+            .map(|gap| gap.subject_refs[0].id)
+            .collect::<BTreeSet<_>>(),
+        [f.assessment, f.comparison, f.conclusion, f.decision]
+            .iter()
+            .map(|reference| reference.id)
+            .collect()
+    );
+    let conclusion_gap = stale
+        .iter()
+        .find(|gap| gap.subject_refs[0].id == f.conclusion.id)
+        .unwrap();
+    assert!(
+        conclusion_gap.reason.starts_with(&format!(
+            "Effective freshness is validated / needs_review: withdrawn: {} r2 via {} ",
+            f.source.id, f.conclusion.id
+        )),
+        "{}",
+        conclusion_gap.reason
+    );
+    assert!(conclusion_gap.read_set.contains(&withdrawn));
+    assert!(conclusion_gap.read_set.contains(&f.conclusion_review));
 
     // Not erasure: the earlier revision is unchanged, and so is availability.
     assert_eq!(case.state.revision(f.source).unwrap().body, original);
@@ -285,6 +335,7 @@ fn benign_judgments_keep_dependents_current_and_promotable() {
     for result in case.index.records() {
         assert_eq!(result.freshness, Freshness::Current, "{result:?}");
     }
+    assert!(freshness_gaps(&case).is_empty());
     let conclusion = case.state.current(f.conclusion.id).unwrap();
     assert!(
         required_read_set(&case.state, conclusion)
@@ -292,6 +343,29 @@ fn benign_judgments_keep_dependents_current_and_promotable() {
             .contains(&assessed)
     );
     try_one(&mut case, "assessment.add", diagnostic_assessment(&f)).unwrap();
+    // Read-time gates agree: the reviewed basis still covers the judged Source.
+    let gates = |case: &Case| {
+        let conclusion = case.state.current(f.conclusion.id).unwrap();
+        let decision = case.state.current(f.decision.id).unwrap();
+        (
+            effective_disposition(&case.state, conclusion),
+            effective_disposition(&case.state, decision),
+            effective_decision(&case.state, decision).unwrap(),
+        )
+    };
+    assert_eq!(
+        gates(&case),
+        (
+            EffectiveDisposition::Current,
+            EffectiveDisposition::Current,
+            EffectiveDecision::Accepted
+        )
+    );
+    let review = case.state.current(f.conclusion_review.id).unwrap();
+    let review: crate::review_ops::ValidationReviewBody =
+        serde_json::from_value(review.body.clone()).unwrap();
+    let conclusion = case.state.current(f.conclusion.id).unwrap();
+    validation_review_current(&case.state, conclusion, &review).unwrap();
 
     // A second assessor disagrees; the concern is raised, not averaged away.
     let disputed = apply_as(
@@ -308,6 +382,17 @@ fn benign_judgments_keep_dependents_current_and_promotable() {
     .unwrap();
     let reason = only_reason(case.freshness(f.conclusion));
     assert_eq!(reason.cause, disputed);
+    assert_eq!(
+        gates(&case),
+        (
+            EffectiveDisposition::NeedsReview,
+            EffectiveDisposition::NeedsReview,
+            EffectiveDecision::NeedsReview
+        )
+    );
+    let conclusion = case.state.current(f.conclusion.id).unwrap();
+    let refused = validation_review_current(&case.state, conclusion, &review).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed);
     let shown = standing(case.state.current(f.source.id).unwrap()).unwrap();
     assert!(shown.dimensions[3].disagreement);
     assert!(shown.dimensions[3].concern);

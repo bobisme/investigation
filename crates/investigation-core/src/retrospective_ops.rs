@@ -309,7 +309,9 @@ fn retrospective_supersede(
     Ok(())
 }
 
-fn material_trigger(record: &Record) -> bool {
+/// Whether `record`, with `previous` its preceding revision, is material work a
+/// closing Retrospective must account for.
+fn material_trigger(previous: Option<&Record>, record: &Record) -> bool {
     let body = &record.body;
     match record.header.id.kind() {
         Kind::Conclusion => matches!(body["status"].as_str(), Some("review_ready" | "validated")),
@@ -318,7 +320,14 @@ fn material_trigger(record: &Record) -> bool {
             matches!(body["execution_status"].as_str(), Some("failed"))
                 || body["evidence_validity"] == "invalid"
         }
-        Kind::Source | Kind::Observation => {
+        // A judgment that raises no concern is not material: only a withdrawal,
+        // a newly raised concern or a change outside the use fields is.
+        Kind::Source | Kind::Artifact => previous.is_some_and(|previous| {
+            crate::source_ops::use_trigger(previous, record).is_some()
+                || (record.header.id.kind() == Kind::Source
+                    && !crate::source_ops::use_only_change(previous, record))
+        }),
+        Kind::Observation => {
             record.header.revision.0 > 1
                 || matches!(
                     body["status"].as_str(),
@@ -334,11 +343,15 @@ pub(crate) fn material_revisions(state: &State, case: Id) -> Vec<RevisionRef> {
         .records()
         .filter(|record| record.header.case_id == case)
         .filter_map(|record| {
-            state
-                .history(record.header.id)
-                .filter(|historical| material_trigger(historical))
-                .last()
-                .map(Record::reference)
+            let mut previous = None;
+            let mut found = None;
+            for historical in state.history(record.header.id) {
+                if material_trigger(previous, historical) {
+                    found = Some(historical.reference());
+                }
+                previous = Some(historical);
+            }
+            found
         })
         .collect()
 }
@@ -639,6 +652,13 @@ mod tests {
             Ok(accepted)
         }
 
+        fn clone_state(&self) -> Self {
+            Self {
+                state: self.state.clone(),
+                case: self.case,
+            }
+        }
+
         fn case_ref(&self) -> RevisionRef {
             self.state.current(self.case.unwrap()).unwrap().reference()
         }
@@ -851,5 +871,98 @@ mod tests {
         ], &[expected]).unwrap_err();
         assert_eq!(failure.error.code, ErrorCode::RetrospectiveRequired);
         assert_eq!(case.state, before);
+    }
+
+    /// Sources are recorded by ingest; apply the accepted image directly.
+    fn source(case: &mut Case) -> RevisionRef {
+        use crate::identity::IdSource;
+        let id = case.case.unwrap();
+        let sequence = case.state.sequence() + 1;
+        let mut header = case.state.current(id).unwrap().header.clone();
+        header.acceptance_sequence = sequence;
+        header.id = SystemIdSource.next_id(Kind::Source).unwrap();
+        let record = Record {
+            header,
+            body: json!({
+                "producer":null,"publisher":null,"identity":"bench.log",
+                "acquisition":{"channel":"local_file","acquired_at":null,"method":null,"context":null,"environment":null},
+                "access":"local_only","verification_limits":[]
+            }),
+        };
+        let source = record.reference();
+        case.state
+            .apply(&AcceptedTransaction {
+                case_id: id,
+                sequence,
+                records: vec![record],
+                created: vec![crate::wire::RecordChange {
+                    client_ref: None,
+                    id: source.id,
+                    revision: 1,
+                }],
+                updated: vec![],
+                warnings: vec![],
+            })
+            .unwrap();
+        source
+    }
+
+    fn assess(
+        case: &mut Case,
+        source: RevisionRef,
+        dimension: &str,
+        judgment: &str,
+    ) -> RevisionRef {
+        case.transact(
+            vec![json!({"op":"source.assess","payload":{
+                "source_ref":source,
+                dimension:{"judgment":judgment,"rationale":"Checked against the vendor archive."}
+            }})],
+            &[],
+        )
+        .unwrap()
+        .records[0]
+            .reference()
+    }
+
+    #[test]
+    fn only_a_withdrawal_or_raised_concern_makes_a_source_revision_material() {
+        let mut case = Case::new("explore");
+        let id = case.case.unwrap();
+        let source = source(&mut case);
+        let assessed = assess(&mut case, source, "currency", "current");
+        assert!(material_revisions(&case.state, id).is_empty());
+        let expected = case.case_ref();
+        let mut waivable = case.clone_state();
+        waivable
+            .transact(
+                vec![close(
+                    json!({"retrospective_waived":"Only a source check occurred."}),
+                )],
+                &[expected],
+            )
+            .unwrap();
+
+        let concern = assess(&mut case, assessed, "currency", "outdated");
+        assert_eq!(material_revisions(&case.state, id), vec![concern]);
+        let withdrawn = case
+            .transact(
+                vec![json!({"op":"source.withdraw","payload":{
+                    "source_ref":concern,"reason":"retracted_by_origin","scope":{"extent":"entire"},
+                    "rationale":"The publisher retracted the report.","evidence_refs":[]
+                }})],
+                &[],
+            )
+            .unwrap()
+            .records[0]
+            .reference();
+        assert_eq!(material_revisions(&case.state, id), vec![withdrawn]);
+        let failure = case
+            .transact(
+                vec![close(json!({"retrospective_waived":"Only source checks."}))],
+                &[expected],
+            )
+            .unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::RetrospectiveRequired);
     }
 }

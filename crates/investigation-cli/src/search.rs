@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 use investigation_core::{
     classification::{Audience, AudiencePolicy, Classifier, Field},
     command::RevisionRef,
+    freshness::FreshnessIndex,
     identity::{Id, Kind},
     search_text::{
         SEARCH_TEXT_VERSION, TextLabel, contains_all, excerpt, indexed_texts, query_terms,
@@ -111,6 +112,15 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         .filter(|hit| hit.matches.iter().any(|m| m.label.counts_as_source_hit()))
         .count();
     let limit = usize::from(args.limit);
+    // One freshness index per case with a returned hit.
+    let indexes: BTreeMap<Id, FreshnessIndex> = verified
+        .iter()
+        .take(limit)
+        .map(|hit| hit.case_id)
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .map(|id| (id, FreshnessIndex::build(&snapshot.cases[&id].state, id)))
+        .collect();
     let results: Vec<Value> = verified
         .iter()
         .take(limit)
@@ -119,6 +129,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             let context = Context {
                 store,
                 replay: &snapshot.cases[&hit.case_id],
+                index: &indexes[&hit.case_id],
                 classifier: &classifiers[&hit.case_id],
                 policy: &policy,
                 workspace: &workspace,
@@ -236,6 +247,7 @@ fn verify(
 struct Context<'a> {
     store: &'a Store,
     replay: &'a CaseReplay,
+    index: &'a FreshnessIndex,
     classifier: &'a Classifier<'a>,
     policy: &'a AudiencePolicy,
     workspace: &'a [String],
@@ -245,6 +257,7 @@ fn result_value(context: &Context<'_>, hit: &Hit, position: usize, terms: &[Stri
     let Context {
         store,
         replay,
+        index,
         classifier,
         policy,
         workspace,
@@ -253,7 +266,7 @@ fn result_value(context: &Context<'_>, hit: &Hit, position: usize, terms: &[Stri
         .state
         .revision(hit.record)
         .expect("verified hits reference canonical revisions");
-    let effective = views::effective_state(store, replay, record);
+    let effective = views::effective_state(store, replay, index, record);
     let kind = record.header.id.kind();
     let source_hit = hit.matches.iter().any(|m| m.label.counts_as_source_hit());
     let matches: Vec<_> = hit

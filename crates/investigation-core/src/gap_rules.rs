@@ -661,6 +661,8 @@ pub fn enumerate_gaps(
         }
     }
 
+    freshness_gaps(state, case_id, &records, &mut gaps);
+
     let closure_ready =
         extension_true(case, "inv.closure_ready") || extension_true(case, "inv.ready_to_close");
     if closure_ready && retrospectives.is_empty() {
@@ -734,6 +736,86 @@ pub fn enumerate_gaps(
 
 /// Rank feasible recommendations lexicographically by the eight §7.2 factors.
 /// Ordinal factors are exposed; they are never summed into a pseudo-score.
+/// Live judgments the freshness index marks `needs_review`: a cited record was
+/// withdrawn, retracted, materially revised or newly judged doubtful, directly
+/// or through the records it relies on. The reason names each cause and path.
+fn freshness_gaps(state: &State, case_id: Id, records: &[&Record], gaps: &mut Vec<Gap>) {
+    const SHOWN: usize = 3;
+    let index = crate::freshness::FreshnessIndex::build(state, case_id);
+    for record in records.iter().copied().filter(|record| {
+        matches!(
+            record.header.id.kind(),
+            Kind::Assessment | Kind::Comparison | Kind::Conclusion | Kind::Decision
+        ) && is_live(record)
+            && !matches!(
+                field(&record.body, "status").and_then(Value::as_str),
+                Some("superseded" | "withdrawn" | "rejected")
+            )
+    }) {
+        let Some(result) = index
+            .get(record.header.id)
+            .filter(|result| result.needs_review())
+        else {
+            continue;
+        };
+        let reasons: Vec<_> = result
+            .reasons
+            .iter()
+            .filter(|reason| reason.freshness == crate::freshness::Freshness::NeedsReview)
+            .collect();
+        let mut text = format!(
+            "Effective freshness is {}: {}",
+            result.label(),
+            reasons
+                .iter()
+                .take(SHOWN)
+                .map(|reason| reason.describe())
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
+        if reasons.len() > SHOWN {
+            text.push_str(&format!("; and {} more", reasons.len() - SHOWN));
+        }
+        text.push('.');
+        let mut read_set = Vec::new();
+        let prerequisites = reasons
+            .iter()
+            .map(|reason| {
+                let mut refs = vec![reason.cause];
+                refs.extend(reason.path.iter().map(|step| step.cites));
+                read_set.extend(refs.iter().copied());
+                prerequisite(
+                    "current_basis",
+                    PrerequisiteState::Unmet,
+                    &format!("Recheck against {}.", reason.describe()),
+                    refs,
+                )
+            })
+            .collect();
+        let (operation, effect) = match record.header.id.kind() {
+            Kind::Assessment => ("assessment.supersede", "unknown"),
+            Kind::Comparison => ("comparison.revise", "could_flip_choice"),
+            Kind::Conclusion => ("review.submit", "unknown"),
+            _ => ("decision.propose", "could_flip_choice"),
+        };
+        let subject = reference(record);
+        gaps.push(make_gap(GapFields {
+            rule_id: "freshness.needs_review",
+            subject_refs: vec![subject],
+            read_set: join_refs(vec![subject], read_set),
+            status: GapStatus::StaleDueToRevision,
+            reason: &text,
+            prerequisites,
+            suggested_operation: Some(operation),
+            unresolved_fields: vec!["current_basis".into(), "rationale".into()],
+            outcome_branches: vec![],
+            decision_effect: effect,
+            time_sensitive: false,
+            creation_sequence: record.header.acceptance_sequence,
+        }));
+    }
+}
+
 pub fn rank_next(inventory: &GapInventory, requested_limit: usize) -> NextResponse {
     let limit = requested_limit.min(DEFAULT_NEXT_LIMIT);
     let counts = count_gaps(&inventory.gaps);
