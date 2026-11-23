@@ -44,7 +44,10 @@ use crate::{
 /// matrix cell with no comparison reads `unknown` (W08.07).
 /// v16: `Start Here.md` says a case note names the head its content was
 /// rendered at and keeps it while unchanged (W08.15).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v16";
+/// v17: a code span whose text starts with `=` or `$=` (after any whitespace,
+/// which Dataview trims) shows that first character as `\u{3d}` or `\u{24}`,
+/// so it never runs as a Dataview inline query or script (W08.18).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v17";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

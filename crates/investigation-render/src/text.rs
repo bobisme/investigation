@@ -12,7 +12,7 @@
 //! |---|---|---|
 //! | Title, H1, alias, link display text, `inv_status` | [`display_text`] | ASCII markup mapped to inert look-alikes; no escapes needed anywhere |
 //! | One line of prose, including a table cell | [`inline_text`] | every ASCII punctuation mark backslash-escaped |
-//! | Exact machine text on a line | [`inline_code`] | code span longer than any backtick run |
+//! | Exact machine text on a line | [`inline_code`] | code span longer than any backtick run; a leading `=` or `$=` shown as `\u{3d}` or `\u{24}=` |
 //! | Exact machine text in a table cell | [`table_code`] | [`inline_code`] with GFM pipe escapes |
 //! | Block excerpt | [`fenced_block`] | fixed [`EXCERPT_LANGUAGE`] fence longer than any backtick run |
 //! | YAML scalar | [`crate::yaml::quoted`] | double-quoted with escapes |
@@ -105,6 +105,15 @@ fn longest_run(text: &str, of: char) -> usize {
 /// invisible format characters are shown as `\u{...}` escapes. The delimiter
 /// is longer than any backtick run inside, and padding keeps leading and
 /// trailing backticks and spaces exact.
+///
+/// Dataview, if a reader enables it, trims a code span's text and runs it as
+/// an inline query when it starts with `=` and as a script when it starts
+/// with `$=` (the default prefixes). Whitespace before the prefix does not
+/// help, because Dataview trims it. So when the first non-whitespace
+/// character begins one of those prefixes, that character is shown as
+/// `\u{3d}` (`=`) or `\u{24}` (`$`), the same visible form every other
+/// unsafe character takes. A reader who set custom prefixes is outside what
+/// text escaping can promise.
 pub fn inline_code(input: &str) -> String {
     let mut body = String::new();
     for c in input.chars() {
@@ -113,6 +122,16 @@ pub fn inline_code(input: &str) -> String {
         } else {
             body.push(c);
         }
+    }
+    let lead = body.len() - body.trim_start().len();
+    let rest = &body[lead..];
+    if rest.starts_with('=') || rest.starts_with("$=") {
+        let first = rest.chars().next().unwrap_or('=');
+        let mut escaped = String::with_capacity(body.len() + 4);
+        escaped.push_str(&body[..lead]);
+        shown_escape(&mut escaped, first);
+        escaped.push_str(&rest[first.len_utf8()..]);
+        body = escaped;
     }
     let fence = "`".repeat(longest_run(&body, '`') + 1);
     // A viewer strips one space from each end when both ends have one, and a
@@ -265,6 +284,24 @@ mod tests {
         assert_eq!(inline_code(" x"), "` x`");
         assert_eq!(inline_code("a\nb\u{202e}"), "`a\\u{a}b\\u{202e}`");
         assert_eq!(table_code("a|b"), "`a\\|b`");
+    }
+
+    #[test]
+    fn a_code_span_never_starts_a_dataview_inline_query() {
+        assert_eq!(inline_code("=this.file.name"), "`\\u{3d}this.file.name`");
+        assert_eq!(
+            inline_code("$=dv.el(\"p\", 1)"),
+            "`\\u{24}=dv.el(\"p\", 1)`"
+        );
+        assert_eq!(inline_code(" = x"), "` \\u{3d} x`");
+        assert_eq!(inline_code("\u{a0}\t=x"), "`\u{a0}\\u{9}=x`");
+        assert_eq!(inline_code("\n$=x"), "`\\u{a}$=x`");
+        assert_eq!(inline_code("\u{a0}$=x"), "`\u{a0}\\u{24}=x`");
+        assert_eq!(table_code("=a|b"), "`\\u{3d}a\\|b`");
+        // Only a leading prefix is a query; the rest stays exact.
+        assert_eq!(inline_code("a=b"), "`a=b`");
+        assert_eq!(inline_code("$x"), "`$x`");
+        assert_eq!(inline_code("p=0.05"), "`p=0.05`");
     }
 
     #[test]

@@ -372,7 +372,14 @@ fn inline_text_is_inert_prose_and_a_single_table_cell() {
 #[test]
 fn code_spans_show_exact_text_on_a_line_and_in_a_table_cell() {
     for (name, text) in corpus() {
-        let shown = visible(&text, false);
+        let mut shown = visible(&text, false);
+        // A leading Dataview prefix character is shown as an escape.
+        let lead = shown.len() - shown.trim_start().len();
+        if shown[lead..].starts_with('=') {
+            shown.replace_range(lead..=lead, "\\u{3d}");
+        } else if shown[lead..].starts_with("$=") {
+            shown.replace_range(lead..=lead, "\\u{24}");
+        }
         // An empty code span cannot exist; two spaces mark the empty value.
         let shown = if shown.is_empty() {
             "  ".to_owned()
@@ -400,6 +407,38 @@ fn code_spans_show_exact_text_on_a_line_and_in_a_table_cell() {
             table.contains(&format!("code:{shown}")),
             "{name}: {table:?}"
         );
+    }
+}
+
+#[test]
+fn hostile_code_text_never_starts_a_dataview_inline_query() {
+    let hostile = [
+        "=this.file.name",
+        "$=dv.el(\"p\", dv.current().file.name)",
+        " = x",
+        "\u{a0}$=x",
+        "  =x",
+        "`=x`",
+        "\n=x",
+    ];
+    for text in hostile {
+        for markdown in [
+            format!("before {} after\n", inline_code(text)),
+            format!("| A | B |\n|---|---|\n| {} | x |\n", table_code(text)),
+        ] {
+            let mut spans = 0;
+            for event in Parser::new_ext(&markdown, options()) {
+                if let Event::Code(code) = event {
+                    spans += 1;
+                    let code = code.trim();
+                    assert!(
+                        !code.starts_with('=') && !code.starts_with("$="),
+                        "{text:?}: {code:?}"
+                    );
+                }
+            }
+            assert_eq!(spans, 1, "{text:?}: {markdown:?}");
+        }
     }
 }
 
@@ -650,6 +689,14 @@ fn hostile_titles_render_into_inert_vault_notes() {
                     | Tag::HtmlBlock
                     | Tag::FootnoteDefinition(_),
                 ) => panic!("{event:?} in {path}"),
+                // A Dataview inline query or script starts with `=` or `$=`.
+                Event::Code(code) => {
+                    let code = code.trim();
+                    assert!(
+                        !code.starts_with('=') && !code.starts_with("$="),
+                        "{path}: inline query {code:?}"
+                    );
+                }
                 Event::Start(Tag::TableCell) => cells += 1,
                 Event::End(TagEnd::TableHead) => {
                     // A record note's tables are label and value; a view's
