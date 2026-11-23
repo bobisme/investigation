@@ -160,11 +160,11 @@ const fn use_word(state: UseState) -> &'static str {
     }
 }
 
-fn prose(text: &str) -> String {
+pub(crate) fn prose(text: &str) -> String {
     inline_text(text, SUMMARY_CHARS)
 }
 
-fn or_not_recorded(text: Option<&str>) -> String {
+pub(crate) fn or_not_recorded(text: Option<&str>) -> String {
     text.filter(|text| !text.trim().is_empty())
         .map_or_else(|| "not recorded".to_owned(), prose)
 }
@@ -190,7 +190,7 @@ fn source_time(time: Option<&SourceTime>) -> String {
     )
 }
 
-fn withheld_section(out: &mut String, heading: &str) {
+pub(crate) fn withheld_section(out: &mut String, heading: &str) {
     let _ = write!(out, "\n## {heading}\n\nWithheld.\n");
 }
 
@@ -201,7 +201,7 @@ fn unreadable(out: &mut String, heading: &str, kind: &str) {
     );
 }
 
-fn bullets(out: &mut String, items: &[String], none: &str) {
+pub(crate) fn bullets(out: &mut String, items: &[String], none: &str) {
     if items.is_empty() {
         let _ = writeln!(out, "{none}");
     }
@@ -211,7 +211,10 @@ fn bullets(out: &mut String, items: &[String], none: &str) {
 }
 
 /// A link to an exact revision, noting when the current revision differs.
-fn revision_link(notes: &NoteContext<'_>, reference: RevisionRef) -> Result<String, RenderError> {
+pub(crate) fn revision_link(
+    notes: &NoteContext<'_>,
+    reference: RevisionRef,
+) -> Result<String, RenderError> {
     let mut link = format!(
         "{} revision {}",
         notes.link(reference.id)?,

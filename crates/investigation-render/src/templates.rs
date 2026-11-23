@@ -36,7 +36,7 @@ pub fn record_note(notes: &NoteContext<'_>, record: &Record) -> Result<String, R
     let mut out = String::new();
     notes.open_note(&mut out, record)?;
     notes.summary_section(&mut out, record)?;
-    crate::evidence::sections(notes, &mut out, record)?;
+    crate::records::sections(notes, &mut out, record)?;
     notes.reference_sections(&mut out, record)?;
     Ok(out)
 }
@@ -164,12 +164,52 @@ mod tests {
 
     /// A body whose every title-like field carries `title`.
     fn hostile(title: &str) -> Value {
-        json!({
+        let mut body = json!({
             "title":title, "wording":title, "statement":title, "claim":title,
             "description":title, "summary":title, "applicability":title,
             "value":{"kind":"text", "statement":title},
-            "content":{"text":title}, "status":"open"
-        })
+            "content":{"kind":"text", "text":title}, "status":"open",
+            "intent":{"kind":title, "intent":title},
+            "effective_steps":[{"description":title, "support_refs":[title]}],
+            "lessons":[{"guidance":title, "applies_when":title, "transfer_limits":title,
+                "support_refs":[]}]
+        });
+        // Per-type fields: prose, lists and enum words, all hostile.
+        for key in [
+            "rationale",
+            "method",
+            "scope",
+            "context",
+            "consequence",
+            "purpose",
+            "environment",
+            "producer",
+            "uncertainty",
+            "significance",
+            "expected_outcome",
+            "reopen_trigger",
+            "costs_or_constraints",
+            "scope_examined",
+            "relation",
+            "verdict",
+            "outcome",
+            "severity",
+            "kind",
+            "lifecycle",
+        ] {
+            body[key] = json!(title);
+        }
+        for key in [
+            "caveats",
+            "possible_falsifiers",
+            "tradeoffs",
+            "limitations",
+            "gaps",
+            "residual_unknowns",
+        ] {
+            body[key] = json!([title]);
+        }
+        body
     }
 
     fn apply(state: &mut State, case: Id, sequence: u64, records: Vec<Record>) {
@@ -401,6 +441,14 @@ mod tests {
             );
             if withheld {
                 assert_eq!(map["inv_withheld"], true);
+                // Per-type sections keep their headings and withhold content.
+                let first = if projected.kind() == Kind::Question {
+                    "\n## Question\n\nWithheld.\n"
+                } else {
+                    "\n## Annotation\n\nWithheld.\n"
+                };
+                assert!(note.contains(first), "{note}");
+                assert!(!map.contains_key("inv_disposition"));
                 assert!(map["aliases"].as_sequence().unwrap().is_empty());
                 assert!(!map.contains_key("inv_status") && !map.contains_key("inv_updated"));
                 assert!(note.contains(&format!("# {projected}\n")));
@@ -429,11 +477,8 @@ mod tests {
                         "## Next action or blocker"
                     ]
                 );
-                let evidence_family = matches!(
-                    projected.kind(),
-                    Kind::Source | Kind::Artifact | Kind::Observation
-                );
-                assert_eq!(evidence_family, headings.len() > 4, "{}", entry.path());
+                // Every record type has its own sections, withheld or not.
+                assert!(headings.len() > 4, "{}:\n{note}", entry.path());
             }
             kinds.insert(record.header.id.kind());
         }

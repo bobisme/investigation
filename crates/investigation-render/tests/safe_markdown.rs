@@ -539,6 +539,10 @@ const SECTIONS: &[&str] = &[
     "Questions",
     "Cases",
     "Human-owned folders",
+    // Question notes (W08.04).
+    "Question",
+    "Addressed by",
+    "Reviews and objections",
 ];
 
 #[test]

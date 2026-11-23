@@ -24,7 +24,7 @@ use investigation_core::{
     classification::{AudiencePolicy, Classifier, Field},
     command::RevisionRef,
     evidence::EvidenceSelector,
-    freshness::{FreshnessIndex, Propagation, RecordFreshness, dependency_edges},
+    freshness::{FreshnessIndex, FreshnessReason, Propagation, RecordFreshness, dependency_edges},
     gap_rules::{Gap, GapStatus, enumerate_gaps},
     header::ClassificationLevel,
     identity::{Id, Kind},
@@ -70,16 +70,18 @@ fn title_fields(kind: Kind) -> &'static [&'static str] {
             "claim",
             "statement",
         ],
-        Kind::Hypothesis | Kind::Assumption => &["statement", "title", "description"],
+        Kind::Hypothesis => &["statement", "title", "description"],
+        Kind::Assumption => &["claim", "statement", "title", "description"],
         Kind::Option | Kind::Criterion => &["title", "name", "description"],
-        Kind::Comparison | Kind::Assessment => &["title", "summary", "reason"],
+        Kind::Comparison => &["title", "summary", "reason"],
+        Kind::Assessment => &["title", "summary", "reason", "rationale"],
         Kind::Conclusion | Kind::Objection => &["statement", "claim", "challenge", "title"],
         Kind::Decision => &["title", "statement", "choice.reason", "content.statement"],
         Kind::Review => &["title", "scope", "summary", "method"],
         Kind::Annotation => &["content.text", "text", "title"],
         Kind::Retrospective => &["title", "summary", "lesson"],
-        Kind::Inquiry => &["title", "question", "description"],
-        Kind::Run => &["title", "operation"],
+        Kind::Inquiry => &["title", "question", "description", "purpose"],
+        Kind::Run => &["title", "operation", "intent.intent"],
         _ => &["title", "name"],
     }
 }
@@ -87,14 +89,14 @@ fn title_fields(kind: Kind) -> &'static [&'static str] {
 /// Body fields that state where a claim applies.
 const APPLICABILITY_FIELDS: &[&str] = &["applicability", "scope", "scope_statement"];
 
-fn value_at<'a>(body: &'a Value, dotted: &str) -> Option<&'a Value> {
+pub(crate) fn value_at<'a>(body: &'a Value, dotted: &str) -> Option<&'a Value> {
     dotted
         .split('.')
         .try_fold(body, |value, key| value.get(key))
 }
 
 /// A string field, or the value of an explicitly known `Knowledge` string.
-fn text_at<'a>(body: &'a Value, dotted: &str) -> Option<&'a str> {
+pub(crate) fn text_at<'a>(body: &'a Value, dotted: &str) -> Option<&'a str> {
     let value = value_at(body, dotted)?;
     value.as_str().or_else(|| {
         (value.get("state").and_then(Value::as_str) == Some("known"))
@@ -135,10 +137,85 @@ pub(crate) const fn level_word(level: ClassificationLevel) -> &'static str {
 
 /// One record body citing another record's exact revision.
 #[derive(Debug, Clone)]
-struct Citation {
-    by: Id,
-    field: &'static str,
-    cites: RevisionRef,
+pub(crate) struct Citation {
+    pub by: Id,
+    pub field: &'static str,
+    pub cites: RevisionRef,
+}
+
+/// A reference in a record body that is not a dependency edge: a rival, a
+/// superseding record, a step's support, an acceptance record. It links both
+/// ways like an edge but carries no freshness. Bare IDs have no revision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Mention {
+    pub by: Id,
+    /// Dotted body path without list indices.
+    pub field: String,
+    pub target: Id,
+    pub revision: Option<u64>,
+}
+
+/// Every reference in `record`'s body that no dependency edge already covers,
+/// in body order, once per field and target: exact `{id, revision}` objects
+/// anywhere, and bare IDs in fields named `*_ref` or `*_refs`.
+pub(crate) fn mentions(record: &Record) -> Vec<Mention> {
+    fn walk(value: &Value, path: &mut Vec<String>, found: &mut Vec<(String, Id, Option<u64>)>) {
+        let referencing = path
+            .last()
+            .is_some_and(|key| key.ends_with("_ref") || key.ends_with("_refs"));
+        match value {
+            Value::Object(map) => {
+                if let (Some(id), Some(revision)) = (
+                    map.get("id")
+                        .and_then(Value::as_str)
+                        .and_then(|id| id.parse::<Id>().ok()),
+                    map.get("revision").and_then(Value::as_u64),
+                ) {
+                    found.push((path.join("."), id, Some(revision)));
+                    return;
+                }
+                for (key, child) in map {
+                    path.push(key.clone());
+                    walk(child, path, found);
+                    path.pop();
+                }
+            }
+            Value::Array(items) => {
+                for item in items {
+                    walk(item, path, found);
+                }
+            }
+            Value::String(text) if referencing => {
+                if let Ok(id) = text.parse::<Id>() {
+                    found.push((path.join("."), id, None));
+                }
+            }
+            _ => {}
+        }
+    }
+    let edges: Vec<Id> = dependency_edges(record)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|edge| edge.target.id)
+        .collect();
+    let mut found = Vec::new();
+    walk(&record.body, &mut Vec::new(), &mut found);
+    let mut out: Vec<Mention> = Vec::new();
+    for (field, target, revision) in found {
+        if target == record.header.id || edges.contains(&target) {
+            continue;
+        }
+        let mention = Mention {
+            by: record.header.id,
+            field,
+            target,
+            revision,
+        };
+        if !out.contains(&mention) {
+            out.push(mention);
+        }
+    }
+    out
 }
 
 /// Everything a note needs about its case, computed once per case and plan.
@@ -150,6 +227,7 @@ pub struct NoteContext<'a> {
     classifier: Classifier<'a>,
     freshness: FreshnessIndex,
     cited_by: BTreeMap<Id, Vec<Citation>>,
+    mentioned_by: BTreeMap<Id, Vec<Mention>>,
     /// Open gaps by subject ID, or `None` when the inventory failed.
     gaps: Option<BTreeMap<Id, Vec<Gap>>>,
 }
@@ -158,7 +236,14 @@ impl<'a> NoteContext<'a> {
     pub fn new(case: &'a CaseSnapshot, policy: &'a ViewPolicy, generation: &'a Generation) -> Self {
         let state = case.state();
         let mut cited_by: BTreeMap<Id, Vec<Citation>> = BTreeMap::new();
+        let mut mentioned_by: BTreeMap<Id, Vec<Mention>> = BTreeMap::new();
         for record in state.records() {
+            for mention in mentions(record) {
+                mentioned_by
+                    .entry(mention.target)
+                    .or_default()
+                    .push(mention);
+            }
             // Unreadable references surface as a freshness caveat on the record.
             for edge in dependency_edges(record).unwrap_or_default() {
                 cited_by.entry(edge.target.id).or_default().push(Citation {
@@ -190,6 +275,7 @@ impl<'a> NoteContext<'a> {
             classifier: Classifier::new(state),
             freshness: FreshnessIndex::build(state, case.case_id()),
             cited_by,
+            mentioned_by,
             gaps,
         }
     }
@@ -204,6 +290,21 @@ impl<'a> NoteContext<'a> {
 
     pub const fn generation(&self) -> &'a Generation {
         self.generation
+    }
+
+    /// The freshness index of this case at this snapshot.
+    pub(crate) const fn freshness(&self) -> &FreshnessIndex {
+        &self.freshness
+    }
+
+    /// Dependency edges of other records that cite `id`, in record order.
+    pub(crate) fn citations(&self, id: Id) -> &[Citation] {
+        self.cited_by.get(&id).map_or(&[], Vec::as_slice)
+    }
+
+    /// References to `id` that are not dependency edges, in record order.
+    pub(crate) fn mentioned_by(&self, id: Id) -> &[Mention] {
+        self.mentioned_by.get(&id).map_or(&[], Vec::as_slice)
     }
 
     /// The classifier every channel decision of this case goes through.
@@ -229,6 +330,44 @@ impl<'a> NoteContext<'a> {
         }
         first_text(&record.body, title_fields(record.header.id.kind()))
             .and_then(|text| display_text(text, TITLE_CHARS))
+            .or_else(|| self.derived_title(record))
+    }
+
+    /// A title composed from typed fields for kinds whose bodies have no
+    /// title text: a comparison names its option and criterion, a decision
+    /// its choice, a measurement its value. Other records contribute only
+    /// their own displayable titles.
+    fn derived_title(&self, record: &Record) -> Option<String> {
+        let body = &record.body;
+        let other = |path: &str| -> Option<String> {
+            let id = text_at(body, path)?.parse::<Id>().ok()?;
+            let target = self.case.state().current(id)?;
+            if target.header.id.kind() == record.header.id.kind() {
+                return None;
+            }
+            self.title(target)
+        };
+        let title = match record.header.id.kind() {
+            Kind::Comparison => format!(
+                "{} against {}",
+                other("option_ref.id")?,
+                other("criterion_ref.id")?
+            ),
+            Kind::Decision => format!("Select {}", other("choice.option_ref.id")?),
+            Kind::Observation if text_at(body, "value.kind") == Some("measurement") => {
+                let value = text_at(body, "value.value")?;
+                match text_at(body, "value.unit") {
+                    Some(unit) => format!("Measured {value} {unit}"),
+                    None => format!("Measured {value}"),
+                }
+            }
+            Kind::Retrospective => format!(
+                "Retrospective at sequence {}",
+                body["snapshot"]["sequence"].as_u64()?
+            ),
+            _ => return None,
+        };
+        display_text(&title, TITLE_CHARS)
     }
 
     /// Note path for a record ID: the case Overview for a case, the record's
@@ -289,6 +428,7 @@ impl<'a> NoteContext<'a> {
                 effective.map_or("unknown", |effective| effective.freshness.as_str()),
             );
             crate::evidence::properties(self, record, &mut front);
+            crate::records::properties(self, record, &mut front);
         }
         front
             .integer("inv_revision", header.revision.0)
@@ -420,10 +560,10 @@ impl<'a> NoteContext<'a> {
 
     fn summary(&self, out: &mut String, record: &Record) -> Result<(), RenderError> {
         let body = &record.body;
-        let claim = first_text(body, title_fields(record.header.id.kind())).map_or_else(
-            || "not recorded".to_owned(),
-            |text| inline_text(text, SUMMARY_CHARS),
-        );
+        let claim = first_text(body, title_fields(record.header.id.kind()))
+            .map(|text| inline_text(text, SUMMARY_CHARS))
+            .or_else(|| self.derived_title(record))
+            .unwrap_or_else(|| "not recorded".to_owned());
         let applicability = first_text(body, APPLICABILITY_FIELDS).map_or_else(
             || "not recorded".to_owned(),
             |text| inline_text(text, SUMMARY_CHARS),
@@ -444,26 +584,31 @@ impl<'a> NoteContext<'a> {
             out.push_str("- Caveat: none recorded\n");
         }
         for reason in &effective.reasons {
-            let _ = write!(
-                out,
-                "- Caveat: {} because of {} at {} revision {}",
-                inline_code(reason.freshness.as_str()),
-                inline_code(&wire_word(&reason.trigger)),
-                self.link(reason.cause.id)?,
-                reason.cause.revision
-            );
-            if let Some(step) = reason.path.first() {
-                let _ = write!(
-                    out,
-                    ", reached through {} ({} step{})",
-                    inline_code(&step.field),
-                    reason.path.len(),
-                    if reason.path.len() == 1 { "" } else { "s" }
-                );
-            }
-            out.push('\n');
+            let _ = writeln!(out, "- Caveat: {}", self.reason_text(reason)?);
         }
         Ok(())
+    }
+
+    /// One freshness reason: severity, trigger, cause and the first step of
+    /// the dependency path that reaches it.
+    pub(crate) fn reason_text(&self, reason: &FreshnessReason) -> Result<String, RenderError> {
+        let mut text = format!(
+            "{} because of {} at {} revision {}",
+            inline_code(reason.freshness.as_str()),
+            inline_code(&wire_word(&reason.trigger)),
+            self.link(reason.cause.id)?,
+            reason.cause.revision
+        );
+        if let Some(step) = reason.path.first() {
+            let _ = write!(
+                text,
+                ", reached through {} ({} step{})",
+                inline_code(&step.field),
+                reason.path.len(),
+                if reason.path.len() == 1 { "" } else { "s" }
+            );
+        }
+        Ok(text)
     }
 
     fn typed_links(&self, out: &mut String, record: &Record) -> Result<(), RenderError> {
@@ -493,6 +638,22 @@ impl<'a> NoteContext<'a> {
                 }
             }
         }
+        let named = mentions(record);
+        if !named.is_empty() {
+            out.push_str("\n### Also names\n\n");
+            for mention in &named {
+                let _ = write!(
+                    out,
+                    "- {} in {}",
+                    self.link(mention.target)?,
+                    inline_code(&mention.field)
+                );
+                if let Some(revision) = mention.revision {
+                    let _ = write!(out, ", revision {revision}");
+                }
+                out.push_str("; no freshness dependency\n");
+            }
+        }
         out.push_str("\n### Cited by\n\n");
         let mut any = false;
         for citation in self.cited_by.get(&record.header.id).into_iter().flatten() {
@@ -513,6 +674,30 @@ impl<'a> NoteContext<'a> {
             );
             if citation.cites.revision != record.header.revision.0 {
                 let _ = write!(out, " (this is revision {})", record.header.revision.0);
+            }
+            out.push('\n');
+        }
+        for mention in self
+            .mentioned_by
+            .get(&record.header.id)
+            .into_iter()
+            .flatten()
+        {
+            let Some(citing) = state.current(mention.by) else {
+                continue;
+            };
+            if !self.may_show(citing, Field::Lineage) {
+                continue;
+            }
+            any = true;
+            let _ = write!(
+                out,
+                "- {} names it in {}",
+                self.link(mention.by)?,
+                inline_code(&mention.field)
+            );
+            if let Some(revision) = mention.revision {
+                let _ = write!(out, ", revision {revision}");
             }
             out.push('\n');
         }

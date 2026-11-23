@@ -1,0 +1,56 @@
+//! Run notes: why the run happened, how it executed, whether its evidence is
+//! complete and valid, and what it retained and produced.
+
+use std::fmt::Write as _;
+
+use investigation_core::identity::Kind;
+
+use super::{Facts, citing};
+use crate::{RenderError, evidence::prose, note::text_at, text::inline_code};
+
+pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
+    let body = &f.record.body;
+    let _ = writeln!(
+        f.out,
+        "- Intent: {} {}",
+        inline_code(&super::wire(
+            text_at(body, "intent.kind").unwrap_or("unknown")
+        )),
+        prose(text_at(body, "intent.intent").unwrap_or_default())
+    );
+    f.reference_present("Plan", "intent.plan_ref")?;
+    f.text("Producer (as reported, not verified)", "producer");
+    f.text_present("Tool", "tool");
+    f.text("Environment", "environment");
+    f.word("Execution status", "execution_status");
+    f.word("Evidence completeness", "evidence_completeness");
+    let validity = text_at(body, "evidence_validity").unwrap_or("unknown");
+    let _ = writeln!(
+        f.out,
+        "- Evidence validity: {}{}",
+        inline_code(&super::wire(validity)),
+        if validity == "invalid" {
+            ": its results must not ground claims"
+        } else {
+            ""
+        }
+    );
+    f.word("Evidence kind", "evidence_kind");
+    f.list("Variables changed", "variables_changed", "none");
+    f.word_present("Chronology", "chronology");
+    f.word_present("Started at", "started_at");
+    f.word_present("Finished at", "finished_at");
+    f.text_present("Result assertion", "result_assertion");
+
+    f.heading("Retained artifacts");
+    f.references("Artifacts", "artifact_refs", "none retained")?;
+
+    f.heading("Observations from this run");
+    let observations: Vec<_> = citing(f.notes, f.record, &["run_ref"])
+        .into_iter()
+        .filter(|(record, _)| record.header.id.kind() == Kind::Observation)
+        .collect();
+    f.backlinks(&observations, "No observation cites this run.", |_, _| {
+        Ok(String::new())
+    })
+}

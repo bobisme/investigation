@@ -57,10 +57,19 @@
 //!
 //! Seams for later work:
 //!
-//! - Per-type notes, Overview and `Start Here.md`: extend the bodies in
-//!   [`templates`] on top of [`note::NoteContext`]; paths stay in [`layout`].
-//!   Bump [`RENDERER_VERSION`] whenever output bytes change for the same
-//!   snapshot.
+//! - Per-type notes: `records` holds one module per record kind (evidence
+//!   kinds delegate to [`evidence`]), each choosing its headline fields and
+//!   typed backlinks between the summary and the typed links. Effective
+//!   state comes from the freshness overlay and the objection policy, never
+//!   from the recorded lifecycle alone. `## Reviews and objections` marks a
+//!   stale or disputed review on the Review note (`inv_freshness`) and on its
+//!   subject's note (`inv_review_freshness`). Every reference in a body links
+//!   both ways: dependency edges under "Relies on"/"Cited by", other named
+//!   records under "Also names" and "names it in".
+//! - Overview and `Start Here.md`: extend the bodies in [`templates`] on top
+//!   of [`note::NoteContext`]; paths stay in [`layout`]. Reviews whose
+//!   subject is the case itself belong on the Overview. Bump
+//!   [`RENDERER_VERSION`] whenever output bytes change for the same snapshot.
 //! - Evidence-family notes: [`evidence`] adds Source, Artifact and
 //!   Observation sections (acquisition, source assessment, role, integrity,
 //!   lineage to the original acquisitions, derivation record, quoted evidence
@@ -110,6 +119,7 @@ pub mod note;
 pub mod plan;
 pub mod policy;
 pub mod publish;
+pub(crate) mod records;
 pub mod snapshot;
 pub mod status;
 pub mod sweep;
