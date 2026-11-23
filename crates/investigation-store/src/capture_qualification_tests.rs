@@ -205,6 +205,7 @@ fn plan(context: &FinalizeContext<'_>, request: &Value) -> Result<FinalizePlan, 
         limitations: Vec::new(),
         metadata: BTreeMap::new(),
         warnings: Vec::new(),
+        receipts: Vec::new(),
         section: Box::new(|refs| Ok(json!({"manifest_digest": refs.manifest_digest}))),
     })
 }

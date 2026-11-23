@@ -279,8 +279,19 @@
             "null"
           ]
         },
+        "format": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReceiptFormat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declared structure of the receipt bytes. With a retained `artifact`,\ningest checks the structure and records the result on the Run; it never\nverifies a signature. Omitted: the receipt is retained and not parsed."
+        },
         "kind": {
-          "description": "Receipt format, as named by the producer.",
+          "description": "Receipt kind in the producer's vocabulary; never interpreted. See `format`.",
           "maxLength": 128,
           "minLength": 1,
           "type": "string"
@@ -310,6 +321,21 @@
         "inv.producer-run.v1"
       ],
       "type": "string"
+    },
+    "ReceiptFormat": {
+      "description": "Declared receipt format. No format is inferred from bytes, a kind or a\nmedia type.",
+      "oneOf": [
+        {
+          "const": "in_toto_dsse",
+          "description": "A DSSE envelope carrying an in-toto Statement.",
+          "type": "string"
+        },
+        {
+          "const": "rfc3161",
+          "description": "An RFC 3161 TimeStampToken or TimeStampResp, DER encoded.",
+          "type": "string"
+        }
+      ]
     },
     "ValidityClaim": {
       "description": "How valid the producer says an assertion is. The only accepted claim is\n`producer_reported`: a producer cannot declare its own result verified.",

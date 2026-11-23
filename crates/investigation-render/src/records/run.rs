@@ -3,7 +3,8 @@
 
 use std::fmt::Write as _;
 
-use investigation_core::identity::Kind;
+use investigation_core::{identity::Kind, receipt_check};
+use serde_json::Value;
 
 use super::{Facts, citing};
 use crate::{RenderError, evidence::prose, note::text_at, text::inline_code};
@@ -38,6 +39,16 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     f.word("Evidence kind", "evidence_kind");
     f.list("Variables changed", "variables_changed", "none");
     f.word_present("Chronology", "chronology");
+    // Chronology is never shown without how it was established.
+    if body.get("chronology").and_then(Value::as_str).is_some()
+        && let Some(verification) = receipt_check::chronology_verification(body)
+    {
+        let _ = writeln!(
+            f.out,
+            "- Chronology verification: {}",
+            inline_code(verification.as_str())
+        );
+    }
     f.word_present("Started at", "started_at");
     f.word_present("Finished at", "finished_at");
     f.text_present("Result assertion", "result_assertion");

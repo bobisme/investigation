@@ -37,7 +37,8 @@ use crate::{
 /// `vault conflicts` commands (W08.11).
 /// v13: authored record notes show their inherited trust level and its
 /// stated limit in the basis table (W10.18).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v13";
+/// v14: run notes show the verification level beside the chronology (W07.10).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v14";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

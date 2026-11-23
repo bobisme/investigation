@@ -139,8 +139,19 @@
           ],
           "description": "Item key of an attached artifact holding the receipt bytes."
         },
+        "format": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReceiptFormat"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declared structure of the receipt bytes. With a retained `artifact`,\nfinalization checks the structure and records the result on the Run;\nit never verifies a signature. Omitted: retained and not parsed."
+        },
         "kind": {
-          "description": "Receipt format, as named by the producer.",
+          "description": "Receipt kind in the producer's vocabulary; never interpreted. See `format`.",
           "type": "string"
         },
         "reference": {
@@ -276,6 +287,21 @@
         "producer_result"
       ],
       "type": "object"
+    },
+    "ReceiptFormat": {
+      "description": "Declared receipt format. No format is inferred from bytes, a kind or a\nmedia type.",
+      "oneOf": [
+        {
+          "const": "in_toto_dsse",
+          "description": "A DSSE envelope carrying an in-toto Statement.",
+          "type": "string"
+        },
+        {
+          "const": "rfc3161",
+          "description": "An RFC 3161 TimeStampToken or TimeStampResp, DER encoded.",
+          "type": "string"
+        }
+      ]
     },
     "SourceTime": {
       "additionalProperties": false,

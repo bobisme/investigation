@@ -41,6 +41,10 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `capture.event_bytes` | 64 KiB | bytes | One capture event, for handles declared by this build. | `INVALID_INPUT` |
 | `capture.attachment_bytes` | 64 MiB | bytes | One capture attachment, for handles declared by this build. | `INVALID_INPUT` |
 | `capture.items` | 100000 | items | Items accepted by one capture handle declared by this build. | `INVALID_INPUT` |
+| `receipt.bytes` | 256 KiB | bytes | A retained receipt with a declared format, read for its structure check. A larger receipt stays retained and is recorded not_checked. | — |
+| `receipt.json_depth` | 32 | levels | Nesting of a DSSE envelope and of its decoded in-toto Statement. A deeper receipt is recorded structure_invalid. | — |
+| `receipt.subjects` | 256 | items | Subjects in one in-toto Statement. A Statement with more is recorded structure_invalid. | — |
+| `receipt.der_length_octets` | 4 | items | Length octets of one DER length in an RFC 3161 token. Indefinite lengths are never accepted; a longer field is recorded structure_invalid. | — |
 | `selector.artifact_bytes` | 64 MiB | bytes | A retained artifact a native selector reads into memory. A larger artifact stays retained and verifiable; cite part of it through a derived artifact. | `INVALID_INPUT` |
 | `selector.json_bytes` | 16 MiB | bytes | An artifact parsed by the strict json_pointer reader. | `INVALID_INPUT` |
 | `selector.json_depth` | 64 | levels | Nesting of an artifact parsed by the json_pointer reader. | `INVALID_INPUT` |
@@ -52,7 +56,7 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `journal.event_bytes` | 2 MiB | bytes | One canonical journal event read from disk. | `INTEGRITY_FAILURE` |
 | `journal.event_depth` | 64 | levels | Nesting of one canonical journal event. | `INTEGRITY_FAILURE` |
 
-Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound on the work done, which no input can exceed.
+Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound that refuses nothing: a bound on the work done, which no input can exceed, or a parse bound past which content stays retained and unparsed.
 
 **Compressed files and archives.** Compressed files and archives are retained as opaque bytes and never expanded. Entry names inside an archive are never used as paths. No decompressor or archive reader is linked, so there is no expansion ratio, expanded size, entry count or entry size to bound. A compressed file is held to the ordinary import limit at its stored size. A test fails if a decompression, archive or launcher crate enters the dependency graph.
 

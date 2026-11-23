@@ -318,10 +318,16 @@ fn executor_bound_reanalysis_of_an_inspected_trace_keeps_chronology_and_reuse() 
             .any(|warning| warning.starts_with("assessment.evidence_reuse known_outcome_reuse"))
     );
 
-    // When a verified executor receipt upgrades the Run's chronology (W07.10),
-    // the strong chronology shows unchanged beside the unchanged reuse class.
+    // When a structure-checked executor receipt upgrades the Run's chronology
+    // (W07.10), the strong chronology shows unchanged, with its verification
+    // level, beside the unchanged reuse class.
+    assert_eq!(
+        reuse.chronology.runs[0].chronology_verification,
+        Some(crate::receipt_check::ChronologyVerification::JournalOrder)
+    );
     let mut upgraded = study.case.state.current(run.id).unwrap().body.clone();
     upgraded["chronology"] = json!("executor_bound");
+    upgraded["chronology_verification"] = json!("structure_checked");
     study.case.image(Kind::Run, upgraded, Some(run));
     let assessment = study
         .case
@@ -332,6 +338,10 @@ fn executor_bound_reanalysis_of_an_inspected_trace_keeps_chronology_and_reuse() 
         .clone();
     let reread = evidence_reuse(&study.case.state, &assessment).unwrap();
     assert_eq!(reread.chronology.runs[0].chronology, "executor_bound");
+    assert_eq!(
+        reread.chronology.runs[0].chronology_verification,
+        Some(crate::receipt_check::ChronologyVerification::StructureChecked)
+    );
     assert_eq!(reread.classification, ReuseClass::KnownOutcomeReuse);
     assert_eq!(reread.inputs, reuse.inputs);
 }

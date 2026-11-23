@@ -451,6 +451,12 @@ pub(crate) fn project_record(
         }
         _ => {}
     }
+    // A Run's chronology is never shown without its verification level.
+    if record.header.id.kind() == Kind::Run
+        && let Some(view) = investigation_core::receipt_check::chronology_view(&record.body)
+    {
+        out.insert("chronology".into(), view);
+    }
     // Advisory measurement flags: never a gate, never a validity change.
     if let Some(report) = measurement_flags::record_flags(&replay.state, record) {
         out.insert("measurement_flags".into(), json!(report));

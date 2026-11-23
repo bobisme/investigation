@@ -61,6 +61,7 @@ use investigation_core::{
     explain::{EvidenceCompleteness, ExecutionStatus},
     header::{ClockQuality, Knowledge, SourceTime},
     producer_run::CAPTURE_FINALIZATION_KEY,
+    receipt_check::{self, MAX_RECEIPT_BYTES, ReceiptBytes, ReceiptFormat, ReceiptInput},
     wire::{Digest, Snapshot},
 };
 
@@ -134,6 +135,19 @@ pub struct PlannedArtifact {
     pub media_type: Option<String>,
 }
 
+/// One producer receipt, resolved by the recorder to the staged attachment
+/// that holds its bytes. The store checks the structure of a receipt with a
+/// declared format and records the result on the Run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedReceipt {
+    /// The producer's kind, verbatim.
+    pub kind: String,
+    pub format: Option<ReceiptFormat>,
+    /// Position of the attachment holding the bytes; `None` for a reference
+    /// or an artifact that was never attached.
+    pub position: Option<u64>,
+}
+
 /// Records the finalizing transaction created, for the Run's section.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordedRefs {
@@ -167,6 +181,8 @@ pub struct FinalizePlan {
     pub metadata: BTreeMap<String, Value>,
     /// Receipt warnings.
     pub warnings: Vec<String>,
+    /// The producer's receipts, in request order.
+    pub receipts: Vec<PlannedReceipt>,
     /// The Run body section under [`CAPTURE_FINALIZATION_KEY`].
     pub section: SectionBuilder,
 }
@@ -560,6 +576,7 @@ impl<F: DurableFs> Store<F> {
             attachments.push(artifact.digest.clone());
             blobs.push(staged);
         }
+        let receipt_bytes = self.receipt_bytes(handle, &retained, &plan.receipts)?;
         let manifest_size = plan.manifest.len() as u64;
         let manifest = std::mem::take(&mut plan.manifest);
         blobs.push(self.stage_temporary(Box::new(io::Cursor::new(manifest)), temporaries)?);
@@ -578,6 +595,7 @@ impl<F: DurableFs> Store<F> {
             handle,
             actor: &declared.actor,
             retained: &retained,
+            receipt_bytes: &receipt_bytes,
             manifest_digest: &manifest_digest,
             manifest_size,
         };
@@ -628,6 +646,54 @@ impl<F: DurableFs> Store<F> {
             handle: handle.binding.handle,
             section,
         })
+    }
+
+    /// The bytes of each retained attachment that a receipt with a declared
+    /// format names, read from staging up to the receipt limit.
+    fn receipt_bytes(
+        &mut self,
+        handle: &ResolvedHandle,
+        retained: &[Retained<'_>],
+        receipts: &[PlannedReceipt],
+    ) -> Result<BTreeMap<u64, Option<Vec<u8>>>, Failure> {
+        let mut read = BTreeMap::new();
+        for receipt in receipts {
+            let (Some(_), Some(position)) = (receipt.format, receipt.position) else {
+                continue;
+            };
+            let Some(artifact) = retained
+                .iter()
+                .find(|artifact| artifact.planned.position == position)
+            else {
+                continue;
+            };
+            if read.contains_key(&position) {
+                continue;
+            }
+            if artifact.size > MAX_RECEIPT_BYTES as u64 {
+                read.insert(position, None);
+                continue;
+            }
+            let blob = artifact
+                .outcome
+                .blob
+                .as_ref()
+                .ok_or_else(|| integrity("A retained attachment names no staged blob."))?;
+            let mut bytes = Vec::new();
+            self.fs
+                .read(&handle.directory.join(blob))
+                .map_err(io_failure)?
+                .take(MAX_RECEIPT_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(io_failure)?;
+            // The committed bytes are checked against the digest separately;
+            // these are the bytes the check reads.
+            if bytes.len() as u64 != artifact.size {
+                return Err(integrity("A staged receipt does not match its size."));
+            }
+            read.insert(position, Some(bytes));
+        }
+        Ok(read)
     }
 
     fn stage_temporary(
@@ -696,6 +762,8 @@ struct FinalizationRecords<'a> {
     handle: &'a ResolvedHandle,
     actor: &'a Actor,
     retained: &'a [Retained<'a>],
+    /// Receipt bytes by attachment position; `None` when over the limit.
+    receipt_bytes: &'a BTreeMap<u64, Option<Vec<u8>>>,
     manifest_digest: &'a Digest,
     manifest_size: u64,
 }
@@ -870,6 +938,12 @@ impl FinalizationRecords<'_> {
             id: manifest_id,
             revision: 1,
         };
+        let refs_by_position: BTreeMap<u64, RevisionRef> = self
+            .retained
+            .iter()
+            .zip(&refs)
+            .map(|(artifact, reference)| (artifact.planned.position, *reference))
+            .collect();
         let section = (plan.section)(&RecordedRefs {
             source: source_ref,
             manifest: manifest_ref,
@@ -898,6 +972,13 @@ impl FinalizationRecords<'_> {
             body["finished_at"] = json!(finished_at);
         }
         body[CAPTURE_FINALIZATION_KEY] = section.clone();
+        let receipts: Vec<ReceiptInput<'_>> = plan
+            .receipts
+            .iter()
+            .map(|receipt| self.receipt_input(receipt, &refs_by_position))
+            .collect();
+        let mut warnings = plan.warnings;
+        warnings.extend(receipt_check::record_receipts(&mut body, &receipts));
         builder.classification = level.max(run.header.classification.level);
         builder.revise(run, body)?;
         Ok((
@@ -907,10 +988,42 @@ impl FinalizationRecords<'_> {
                 records: builder.records,
                 created: builder.created,
                 updated: builder.updated,
-                warnings: plan.warnings,
+                warnings,
             },
             section,
         ))
+    }
+}
+
+impl FinalizationRecords<'_> {
+    /// One receipt as the core checks it: its recorded Artifact, digest and
+    /// staged bytes, when an attachment holds them.
+    fn receipt_input<'r>(
+        &'r self,
+        receipt: &'r PlannedReceipt,
+        refs: &BTreeMap<u64, RevisionRef>,
+    ) -> ReceiptInput<'r> {
+        let artifact = receipt.position.and_then(|position| {
+            self.retained
+                .iter()
+                .find(|artifact| artifact.planned.position == position)
+        });
+        ReceiptInput {
+            kind: &receipt.kind,
+            format: receipt.format,
+            artifact_ref: receipt
+                .position
+                .and_then(|position| refs.get(&position).copied()),
+            digest: artifact.map(|artifact| artifact.digest.clone()),
+            bytes: match receipt
+                .position
+                .and_then(|position| self.receipt_bytes.get(&position))
+            {
+                Some(Some(bytes)) => ReceiptBytes::Retained(bytes),
+                Some(None) => ReceiptBytes::TooLarge,
+                None => ReceiptBytes::Unavailable,
+            },
+        }
     }
 }
 

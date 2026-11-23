@@ -18,7 +18,7 @@
 //! producer statement sets measurement validity: the Run's `evidence_validity`
 //! is `unknown` unless an investigator records otherwise.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use investigation_core::{
     attempt::{self, AttemptIdentity, AttemptPath},
@@ -32,9 +32,10 @@ use investigation_core::{
     header::{ActorDescriptor, ClassificationLevel, Knowledge, SourceTime},
     producer_run::{
         Attribution, EnvelopeRef, InventoryEntry, MAX_ENVELOPE_BYTES, PRODUCER_RUN_KEY,
-        ProducerArtifact, ProducerRun, ProducerRunRecord, ProducerRunVersion, Retention,
-        inventory_completeness, normalized_path,
+        ProducerArtifact, ProducerReceipt, ProducerRun, ProducerRunRecord, ProducerRunVersion,
+        Retention, inventory_completeness, normalized_path,
     },
+    receipt_check::{self, MAX_RECEIPT_BYTES, ReceiptBytes, ReceiptInput},
 };
 
 use super::*;
@@ -232,6 +233,7 @@ impl Store {
     ) -> Result<ProducerRunReceipt, Failure> {
         let mut staged = Vec::new();
         let mut retained_blobs = Vec::new();
+        let mut artifact_blobs = Vec::new();
         for (index, artifact) in run.artifacts.iter().enumerate() {
             let relative = PathBuf::from(normalized_path(&artifact.path).ok_or_else(|| {
                 invalid("Use a relative path beneath an import root.", "/artifacts")
@@ -265,12 +267,14 @@ impl Store {
                 item.digest.as_str().strip_prefix("sha256:") == Some(expected)
             });
             if matches {
+                artifact_blobs.push((index, blob.clone()));
                 retained_blobs.push(blob);
                 staged.push(Staged::Retained(item));
             } else {
                 staged.push(Staged::Rejected(item));
             }
         }
+        let receipt_bytes = self.envelope_receipt_bytes(run, &artifact_blobs)?;
         let envelope_blob = stage_input(&mut self.fs, &self.gate, bytes)?;
         let envelope_digest = digest_for(&envelope_blob)?;
         let envelope_size = envelope_blob.size;
@@ -358,6 +362,7 @@ impl Store {
             envelope_digest: &envelope_digest,
             envelope_size,
             warnings: &warnings,
+            receipt_bytes: &receipt_bytes,
         };
         let receipt = self.commit_plan(
             CommitPlan {
@@ -419,6 +424,47 @@ impl Store {
             ));
         }
         Ok(receipt)
+    }
+
+    /// The staged bytes of each retained artifact that a receipt with a
+    /// declared format names, by artifact index; `None` when over the limit.
+    fn envelope_receipt_bytes(
+        &mut self,
+        run: &ProducerRun,
+        blobs: &[(usize, StagedBlob)],
+    ) -> Result<BTreeMap<usize, Option<Vec<u8>>>, Failure> {
+        let mut read = BTreeMap::new();
+        for receipt in run
+            .receipts
+            .iter()
+            .filter(|receipt| receipt.format.is_some())
+        {
+            let Some(index) = receipt_artifact(run, receipt) else {
+                continue;
+            };
+            let Some((_, blob)) = blobs.iter().find(|(at, _)| *at == index) else {
+                continue;
+            };
+            if read.contains_key(&index) {
+                continue;
+            }
+            if blob.size > MAX_RECEIPT_BYTES as u64 {
+                read.insert(index, None);
+                continue;
+            }
+            let mut bytes = Vec::new();
+            self.fs
+                .read(&blob.temp)
+                .map_err(io_failure)?
+                .take(MAX_RECEIPT_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(io_failure)?;
+            if bytes.len() as u64 != blob.size {
+                return Err(integrity("A staged receipt does not match its size."));
+            }
+            read.insert(index, Some(bytes));
+        }
+        Ok(read)
     }
 
     /// Open a declared artifact beneath the first import root that holds it.
@@ -568,6 +614,14 @@ pub(super) fn recorded_run<'s>(
     })
 }
 
+/// Index of the declared artifact that holds a receipt's bytes.
+fn receipt_artifact(run: &ProducerRun, receipt: &ProducerReceipt) -> Option<usize> {
+    let path = receipt.artifact.as_ref()?;
+    run.artifacts
+        .iter()
+        .position(|artifact| artifact.path == *path)
+}
+
 fn decode_record(body: &Value) -> Option<ProducerRunRecord> {
     input::decode(body.get(PRODUCER_RUN_KEY)?).ok()
 }
@@ -594,6 +648,8 @@ struct RunContext<'a> {
     envelope_digest: &'a Digest,
     envelope_size: u64,
     warnings: &'a [String],
+    /// Receipt bytes by artifact index; `None` when over the receipt limit.
+    receipt_bytes: &'a BTreeMap<usize, Option<Vec<u8>>>,
 }
 
 impl RunContext<'_> {
@@ -858,6 +914,17 @@ impl RunContext<'_> {
                 .and_then(|record| input::decode(&record.body["repetition"]).ok())
                 .flatten(),
         };
+        let retained_refs: Vec<Option<(RevisionRef, Digest)>> = inventory
+            .iter()
+            .map(|entry| match &entry.retention {
+                Retention::Retained {
+                    artifact_ref,
+                    digest,
+                    ..
+                } => Some((*artifact_ref, digest.clone())),
+                _ => None,
+            })
+            .collect();
         let statements = ProducerRunRecord {
             schema_version: ProducerRunVersion::V1,
             attribution: Attribution::ProducerReported,
@@ -900,6 +967,28 @@ impl RunContext<'_> {
         }
         body[PRODUCER_RUN_KEY] = serde_json::to_value(statements)
             .map_err(|_| integrity("Could not encode the producer statements."))?;
+        // Structure checks of declared-format receipts, recomputed from the
+        // retained bytes on every revision.
+        let receipts: Vec<ReceiptInput<'_>> = run
+            .receipts
+            .iter()
+            .map(|receipt| {
+                let index = receipt_artifact(run, receipt);
+                let retained = index.and_then(|index| retained_refs.get(index).cloned().flatten());
+                ReceiptInput {
+                    kind: &receipt.kind,
+                    format: receipt.format,
+                    artifact_ref: retained.as_ref().map(|(reference, _)| *reference),
+                    digest: retained.map(|(_, digest)| digest),
+                    bytes: match index.and_then(|index| self.receipt_bytes.get(&index)) {
+                        Some(Some(bytes)) => ReceiptBytes::Retained(bytes),
+                        Some(None) => ReceiptBytes::TooLarge,
+                        None => ReceiptBytes::Unavailable,
+                    },
+                }
+            })
+            .collect();
+        let receipt_warnings = receipt_check::record_receipts(&mut body, &receipts);
         let mut refs = vec![envelope_source_ref.id, envelope_artifact_ref.id];
         if let Some(previous) = previous {
             // Same producer statements and inventory: nothing new from the
@@ -940,7 +1029,12 @@ impl RunContext<'_> {
             records: builder.records,
             created: builder.created,
             updated: builder.updated,
-            warnings: self.warnings.to_vec(),
+            warnings: self
+                .warnings
+                .iter()
+                .cloned()
+                .chain(receipt_warnings)
+                .collect(),
         }))
     }
 }

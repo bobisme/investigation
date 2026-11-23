@@ -504,3 +504,56 @@ fn an_ingested_run_reconciles_without_losing_producer_statements() {
     assert_eq!(run_body(&mut store, &receipt)["execution_status"], "failed");
     assert_eq!(reconciled["evidence_validity"], "unknown");
 }
+
+/// A receipt with a declared format is structure checked from its retained
+/// bytes. An envelope Run pins no frozen plan, so nothing is compared and its
+/// chronology stays `order_unknown`, shown with its verification level.
+#[test]
+fn declared_format_receipts_are_structure_checked_and_never_upgrade_an_envelope_run() {
+    let (_temporary, imports, mut store) = workspace(true);
+    let token =
+        include_bytes!("../../investigation-core/src/receipt_check/testdata/timestamp-token.der");
+    fs::write(imports.join("plan.tst"), token).unwrap();
+    fs::write(imports.join("garbled.tst"), b"not DER").unwrap();
+    let mut envelope = example();
+    for path in ["plan.tst", "garbled.tst"] {
+        envelope["artifacts"].as_array_mut().unwrap().push(json!({
+            "role": "receipt", "path": path, "media_type": "application/timestamp-reply",
+        }));
+    }
+    envelope["receipts"] = json!([
+        {"kind": "timestamp", "format": "rfc3161", "artifact": "plan.tst"},
+        {"kind": "timestamp", "format": "rfc3161", "artifact": "garbled.tst"},
+        {"kind": "statement", "reference": "urn:example:statement:1"},
+    ]);
+    let receipt = ingest(&mut store, &envelope, &submission("agent:ingester"));
+    assert!(
+        receipt
+            .receipt
+            .warnings
+            .iter()
+            .any(|warning| warning.starts_with("Receipt 1 (timestamp): Not a well-formed rfc3161")),
+        "{:?}",
+        receipt.receipt.warnings
+    );
+    let case = store.case(receipt.case_id).unwrap();
+    let run = case.state.revision(receipt.run).unwrap();
+    assert_eq!(run.body["chronology"], "order_unknown");
+    assert!(run.body.get("chronology_verification").is_none());
+    let checks = run.body["receipt_checks"].as_array().unwrap();
+    assert_eq!(checks.len(), 3);
+    assert_eq!(checks[0]["verification"], "structure_checked");
+    assert_eq!(checks[0]["binding"], "no_frozen_plan");
+    assert_eq!(checks[0]["format"], "rfc3161");
+    assert!(checks[0]["artifact_ref"]["id"].is_string());
+    assert_eq!(
+        checks[0]["subject_digests"][0],
+        "sha256:01ed774d4686cf4d74a26d8dfd351cf4b4f856deebc2a0285aaa5ed6ae657464"
+    );
+    assert_eq!(checks[1]["verification"], "structure_invalid");
+    assert_eq!(checks[2]["verification"], "not_checked");
+    // The statements themselves keep the declared format.
+    let statements: ProducerRunRecord =
+        serde_json::from_value(run.body["producer_run"].clone()).unwrap();
+    assert_eq!(statements.receipts.len(), 3);
+}

@@ -119,6 +119,7 @@ fn plan(context: &FinalizeContext<'_>) -> Result<FinalizePlan, Failure> {
         limitations: vec!["synthetic".into()],
         metadata: BTreeMap::new(),
         warnings: Vec::new(),
+        receipts: Vec::new(),
         section: Box::new(|refs| {
             Ok(json!({
                 "manifest": refs.manifest,

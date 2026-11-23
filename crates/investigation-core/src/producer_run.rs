@@ -280,9 +280,14 @@ impl ProducerControl {
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct ProducerReceipt {
-    /// Receipt format, as named by the producer.
+    /// Receipt kind in the producer's vocabulary; never interpreted. See `format`.
     #[schemars(length(min = 1, max = 128))]
     pub kind: String,
+    /// Declared structure of the receipt bytes. With a retained `artifact`,
+    /// ingest checks the structure and records the result on the Run; it never
+    /// verifies a signature. Omitted: the receipt is retained and not parsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<crate::receipt_check::ReceiptFormat>,
     /// `path` of the entry in `artifacts` that holds the receipt bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schemars(length(min = 1, max = 1024))]

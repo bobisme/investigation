@@ -195,7 +195,7 @@ investigation --workspace ./cases capture finalize --input finalize.json --forma
 | `channels` | The producer's completeness claim per channel, each channel once, at most 256. |
 | `declared_artifacts` | Item keys of every artifact the producer meant to attach. A key that was never attached is recorded as missing. A key of an appended fact is refused. |
 | `assertions`, `controls` | The envelope's types and bounds. `validity_claim` may only be `producer_reported`. |
-| `receipts` | At most 32. `kind`, plus `artifact` (the key of an attached or declared artifact), `reference`, or both. |
+| `receipts` | At most 32. `kind`, plus `artifact` (the key of an attached or declared artifact), `reference`, or both. An optional `format` (`in_toto_dsse` or `rfc3161`) asks for a structure check of the attached bytes; see [Executor receipts and chronology](#executor-receipts-and-chronology). |
 | `limitations`, `metadata` | As in the envelope. The serialized request is at most 512 KiB. |
 
 Stdout is the `FinalizeReceipt` (`handle`, `run_id`, `case_id`, `finalization`, `execution`, `sealed_position`, `missing_positions`, `manifest_digest`, `commit`), the same value `Recorder::finalize` returns.
@@ -376,7 +376,7 @@ A producer that has already finished can describe the whole run in one JSON docu
 | `artifacts` | no | At most 32. `role`, relative `path`, optional `expected_sha256` (64 lowercase hex), `media_type`, `classification` (default `internal`). |
 | `assertions` | no | At most 256. `kind`, `name`, `value` (any JSON up to 16 KiB), optional `unit`. `validity_claim` may only be `producer_reported`. |
 | `controls` | no | At most 64. `name` and `producer_result`, such as `reported_pass`. |
-| `receipts` | no | At most 32. `kind` plus an `artifact` (the `path` of an entry in `artifacts`) or a `reference` locator, or both. |
+| `receipts` | no | At most 32. `kind` plus an `artifact` (the `path` of an entry in `artifacts`) or a `reference` locator, or both. An optional `format` (`in_toto_dsse` or `rfc3161`) asks for a structure check of the retained bytes; see [Executor receipts and chronology](#executor-receipts-and-chronology). |
 | `limitations` | no | At most 64 statements. |
 | `classification` | no | Level of the envelope and the Run, default `internal`. The recorded level is the highest of this and every artifact's level. |
 | `metadata` | no | Inert namespaced metadata, allowed at the top level and on each artifact, assertion, control and receipt. It is subject to the opaque-metadata bounds. |
@@ -412,6 +412,68 @@ The receipt (`producer-run-receipt`) adds `case_id`, the `run` revision, `run_ou
 ### Relation to the capture operations
 
 `ProducerAssertion` and `ProducerControl` are the same types in the envelope and in `FinalizeCapture`. `ExternalReceipt` has the fields of the envelope's receipt, but names its bytes by an attached item key instead of a path. The envelope's `producer` fields match `ProducerIdentity`, and both follow one name rule.
+
+## Executor receipts and chronology
+
+A Run's `chronology` says how its frozen plan is known to precede its execution (plan §6.5). A producer can carry receipts in `receipts[]` of `capture finalize` or of an `inv.producer-run.v1` envelope. The receipt bytes are an attached or declared artifact and are retained as an Artifact of the Run, like any other artifact. Every receipt stays the producer's attributed claim.
+
+### Formats
+
+A receipt is parsed only when it declares a `format` and its bytes were retained. No format is inferred from the bytes, the `kind` or a media type. The parser reads only the fields that hold the bound subject digest, and its bounds are the `receipt.*` rows of the [raw-file limits](support-matrix.md#raw-file-limits).
+
+| `format` | Structure that is checked | Subject digests read |
+|---|---|---|
+| `in_toto_dsse` | A [DSSE envelope](https://github.com/secure-systems-lab/dsse/blob/master/envelope.md): a JSON object with a `payload` string (standard or URL-safe base64, as DSSE allows), a `payloadType` string, and a nonempty `signatures` array whose entries each have a base64 `sig`. Per the [in-toto envelope layer](https://github.com/in-toto/attestation/blob/main/spec/v1/envelope.md), `payloadType` must be `application/vnd.in-toto+json` or `application/vnd.in-toto.<predicate>+json`. The decoded payload must be an [in-toto Statement](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) with `_type` `https://in-toto.io/Statement/v1` (or the earlier `https://in-toto.io/Statement/v0.1`), a string `predicateType`, and a nonempty `subject` array in which every entry has a nonempty `digest` set. | The `sha256` value of each subject's `digest`, 64 hexadecimal digits. Other algorithms are kept out of the comparison. The predicate is not interpreted. |
+| `rfc3161` | A DER [RFC 3161](https://www.rfc-editor.org/rfc/rfc3161) `TimeStampToken`, or a `TimeStampResp` (§2.4.2) whose status is `granted` or `grantedWithMods` and which holds one. The token is a CMS `ContentInfo` ([RFC 5652](https://www.rfc-editor.org/rfc/rfc5652) §3) of type `id-signedData` (§5.1). Its `EncapsulatedContentInfo` (§5.2) has `eContentType` `id-ct-TSTInfo` and a primitive `eContent` holding the DER `TSTInfo`, and `signerInfos` has at least one `SignerInfo`. The `TSTInfo` must be version 1 and carry a policy, a `MessageImprint`, a serial number and a `genTime`. Lengths must be definite and use at most four octets. | The `messageImprint.hashedMessage` when `hashAlgorithm` is `id-sha256` (2.16.840.1.101.3.4.2.1). `genTime` is copied verbatim and is not trusted. |
+
+The formats were checked against those specifications on 2026-11-23.
+
+### What is and is not verified
+
+| Checked | Not checked |
+|---|---|
+| The declared structure, as above, within the `receipt.*` bounds. | Any signature: no DSSE `sig` or CMS signature is verified. |
+| That the stored receipt bytes are the retained Artifact bytes (digest and size, as for every artifact). | The signer's identity, key ID, certificate chain, TSA policy or any trust anchor. |
+| Whether a SHA-256 subject digest equals the Run's frozen `plan_digest`. | That the executor actually bound the plan before execution. The in-toto predicate is the executor's claim and is not interpreted. |
+| | That `genTime` is the true time, or that a timestamp orders the execution event. |
+
+The highest level this build records is `structure_checked`. `signature_verified` is reserved for a later build; signature verification is in the [deferred register](deferred.md).
+
+### What the Run records
+
+Finalize and ingest add `receipt_checks` to the Run when the request has receipts: one entry per receipt, in request order.
+
+| Field | Meaning |
+|---|---|
+| `index`, `kind`, `format` | Position in `receipts`, and the receipt's `kind` and `format` as sent. |
+| `artifact_ref`, `receipt_digest` | The Artifact holding the retained bytes, when there is one. |
+| `verification` | `structure_checked`; `structure_invalid` when the bytes do not have the declared structure; or `not_checked` when no format was declared, no bytes were retained, or the receipt is over `receipt.bytes`. |
+| `subject_digests` | The SHA-256 subject digests that were read. |
+| `payload_type`, `statement_type`, `predicate_type`, `signatures_present`, `hash_algorithm`, `gen_time` | Copied from a checked receipt, at most 256 characters each. `signatures_present` counts DSSE signatures or CMS signer infos, none of them verified. |
+| `binding` | `plan_digest_bound`, `plan_digest_not_bound`, `no_frozen_plan` (the Run pins no frozen plan) or `not_compared` (no SHA-256 subject). |
+| `chronology_effect` | `executor_bound` when this receipt supports that level, otherwise `none`. |
+| `note` | Why the receipt has this result. |
+
+A receipt that is `structure_invalid`, or that is `structure_checked` and `plan_digest_not_bound`, adds a receipt warning. A receipt never refuses the request: its bytes are retained whatever the check finds. `capture_finalization.receipts` and `producer_run.receipts` keep the producer's statements exactly as sent.
+
+### Chronology levels
+
+| `chronology` | Set when | `verification` |
+|---|---|---|
+| `retrospective` | The plan was frozen after the Run was declared. | `journal_order` |
+| `order_unknown` | No plan, or no order could be established. Envelope Runs start here. | `journal_order` |
+| `recorded_before_run_declaration` | The Run pinned an exact frozen plan when it was declared (`capture begin` with `intent.inquiry_plan`, or `run.start`/`run.record` with a plan intent). | `journal_order` |
+| `executor_bound` | A Run that is `recorded_before_run_declaration` has a receipt with `format: in_toto_dsse`, `verification: structure_checked` and `binding: plan_digest_bound`. | `structure_checked` |
+| `externally_attested` | Never set by this build. It needs independently verifiable evidence that binds both the plan and the ordering of the execution event, which requires verified signatures. | — |
+
+The rules:
+
+- Only a Statement subject equal to the frozen plan digest supports `executor_bound`. A receipt whose subject does not match never changes chronology, nor does any receipt on a Run with another level.
+- An RFC 3161 token never changes chronology. A timestamp whose imprint is the plan digest only dates the plan; it records `plan_digest_bound` with `chronology_effect: none`.
+- `intent.external_plan_digest` is retained unchecked and is not a frozen plan, so an envelope Run's receipts record `no_frozen_plan`.
+- The `ordering_receipt` of `run.record` is recorded as `verification: unverified`, is not parsed, and never changes chronology.
+
+The upgrade records `chronology_verification: structure_checked` on the Run. Chronology is never shown without its verification level: `show` of a Run reports `chronology` with `level`, `verification` and `receipts_checked`; evidence reuse reports `chronology_verification` beside each Run's `chronology`; and the vault Run note has a `Chronology verification` line. A Run without a recorded level shows `journal_order` for the three local levels.
 
 ## Attempt identity
 

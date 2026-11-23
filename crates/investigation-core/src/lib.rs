@@ -54,6 +54,7 @@ pub mod origin_ops;
 pub mod pack_extensions;
 pub mod pack_policy;
 pub mod producer_run;
+pub mod receipt_check;
 pub mod retrospective;
 pub mod retrospective_digest;
 mod retrospective_ops;

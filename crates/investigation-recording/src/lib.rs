@@ -163,6 +163,7 @@ pub use investigation_core::{
     explain::{EvidenceCompleteness, ExecutionStatus},
     header::{Actor, ClassificationLevel, ClockQuality, Knowledge, SourceTime, UtcTimestamp},
     identity::Id,
+    receipt_check::ReceiptFormat,
     wire::{CommitStatus, Digest, ErrorCode, Failure, Receipt as CommitReceipt},
 };
 

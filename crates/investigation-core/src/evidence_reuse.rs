@@ -437,6 +437,9 @@ pub struct RunChronology {
     pub binds_assessed_plan: bool,
     /// Verbatim from the Run.
     pub chronology: Value,
+    /// How the chronology was established: `journal_order`,
+    /// `structure_checked` or `unverified`. Never `signature_verified`.
+    pub chronology_verification: Option<crate::receipt_check::ChronologyVerification>,
     /// Verbatim from the Run; `null` when none was recorded.
     pub ordering_receipt: Value,
 }
@@ -886,6 +889,7 @@ pub fn evidence_reuse(state: &State, assessment: &Record) -> Option<EvidenceReus
             run_ref: run.reference(),
             binds_assessed_plan: !plan_digest.is_null() && run.body["plan_digest"] == plan_digest,
             chronology: run.body.get("chronology").cloned().unwrap_or(Value::Null),
+            chronology_verification: crate::receipt_check::chronology_verification(&run.body),
             ordering_receipt: run
                 .body
                 .get("ordering_receipt")

@@ -8,7 +8,9 @@
 //! Nothing here is executed or loaded. MIME types and file extensions are
 //! recorded hints: no parser is chosen from them and no imported content is
 //! run to identify it.
-use investigation_core::{command, input, method_pack, producer_run, wire::ErrorCode};
+use investigation_core::{
+    command, input, method_pack, producer_run, receipt_check, wire::ErrorCode,
+};
 use serde::Serialize;
 
 use crate::{
@@ -213,6 +215,34 @@ pub const LIMITS: &[Limit] = &[
         Items,
         "Items accepted by one capture handle declared by this build.",
         INVALID_INPUT,
+    ),
+    limit(
+        "receipt.bytes",
+        receipt_check::MAX_RECEIPT_BYTES as u64,
+        Bytes,
+        "A retained receipt with a declared format, read for its structure check. A larger receipt stays retained and is recorded not_checked.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "receipt.json_depth",
+        receipt_check::MAX_RECEIPT_JSON_DEPTH as u64,
+        Levels,
+        "Nesting of a DSSE envelope and of its decoded in-toto Statement. A deeper receipt is recorded structure_invalid.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "receipt.subjects",
+        receipt_check::MAX_STATEMENT_SUBJECTS as u64,
+        Items,
+        "Subjects in one in-toto Statement. A Statement with more is recorded structure_invalid.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "receipt.der_length_octets",
+        receipt_check::MAX_DER_LENGTH_OCTETS as u64,
+        Items,
+        "Length octets of one DER length in an RFC 3161 token. Indefinite lengths are never accepted; a longer field is recorded structure_invalid.",
+        NO_REFUSAL,
     ),
     limit(
         "selector.artifact_bytes",

@@ -8,6 +8,7 @@ use investigation_core::{
     header::{SourceTime, SystemClock, UtcTimestamp},
     identity::Id,
     producer_run::{self, Attribution},
+    receipt_check::ReceiptFormat,
     wire::{Digest, ErrorCode, Failure, Receipt, Snapshot},
 };
 use investigation_store::{
@@ -16,7 +17,7 @@ use investigation_store::{
         attach::{AttachAvailability, AttachOutcome, MissingCause as StoreMissingCause},
         finalize::{
             FinalizeContext, FinalizePlan, FinalizeSubmission, FinalizedCapture, PlannedArtifact,
-            PlannedRole, RecordedRefs,
+            PlannedReceipt, PlannedRole, RecordedRefs,
         },
         items::ItemOperation,
         recover_argv,
@@ -189,8 +190,13 @@ pub use investigation_core::producer_run::{ProducerAssertion, ProducerControl};
 #[serde(deny_unknown_fields)]
 #[non_exhaustive]
 pub struct ExternalReceipt {
-    /// Receipt format, as named by the producer.
+    /// Receipt kind in the producer's vocabulary; never interpreted. See `format`.
     pub kind: String,
+    /// Declared structure of the receipt bytes. With a retained `artifact`,
+    /// finalization checks the structure and records the result on the Run;
+    /// it never verifies a signature. Omitted: retained and not parsed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<ReceiptFormat>,
     /// Item key of an attached artifact holding the receipt bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact: Option<IdempotencyKey>,
@@ -204,6 +210,7 @@ impl ExternalReceipt {
     pub fn new(kind: impl Into<String>) -> Self {
         Self {
             kind: kind.into(),
+            format: None,
             artifact: None,
             reference: None,
         }
@@ -710,6 +717,24 @@ fn plan(summary: &FinalizeCapture, context: &FinalizeContext<'_>) -> Result<Fina
     })?;
     manifest.push(b'\n');
 
+    // Each receipt with the position of the attachment that holds its bytes.
+    let receipts = frozen
+        .receipts
+        .iter()
+        .map(|receipt| PlannedReceipt {
+            kind: receipt.kind.clone(),
+            format: receipt.format,
+            position: receipt.artifact.as_ref().and_then(|key| {
+                frozen
+                    .artifacts
+                    .iter()
+                    .find(|entry| entry.key == *key)
+                    .filter(|entry| matches!(entry.retention, Retention::Retained { .. }))
+                    .and_then(|entry| entry.position)
+                    .map(Position::get)
+            }),
+        })
+        .collect();
     let execution_status = frozen.execution.state;
     let started_at = frozen.execution.started_at.clone();
     let finished_at = frozen.execution.ended_at.clone();
@@ -765,6 +790,7 @@ fn plan(summary: &FinalizeCapture, context: &FinalizeContext<'_>) -> Result<Fina
         limitations,
         metadata,
         warnings,
+        receipts,
         section: Box::new(section),
     })
 }

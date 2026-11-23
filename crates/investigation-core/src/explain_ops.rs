@@ -971,6 +971,10 @@ const RUN_META: &[&str] = &[
     "retrospective_plan_ref",
     "reconciliation_reason",
     "ordering_receipt",
+    // Structure checks of the producer's receipts and the verification level
+    // of a chronology they upgraded.
+    crate::receipt_check::RECEIPT_CHECKS_KEY,
+    crate::receipt_check::CHRONOLOGY_VERIFICATION_KEY,
     // Capture binding (handle, producer identity, staging) set by `capture.begin`.
     "capture",
     // Producer statements of a Run ingested from an `inv.producer-run.v1` envelope.
