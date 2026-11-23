@@ -1,8 +1,8 @@
 # Investigation — implementation plan
 
 **Status:** implementation specification, not a description of a working product.  
-**Revision:** 4, 2026-11-21 — adopts changes from three independent reviews (`notes/plan.review.{1,2,3}.md`); see **Disposition of reviews** at the end. Revision 3 added Sapper/nvwabase-informed retrieval, blindspot review, and methodological learning; the domain-neutral core is preserved.  
-**Product:** `investigation`: an offline Rust CLI and reusable library with an optional MCP adapter. The shipped executable is `investigation`. In this specification, `inv` is shorthand for that executable. Install `inv` as an alias only where no other command has that name: Python Invoke already installs an `inv` command. First-use docs, repair argv and integration snippets use `investigation`, or the executable name the user configured.  
+**Revision:** 4.1, 2026-11-23 — owner decisions after Milestone B: MCP (W13) deferred outside every milestone, W17 (CLI learnable from `--help` alone) added to Milestone C, and the strict record-mode closure rule. Revision 4, 2026-11-21 — adopts changes from three independent reviews (`notes/plan.review.{1,2,3}.md`); see **Disposition of reviews** at the end. Revision 3 added Sapper/nvwabase-informed retrieval, blindspot review, and methodological learning; the domain-neutral core is preserved.  
+**Product:** `investigation`: an offline Rust CLI and reusable library. An MCP adapter is deferred outside every milestone (owner decision, 2026-11-23): the CLI, learnable from `--help` alone, is the agent interface. The shipped executable is `investigation`. In this specification, `inv` is shorthand for that executable. Install `inv` as an alias only where no other command has that name: Python Invoke already installs an `inv` command. First-use docs, repair argv and integration snippets use `investigation`, or the executable name the user configured.  
 **Scope:** general-purpose, agent-native investigative reasoning, evidence management, and decision support. No security-tool coupling.
 
 ## Read this first
@@ -234,7 +234,7 @@ No arrows from `inv` to a named producer, external agent framework, task tracker
 |---|---|---|
 | CLI `inv ... --format json` | Shell, coding agents, scripts | Offline, typed inputs, stable response/error schema. |
 | Rust `investigation-core` / `investigation-recording` | Native producers | Same validation and durable transactions; no duplicated evidence/journal implementation. |
-| `inv mcp` over stdio | Compatible agent hosts | Generated typed tools and identical semantics; does not introduce its own planner. |
+| `inv mcp` over stdio (deferred, §9.7) | Compatible agent hosts | Generated typed tools and identical semantics; does not introduce its own planner. |
 | Neutral JSON events/manifest protocol | Python/Go/other executors | Versioned producer identity, run IDs, artifact digests, partial/unknown outcomes. |
 | Deterministic export formats | Humans, reporting systems, future integrations | Recorded snapshot, provenance, omitted data and effective validity. |
 | Vault projection | Obsidian or Markdown viewers | Human-readable navigation; never canonical state. |
@@ -567,7 +567,7 @@ A benchmark process exiting 0 does not establish a sound performance result. A t
 | Promote conclusion to review-ready | Bounded claim, direct support, applicability, alternative explanation treatment, limitations and inspectable evidence. | Is it convincing? |
 | Validate conclusion | Current submitted validation review with a supportive verdict on the exact claim basis, current material sets (§10.3), satisfied method obligations and no unresolved critical Objection. | Is the scoped conclusion justified despite remaining caveats? |
 | Blindspot review (optional by default) | `inv blindspots` checks recorded structure; `review.submit` with `kind: blindspot` captures reviewed scope, gaps, exact read-set and `context_isolation`. | Did the challenge bring fresh context, a blinded packet or new external checks? Same-session self-critique without new information is shown as low-independence. A clean checklist is not proof of completeness. |
-| Close substantive case | Answer/choice/outcome or explicit inconclusive reason; outstanding questions, limitations, reopen triggers. A Retrospective in the same or prior transaction is required when the case is **material**: it has a promoted Conclusion, an accepted Decision, a failed/invalidated Run, a retracted/corrected source or observation, or a pack-declared trigger. Other cases may close with `retrospective_waived` and a short reason. `record`-only sessions are exempt. | Was this investigation sufficient, and are recorded lessons grounded in case events rather than boilerplate? |
+| Close substantive case | Answer/choice/outcome or explicit inconclusive reason; outstanding questions, limitations, reopen triggers. A Retrospective in the same or prior transaction is required when the case is **material**: it has a promoted Conclusion, an accepted Decision, a failed/invalidated Run, a retracted/corrected source or observation, or a pack-declared trigger. Other cases may close with `retrospective_waived` and a short reason. A `record`-mode case is exempt only while it is not material; a failed or invalid Run makes it material, so it then needs a Retrospective. | Was this investigation sufficient, and are recorded lessons grounded in case events rather than boilerplate? |
 
 Do not make every case satisfy every gate. A documentary research case can rely on source criticism rather than an irrelevant control experiment. A performance case can close with a conditional improvement choice despite uncertain root cause. A design choice can be accepted with acknowledged subjective priorities, without claiming empirical truth.
 
@@ -813,7 +813,7 @@ A valid audit implementation returns real IDs and digests. `gap_id` must be stab
 
 **Expected versus actual.** `case.create` accepts optional `expectations` (expected answer or choice, expected effort, what would be surprising). Frozen InquiryPlan predictions already serve this role for tests. The Retrospective reports the difference. Writing expectations down beforehand is the reliable guard against hindsight bias; telling people to ignore the outcome does not work. A missing expectation is reported as "no expectation recorded".
 
-For a material `case.close` (§6.4), require a Retrospective from the same or preceding transaction, bound to a case snapshot that remains current for materially relevant work at closure. Other cases may close with `retrospective_waived` and a reason. If important new evidence or a changed decision basis intervened, require an updated Retrospective rather than accepting an obsolete account. Support one atomic batch creating the retrospective and closing with a `client_ref`, so the rule costs one call; `record`-only sessions are exempt. Do not force an agent to claim failures it did not see. “No reusable lesson identified” is valid with a bounded reason, not a fabricated self-congratulatory success. A failed or inconclusive case can still yield a useful method lesson.
+For a material `case.close` (§6.4), require a Retrospective from the same or preceding transaction, bound to a case snapshot that remains current for materially relevant work at closure. Other cases may close with `retrospective_waived` and a reason. If important new evidence or a changed decision basis intervened, require an updated Retrospective rather than accepting an obsolete account. Support one atomic batch creating the retrospective and closing with a `client_ref`, so the rule costs one call; a `record`-mode case is exempt only while it is not material (a failed or invalid Run makes it material). Do not force an agent to claim failures it did not see. “No reusable lesson identified” is valid with a bounded reason, not a fabricated self-congratulatory success. A failed or inconclusive case can still yield a useful method lesson.
 
 Lessons remain **case-scoped observations about process**, not accepted general rules. Mark proposed reusable lessons with applicability, counterexamples/limits and supporting cases. The default never automatically rewrites method packs, agent instructions, prompts or integration config. A later explicit, reviewed `method-pack` authoring workflow may incorporate them; that is outside v1.
 
@@ -874,7 +874,7 @@ Installation into a harness is explicit. `inv integration show --target <name>` 
 | `vault render/status/conflicts/reconcile` | Publish and inspect owned Obsidian projection, manage drift. | Generated view only unless explicit domain mutation. |
 | `export --kind KIND` / `archive verify/restore` | Produce immutable snapshot report, review vault or archive. | Files or new restore destination. |
 | `doctor` | Diagnose environment and version compatibility. | None. |
-| `mcp` | Serve generated typed tools using same domain engine. | Operations as invoked only. |
+| `mcp` (deferred, §9.7) | Serve generated typed tools using same domain engine. | Operations as invoked only. |
 | `integration show/apply` | Optional, explicit installation of small agent instructions. | Bounded owned config on apply. |
 | `obsidian setup` / `vault copy-map` | Optional review integration, human-owned map snapshot. | Only named owned files. |
 
@@ -1008,7 +1008,7 @@ This is the **one-call** path; in the shipped demo, replace angle-bracket placeh
 }
 ```
 
-If a substantive case is closed without a current Retrospective, reject the **entire** transaction with `RETROSPECTIVE_REQUIRED` or `RETROSPECTIVE_STALE`, return `commit_status: not_committed`, and include `inv schema retrospective.record` plus the failing case/read-set revisions in repair instructions. `record`-mode data-only sessions are exempt. An audit with zero structural warnings is **not** equivalent to a Retrospective or validation Review.
+If a substantive case is closed without a current Retrospective, reject the **entire** transaction with `RETROSPECTIVE_REQUIRED` or `RETROSPECTIVE_STALE`, return `commit_status: not_committed`, and include `inv schema retrospective.record` plus the failing case/read-set revisions in repair instructions. A `record`-mode data-only session is exempt while it is not material; a failed or invalid Run makes it material. An audit with zero structural warnings is **not** equivalent to a Retrospective or validation Review.
 
 #### Example: one atomic, schema-shaped comparison
 
@@ -1103,6 +1103,8 @@ If durability cannot be determined, return `commit_status: unknown` where possib
 `check` includes individual diagnostic issues with `severity`, `code`, `object`, `reason`, and structured repair options. It does not repair automatically. `repair index` is safe because the index is disposable; a journal fork or missing canonical artifact is not fixed by pretending it never existed.
 
 ### 9.7 Optional MCP surface
+
+**Deferred (owner decision, 2026-11-23).** W13 is parked outside every milestone and may be dropped. An agent must be able to learn and use the CLI from `--help` alone, following `.agents/edict/design/cli-conventions.md` (W17). The rest of this section records the design should MCP be built later.
 
 The CLI is the reference implementation. MCP uses the same Rust command dispatch, validation, receipts, and error codes over stdio. No HTTP listener is needed.
 
@@ -1830,9 +1832,9 @@ Ship fixtures that exercise **the same new features** in every case mode, not ju
 3. **Blindspot that changes the answer:** an apparent root cause ignores a corrupted clock; a queue choice ignores an unmeasured recovery guarantee. `inv blindspots` identifies the structural omissions. An agent records a challenge Review and appropriate Question/Assumption, not an invented replacement conclusion.
 4. **Semantic gap outside rule coverage:** a fresh agent proposes an additional rival explanation the deterministic audit did not identify. The review adds it; the checker does not claim failure or completeness from the absence of a preexisting rule.
 5. **Method lessons with limited transfer:** an invalid benchmark produces a useful retrospective. A subsequent architecture case may *read a reviewed lesson proposal* but never has its method pack silently rewritten. Lessons with restricted original evidence must not leak into a public report.
-6. **Closure transaction:** `retrospective.record` plus `case.close` in one transaction survives kill/retry; an attempted close without retrospective is rejected for substantive modes with a valid repair, while `record` mode remains exempt.
+6. **Closure transaction:** `retrospective.record` plus `case.close` in one transaction survives kill/retry; an attempted close without retrospective is rejected for substantive modes with a valid repair, while a non-material `record` case still closes without one (a failed or invalid Run makes a `record` case material).
 
-Expose the same fixtures through CLI and MCP, with deterministic expected read sets, summaries, audit rule IDs, and accepted transactions. Explicitly test that no new feature depends on Sapper or any installed agent runtime.
+Expose the same fixtures through the CLI (and MCP, if it is built), with deterministic expected read sets, summaries, audit rule IDs, and accepted transactions. Explicitly test that no new feature depends on Sapper or any installed agent runtime.
 
 ## 18. Implementation structure
 
@@ -1929,7 +1931,8 @@ No coupling to any concrete existing producer is a release dependency. A separat
 | W10 | Measurement validity, independence, assumptions, retractions, review freshness, objections, read-only structural `blindspots` rules, scoped challenge Reviews. | W03, W04, W05, W06 | Gap audit and adversarial fixtures; no missing-control or stale-reviewed result displayed as valid. |
 | W11 | Deterministic reports, decisions, handoffs, **method Retrospective**, export/archive/restore, sensitivity-aware policy. | W08, W10 | Restore exact replay; case/ADR reports include bounded methods lessons with links/limits and do not leak restricted evidence. |
 | W12 | Native Bases/Canvas, optional Obsidian CLI UI checks, owned file publishing/reconciliation. | W08, W10 | Tested supported Obsidian release; headless Markdown still valid. |
-| W13 | Typed MCP frontend derived from same catalog, not separate domain implementation. | W05, W10 | CLI/MCP parity and error conformance in independent tests. |
+| W13 | **Deferred outside every milestone (§9.7).** Typed MCP frontend derived from same catalog, not separate domain implementation. | W05, W10 | CLI/MCP parity and error conformance in independent tests. |
+| W17 | CLI learnable from `--help` alone: conform to `.agents/edict/design/cli-conventions.md` or record a reasoned exception (bare top-level verbs are an approved exception: `investigation` is the noun), lint every command's help in CI, and measure a help-only cold-agent arm. | W05 | A cold agent given only the binary and `--help` meets the preregistered target; the release trial includes the help-only arm. |
 | W14 | Cold-agent evaluation, seeded multi-domain tasks, **layered retrieval, blindspot and retrospective drills**, real dogfooding. | W05–W12 | Published trials meet §20 goals; invalid outcomes, hidden caveats and phantom lesson promotion are zero. |
 | W15 | Optional Obsidian companion for comparisons and review (no plugins required). | W12, W13 or CLI bridge | Controlled mutations/cancel/revision/stale-editor gates pass. |
 | W16 | Optional local action claims, extension SDK conveniences, pack authoring docs, packaging/portability. | W14, demonstrated need | No duplicate external effects claimed; platform gates correctly reported. |
@@ -1942,7 +1945,7 @@ No coupling to any concrete existing producer is a release dependency. A separat
 
 **B — generic recording and honest knowledge:** W06–W10. External producer fixtures (not a named app) record runs; provenance, validity, independence, criteria changes, synopsis freshness, and structural blindspot review are correct. No false security-/performance-specific defaults leak into the core.
 
-**C — great product:** W08/W11/W12/W13/W14. Obsidian casebook, retrospective reports, exports, restore, cold-agent tests across all four domains, and reviewed repair UX. This is the first release approved for consequential investigations.
+**C — great product:** W08/W11/W12/W14/W17. Obsidian casebook, retrospective reports, exports, restore, a CLI an agent learns from `--help` alone, cold-agent tests across all four domains, and reviewed repair UX. (W13, MCP, was moved out on 2026-11-23.) This is the first release approved for consequential investigations.
 
 **D — optional polish/integrations:** W15/W16. Companion earns itself through human testing, not because plugins are fashionable. External consumers can integrate independently at any point after public API conformance.
 
@@ -2049,7 +2052,7 @@ The implementer is empowered to replace an illustrative internal signature, but 
 - [ ] When sources/evidence change, previously recorded challenge reviews become stale where relevant; unconnected case mutations do not needlessly invalidate them.
 - [ ] A semantic blindspot outside the finite rules can be added as a Question/Assumption/Objection; no rule engine claims it should already have found it.
 - [ ] `retrospective.record` accepts useful lessons from failed, inconclusive or successful inquiries with transfer limits; allows explicit "no observed failures" without fabricated claims.
-- [ ] Closing a material case without a Retrospective fails with an actionable repair, while a non-material case may close with `retrospective_waived` and a reason; retrospective + close in one idempotent transaction works and preserves CAS semantics; recording-only cases remain exempt.
+- [ ] Closing a material case without a Retrospective fails with an actionable repair, while a non-material case may close with `retrospective_waived` and a reason; retrospective + close in one idempotent transaction works and preserves CAS semantics; non-material recording-only cases remain exempt (a failed or invalid Run makes one material).
 - [ ] Lessons do not silently modify method packs, prompts, agent settings, or canonical policy; restricted lessons cannot leak into public review exports.
 
 ### 20.2 Persistence, concurrency, and parser fixtures
