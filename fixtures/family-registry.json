@@ -7,7 +7,15 @@
       "variants": [
         {"id": "baseline", "split": "development", "directory": "development/scenario-a-timeout/baseline"},
         {"id": "broken-clock", "split": "development", "directory": "development/scenario-a-timeout/broken-clock"},
-        {"id": "different-build-trap", "split": "development", "directory": "development/scenario-a-timeout/different-build-trap"}
+        {"id": "different-build-trap", "split": "development", "directory": "development/scenario-a-timeout/different-build-trap"},
+        {
+          "id": "a-gate-rehearsal",
+          "split": "development",
+          "directory": "development/scenario-a-timeout/a-gate-rehearsal",
+          "objective": "Explain what the available traces support about the prolonged connection hold and identify an experiment that would resolve the main uncertainty.",
+          "initial": {"file": "source.txt", "sha256": "f33cd8c4355f0f3d04cfc7fe53da7c41850bfdefa82a3ae4cd7d49e9173ec9bf"},
+          "update": {"file": "update.txt", "sha256": "87fc44a8a3e2f88aacaa7f1ed1bc4c4c25c34ed729099c50fd49b0c491559a25"}
+        }
       ]
     },
     {

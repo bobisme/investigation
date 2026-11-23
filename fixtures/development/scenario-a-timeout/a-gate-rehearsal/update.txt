@@ -1,0 +1,4 @@
+Lab correction to the /items/lookup rehearsal.
+The 102 ms trial was built with an instrumentation change and the summary row was mislabeled.
+Treat that trial as an unmatched observation. The same-build trace still shows the hold.
+A new same-build release-before-wait/reversal comparison can separate effect from confounding.

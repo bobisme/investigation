@@ -1,0 +1,5 @@
+Development rehearsal. Client requests on /items/lookup stalled during build 7c2a.
+The slow trace records a checked-out connection from callback entry until its return.
+In one nominally matched release-before-wait rehearsal, the recorded hold was 102 ms.
+The baseline recorded 28,007 ms. The trial used a summary row marked comparable.
+The scheduler-only run used a different build and cannot separate scheduler effects.
