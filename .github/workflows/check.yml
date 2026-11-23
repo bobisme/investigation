@@ -34,6 +34,7 @@ jobs:
           python3 scripts/check-cli-goldens.py target/debug/investigation
           python3 scripts/check-readme-quickstart.py target/debug/investigation
           python3 scripts/prove_milestone_a.py target/debug/investigation
+          python3 scripts/scenario_b_proof.py --bin target/debug/investigation
       - name: Check the minimum supported Rust version
         run: |
           rustup toolchain install 1.89.0 --profile minimal
