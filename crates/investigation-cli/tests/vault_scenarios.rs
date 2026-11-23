@@ -224,7 +224,15 @@ fn assert_start_here(workspace: &Path, snapshot: &VerifiedSnapshot, plan: &Rende
         serde_json::from_slice::<Value>(&output.stdout)
             .unwrap_or_else(|error| panic!("{span}: {error}"));
     }
-    assert_eq!(commands, 2 * snapshot.cases().count(), "{note}");
+    // `brief` and `frontier` per case, and the two projection health checks.
+    assert_eq!(commands, 2 * snapshot.cases().count() + 2, "{note}");
+    let health = vault::section(&note, "Projection health").unwrap();
+    for check in ["vault status", "vault conflicts"] {
+        assert!(
+            health.contains(&format!("`investigation {check} --format json`")),
+            "{health}"
+        );
+    }
     note
 }
 

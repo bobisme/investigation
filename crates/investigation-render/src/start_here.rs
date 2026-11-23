@@ -153,6 +153,15 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
          `inv_render_sequence` is older than its case's sequence below is from an earlier \
          render.\n",
     );
+    // Run in the workspace folder; `vault_scenarios.rs` runs both verbatim.
+    let _ = writeln!(
+        out,
+        "- Check it from the workspace folder: {} says whether this vault matches the \
+         workspace's current snapshot and is complete, and {} lists each drifted file with \
+         where its withheld version is kept. Neither changes anything.",
+        inline_code(&format!("{PROGRAM_NAME} vault status --format json")),
+        inline_code(&format!("{PROGRAM_NAME} vault conflicts --format json")),
+    );
 }
 
 fn ownership_section(out: &mut String) {

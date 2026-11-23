@@ -5,11 +5,18 @@
 //! only; no vault file is read and nothing is written. Canonical reads
 //! (`brief`, `show`, `next`) never consult either, so a broken projection
 //! never changes what the CLI reports about canonical state.
+//!
+//! [`foreign_files`] adds the one fact the manifest cannot hold: which files
+//! in the vault nobody owns. It lists directories, reads no file content and
+//! writes nothing. [`working_policy`] is the view policy a working-vault
+//! render uses, so a frontend can compute the generation that
+//! [`VaultStatus::is_current`] compares with.
 
 use investigation_store::Workspace;
 
 use crate::{
-    CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, RenderError, RenderState,
+    CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, Publisher, RenderError,
+    RenderState, ViewPolicy,
     lock::{self, Probe},
 };
 
@@ -108,4 +115,29 @@ pub fn vault_status(workspace: &Workspace) -> Result<VaultStatus, RenderError> {
         drift: manifest.drift().cloned().collect(),
         manifest: loaded.status,
     })
+}
+
+/// The view policy of the working vault: the default audience, with
+/// derivative previews when the workspace's vault policy includes approved
+/// derivatives.
+pub fn working_policy(workspace: &Workspace) -> ViewPolicy {
+    ViewPolicy::default()
+        .with_derivative_previews(workspace.config().vault_policy.include_approved_derivatives)
+}
+
+/// Vault-relative paths of files outside the human-owned areas that the
+/// manifest does not own, sorted: what a render would preserve and report as
+/// unknown. `None` while a render runs, since its files are not owned yet.
+/// Hidden entries are skipped and links are listed, never followed. Reads
+/// directory listings only and writes nothing, not even the lock file.
+pub fn foreign_files(workspace: &Workspace) -> Result<Option<Vec<String>>, RenderError> {
+    // Held (when free) for the walk, so no render starts meanwhile.
+    let probe = lock::probe(workspace)?;
+    let Some(publisher) = Publisher::inspect(workspace, &probe)? else {
+        return Ok(None);
+    };
+    let manifest = Manifest::read(workspace)?.manifest;
+    publisher
+        .unknown_files(&|path| manifest.owns(path))
+        .map(Some)
 }

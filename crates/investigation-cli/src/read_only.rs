@@ -64,6 +64,10 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("note", Effect::WriteUnlessFlag("print_envelope")),
     ("case new", Effect::WriteUnlessFlag("print_envelope")),
     ("source add", Effect::WriteUnlessFlag("print_envelope")),
+    // Writes the vault, its manifest and the conflicts area under local/.
+    ("vault render", Effect::Write),
+    ("vault status", Effect::Read),
+    ("vault conflicts", Effect::Read),
 ];
 
 fn effect_of(path: &str) -> Option<Effect> {

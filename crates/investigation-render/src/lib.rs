@@ -100,8 +100,8 @@
 //!   and `frontier` commands. Health is an explicit input
 //!   ([`EntryHealth`]): the plan renders it healthy, and [`render_vault`]
 //!   publishes the variant announcing recorded drift or a partial render
-//!   through [`CaseRenderer::announce`] (`entry`). The vault health command
-//!   is not printed until a `vault status` command exists. Bump
+//!   through [`CaseRenderer::announce`] (`entry`). Projection health names
+//!   the `vault status` and `vault conflicts` commands that check it. Bump
 //!   [`RENDERER_VERSION`] whenever output bytes change for the same snapshot.
 //! - Evidence-family notes: [`evidence`] adds Source, Artifact and
 //!   Observation sections (acquisition, source assessment, role, integrity,
@@ -117,7 +117,9 @@
 //!   [`VaultState`] (unrendered, complete, updating, partial) and the last
 //!   complete generation from the manifest and the lock alone;
 //!   [`VaultStatus::is_current`] compares it with the generation of today's
-//!   snapshot. [`RenderReport::swept`] lists cleaned leftovers.
+//!   snapshot, built with [`working_policy`]. [`foreign_files`] lists the
+//!   unowned files a render would report as unknown, without rendering.
+//!   [`RenderReport::swept`] lists cleaned leftovers.
 //! - Drift ([`drift`]): an owned file that was edited (its body, or a
 //!   property a viewer's table rewrote), deleted, moved, or that has a sync
 //!   client's conflict copy beside it is refused ([`Refusal::Drifted`]) and
@@ -194,7 +196,7 @@ pub use publish::{
 };
 pub use snapshot::{CaseSnapshot, VerifiedSnapshot};
 pub use start_here::EntryHealth;
-pub use status::{VaultState, VaultStatus, vault_status};
+pub use status::{VaultState, VaultStatus, foreign_files, vault_status, working_policy};
 pub use sweep::{Swept, SweptAction};
 
 /// Default wait for another render to finish before reporting busy.

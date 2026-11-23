@@ -16,7 +16,8 @@ SCOPES = (
     ("init",), ("schema",), ("record",), ("ingest",), ("start",), ("receipt",), ("show",),
     ("brief",), ("explain",), ("review-packet",), ("next",), ("frontier",), ("blindspots",), ("retrospective",), ("search",), ("guide",), ("method", "list"), ("onboard",), ("check",), ("repair", "index"), ("evidence", "read"),
     ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
-    ("capture", "append"), ("capture", "attach"),
+    ("capture", "append"), ("capture", "attach"), ("vault", "render"), ("vault", "status"),
+    ("vault", "conflicts"),
 )
 
 

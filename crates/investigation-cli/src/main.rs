@@ -24,6 +24,7 @@ mod selection;
 mod shortcuts;
 mod snapshot;
 mod synopsis;
+mod vault;
 mod views;
 
 use std::{
@@ -261,6 +262,9 @@ enum Commands {
     /// Rebuild derived workspace data.
     #[command(subcommand)]
     Repair(RepairCommand),
+    /// Publish the working vault and inspect its health and drift.
+    #[command(subcommand, after_help = vault::AFTER_HELP)]
+    Vault(vault::VaultCommand),
 }
 
 #[derive(Subcommand)]
@@ -390,6 +394,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Calibration(args) => calibration::run(&mut store, &global, args),
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
+                Commands::Vault(command) => vault::run(&mut store, &global, command),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
                     let text = format!("index  rebuilt  {} case(s)", cases.len());

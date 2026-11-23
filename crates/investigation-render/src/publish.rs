@@ -35,6 +35,7 @@ use std::{
     ffi::{CStr, CString},
     fs::File,
     io::{Read, Write},
+    marker::PhantomData,
     os::fd::{AsFd, OwnedFd},
 };
 
@@ -48,7 +49,9 @@ use rustix::{
     io::Errno,
 };
 
-use crate::{Generation, PlanEntry, PlanPath, RenderError, RenderLock, RenderPlan, layout};
+use crate::{
+    Generation, PlanEntry, PlanPath, RenderError, RenderLock, RenderPlan, layout, lock::Probe,
+};
 
 const DIRECTORY: OFlags = OFlags::DIRECTORY
     .union(OFlags::RDONLY)
@@ -216,8 +219,28 @@ impl PublishReport {
 /// Applies plans to one workspace's vault. Holding a [`RenderLock`] is
 /// required to construct it, so no publication can run unserialized.
 pub struct Publisher<'lock> {
-    _lock: &'lock RenderLock,
+    /// The [`RenderLock`] it was opened under, or for [`Self::inspect`] the
+    /// idle probe; the publisher cannot outlive either.
+    _serialized: PhantomData<&'lock ()>,
     vault: OwnedFd,
+}
+
+/// Open `vault/` without following a link, when the vault policy is enabled.
+fn open_vault(workspace: &Workspace) -> Result<OwnedFd, RenderError> {
+    if !workspace.config().vault_policy.enabled {
+        return Err(RenderError::VaultDisabled);
+    }
+    let root = openat(
+        CWD,
+        workspace.root(),
+        OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(|error| RenderError::io(".", error))?;
+    openat(&root, "vault", DIRECTORY, Mode::empty()).map_err(|error| match error {
+        Errno::LOOP | Errno::NOTDIR => RenderError::UnsafeDirectory("vault"),
+        error => RenderError::io("vault", error),
+    })
 }
 
 pub(crate) enum Walk {
@@ -231,22 +254,27 @@ impl<'lock> Publisher<'lock> {
         if lock.workspace_root() != workspace.root() {
             return Err(RenderError::WrongWorkspace);
         }
-        if !workspace.config().vault_policy.enabled {
-            return Err(RenderError::VaultDisabled);
+        Ok(Self {
+            _serialized: PhantomData,
+            vault: open_vault(workspace)?,
+        })
+    }
+
+    /// A publisher for reading the vault ([`Self::unknown_files`]) while no
+    /// render runs, or `None` while one does. `probe` holds the render lock
+    /// when its file exists, so no render starts during the read. Crate
+    /// callers only read through it; every write needs [`Self::open`].
+    pub(crate) fn inspect(
+        workspace: &Workspace,
+        probe: &'lock Probe,
+    ) -> Result<Option<Self>, RenderError> {
+        match probe {
+            Probe::Running => Ok(None),
+            Probe::Idle { .. } => Ok(Some(Self {
+                _serialized: PhantomData,
+                vault: open_vault(workspace)?,
+            })),
         }
-        let root = openat(
-            CWD,
-            workspace.root(),
-            OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC,
-            Mode::empty(),
-        )
-        .map_err(|error| RenderError::io(".", error))?;
-        let vault =
-            openat(&root, "vault", DIRECTORY, Mode::empty()).map_err(|error| match error {
-                Errno::LOOP | Errno::NOTDIR => RenderError::UnsafeDirectory("vault"),
-                error => RenderError::io("vault", error),
-            })?;
-        Ok(Self { _lock: lock, vault })
     }
 
     /// Apply every entry in plan order, then remove retired paths. A refused
