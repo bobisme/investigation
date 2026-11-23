@@ -82,8 +82,8 @@ impl TextLabel {
     /// Trust marking for an excerpt. Both kinds are data, never instructions.
     pub const fn content_trust(self) -> &'static str {
         match self {
-            Self::RecordedEvidence => "untrusted_evidence",
-            Self::EditorialSummary | Self::AuthoredText => "authored_data",
+            Self::RecordedEvidence => crate::authored_text::UNTRUSTED_EVIDENCE,
+            Self::EditorialSummary | Self::AuthoredText => crate::authored_text::AUTHORED_DATA,
         }
     }
 }

@@ -39,6 +39,7 @@ use clap::{
 };
 use investigation_core::{
     PROGRAM_NAME,
+    authored_text::escape_for_terminal,
     command::Command as RecordCommand,
     command::RevisionRef,
     freshness::FreshnessIndex,
@@ -532,16 +533,12 @@ fn show(
             view["method_packs"] = json!(store.method_packs(&replay.state, case, None)?);
         }
     }
+    let text = views::authored_text_lines(&mut view);
     if depth == ViewDepth::Full {
         let text = serde_json::to_string_pretty(&view).expect("full view serializes");
         return Ok(Output::success("record_shown", view, text));
     }
-    let mut text = format!(
-        "{}  {}\n{}",
-        id,
-        view["title"].as_str().unwrap_or(""),
-        view["summary"].as_str().unwrap_or("")
-    );
+    let mut text = format!("{id}  {text}");
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
     text.push_str(&investigation_core::confidence::text(&view));
@@ -1083,9 +1080,15 @@ fn main() -> ExitCode {
         Err(error) => parse_error(error),
     };
 
-    let text = output.text.trim_end();
+    // Authored and recorded text never reaches a terminal with a literal
+    // control, bidirectional override or invisible character.
+    let text = escape_for_terminal(output.text.trim_end());
     let result = match format {
-        Format::Json => writeln!(io::stdout().lock(), "{}", output.value),
+        Format::Json => writeln!(
+            io::stdout().lock(),
+            "{}",
+            escape_for_terminal(&output.value.to_string())
+        ),
         Format::Text if output.exit != 0 && output.value.get("error").is_some() => {
             writeln!(io::stderr().lock(), "{text}")
         }

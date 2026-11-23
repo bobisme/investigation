@@ -664,6 +664,37 @@ pub(crate) fn project_record(
     Value::Object(out)
 }
 
+/// Marks which fields of a `show` view hold authored or recorded text, in
+/// `content_trust`, and returns those fields as quoted, attributed text lines
+/// for text mode. Both are data and never instructions. A restricted view
+/// carries no authored text.
+pub fn authored_text_lines(view: &mut Value) -> String {
+    use investigation_core::authored_text::{AUTHORED_DATA, UNTRUSTED_EVIDENCE, quoted};
+    if view["content_state"] == "restricted" {
+        return "Restricted record".into();
+    }
+    let mut trust = Map::new();
+    trust.insert("title".into(), json!(AUTHORED_DATA));
+    let mut text = quoted(
+        "title",
+        AUTHORED_DATA,
+        view["title"].as_str().unwrap_or_default(),
+    );
+    if let Some(summary) = view.get("summary").and_then(Value::as_str) {
+        // An Observation's summary carries its recorded quote and statement.
+        let label = if view["summary_untrusted_data"] == true {
+            UNTRUSTED_EVIDENCE
+        } else {
+            AUTHORED_DATA
+        };
+        trust.insert("summary".into(), json!(label));
+        text.push('\n');
+        text.push_str(&quoted("summary", label, summary));
+    }
+    view["content_trust"] = Value::Object(trust);
+    text
+}
+
 /// Text lines naming open objections and what an accepted decision was
 /// accepted over; empty when there is nothing to show.
 pub fn challenges_text(view: &Value) -> String {
@@ -752,7 +783,8 @@ pub(crate) fn record_title(record: &Record) -> String {
         ],
         Kind::Review => &["title", "scope", "method"],
         Kind::Objection => &["statement", "challenge", "title"],
-        Kind::Annotation => &["text", "content", "title"],
+        // An annotation, synopsis or note, is titled by its own text.
+        Kind::Annotation => &["content.text", "text", "title"],
         Kind::Retrospective => &["title", "summary", "lesson"],
         Kind::Inquiry => &["title", "question", "description"],
         Kind::Run => &["title", "operation", "status"],
@@ -762,9 +794,7 @@ pub(crate) fn record_title(record: &Record) -> String {
         Kind::Import => &["title", "source", "name"],
         Kind::Workspace => &["title", "name", "description"],
     };
-    // A synopsis is titled by its own text; other annotations keep their fields.
-    let synopsis = investigation_core::synopsis::text(record).map(|_| "content.text");
-    for key in synopsis.iter().copied().chain(fields.iter().copied()) {
+    for key in fields {
         if let Some(text) = value_at(&record.body, key).and_then(Value::as_str) {
             let safe = display_title(text, 160);
             if !safe.is_empty() {
@@ -818,8 +848,7 @@ pub(crate) fn record_summary(record: &Record) -> String {
         ],
         Kind::Review => &["scope", "method", "summary"],
         Kind::Objection => &["statement", "basis", "impact"],
-        Kind::Annotation if investigation_core::synopsis::is_synopsis(record) => &["content.text"],
-        Kind::Annotation => &["text", "content", "role"],
+        Kind::Annotation => &["content.text", "text"],
         Kind::Retrospective => &["summary", "lessons", "follow_ups"],
         Kind::Inquiry => &["question", "method", "predicted_outcomes"],
         Kind::Run => &["operation", "summary", "status"],
@@ -838,13 +867,15 @@ pub(crate) fn record_summary(record: &Record) -> String {
         parts.push(line.as_str().into());
     }
     for key in preferred {
-        if let Some(text) = value_at(&record.body, key).and_then(Value::as_str)
-            && !text.trim().is_empty()
-            && seen.insert(text)
+        // One line: controls, line breaks and bidirectional or invisible
+        // characters never reach a summary.
+        if let Some(text) = value_at(&record.body, key)
+            .and_then(Value::as_str)
+            .map(investigation_core::authored_text::fold)
+            && !text.is_empty()
+            && seen.insert(text.clone())
         {
-            parts.push(investigation_core::local_path::elide_local_paths(
-                text.trim(),
-            ));
+            parts.push(text.into());
         }
     }
     // Deterministic UTF-8 field-boundary truncation: a field is included whole
@@ -974,7 +1005,7 @@ mod tests {
     fn title_sanitization_removes_markup_and_is_bounded() {
         assert_eq!(
             display_title("## hello <world>\nthere", 20),
-            "hello world there"
+            "\u{ff03}\u{ff03} hello \u{2039}world\u{203a} the"
         );
     }
 

@@ -29,67 +29,12 @@
 
 use std::fmt::Write as _;
 
+pub use investigation_core::authored_text::is_invisible_format;
+use investigation_core::authored_text::{defang, one_line};
+
 /// The only info string generated fenced blocks carry. A source-provided
 /// language is never passed through, so a plugin fence cannot run.
 pub const EXCERPT_LANGUAGE: &str = "text";
-
-/// Replaces each slash of a `//` run, so `scheme://` and `//host` never
-/// autolink.
-const SLASH: char = '\u{2215}';
-/// Replaces the dot after `www`.
-const DOT: char = '\u{2024}';
-/// Replaces `@` between an address local part and a host.
-const AT: char = '\u{ff20}';
-/// Replaces the colon after a URI scheme, and the second colon of `::`.
-const COLON: char = '\u{2236}';
-
-/// URI schemes whose colon is defanged when text follows it directly.
-const SCHEMES: &[&str] = &[
-    "data",
-    "file",
-    "ftp",
-    "ftps",
-    "http",
-    "https",
-    "irc",
-    "javascript",
-    "mailto",
-    "obsidian",
-    "sftp",
-    "sms",
-    "ssh",
-    "tel",
-    "vbscript",
-    "ws",
-    "wss",
-    "xmpp",
-];
-
-/// Bidirectional controls, zero-width characters and other invisible format
-/// characters. They can make text display differently from its bytes.
-pub fn is_invisible_format(c: char) -> bool {
-    matches!(
-        c,
-        '\u{ad}'
-            | '\u{34f}'
-            | '\u{61c}'
-            | '\u{115f}'
-            | '\u{1160}'
-            | '\u{17b4}'
-            | '\u{17b5}'
-            | '\u{180b}'..='\u{180f}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{202a}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}'
-            | '\u{3164}'
-            | '\u{fe00}'..='\u{fe0f}'
-            | '\u{feff}'
-            | '\u{ffa0}'
-            | '\u{fff0}'..='\u{fff8}'
-            | '\u{1d173}'..='\u{1d17a}'
-            | '\u{e0000}'..='\u{e0fff}'
-    )
-}
 
 /// Characters no context carries literally: controls, invisible format
 /// characters and the noncharacters YAML cannot hold.
@@ -97,133 +42,19 @@ fn is_unsafe(c: char) -> bool {
     c.is_control() || is_invisible_format(c) || matches!(c, '\u{fffe}' | '\u{ffff}')
 }
 
-/// The text on one line: invisible format characters and noncharacters are
-/// dropped, every run of other controls and whitespace (including CR, LF and
-/// the Unicode line separators) becomes one space, and the ends are trimmed.
-fn one_line(input: &str) -> Vec<char> {
-    let mut out = Vec::new();
-    let mut pending_space = false;
-    for c in input.chars() {
-        if is_invisible_format(c) || matches!(c, '\u{fffe}' | '\u{ffff}') {
-            continue;
-        }
-        if c.is_whitespace() || c.is_control() {
-            pending_space = !out.is_empty();
-            continue;
-        }
-        if pending_space {
-            out.push(' ');
-            pending_space = false;
-        }
-        out.push(c);
-    }
-    out
-}
-
-/// Whether the ASCII letters ending just before `at` name a URI scheme that
-/// starts a word.
-fn scheme_ends_at(chars: &[char], at: usize) -> bool {
-    let start = chars[..at]
-        .iter()
-        .rposition(|c| !(c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.')))
-        .map_or(0, |index| index + 1);
-    if start == at || (start > 0 && chars[start - 1].is_alphanumeric()) {
-        return false;
-    }
-    let scheme: String = chars[start..at].iter().collect();
-    SCHEMES.contains(&scheme.to_ascii_lowercase().as_str())
-}
-
-fn is_address_local(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '.' | '+' | '-' | '_')
-}
-
-/// Break every pattern a viewer would autolink in plain text.
-fn defang(chars: &mut [char]) {
-    let original = chars.to_vec();
-    for (index, slot) in chars.iter_mut().enumerate() {
-        let prev = index.checked_sub(1).map(|i| original[i]);
-        let next = original.get(index + 1).copied();
-        *slot = match original[index] {
-            '/' if prev == Some('/') || next == Some('/') => SLASH,
-            '.' if index >= 3
-                && original[index - 3..index]
-                    .iter()
-                    .all(|c| c.eq_ignore_ascii_case(&'w'))
-                && (index == 3 || !original[index - 4].is_alphanumeric()) =>
-            {
-                DOT
-            }
-            '@' if prev.is_some_and(is_address_local)
-                && next.is_some_and(|c| c.is_ascii_alphanumeric()) =>
-            {
-                AT
-            }
-            ':' if next.is_some_and(|c| !c.is_whitespace()) && scheme_ends_at(&original, index) => {
-                COLON
-            }
-            c => c,
-        };
-    }
-}
-
-/// Whether `chars[at..]` starts an HTML character reference such as `&lt;`.
-fn starts_reference(chars: &[char], at: usize) -> bool {
-    let name = chars[at + 1..]
-        .iter()
-        .take_while(|c| c.is_ascii_alphanumeric() || **c == '#')
-        .count();
-    name > 0 && chars.get(at + 1 + name) == Some(&';')
-}
-
-/// The inert look-alike for markup character `chars[at]` in display text.
-fn display_char(chars: &[char], at: usize) -> char {
-    let prev = at.checked_sub(1).map(|i| chars[i]);
-    let next = chars.get(at + 1).copied();
-    let doubled = |c| prev == Some(c) || next == Some(c);
-    match chars[at] {
-        '[' => '(',
-        ']' => ')',
-        '<' => '\u{2039}',
-        '>' => '\u{203a}',
-        '|' => '\u{a6}',
-        '#' => '\u{ff03}',
-        '`' => '\'',
-        '*' => '\u{2217}',
-        '\\' => '\u{29f5}',
-        '$' => '\u{ff04}',
-        '^' => '\u{2c6}',
-        '~' => '\u{223c}',
-        '=' if doubled('=') => '\u{ff1d}',
-        '%' if doubled('%') => '\u{ff05}',
-        '_' if !(prev.is_some_and(char::is_alphanumeric)
-            && next.is_some_and(char::is_alphanumeric)) =>
-        {
-            '\u{ff3f}'
-        }
-        '&' if starts_reference(chars, at) => '\u{ff06}',
-        ':' if prev == Some(':') => COLON,
-        c => c,
-    }
-}
-
 /// Single-line display text for titles, H1 headings, aliases, link labels
 /// and other short labels, or `None` when nothing displayable remains.
 ///
-/// The result needs no escaping in a heading, a wikilink label, a table cell
-/// or a YAML scalar: ASCII markup characters become inert look-alikes (`[`
-/// shows as `(`, `|` as `¦`, `#` as `＃`, and so on), URL patterns are
+/// This is the core title sanitizer,
+/// [`investigation_core::authored_text::display_title`], which the CLI uses
+/// too. The result needs no escaping in a heading, a wikilink label, a table
+/// cell or a YAML scalar: ASCII markup characters become inert look-alikes
+/// (`[` shows as `(`, `|` as `¦`, `#` as `＃`, and so on), URL patterns are
 /// defanged, and line breaks and controls become spaces. Letters, digits,
 /// emoji and other punctuation are kept. Bounded to `max_chars` characters.
 /// Applying it again to its own output changes nothing.
 pub fn display_text(input: &str, max_chars: usize) -> Option<String> {
-    let mut chars = one_line(&investigation_core::local_path::elide_local_paths(input));
-    defang(&mut chars);
-    let mut out: String = (0..chars.len())
-        .take(max_chars)
-        .map(|at| display_char(&chars, at))
-        .collect();
-    out.truncate(out.trim_end().len());
+    let out = investigation_core::authored_text::display_title(input, max_chars);
     (!out.is_empty()).then_some(out)
 }
 

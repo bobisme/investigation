@@ -126,10 +126,11 @@ pub(crate) fn text_line(view: &Value) -> String {
     let block = &view["authored_synopsis"];
     if let Some(state) = block["state"].as_str() {
         return match block["latest"]["text"].as_str() {
-            // Debug formatting quotes and escapes authored text as data.
-            Some(text) if state == "current" => {
-                format!("\nAuthored synopsis [editorial_summary, current]: {text:?}")
-            }
+            // Quoted and escaped as data: nothing inside can end the line.
+            Some(text) if state == "current" => format!(
+                "\nAuthored synopsis [editorial_summary, current]: {}",
+                investigation_core::authored_text::quote(text)
+            ),
             _ => format!(
                 "\nAuthored synopsis [editorial_summary, {state}]: not shown; the summary above uses typed fields."
             ),

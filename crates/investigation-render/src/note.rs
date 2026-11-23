@@ -353,7 +353,8 @@ impl<'a> NoteContext<'a> {
                 other("option_ref.id")?,
                 other("criterion_ref.id")?
             ),
-            Kind::Decision => format!("Select {}", other("choice.option_ref.id")?),
+            // A label, never an imperative sentence around authored text.
+            Kind::Decision => format!("Chosen option: {}", other("choice.option_ref.id")?),
             Kind::Observation if text_at(body, "value.kind") == Some("measurement") => {
                 let value = text_at(body, "value.value")?;
                 match text_at(body, "value.unit") {

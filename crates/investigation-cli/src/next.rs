@@ -255,7 +255,17 @@ fn render_text(value: &Value, response: &NextResponse) -> String {
         }
         if !recommendation.outcome_branches.is_empty() {
             for branch in &recommendation.outcome_branches {
-                text.push_str(&format!("   {} → {}\n", branch.outcome, branch.consequence));
+                // The outcome is a recorded prediction: quoted data, never
+                // part of the tool's sentence.
+                text.push_str(&format!(
+                    "   {} → {}\n",
+                    investigation_core::authored_text::quoted(
+                        "outcome",
+                        investigation_core::authored_text::AUTHORED_DATA,
+                        &branch.outcome
+                    ),
+                    branch.consequence
+                ));
             }
         }
         if let Some(group) = &recommendation.group {

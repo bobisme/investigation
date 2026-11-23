@@ -254,17 +254,12 @@ pub struct RecordHeader {
     pub extensions: BTreeMap<String, serde_json::Value>,
 }
 
-/// Bounded display text, never an identity. Removes control and common markup delimiters.
+/// Bounded display text, never an identity: the one title sanitizer,
+/// [`crate::authored_text::display_title`]. Controls, line breaks,
+/// bidirectional overrides and invisible characters are removed, and markup
+/// becomes inert look-alikes.
 pub fn display_title(input: &str, max_chars: usize) -> String {
-    crate::local_path::elide_local_paths(input)
-        .chars()
-        .filter(|c| !matches!(c, '<' | '>' | '[' | ']' | '*' | '_' | '`' | '#'))
-        .map(|c| if c.is_control() { ' ' } else { c })
-        .collect::<String>()
-        .trim()
-        .chars()
-        .take(max_chars)
-        .collect()
+    crate::authored_text::display_title(input, max_chars)
 }
 
 #[cfg(test)]
@@ -305,7 +300,10 @@ mod tests {
     }
     #[test]
     fn title_is_bounded_and_safe() {
-        assert_eq!(display_title("# Hello\n<script>", 8), "Hello sc");
+        assert_eq!(
+            display_title("# Hello\n<script>", 10),
+            "\u{ff03} Hello \u{2039}s"
+        );
     }
     #[test]
     fn timestamps_validate_and_clock_is_utc() {

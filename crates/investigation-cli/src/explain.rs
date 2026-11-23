@@ -28,6 +28,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use investigation_core::{
     absence_gate::{self, AbsenceBasis, EquivalenceBasis},
+    authored_text,
     basis::basis_digest,
     classification::{AudiencePolicy, Classifier, Field},
     command::RevisionRef,
@@ -1035,7 +1036,11 @@ fn text(view: &Value) -> String {
                     .as_str()
                     .or_else(|| node["freshness"]["state"].as_str())
                     .unwrap_or("unknown"),
-                node["title"].as_str().unwrap_or("")
+                authored_text::quoted(
+                    "title",
+                    authored_text::AUTHORED_DATA,
+                    node["title"].as_str().unwrap_or("")
+                )
             ));
         }
         if let Some(relation) = node["recorded"]["relation"].as_str() {

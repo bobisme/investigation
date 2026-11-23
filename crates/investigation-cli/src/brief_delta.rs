@@ -363,8 +363,11 @@ pub(crate) fn delta(
                 lessons
                     .iter()
                     .take(SHOWN_REASONS)
+                    // `guidance` is the lesson's recorded field name: authored
+                    // data, labelled so, never the tool's own guidance.
                     .map(|lesson| json!({
                         "guidance":display_title(lesson["guidance"].as_str().unwrap_or(""), 160),
+                        "content_trust":investigation_core::authored_text::AUTHORED_DATA,
                         "support_refs":lesson["support_refs"],
                     }))
                     .collect::<Vec<_>>()

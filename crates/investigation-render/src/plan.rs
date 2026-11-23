@@ -24,7 +24,11 @@ use crate::{
 ///
 /// v7: the full `Start Here.md` (W08.06), and local absolute paths elided
 /// from display text (W06b.15, which changed bytes without its own bump).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v8";
+/// v8: human-owned folder enforcement and the Attachments/hidden-folder rows
+/// in `Start Here.md` (W08.08).
+/// v9: a Decision without a title of its own is titled `Chosen option: …`
+/// rather than an imperative sentence around authored text (W05b.13).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v9";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

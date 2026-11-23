@@ -272,9 +272,24 @@ pub(crate) fn read(
         }
         Excerpt::Binary { .. } => "Binary content is retained in the workspace.".into(),
     };
+    // The excerpt is delimited by a fence longer than any backtick run inside
+    // it, so no excerpt line can close it.
+    let fence = "`".repeat((longest_backtick_run(&text) + 1).max(3));
     Ok(Output::success(
         "evidence_read",
         json!(evidence),
-        format!("{id}  untrusted evidence\n{text}"),
+        format!(
+            "{id}  untrusted evidence, quoted data between the fences\n{fence}text\n{}\n{fence}",
+            text.strip_suffix('\n').unwrap_or(&text)
+        ),
     ))
+}
+
+fn longest_backtick_run(text: &str) -> usize {
+    let (mut longest, mut run) = (0, 0);
+    for c in text.chars() {
+        run = if c == '`' { run + 1 } else { 0 };
+        longest = longest.max(run);
+    }
+    longest
 }

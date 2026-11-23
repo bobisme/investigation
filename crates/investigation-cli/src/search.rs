@@ -9,6 +9,7 @@
 use std::collections::BTreeMap;
 
 use investigation_core::{
+    authored_text::quote,
     classification::{Audience, AudiencePolicy, Classifier, Field},
     command::RevisionRef,
     freshness::FreshnessIndex,
@@ -477,17 +478,17 @@ fn render(value: &Value) -> String {
         .flatten()
         .enumerate()
     {
-        // Debug formatting quotes and escapes recorded text as data.
+        // Recorded text is quoted and escaped as data.
         text.push_str(&format!(
-            "\n{}. {}  {}  {:?}",
+            "\n{}. {}  {}  {}",
             index + 1,
             result["id"].as_str().unwrap_or(""),
             result["type"].as_str().unwrap_or(""),
-            result["title"].as_str().unwrap_or("")
+            quote(result["title"].as_str().unwrap_or(""))
         ));
         for found in result["matches"].as_array().into_iter().flatten() {
             text.push_str(&format!(
-                "\n   {} [{}{}]: {:?}",
+                "\n   {} [{}{}]: {}",
                 found["field"].as_str().unwrap_or(""),
                 found["label"].as_str().unwrap_or(""),
                 if found["counts_as_source_hit"] == true {
@@ -495,15 +496,17 @@ fn render(value: &Value) -> String {
                 } else {
                     ""
                 },
-                found["excerpt"]
-                    .as_str()
-                    .or(found["lesson_pointer"]["lesson_key"].as_str())
-                    .unwrap_or("")
+                quote(
+                    found["excerpt"]
+                        .as_str()
+                        .or(found["lesson_pointer"]["lesson_key"].as_str())
+                        .unwrap_or("")
+                )
             ));
         }
         text.push_str(&format!(
-            "\n   synopsis [editorial_summary]: {:?}",
-            result["synopsis"]["text"].as_str().unwrap_or("")
+            "\n   synopsis [editorial_summary]: {}",
+            quote(result["synopsis"]["text"].as_str().unwrap_or(""))
         ));
     }
     text.push('\n');
