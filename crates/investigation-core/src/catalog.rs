@@ -505,6 +505,7 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::review_ops::operations())
         .chain(crate::decision_ops::operations())
         .chain(crate::retrospective_ops::operations())
+        .chain(crate::lessons_ops::operations())
         .chain(crate::observation_ops::operations())
         .chain(crate::method_pack_ops::operations())
         .chain(crate::measurement_ops::operations())

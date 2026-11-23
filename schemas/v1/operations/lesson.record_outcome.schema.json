@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ConsultationEffect": {
+      "description": "Whether a consulted lesson changed anything in the reading case.",
+      "oneOf": [
+        {
+          "const": "changed_work",
+          "description": "The lesson changed recorded work; `record_refs` show where.",
+          "type": "string"
+        },
+        {
+          "const": "no_change",
+          "description": "The lesson was read and changed nothing.",
+          "type": "string"
+        },
+        {
+          "const": "contradicted",
+          "description": "The case's recorded work contradicts the lesson; a counterexample.",
+          "type": "string"
+        },
+        {
+          "const": "undetermined",
+          "description": "Whether it mattered cannot be told from the recorded work.",
+          "type": "string"
+        }
+      ]
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:lesson.record_outcome",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "consultation_ref": {
+      "$ref": "#/$defs/Reference",
+      "description": "The current revision of this case's consultation."
+    },
+    "effect": {
+      "$ref": "#/$defs/ConsultationEffect"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "record_refs": {
+      "default": [],
+      "description": "Same-case records the lesson changed or that contradict it. Required\nfor changed_work and contradicted.",
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "consultation_ref",
+    "effect",
+    "rationale"
+  ],
+  "title": "LessonRecordOutcome",
+  "type": "object"
+}

@@ -114,13 +114,15 @@ fn draft_digest_is_a_snapshot_bound_read_that_grounds_the_recorded_account() {
         digest,
         "the digest is a deterministic read"
     );
-    let missing = run(
+    // Without --draft the command reads the recorded account, of which there is none yet.
+    let read = run(
         root,
-        &["--case", case_arg, "retrospective", "--json"],
+        &["--case", case_arg, "--read-only", "retrospective", "--json"],
         None,
-        2,
+        0,
     );
-    assert_eq!(missing["commit_status"], "not_committed");
+    assert_eq!(read["result"], "retrospective_read");
+    assert_eq!(read["retrospectives"], json!([]));
 
     let mut payload = digest["record_template"].clone();
     let fields = payload.as_object_mut().unwrap();

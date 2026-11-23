@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "LessonPointer": {
+      "additionalProperties": false,
+      "description": "A consulted lesson in another case. It carries no lesson text.",
+      "properties": {
+        "admission_ref": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "lesson_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "lesson_index": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "retrospective_ref": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "source_case_id": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "source_case_id",
+        "retrospective_ref",
+        "lesson_index",
+        "admission_ref",
+        "lesson_digest"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:lesson.consult",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "lesson": {
+      "$ref": "#/$defs/LessonPointer",
+      "description": "The admitted lesson, exactly as a lesson read lists it."
+    },
+    "purpose": {
+      "description": "Why this case read the lesson.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "lesson"
+  ],
+  "title": "LessonConsult",
+  "type": "object"
+}

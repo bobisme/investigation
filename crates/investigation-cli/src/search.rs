@@ -13,6 +13,7 @@ use investigation_core::{
     command::RevisionRef,
     freshness::FreshnessIndex,
     identity::{Id, Kind},
+    lessons::{self, LessonKey},
     search_text::{
         SEARCH_TEXT_VERSION, TextLabel, contains_all, excerpt, indexed_texts, query_terms,
     },
@@ -30,6 +31,8 @@ use crate::{
 
 pub(crate) const AFTER_HELP: &str = "\
 Searches the selected case by default. Use --all-cases to search every case.
+With --all-cases, a Retrospective lesson matches only after its case admitted it,
+and only as a pointer: read its text with retrospective --lessons --consult.
 Every query word must appear in one recorded text field. Query syntax is not
 interpreted: punctuation separates words.
 
@@ -95,7 +98,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         .iter()
         .map(|(id, replay)| (*id, Classifier::new(&replay.state)))
         .collect();
-    let verified = verify(&snapshot, &classifiers, &terms, &policy);
+    let verified = verify(&snapshot, &classifiers, &terms, &policy, args.all_cases);
 
     let mut counts = BTreeMap::from([
         (TextLabel::EditorialSummary, 0usize),
@@ -173,7 +176,10 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
 struct Match {
     field: String,
     label: TextLabel,
-    excerpt: String,
+    /// Absent for a lesson match in a cross-case search: the lesson is
+    /// returned as a pointer and read through a recorded consultation.
+    excerpt: Option<String>,
+    lesson: Option<LessonKey>,
 }
 
 struct Hit {
@@ -190,6 +196,7 @@ fn verify(
     classifiers: &BTreeMap<Id, Classifier<'_>>,
     terms: &[String],
     policy: &AudiencePolicy,
+    all_cases: bool,
 ) -> Vec<Hit> {
     let mut order: Vec<(Id, Id)> = Vec::new();
     // Index labels and revisions are ignored: labels, text and the current
@@ -221,14 +228,32 @@ fn verify(
             continue;
         }
         let canonical = indexed_texts(record);
+        // A cross-case search reads no case as the lesson's source, so only
+        // admitted lessons are visible in it (§8.6).
+        let admitted = (all_cases && record.header.id.kind() == Kind::Retrospective)
+            .then(|| lessons::admitted_indexes(&replay.state, record));
         let matches: Vec<Match> = grouped[&key]
             .iter()
+            .filter(|field| {
+                admitted
+                    .as_ref()
+                    .is_none_or(|admitted| lesson_field_visible(field, admitted))
+            })
             .filter_map(|field| {
                 let text = canonical.iter().find(|text| text.field == *field)?;
+                let lesson = admitted
+                    .is_some()
+                    .then(|| lesson_index(field))
+                    .flatten()
+                    .map(|index| LessonKey {
+                        retrospective_id: record.header.id,
+                        index,
+                    });
                 contains_all(&text.text, terms).then(|| Match {
                     field: text.field.clone(),
                     label: text.label,
-                    excerpt: excerpt(&text.text, terms),
+                    excerpt: lesson.is_none().then(|| excerpt(&text.text, terms)),
+                    lesson,
                 })
             })
             .take(3)
@@ -242,6 +267,65 @@ fn verify(
         }
     }
     hits
+}
+
+/// The lesson position of a Retrospective field under `lessons.N`.
+fn lesson_index(field: &str) -> Option<u32> {
+    field
+        .strip_prefix("lessons.")?
+        .split('.')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// Whether a Retrospective field is outside its lessons or in an admitted one.
+fn lesson_field_visible(field: &str, admitted: &[u32]) -> bool {
+    let Some(rest) = field.strip_prefix("lessons") else {
+        return true;
+    };
+    if rest.is_empty() {
+        return false;
+    }
+    let Some(position) = rest.strip_prefix('.') else {
+        return true;
+    };
+    position
+        .split('.')
+        .next()
+        .and_then(|index| index.parse::<u32>().ok())
+        .is_some_and(|index| admitted.contains(&index))
+}
+
+/// A cross-case lesson match without its text. Another case reads the text
+/// only through a recorded consultation (§8.6).
+fn lesson_pointer(workspace: &[String], state: &State, source: Id, key: LessonKey) -> Value {
+    let admission = lessons::admissions(state, source)
+        .get(&key)
+        .map(|(record, _)| record.reference());
+    let mut consult = workspace.to_vec();
+    consult.extend(
+        [
+            "--case",
+            "<READING_CASE>",
+            "retrospective",
+            "--lessons",
+            "--consult",
+            &key.to_string(),
+            "--format",
+            "json",
+        ]
+        .map(str::to_owned),
+    );
+    json!({
+        "lesson_key":key.to_string(),
+        "source_case_id":source,
+        "admission_state":if admission.is_some() { "admitted" } else { "unadmitted" },
+        "admission_ref":admission,
+        "content_state":"consult_to_read",
+        "consult_argv":consult,
+        "consult_note":"Replace <READING_CASE> with the case that will read the lesson. The consultation is recorded before the text is shown.",
+    })
 }
 
 struct Context<'a> {
@@ -272,15 +356,24 @@ fn result_value(context: &Context<'_>, hit: &Hit, position: usize, terms: &[Stri
     let matches: Vec<_> = hit
         .matches
         .iter()
-        .map(|found| {
-            json!({
+        .map(|found| match found.lesson {
+            Some(key) => json!({
+                "field":found.field,
+                "label":found.label,
+                "counts_as_source_hit":false,
+                "content_trust":found.label.content_trust(),
+                "rendering":"pointer_only",
+                "excerpt":null,
+                "lesson_pointer":lesson_pointer(workspace, &replay.state, hit.case_id, key),
+            }),
+            None => json!({
                 "field":found.field,
                 "label":found.label,
                 "counts_as_source_hit":found.label.counts_as_source_hit(),
                 "content_trust":found.label.content_trust(),
                 "rendering":"quoted_data",
                 "excerpt":found.excerpt,
-            })
+            }),
         })
         .collect();
     let fields: Vec<_> = hit.matches.iter().map(|m| m.field.as_str()).collect();
@@ -402,7 +495,10 @@ fn render(value: &Value) -> String {
                 } else {
                     ""
                 },
-                found["excerpt"].as_str().unwrap_or("")
+                found["excerpt"]
+                    .as_str()
+                    .or(found["lesson_pointer"]["lesson_key"].as_str())
+                    .unwrap_or("")
             ));
         }
         text.push_str(&format!(

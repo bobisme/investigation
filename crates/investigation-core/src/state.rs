@@ -455,6 +455,11 @@ impl OperationContext<'_> {
         &self.command.actor
     }
 
+    /// The command's self-reported actor descriptor. A claim, not authentication.
+    pub fn actor_descriptor(&self) -> Option<&crate::header::ActorDescriptor> {
+        self.command.actor_descriptor.as_ref()
+    }
+
     pub fn state(&self) -> &State {
         self.state
     }

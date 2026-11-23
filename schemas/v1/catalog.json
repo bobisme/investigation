@@ -35,6 +35,9 @@
     "inquiry.create": "operations/inquiry.create.schema.json",
     "inquiry.freeze": "operations/inquiry.freeze.schema.json",
     "inquiry.retire": "operations/inquiry.retire.schema.json",
+    "lesson.admit": "operations/lesson.admit.schema.json",
+    "lesson.consult": "operations/lesson.consult.schema.json",
+    "lesson.record_outcome": "operations/lesson.record_outcome.schema.json",
     "measurement.assess": "operations/measurement.assess.schema.json",
     "method_pack.adopt": "operations/method_pack.adopt.schema.json",
     "objection.raise": "operations/objection.raise.schema.json",
@@ -82,6 +85,8 @@
     },
     {
       "operations": [
+        "lesson.admit",
+        "lesson.record_outcome",
         "retrospective.record",
         "retrospective.supersede"
       ],
@@ -156,7 +161,8 @@
       "operations": [
         "annotation.add",
         "classification.downgrade",
-        "classification.raise"
+        "classification.raise",
+        "lesson.consult"
       ],
       "stage": "record"
     },

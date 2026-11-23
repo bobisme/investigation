@@ -53,6 +53,9 @@ pub mod evidence_read;
 #[path = "method_packs.rs"]
 mod method_packs;
 
+#[path = "lessons.rs"]
+mod lessons;
+
 #[path = "search.rs"]
 pub mod search;
 
@@ -320,6 +323,7 @@ impl<F: DurableFs> Store<F> {
         projected.apply(&accepted)?;
         self.verify_promotion_artifacts(&projected, &accepted)?;
         self.verify_method_pack_adoptions(&accepted)?;
+        lessons::verify_consultations(&replay.cases, &accepted)?;
         let case_id = accepted.case_id;
         let transaction_id = ids
             .next_id(Kind::Transaction)

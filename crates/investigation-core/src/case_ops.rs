@@ -255,6 +255,9 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
     if let Some(closure) = body.closure.as_mut() {
         closure.gate_policy = Some(gated);
     }
+    if let Some(warning) = crate::lessons_ops::closure_question(context.state(), case) {
+        context.warn(warning);
+    }
     context.update(expected, encode(body)?)?;
     context.check_final(move |state| {
         policy.recheck(state, &actor, case)?;

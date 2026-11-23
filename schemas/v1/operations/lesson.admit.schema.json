@@ -1,0 +1,124 @@
+{
+  "$defs": {
+    "BasisInput": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A person reviewed the lesson. Send the command with an actor_descriptor\nwhose kind is human; the kind is self-reported.",
+          "properties": {
+            "kind": {
+              "const": "human_review",
+              "type": "string"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "rationale"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Records accepted after the Retrospective's snapshot check the lesson\nagainst an outcome. The admitting actor must not be the lesson's author.",
+          "properties": {
+            "kind": {
+              "const": "outcome_check",
+              "type": "string"
+            },
+            "outcome_refs": {
+              "items": {
+                "$ref": "#/$defs/Reference"
+              },
+              "type": "array"
+            },
+            "rationale": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "rationale",
+            "outcome_refs"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:lesson.admit",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "basis": {
+      "$ref": "#/$defs/BasisInput"
+    },
+    "lesson_index": {
+      "description": "Zero-based position in the Retrospective's lessons.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "retrospective_ref": {
+      "$ref": "#/$defs/Reference",
+      "description": "The current, unsuperseded Retrospective revision that proposes the lesson."
+    }
+  },
+  "required": [
+    "retrospective_ref",
+    "lesson_index",
+    "basis"
+  ],
+  "title": "LessonAdmit",
+  "type": "object"
+}

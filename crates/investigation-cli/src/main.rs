@@ -10,6 +10,7 @@ mod explain;
 mod first_use;
 mod frontier;
 mod guide;
+mod lessons;
 mod lineage;
 mod next;
 mod onboard;
@@ -240,7 +241,7 @@ enum Commands {
     /// Read a blinded review packet: question, evidence and criteria, no conclusion.
     #[command(after_help = review_packet::AFTER_HELP)]
     ReviewPacket(review_packet::Args),
-    /// Compute the recorded process digest that a retrospective cites.
+    /// Read a case's retrospectives and lessons, its process digest, or admitted lessons.
     #[command(after_help = retrospective::AFTER_HELP)]
     Retrospective(retrospective::Args),
     /// Find records by text; results are labelled pointers, not evidence.
