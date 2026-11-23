@@ -95,9 +95,14 @@ fn configuration(root: &Path) -> BTreeMap<String, Vec<u8>> {
                 .unwrap()
                 .to_string_lossy()
                 .into_owned();
-            if ["state/cases", "state/locks", "state/tmp"]
-                .iter()
-                .any(|prefix| relative.starts_with(prefix))
+            if [
+                "state/cases",
+                "state/locks",
+                "state/tmp",
+                "cache/journal-heads",
+            ]
+            .iter()
+            .any(|prefix| relative.starts_with(prefix))
                 || relative.contains("index")
             {
                 continue;

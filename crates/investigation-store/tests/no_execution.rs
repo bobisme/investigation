@@ -43,6 +43,11 @@ const FORBIDDEN: &[&str] = &[
 /// text, with the reason.
 const ALLOWED: &[(&str, &str, &str)] = &[
     (
+        "investigation-store/src/store.rs",
+        "std::thread::Builder::new().spawn(move || drop(value))",
+        "Starts a thread in this process that frees a verified replay; it starts no process.",
+    ),
+    (
         "investigation-store/src/workspace.rs",
         "std::process::id()",
         "Reads this process's own ID to name a private temporary file.",

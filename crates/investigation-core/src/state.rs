@@ -2,7 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::OnceLock,
+    sync::{Arc, OnceLock},
 };
 
 use serde::{Deserialize, Serialize};
@@ -52,7 +52,9 @@ pub struct AcceptedTransaction {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct State {
     sequence: u64,
-    history: BTreeMap<Id, Vec<Record>>,
+    /// Accepted revisions are immutable, so a clone of the state, such as
+    /// the scratch copy every validation starts from, shares them.
+    history: BTreeMap<Id, Vec<Arc<Record>>>,
     verified_snapshots: BTreeMap<u64, Digest>,
     derived: Derived,
 }
@@ -108,7 +110,7 @@ impl State {
     pub fn record_at(&self, id: Id, sequence: u64) -> Option<&Record> {
         let records = self.history.get(&id)?;
         let end = records.partition_point(|record| record.header.acceptance_sequence <= sequence);
-        records.get(end.checked_sub(1)?)
+        records.get(end.checked_sub(1)?).map(Arc::as_ref)
     }
 
     /// The state as replayed up to an earlier accepted sequence: every record
@@ -136,20 +138,22 @@ impl State {
     }
 
     pub fn history(&self, id: Id) -> impl Iterator<Item = &Record> {
-        self.history.get(&id).into_iter().flatten()
+        self.history.get(&id).into_iter().flatten().map(Arc::as_ref)
     }
 
     pub fn current(&self, id: Id) -> Option<&Record> {
-        self.history.get(&id)?.last()
+        self.history.get(&id)?.last().map(Arc::as_ref)
     }
 
     pub fn revision(&self, reference: RevisionRef) -> Option<&Record> {
         let index = usize::try_from(reference.revision.checked_sub(1)?).ok()?;
-        self.history.get(&reference.id)?.get(index)
+        self.history.get(&reference.id)?.get(index).map(Arc::as_ref)
     }
 
     pub fn records(&self) -> impl Iterator<Item = &Record> {
-        self.history.values().filter_map(|records| records.last())
+        self.history
+            .values()
+            .filter_map(|records| records.last().map(Arc::as_ref))
     }
 
     /// Current records of one kind, in ID order: the records of that kind
@@ -157,7 +161,7 @@ impl State {
     pub fn records_of_kind(&self, kind: Kind) -> impl Iterator<Item = &Record> {
         self.history
             .range(Id::kind_range(kind))
-            .filter_map(|(_, records)| records.last())
+            .filter_map(|(_, records)| records.last().map(Arc::as_ref))
     }
 
     /// Material-assumption membership of every subject, per case, at this
@@ -171,7 +175,25 @@ impl State {
     /// Apply already accepted images atomically, without a catalog, clock or ID source.
     /// Journal sequence continuity and hash verification belong to the journal reader.
     pub fn apply(&mut self, transaction: &AcceptedTransaction) -> Result<(), Failure> {
+        self.apply_shared(transaction, SharedImages::of(transaction))
+    }
+
+    /// As [`Self::apply`], with the transaction's after-images already copied
+    /// for sharing, for a reader that copies them in parallel.
+    pub fn apply_shared(
+        &mut self,
+        transaction: &AcceptedTransaction,
+        images: SharedImages,
+    ) -> Result<(), Failure> {
         let integrity = |message| Failure::new(ErrorCode::IntegrityFailure, message);
+        if images.case_id != transaction.case_id
+            || images.sequence != transaction.sequence
+            || images.records.len() != transaction.records.len()
+        {
+            return Err(integrity(
+                "Shared after-images belong to another transaction.",
+            ));
+        }
         if transaction.sequence <= self.sequence
             || transaction.case_id.kind() != Kind::Case
             || transaction.records.is_empty()
@@ -247,8 +269,12 @@ impl State {
         if created.next().is_some() || updated.next().is_some() {
             return Err(integrity("Accepted changes have missing after-images."));
         }
-        for record in &transaction.records {
-            self.record(record.clone());
+        self.derived = Derived::default();
+        for record in images.records {
+            self.history
+                .entry(record.header.id)
+                .or_default()
+                .push(record);
         }
         self.sequence = transaction.sequence;
         Ok(())
@@ -259,7 +285,31 @@ impl State {
         self.history
             .entry(record.header.id)
             .or_default()
-            .push(record);
+            .push(Arc::new(record));
+    }
+}
+
+/// Copies of one accepted transaction's after-images, made by
+/// [`SharedImages::of`] and only from that transaction, for
+/// [`State::apply_shared`].
+#[derive(Debug, Clone)]
+pub struct SharedImages {
+    case_id: Id,
+    sequence: u64,
+    records: Vec<Arc<Record>>,
+}
+
+impl SharedImages {
+    pub fn of(transaction: &AcceptedTransaction) -> Self {
+        Self {
+            case_id: transaction.case_id,
+            sequence: transaction.sequence,
+            records: transaction
+                .records
+                .iter()
+                .map(|record| Arc::new(record.clone()))
+                .collect(),
+        }
     }
 }
 
@@ -763,7 +813,7 @@ impl OperationContext<'_> {
             .get_mut(&target)
             .and_then(|revisions| revisions.last_mut())
         {
-            latest.header.extensions = extensions;
+            Arc::make_mut(latest).header.extensions = extensions;
         }
         Ok(())
     }

@@ -5,6 +5,7 @@ use std::{
     fmt,
     io::{self, Read},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use investigation_core::{
@@ -13,7 +14,7 @@ use investigation_core::{
     identity::{Id, Kind},
     inherited_trust::{SessionLedger, SessionReads, SessionSource},
     input::{self, MAX_REQUEST_BYTES},
-    state::{AcceptedTransaction, State},
+    state::{AcceptedTransaction, SharedImages, State},
     wire::{Digest, ErrorCode, Failure, Snapshot},
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -469,11 +470,94 @@ pub fn decode_event(
     })
 }
 
+/// Decode event bytes that are expected to be byte-identical to bytes
+/// [`decode_event`] accepted earlier, skipping the checks that are a pure
+/// function of those bytes: the bounded duplicate-key parse and the metadata
+/// validation. For bytes `decode_event` accepts, the result is equal to its
+/// result. The caller accepts it only after the chain these bytes belong to
+/// ends at a [`KnownHead`], which proves the bytes are the ones verified.
+pub(crate) fn decode_known(
+    path: &Path,
+    sequence: u64,
+    bytes: &[u8],
+) -> Result<VerifiedEvent, JournalError> {
+    let unknown = || {
+        JournalError::new(
+            JournalErrorKind::CorruptEvent,
+            path,
+            "Event bytes differ from a verified head.",
+        )
+    };
+    let mut event: Event = serde_json::from_slice(bytes).map_err(|_| unknown())?;
+    match event.schema_version.as_str() {
+        EVENT_VERSION => {}
+        LEGACY_EVENT_VERSION if event.manifest_digest.is_none() => {
+            event.schema_version = EVENT_VERSION.into();
+        }
+        _ => return Err(unknown()),
+    }
+    if event.sequence != sequence {
+        return Err(unknown());
+    }
+    Ok(VerifiedEvent {
+        event,
+        hash: hash_bytes(bytes),
+    })
+}
+
+/// A case head this program verified in full earlier: event `sequence`
+/// hashed to `head_hash`. Read from a disposable checkpoint; see
+/// [`replay_case_from`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KnownHead {
+    pub sequence: u64,
+    pub head_hash: Digest,
+}
+
+/// Replay and verify a case like [`replay_case`], reusing an earlier
+/// verification of its first `known.sequence` events.
+///
+/// Every event file is still read and hashed, and every check that relates
+/// events to one another or to the state still runs: parent hashes,
+/// identities, duplicate transaction and command IDs, preconditions and the
+/// application of after-images. Only the checks that are a pure function of
+/// one event's bytes are skipped for events up to the known head, and that
+/// prefix is accepted only if its chain ends at exactly the known head hash.
+/// Each event names its parent's hash, so equal head hashes mean equal bytes
+/// for the whole prefix and its genesis. Events after the known head are
+/// verified in full. On any failure, a journal shorter than the known head
+/// or a head that differs, the case is replayed again in full and that
+/// result, success or error, is returned.
+pub fn replay_case_from(
+    fs: &impl DurableFs,
+    case_dir: &Path,
+    workspace_id: Id,
+    case_id: Id,
+    known: Option<&KnownHead>,
+) -> Result<CaseReplay, JournalError> {
+    if let Some(known) = known
+        && let Ok(replay) = replay(fs, case_dir, workspace_id, case_id, Some(known))
+    {
+        return Ok(replay);
+    }
+    replay_case(fs, case_dir, workspace_id, case_id)
+}
+
 pub fn replay_case(
     fs: &impl DurableFs,
     case_dir: &Path,
     workspace_id: Id,
     case_id: Id,
+) -> Result<CaseReplay, JournalError> {
+    replay(fs, case_dir, workspace_id, case_id, None)
+}
+
+fn replay(
+    fs: &impl DurableFs,
+    case_dir: &Path,
+    workspace_id: Id,
+    case_id: Id,
+    known: Option<&KnownHead>,
 ) -> Result<CaseReplay, JournalError> {
     let genesis_path = case_dir.join(GENESIS_FILENAME);
     let genesis_bytes = read_bounded(
@@ -526,84 +610,221 @@ pub fn replay_case(
                 error.to_string(),
             )
         })?;
-    let mut transactions = BTreeSet::new();
-    let mut command_keys = BTreeSet::new();
+    let mut seen = (BTreeSet::new(), BTreeSet::new());
     let events_dir = case_dir.join(EVENTS_DIRECTORY);
-    for (sequence, path) in ordered_paths(fs, &events_dir)? {
-        let expected = result.snapshot.sequence + 1;
-        if sequence != expected {
-            let missing = events_dir.join(event_filename(expected)?);
-            return Err(JournalError::new(
+    let paths: Vec<_> = ordered_paths(fs, &events_dir)?.into_iter().collect();
+    let mut remaining = paths.as_slice();
+    while !remaining.is_empty() {
+        // Read a window of events in order on this thread, decode it in
+        // parallel, then check and apply each event in order. Each decode
+        // is a pure function of its bytes, and results are consumed in
+        // sequence order, so errors are reported as a sequential replay
+        // reports them.
+        let mut reads = Vec::new();
+        let mut window_bytes = 0;
+        for (_, path) in remaining {
+            let read = read_bounded(
+                fs,
+                path,
+                MAX_EVENT_BYTES,
                 JournalErrorKind::MissingEvent,
-                &missing,
-                format!("Found event {sequence} before expected event {expected}."),
-            ));
+                JournalErrorKind::CorruptEvent,
+            );
+            let stop = match &read {
+                Ok(bytes) => {
+                    window_bytes += bytes.len();
+                    window_bytes >= DECODE_WINDOW_BYTES
+                }
+                Err(_) => true,
+            };
+            reads.push(read);
+            if stop {
+                break;
+            }
         }
-        let bytes = read_bounded(
-            fs,
-            &path,
-            MAX_EVENT_BYTES,
+        let (window, rest) = remaining.split_at(reads.len());
+        remaining = rest;
+        for ((sequence, path), verified) in window.iter().zip(decode_window(window, &reads, known))
+        {
+            let sequence = *sequence;
+            let expected = result.snapshot.sequence + 1;
+            if sequence != expected {
+                let missing = events_dir.join(event_filename(expected)?);
+                return Err(JournalError::new(
+                    JournalErrorKind::MissingEvent,
+                    &missing,
+                    format!("Found event {sequence} before expected event {expected}."),
+                ));
+            }
+            let verified = verified?;
+            apply_event(
+                &mut result,
+                &mut seen,
+                verified,
+                path,
+                (workspace_id, case_id),
+            )?;
+        }
+    }
+    if known.is_some_and(|known| known.sequence > result.snapshot.sequence) {
+        return Err(JournalError::new(
             JournalErrorKind::MissingEvent,
-            JournalErrorKind::CorruptEvent,
-        )?;
-        let verified = decode_event(&path, sequence, &bytes)?;
-        let event = &verified.event;
-        if event.workspace_id != workspace_id || event.accepted.case_id != case_id {
-            return Err(JournalError::new(
-                JournalErrorKind::InvalidIdentity,
-                &path,
-                "Event belongs to a different workspace or case.",
-            ));
-        }
-        if event.previous_hash != result.snapshot.head_hash {
-            return Err(JournalError::new(
-                JournalErrorKind::ParentHashMismatch,
-                &path,
-                format!(
-                    "Expected parent {}; stored parent is {}.",
-                    result.snapshot.head_hash, event.previous_hash
-                ),
-            ));
-        }
-        if !transactions.insert(event.transaction_id) {
-            return Err(JournalError::new(
-                JournalErrorKind::DuplicateTransaction,
-                &path,
-                "Transaction ID already appears in this chain.",
-            ));
-        }
-        if !command_keys.insert((event.actor.clone(), event.command_id.clone())) {
-            return Err(JournalError::new(
-                JournalErrorKind::DuplicateCommand,
-                &path,
-                "Actor and command ID already appear in this chain.",
-            ));
-        }
-        verify_preconditions(&result.state, event, &path)?;
-        result.state.apply(&event.accepted).map_err(|error| {
-            JournalError::new(
-                JournalErrorKind::InvalidAfterImage,
-                &path,
-                error.to_string(),
-            )
-        })?;
-        result.snapshot = Snapshot {
-            sequence,
-            head_hash: verified.hash.clone(),
-        };
-        result
-            .state
-            .note_verified_snapshot(result.snapshot.clone())
-            .map_err(|error| {
-                JournalError::new(
-                    JournalErrorKind::InvalidAfterImage,
-                    &path,
-                    error.to_string(),
-                )
-            })?;
-        result.events.push(verified);
+            &events_dir,
+            "The journal ends before the verified head.",
+        ));
     }
     Ok(result)
+}
+
+/// Bytes read ahead of decoding at most, beyond one event.
+const DECODE_WINDOW_BYTES: usize = 64 << 20;
+/// Threads that decode one window at most.
+const DECODE_THREADS: usize = 8;
+
+/// Decode one event: in full, or as bytes expected to equal verified ones
+/// when it is at or before the known head.
+fn decode_one(
+    path: &Path,
+    sequence: u64,
+    bytes: &[u8],
+    known: Option<&KnownHead>,
+) -> Result<VerifiedEvent, JournalError> {
+    match known {
+        Some(known) if sequence <= known.sequence => {
+            let verified = decode_known(path, sequence, bytes)?;
+            if sequence == known.sequence && verified.hash != known.head_hash {
+                return Err(JournalError::new(
+                    JournalErrorKind::ParentHashMismatch,
+                    path,
+                    "The journal differs from the verified head.",
+                ));
+            }
+            Ok(verified)
+        }
+        _ => decode_event(path, sequence, bytes),
+    }
+}
+
+/// Decode a window of read events on up to [`DECODE_THREADS`] threads,
+/// returning one result per read, in order, with each event's after-images
+/// copied for the state. Each thread takes the next undecoded event when it
+/// finishes one, since event sizes vary widely.
+fn decode_window(
+    window: &[(u64, PathBuf)],
+    reads: &[Result<Vec<u8>, JournalError>],
+    known: Option<&KnownHead>,
+) -> Vec<Result<(VerifiedEvent, SharedImages), JournalError>> {
+    let decode = |index: usize| -> Result<(VerifiedEvent, SharedImages), JournalError> {
+        let (sequence, path) = &window[index];
+        let bytes = reads[index].as_ref().map_err(Clone::clone)?;
+        let verified = decode_one(path, *sequence, bytes, known)?;
+        let images = SharedImages::of(&verified.event.accepted);
+        Ok((verified, images))
+    };
+    let threads = std::thread::available_parallelism()
+        .map_or(1, std::num::NonZero::get)
+        .min(DECODE_THREADS)
+        .min(reads.len());
+    if threads <= 1 {
+        return (0..reads.len()).map(decode).collect();
+    }
+    let next = AtomicUsize::new(0);
+    let work = || {
+        let mut done = Vec::new();
+        loop {
+            let index = next.fetch_add(1, Ordering::Relaxed);
+            if index >= reads.len() {
+                return done;
+            }
+            done.push((index, decode(index)));
+        }
+    };
+    let mut results: Vec<_> = std::iter::repeat_with(|| None).take(reads.len()).collect();
+    std::thread::scope(|scope| {
+        // A thread that cannot start leaves its share to the others and to
+        // this thread, which takes events too.
+        let helpers: Vec<_> = (1..threads)
+            .filter_map(|_| std::thread::Builder::new().spawn_scoped(scope, work).ok())
+            .collect();
+        let mine = work();
+        for (index, result) in mine
+            .into_iter()
+            .chain(helpers.into_iter().flat_map(|helper| {
+                helper
+                    .join()
+                    .unwrap_or_else(|panic| std::panic::resume_unwind(panic))
+            }))
+        {
+            results[index] = Some(result);
+        }
+    });
+    results
+        .into_iter()
+        .map(|result| result.expect("every event is decoded exactly once"))
+        .collect()
+}
+
+/// Check one decoded event against the chain so far and apply it.
+fn apply_event(
+    result: &mut CaseReplay,
+    seen: &mut (BTreeSet<Id>, BTreeSet<(Actor, String)>),
+    (verified, images): (VerifiedEvent, SharedImages),
+    path: &Path,
+    identity: (Id, Id),
+) -> Result<(), JournalError> {
+    let (transactions, command_keys) = seen;
+    let (workspace_id, case_id) = identity;
+    let event = &verified.event;
+    if event.workspace_id != workspace_id || event.accepted.case_id != case_id {
+        return Err(JournalError::new(
+            JournalErrorKind::InvalidIdentity,
+            path,
+            "Event belongs to a different workspace or case.",
+        ));
+    }
+    if event.previous_hash != result.snapshot.head_hash {
+        return Err(JournalError::new(
+            JournalErrorKind::ParentHashMismatch,
+            path,
+            format!(
+                "Expected parent {}; stored parent is {}.",
+                result.snapshot.head_hash, event.previous_hash
+            ),
+        ));
+    }
+    if !transactions.insert(event.transaction_id) {
+        return Err(JournalError::new(
+            JournalErrorKind::DuplicateTransaction,
+            path,
+            "Transaction ID already appears in this chain.",
+        ));
+    }
+    if !command_keys.insert((event.actor.clone(), event.command_id.clone())) {
+        return Err(JournalError::new(
+            JournalErrorKind::DuplicateCommand,
+            path,
+            "Actor and command ID already appear in this chain.",
+        ));
+    }
+    verify_preconditions(&result.state, event, path)?;
+    result
+        .state
+        .apply_shared(&event.accepted, images)
+        .map_err(|error| {
+            JournalError::new(JournalErrorKind::InvalidAfterImage, path, error.to_string())
+        })?;
+    result.snapshot = Snapshot {
+        sequence: event.sequence,
+        head_hash: verified.hash.clone(),
+    };
+    result
+        .state
+        .note_verified_snapshot(result.snapshot.clone())
+        .map_err(|error| {
+            JournalError::new(JournalErrorKind::InvalidAfterImage, path, error.to_string())
+        })?;
+    result.events.push(verified);
+    Ok(())
 }
 
 fn verify_preconditions(state: &State, event: &Event, path: &Path) -> Result<(), JournalError> {

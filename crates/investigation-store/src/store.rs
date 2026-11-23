@@ -33,7 +33,7 @@ use crate::{
     },
     journal::{
         CaseGenesis, CaseReplay, Event, EventInput, VerifiedEvent, event_filename, hash_bytes,
-        replay_case,
+        replay_case_from,
     },
     projection::{IndexEvent, Projection},
     workspace::Workspace,
@@ -67,6 +67,9 @@ pub mod session_reads;
 
 #[path = "exposure.rs"]
 pub mod exposure;
+
+#[path = "journal_heads.rs"]
+mod journal_heads;
 
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
@@ -344,7 +347,7 @@ impl<F: DurableFs> Store<F> {
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
         trace.enter(Stage::VerifyTail);
-        let mut replay = self.load_verified()?;
+        let mut replay = FreeLater::new(self.load_verified()?);
         self.fs.reclaim_publication_temporaries();
         trace.enter(Stage::Idempotency);
         if let Some(existing) = replay.find(meta.actor, meta.command_id) {
@@ -363,7 +366,10 @@ impl<F: DurableFs> Store<F> {
 
         trace.enter(Stage::Lock);
         let case = case_id
-            .map(|id| replay.cases.remove(&id).ok_or_else(|| missing_case(id)))
+            .map(|id| {
+                let case = replay.cases.remove(&id).ok_or_else(|| missing_case(id))?;
+                Ok::<_, Failure>(FreeLater::new(case))
+            })
             .transpose()?;
         let _case_lock = case_id
             .map(|id| {
@@ -389,7 +395,7 @@ impl<F: DurableFs> Store<F> {
                 ids,
             },
             Visible {
-                target: case.as_ref(),
+                target: case.as_deref(),
                 others: &replay,
                 packs: &method_packs::RetainedPacks(&self.fs),
             },
@@ -418,7 +424,7 @@ impl<F: DurableFs> Store<F> {
                 let mut receipt = receipt_for(event).as_retry();
                 // Restore the target case so projection health sees every head.
                 if let (Some(loaded), Some(id)) = (case, case_id) {
-                    replay.cases.insert(id, loaded);
+                    replay.cases.insert(id, loaded.into_inner());
                 }
                 self.apply_projection_health(&replay, &mut receipt);
                 return Ok(Some(receipt));
@@ -475,11 +481,14 @@ impl<F: DurableFs> Store<F> {
                     self.note_stopped();
                 }
             })?;
+        // The heads this commit verified, before its own event; the next
+        // load verifies that event in full.
+        self.keep_verified_heads(&replay);
 
         let verified = VerifiedEvent { event, hash };
         let mut receipt = receipt_for(&verified);
         let snapshot = receipt.snapshot.clone();
-        let mut events = case.map_or_else(Vec::new, |case| case.events);
+        let mut events = case.map_or_else(Vec::new, |case| case.into_inner().events);
         events.push(verified);
         replay.cases.insert(
             case_id,
@@ -588,7 +597,19 @@ impl<F: DurableFs> Store<F> {
             .map_err(lock_failure)
     }
 
+    /// Verify the whole journal, reusing the case heads verified earlier
+    /// (see `journal_heads`). Writes nothing: only a commit that published
+    /// keeps the heads this load verified, with [`Self::keep_verified_heads`].
     fn load_verified(&self) -> Result<WorkspaceReplay, Failure> {
+        self.load(true)
+    }
+
+    /// Verify the whole journal from its bytes alone, ignoring any kept head.
+    fn load_fully_verified(&self) -> Result<WorkspaceReplay, Failure> {
+        self.load(false)
+    }
+
+    fn load(&self, reuse_heads: bool) -> Result<WorkspaceReplay, Failure> {
         let mut result = WorkspaceReplay::default();
         for directory in self.fs.list(Path::new(CASES)).map_err(io_failure)? {
             let case_id = directory
@@ -597,9 +618,24 @@ impl<F: DurableFs> Store<F> {
                 .and_then(|name| name.parse::<Id>().ok())
                 .filter(|id| id.kind() == Kind::Case)
                 .ok_or_else(|| integrity("Canonical cases directory has an invalid entry."))?;
-            let replay = replay_case(&self.fs, &directory, self.workspace.id(), case_id)?;
+            let known = reuse_heads.then(|| self.known_head(case_id)).flatten();
+            let replay = replay_case_from(
+                &self.fs,
+                &directory,
+                self.workspace.id(),
+                case_id,
+                known.as_ref(),
+            )?;
             if replay.events.is_empty() {
                 return Err(integrity("A published case has no first transaction."));
+            }
+            if reuse_heads
+                && known.as_ref().is_none_or(|known| {
+                    known.sequence != replay.snapshot.sequence
+                        || known.head_hash != replay.snapshot.head_hash
+                })
+            {
+                result.unkept.push((case_id, replay.snapshot.clone()));
             }
             for (offset, event) in replay.events.iter().enumerate() {
                 if !result.transactions.insert(event.event.transaction_id) {
@@ -622,6 +658,15 @@ impl<F: DurableFs> Store<F> {
             result.cases.insert(case_id, replay);
         }
         Ok(result)
+    }
+
+    /// Keep the heads a load verified that differ from the kept ones. A
+    /// commit calls this only once it published, so a refused or retried
+    /// command writes nothing, and a read never does.
+    fn keep_verified_heads(&self, replay: &WorkspaceReplay) {
+        for (case_id, snapshot) in &replay.unkept {
+            self.keep_head(*case_id, snapshot);
+        }
     }
 
     fn index_path(&self) -> PathBuf {
@@ -661,13 +706,19 @@ impl<F: DurableFs> Store<F> {
             drop(index);
             return self.rebuild_index(workspace);
         }
-        let receipts = workspace.receipts();
-        for frame in workspace.frames(&receipts) {
-            let applied = heads
-                .get(&frame.accepted.case_id)
-                .map_or(0, |head| head.sequence);
-            if frame.accepted.sequence > applied {
-                index.apply(frame)?;
+        // Build receipts only for the events the index has not applied.
+        for (case_id, case) in &workspace.cases {
+            let applied = heads.get(case_id).map_or(0, |head| head.sequence);
+            let skip = usize::try_from(applied).unwrap_or(usize::MAX);
+            for verified in case.events.iter().skip(skip) {
+                let event = &verified.event;
+                index.apply(IndexEvent {
+                    previous_hash: &event.previous_hash,
+                    actor: &event.actor,
+                    accepted: &event.accepted,
+                    receipt: &receipt_for(verified),
+                    relations: &[],
+                })?;
             }
         }
         Ok(())
@@ -686,6 +737,43 @@ impl<F: DurableFs> Store<F> {
         // Best-effort diagnostic. Do not retry the failed filesystem sync.
         if let Ok(mut marker) = self.fs.create_private(Path::new(RECOVERY_MARKER)) {
             let _ = marker.write_all(b"A writer stopped after an uncertain sync. Verify the journal and retry with the same command ID.\n");
+        }
+    }
+}
+
+/// A large verified replay, freed on another thread when it goes out of
+/// scope, so neither the caller nor the commit lock waits on deallocating
+/// every record of the journal. Freed in place if no thread can start.
+struct FreeLater<T: Send + 'static>(Option<T>);
+
+impl<T: Send + 'static> FreeLater<T> {
+    fn new(value: T) -> Self {
+        Self(Some(value))
+    }
+
+    fn into_inner(mut self) -> T {
+        self.0.take().expect("present until dropped")
+    }
+}
+
+impl<T: Send + 'static> std::ops::Deref for FreeLater<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        self.0.as_ref().expect("present until dropped")
+    }
+}
+
+impl<T: Send + 'static> std::ops::DerefMut for FreeLater<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.0.as_mut().expect("present until dropped")
+    }
+}
+
+impl<T: Send + 'static> Drop for FreeLater<T> {
+    fn drop(&mut self) {
+        if let Some(value) = self.0.take() {
+            // On failure the closure, and the value with it, is dropped here.
+            let _ = std::thread::Builder::new().spawn(move || drop(value));
         }
     }
 }
@@ -723,6 +811,8 @@ struct WorkspaceReplay {
     commands: BTreeMap<(Actor, String), (Id, usize)>,
     transactions: BTreeSet<Id>,
     records: BTreeSet<Id>,
+    /// Verified case heads that differ from the kept ones (`journal_heads`).
+    unkept: Vec<(Id, Snapshot)>,
 }
 
 impl WorkspaceReplay {

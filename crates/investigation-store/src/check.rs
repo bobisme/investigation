@@ -73,7 +73,7 @@ impl<F: DurableFs> Store<F> {
             staging: StagingSummary::default(),
             issues: Vec::new(),
         };
-        let verified = match self.load_verified() {
+        let verified = match self.load_fully_verified() {
             Ok(replay) => replay,
             Err(error) => {
                 report.issues.push(CheckIssue {

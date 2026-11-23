@@ -371,7 +371,7 @@ fn hint(name: &str, profile: &Value) -> String {
         .unwrap_or("replay_ms");
     match name {
         "record_single_operation" => format!(
-            "A commit replays and verifies the whole journal before validating, then fsyncs; profile Store::record against the replay cost ({summary})."
+            "A commit hashes the whole journal and replays it against the kept verified head (ADR 0010), verifying the tail in full, then fsyncs; profile Store::record against the replay cost ({summary})."
         ),
         "brief" => format!(
             "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases ({summary})."
