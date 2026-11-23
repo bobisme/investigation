@@ -6,7 +6,7 @@ use investigation_core::{
 };
 use sha2::{Digest as _, Sha256};
 
-use super::*;
+use super::{capture::retire::StagingSummary, *};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +37,8 @@ pub struct CheckReport {
     pub source_authenticated: Option<bool>,
     pub independently_anchored: Option<bool>,
     pub index: ProjectionStatus,
+    /// Capture staging by state; see `capture::retire`.
+    pub staging: StagingSummary,
     pub issues: Vec<CheckIssue>,
 }
 
@@ -68,6 +70,7 @@ impl<F: DurableFs> Store<F> {
             source_authenticated: None,
             independently_anchored: None,
             index: ProjectionStatus::Pending,
+            staging: StagingSummary::default(),
             issues: Vec::new(),
         };
         let verified = match self.load_verified() {
@@ -93,6 +96,7 @@ impl<F: DurableFs> Store<F> {
         report.structurally_valid = true;
         report.heads = verified.heads();
         self.check_blobs(&verified, &mut report);
+        self.check_staging(&verified, &mut report);
         let expected_heads: Vec<_> = report
             .heads
             .iter()
@@ -214,7 +218,7 @@ fn invalid_artifact(report: &mut CheckReport, id: Id) {
     });
 }
 
-fn read_hash(mut input: impl Read) -> io::Result<(String, u64)> {
+pub(super) fn read_hash(mut input: impl Read) -> io::Result<(String, u64)> {
     let mut hash = Sha256::new();
     let mut size = 0u64;
     let mut chunk = [0u8; 64 * 1024];

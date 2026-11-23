@@ -303,7 +303,7 @@ A finalized manifest is immutable. Accepting a late item quietly would falsify i
 ```text
 state/staging/<run-id>/          0700
   handle.json                    0400, binds the directory to its handle
-  handle.lock                    per-handle lock; never removed or renamed
+  handle.lock                    per-handle lock; moved and removed only by retirement
   items/<position>.json          0400, one accepted item; twelve-digit position
   keys/<sha256-of-key>.json      0400, item key to position
   blobs/<sha256>                 0400, verified bytes of one or more attachments
@@ -317,6 +317,21 @@ Later capture operations add their own entries beside `handle.json` and never re
 An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. An attachment item's `outcome` holds `availability` (`staged` or `missing`), `classification`, and either `digest`, `size_bytes` and `blob` (the path relative to the staging directory) or `missing` (`declared` or `not_found`). A derivative's outcome adds `derived_from` with the original's key and position. A blob is durable before the item that names it. A crash between the two leaves an unreferenced blob, which a retry reuses after checking its bytes. Finalization copies referenced blobs into the canonical blob store. Transient `*.tmp` files exist only while one entry is published or one copy is verified. `sealed.json` is the seal that finalize publishes; see [`capture finalize`](#capture-finalize). Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
 
 Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. `capture recover` reports it as `unallocated`, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
+
+### Retirement
+
+Staging is retired only by `investigation repair staging [--handle HANDLE]` (Rust: `Store::retire_staging`). Nothing else removes it. Under the handle lock, it removes a handle's staging only when all of these hold:
+
+- The Run is finalized in the verified journal. The finalizing event file and its directory are synced first.
+- The manifest Artifact verifies against its digest and binds every staged item exactly.
+- Every blob the finalization recorded and every staged attachment's bytes verify by digest in the canonical blob store, and are synced.
+- The directory holds only entries the store writes (the layout above and its `*.tmp` files).
+
+Otherwise the staging is kept, and the report gives `result` `kept` with a `reason`: `open` (the handle accepts items), `sealed` (sealed, finalization not committed: resend the sealing finalize), `unallocated` (resend the identical begin), `busy` (another call holds the handle), `unpublished` (the canonical store lacks or contradicts some bytes), or `inconsistent` (the staging disagrees with its declaration or manifest, or holds a foreign entry). Without `--handle`, the report lists every handle that still has staging or was never allocated; with it, that handle in any state, `already_retired` once its staging is gone.
+
+Retirement first renames the whole directory to `state/tmp/retire-<run-id>` and syncs both parents; that rename is the commit point. Only then does it remove the moved entries. A crash before the rename leaves the full staging; a crash after it leaves no staging, and the next retirement removes what is left under `state/tmp`. Publication-temporary reclamation never touches `retire-` directories. Retirement is idempotent: retiring again changes nothing. After it, `capture recover` reports `retired`, and the manifest answers identical `append`, `attach` and `finalize` retries.
+
+`investigation check` verifies staging without changing it. Each `handle.json` must be the exact bytes its declaring transaction allocates (`STAGING_BINDING_MISMATCH`, an error, names both digests), and a seal on a finalized Run must bind the Run's manifest digest (`STAGING_SEAL_MISMATCH`). Its report counts staging under `staging` (`active`, `sealed`, `unallocated`, `retirable`, `retired`, `orphaned`) and warns with a repair command where one applies: `STAGING_RETIRABLE` and `STAGING_RETIREMENT_INCOMPLETE` (`repair staging`), `CAPTURE_SEALED_UNCOMMITTED` and `CAPTURE_STAGING_UNALLOCATED` (`capture recover --handle`), and `STAGING_ORPHAN` for a directory bound to no declared handle, which is never removed automatically.
 
 ## Rules every producer follows
 

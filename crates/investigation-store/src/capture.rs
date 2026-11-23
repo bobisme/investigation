@@ -24,10 +24,12 @@
 //! entries beside it; they never rewrite it.
 //!
 //! Staging is durable recovery material bound to a committed handle, not cache.
-//! Nothing in the store reclaims it: publication-temporary cleanup only looks in
-//! `state/tmp`. A crash after the commit and before allocation leaves a committed
-//! handle without staging; [`Store::capture_handles`] reports that, and resending
-//! the identical `begin` allocates it.
+//! Publication-temporary cleanup only looks in `state/tmp` and never reclaims
+//! it. The one path that removes staging is explicit retirement ([`retire`]),
+//! and only for a finalized Run whose bytes the canonical store holds. A crash
+//! after the commit and before allocation leaves a committed handle without
+//! staging; [`Store::capture_handles`] reports that, and resending the
+//! identical `begin` allocates it.
 //!
 //! Appended facts and attachment descriptors are staged items with per-handle
 //! positions; see [`items`] for their layout and durability rules, and
@@ -337,9 +339,7 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn allocate_staging(&mut self, binding: &StagingBinding<'_>) -> Result<(), Failure> {
-        let mut bytes = serde_json::to_vec_pretty(binding)
-            .map_err(|_| integrity("Could not encode the staging binding."))?;
-        bytes.push(b'\n');
+        let bytes = binding.bytes()?;
         let root = Path::new(STAGING_ROOT);
         let directory = root.join(binding.run_id.to_string());
         let target = directory.join(BINDING_FILE);
@@ -380,6 +380,16 @@ impl<F: DurableFs> Store<F> {
             Err(error) => return Err(io_failure(error)),
         }
         sync_directory(&mut self.fs, root, &self.gate).map_err(durability_failure)
+    }
+}
+
+impl StagingBinding<'_> {
+    /// The exact bytes of `handle.json`: a pure function of the declaration.
+    fn bytes(&self) -> Result<Vec<u8>, Failure> {
+        let mut bytes = serde_json::to_vec_pretty(self)
+            .map_err(|_| integrity("Could not encode the staging binding."))?;
+        bytes.push(b'\n');
+        Ok(bytes)
     }
 }
 
@@ -662,6 +672,9 @@ pub mod recover;
 
 #[path = "capture_late.rs"]
 pub mod late;
+
+#[path = "capture_retire.rs"]
+pub mod retire;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

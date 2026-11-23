@@ -84,6 +84,9 @@ impl DurableFs for FullDisk {
     fn remove(&mut self, path: &Path) -> io::Result<()> {
         self.0.remove(path)
     }
+    fn remove_dir(&mut self, path: &Path) -> io::Result<()> {
+        self.0.remove_dir(path)
+    }
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError> {
         self.0.lock(path, timeout)
     }

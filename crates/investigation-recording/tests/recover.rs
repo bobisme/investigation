@@ -295,7 +295,10 @@ fn recover_after_a_lost_finalize_acknowledgement_reports_the_original_receipt() 
 
     // After staging is retired, the journal still answers.
     let staging = producer.staging();
-    fs::remove_dir_all(&staging).unwrap();
+    Store::open(Workspace::open(&producer.root).unwrap())
+        .retire_staging(None)
+        .unwrap();
+    assert!(!staging.exists());
     let retired = producer.recover();
     assert_eq!(retired.staging, Some(StagingState::Retired));
     assert_eq!(retired.staging_dir, None);

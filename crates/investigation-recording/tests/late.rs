@@ -257,9 +257,10 @@ fn after_staging_is_retired_an_identical_retry_recovers_its_receipt_and_a_late_i
     let manifest = producer.manifest_bytes(finalized.manifest_digest.as_str());
     let run_before = producer.record(finalized.run_id);
 
-    // Staging retirement (W07.09) removes the whole directory.
+    // Staging retirement removes the whole directory.
     let staging = producer.staging();
-    fs::remove_dir_all(&staging).unwrap();
+    producer.store().retire_staging(None).unwrap();
+    assert!(!staging.exists());
 
     let replayed = producer.recorder.append(&producer.started()).unwrap();
     assert_eq!(replayed.result, ReceiptResult::AlreadyAccepted);

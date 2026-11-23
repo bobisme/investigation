@@ -27,6 +27,8 @@ pub trait DurableFs {
     fn rename_no_replace(&mut self, source: &Path, target: &Path) -> io::Result<()>;
     fn sync_dir(&mut self, path: &Path) -> io::Result<()>;
     fn remove(&mut self, path: &Path) -> io::Result<()>;
+    /// Remove one empty directory. Never recursive.
+    fn remove_dir(&mut self, path: &Path) -> io::Result<()>;
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError>;
     /// Called after journal verification while the workspace commit lock is held.
     fn reclaim_publication_temporaries(&mut self) {}
@@ -107,6 +109,9 @@ impl DurableFs for LocalFs {
     }
     fn remove(&mut self, p: &Path) -> io::Result<()> {
         fs::remove_file(self.path(p)?)
+    }
+    fn remove_dir(&mut self, p: &Path) -> io::Result<()> {
+        fs::remove_dir(self.path(p)?)
     }
     fn lock(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
         CommitLock::acquire(&self.path(p).map_err(LockError::Io)?, timeout)
@@ -566,6 +571,23 @@ impl DurableFs for MemoryFs {
             .entries
             .remove(p)
             .ok_or(io::ErrorKind::NotFound)?;
+        Ok(())
+    }
+    fn remove_dir(&mut self, p: &Path) -> io::Result<()> {
+        self.step()?;
+        let mut s = self.0.borrow_mut();
+        if !s.dirs.contains(p) {
+            return Err(io::ErrorKind::NotFound.into());
+        }
+        let occupied = s
+            .entries
+            .keys()
+            .chain(s.dirs.iter())
+            .any(|entry| entry.parent() == Some(p));
+        if occupied {
+            return Err(io::ErrorKind::DirectoryNotEmpty.into());
+        }
+        s.dirs.remove(p);
         Ok(())
     }
     fn lock(&mut self, p: &Path, _: Duration) -> Result<MemoryLock, LockError> {

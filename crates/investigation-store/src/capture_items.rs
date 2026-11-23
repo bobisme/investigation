@@ -12,7 +12,7 @@
 //! ```text
 //! state/staging/<run-id>/
 //!   handle.json                    binding written by begin (read only here)
-//!   handle.lock                    persistent per-handle lock; never removed or renamed
+//!   handle.lock                    per-handle lock; moved and removed only by retirement
 //!   items/<position:012>.json      0400, one accepted item
 //!   keys/<sha256(key)>.json        0400, item key -> position
 //!   items/*.tmp, keys/*.tmp        transient; only while one entry is published
@@ -222,7 +222,18 @@ impl<F: DurableFs> Store<F> {
             // A finalized handle whose staging is retired answers from its manifest.
             Err(refusal) => return self.retired_item(submission, &digest, refusal),
         };
-        let _handle = self.lock_handle(&located.directory)?;
+        let _handle = match self.lock_handle(&located.directory) {
+            Ok(guard) => guard,
+            // Retirement moved the staging after it was located: the finalized
+            // manifest answers, as it does for any retired handle.
+            Err(failure) if !self.exists(&located.directory.join(BINDING_FILE))? => {
+                return match self.locate_handle(submission.handle) {
+                    Err(refusal) => self.retired_item(submission, &digest, refusal),
+                    Ok(_) => Err(failure),
+                };
+            }
+            Err(failure) => return Err(failure),
+        };
         let handle = self.verify_handle(located)?;
         let limits = handle.binding.limits;
         let items = handle.directory.join(ITEMS_DIRECTORY);

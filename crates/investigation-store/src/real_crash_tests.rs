@@ -223,6 +223,9 @@ impl DurableFs for QualifiedFs {
     fn remove(&mut self, path: &Path) -> io::Result<()> {
         self.fs.remove(path)
     }
+    fn remove_dir(&mut self, path: &Path) -> io::Result<()> {
+        self.fs.remove_dir(path)
+    }
 
     fn link_no_replace(&mut self, source: &Path, target: &Path) -> io::Result<()> {
         let event = target.starts_with(CASES);

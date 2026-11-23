@@ -9,6 +9,7 @@ use crate::store::capture::{
     finalize::{FinalizeContext, FinalizePlan, FinalizeSubmission, PlannedArtifact, PlannedRole},
     items::tests::{Ticks, code_and_path, declaration},
     recover::RecoveredStaging,
+    retire::RetirementResult,
 };
 
 const KEY: &str = "run-0001/finalize";
@@ -251,10 +252,10 @@ fn after_staging_is_retired_an_identical_retry_returns_its_original_receipt() {
     let mut fixture = fixture();
     let accepted = fixture.stage_items();
     fixture.finalize();
-    // Retirement removes the whole staging directory.
-    fs::remove_dir_all(fixture.staging()).unwrap();
-    let before = fixture.canonical();
     let handle = fixture.handle();
+    let retired = fixture.store.retire_staging(Some(handle)).unwrap();
+    assert_eq!(retired.handles[0].result, RetirementResult::Retired);
+    let before = fixture.canonical();
 
     let fact_retry = fixture
         .store
@@ -318,7 +319,8 @@ fn an_identical_begin_after_finalization_allocates_no_staging() {
     let mut fixture = fixture();
     fixture.stage_items();
     fixture.finalize();
-    fs::remove_dir_all(fixture.staging()).unwrap();
+    fixture.store.retire_staging(None).unwrap();
+    assert!(!fixture.staging().exists());
     let again = fixture.store.declare_capture(&declaration()).unwrap();
     assert_eq!(again.run_id, fixture.declared.run_id);
     assert_eq!(again.binding, fixture.declared.binding);

@@ -60,6 +60,7 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("search", Effect::Read),
     ("check", Effect::Read),
     ("repair index", Effect::Write),
+    ("repair staging", Effect::Write),
     ("observe", Effect::WriteUnlessFlag("print_envelope")),
     ("note", Effect::WriteUnlessFlag("print_envelope")),
     ("case new", Effect::WriteUnlessFlag("print_envelope")),

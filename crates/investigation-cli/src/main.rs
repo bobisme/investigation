@@ -259,7 +259,7 @@ enum Commands {
     /// Verify the journal, blobs, and index without repairing them.
     #[command(after_help = "Example: investigation check --format json")]
     Check,
-    /// Rebuild derived workspace data.
+    /// Rebuild derived workspace data or retire settled capture staging.
     #[command(subcommand)]
     Repair(RepairCommand),
     /// Publish the working vault and inspect its health and drift.
@@ -274,6 +274,13 @@ enum RepairCommand {
         after_help = "Run investigation check before and after rebuilding.\nExample: investigation repair index --format json"
     )]
     Index,
+    /// Remove capture staging once its Run is finalized and its bytes are canonical.
+    #[command(after_help = capture::RETIRE_HELP)]
+    Staging {
+        /// Retire this handle's staging and report it in any state.
+        #[arg(long, value_name = "HANDLE")]
+        handle: Option<String>,
+    },
 }
 
 pub(crate) struct Output {
@@ -395,6 +402,9 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Vault(command) => vault::run(&mut store, &global, command),
+                Commands::Repair(RepairCommand::Staging { handle }) => {
+                    capture::retire(&mut store, handle.as_deref())
+                }
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
                     let text = format!("index  rebuilt  {} case(s)", cases.len());

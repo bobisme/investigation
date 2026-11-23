@@ -298,8 +298,10 @@ fn a_finalized_handle_reports_its_original_receipt_also_after_staging_is_gone() 
     let RecoveredStaging::Present { items: staged, .. } = recovered.staging.clone() else {
         unreachable!()
     };
-    fs::remove_dir_all(fixture.staging()).unwrap();
-    let retired = fixture.only(Some(fixture.handle()));
+    let handle = fixture.handle();
+    fixture.store.retire_staging(Some(handle)).unwrap();
+    assert!(!fixture.staging().exists());
+    let retired = fixture.only(Some(handle));
     assert_eq!(retired.staging, RecoveredStaging::Retired { items: staged });
     assert_eq!(retired.finalized, recovered.finalized);
     assert!(fixture.store.capture_recovery(None).unwrap().is_empty());

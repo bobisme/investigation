@@ -253,7 +253,17 @@ impl<F: DurableFs> Store<F> {
             return Ok(done);
         }
         let located = self.locate_handle(submission.handle)?;
-        let _handle_lock = self.lock_handle(&located.directory)?;
+        let _handle_lock = match self.lock_handle(&located.directory) {
+            Ok(guard) => guard,
+            // Retirement moved the staging after it was located; it retires
+            // only finalized handles, so the journal answers.
+            Err(failure) if !self.exists(&located.directory.join(BINDING_FILE))? => {
+                return self
+                    .committed_finalization(&declared, submission)?
+                    .ok_or(failure);
+            }
+            Err(failure) => return Err(failure),
+        };
         let handle = self.verify_handle(located)?;
         // Another call may have finalized while this one waited for the lock.
         if let Some(done) = self.committed_finalization(&declared, submission)? {

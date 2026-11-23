@@ -111,6 +111,21 @@ execution state unknown.
 
 Example: investigation capture recover --handle handle_... --format json";
 
+pub(crate) const RETIRE_HELP: &str = "\
+Removes the staging of finalized capture handles. A handle's staging is removed
+only when its Run's finalization is durable, the manifest binds every staged
+item, and the canonical blob store holds every staged byte, verified by digest.
+Open handles, sealed handles whose finalization is not committed, handles
+another call holds, and staging that holds anything else are kept, with the
+reason. With --handle, reports that handle in any state.
+
+Retirement moves the staging out of state/staging in one rename, then removes
+it, so an interrupted retirement leaves the full staging or none; the next run
+completes it. Retiring again changes nothing. The finalized manifest keeps
+answering identical retries and recover.
+
+Example: investigation repair staging --format json";
+
 #[derive(clap::Subcommand)]
 pub(crate) enum CaptureCommand {
     /// Declare one Run before an external action and allocate its staging.
@@ -377,6 +392,61 @@ execution {}",
     }
     lines.push("Read only: nothing was rerun, resumed, deleted or changed.".to_owned());
     Ok(Output::new(state, lines.join("\n")))
+}
+
+/// `repair staging`: retire finalized staging. The handle names its Run, so
+/// `--case` and `--actor` play no part.
+pub(crate) fn retire(store: &mut Store, handle: Option<&str>) -> Result<Output, Failure> {
+    let handle = handle
+        .map(|handle| {
+            handle.parse().map_err(|_| {
+                Failure::new(
+                    ErrorCode::InvalidInput,
+                    "Use the handle from the begin receipt, such as handle_<uuid>.",
+                )
+                .at("--handle")
+            })
+        })
+        .transpose()?;
+    let report = store.retire_staging(handle)?;
+    let word = |value: serde_json::Result<serde_json::Value>| {
+        value
+            .ok()
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default()
+    };
+    let mut lines = Vec::new();
+    for run_id in &report.completed {
+        lines.push(format!("{run_id}  completed an interrupted retirement"));
+    }
+    for retirement in &report.handles {
+        let mut line = format!(
+            "{}  {}",
+            retirement.handle,
+            word(serde_json::to_value(retirement.result))
+        );
+        if let Some(reason) = retirement.reason {
+            line.push_str(&format!("  {}", word(serde_json::to_value(reason))));
+        }
+        line.push_str(&format!("\nrun       {}", retirement.run_id));
+        if let Some(detail) = &retirement.detail {
+            line.push_str(&format!("\ndetail    {detail}"));
+        }
+        lines.push(line);
+    }
+    if lines.is_empty() {
+        lines.push("No capture staging to retire.".to_owned());
+    }
+    lines.push(
+        "Only finalized staging whose bytes the canonical store holds was removed.".to_owned(),
+    );
+    let value = serde_json::to_value(&report).map_err(|_| {
+        Failure::new(
+            ErrorCode::IntegrityFailure,
+            "Could not encode the retirement report.",
+        )
+    })?;
+    Ok(Output::success("staging_retired", value, lines.join("\n")))
 }
 
 fn rejection(error: RecordingError) -> Failure {

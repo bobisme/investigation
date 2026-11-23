@@ -921,3 +921,200 @@ fn walk(directory: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     }
     entries
 }
+
+#[test]
+fn repair_staging_retires_only_finalized_staging_and_check_names_it() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let begun = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "begin",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&begin_request()).unwrap()),
+        0,
+    );
+    let handle = begun["handle"].as_str().unwrap();
+    let staging = root.join("ws").join(begun["staging_dir"].as_str().unwrap());
+    let fact =
+        json!({"handle": handle, "key": "started", "position": 1, "fact": {"kind": "started"}});
+    json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "append",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&fact).unwrap()),
+        0,
+    );
+    let retire = ["--workspace", "ws", "repair", "staging", "--format", "json"];
+
+    // An open handle is kept, with its reason.
+    let open = json_run(root, &retire, None, 0);
+    assert_eq!(open["result"], "staging_retired");
+    assert_eq!(open["handles"][0]["handle"], handle);
+    assert_eq!(open["handles"][0]["result"], "kept");
+    assert_eq!(open["handles"][0]["reason"], "open");
+    assert!(staging.join("handle.json").exists());
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["staging"]["active"], 1);
+
+    json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "finalize",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(
+            &serde_json::to_vec(&json!({
+                "handle": handle,
+                "key": "run-0001/finalize",
+                "expected_last_position": 1,
+                "completion": "complete",
+                "execution": {"state": "completed", "exit_code": 0},
+            }))
+            .unwrap(),
+        ),
+        0,
+    );
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["ok"], true);
+    assert_eq!(check["staging"]["retirable"], 1);
+    let issue = check["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|issue| issue["code"] == "STAGING_RETIRABLE")
+        .unwrap();
+    assert_eq!(issue["severity"], "warning");
+    assert_eq!(issue["objects"][0], begun["run_id"]);
+    let repair: Vec<&str> = issue["repair"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|part| part.as_str().unwrap())
+        .collect();
+    assert_eq!(repair[1], "--workspace");
+    assert_eq!(repair[3..], ["repair", "staging", "--format", "json"]);
+
+    let read_only = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "--read-only",
+            "repair",
+            "staging",
+            "--format",
+            "json",
+        ],
+        None,
+        2,
+    );
+    assert_eq!(read_only["error"]["path"], "--read-only");
+    assert!(staging.exists());
+
+    let retired = json_run(root, &retire, None, 0);
+    assert_eq!(retired["handles"][0]["result"], "retired");
+    assert_eq!(retired["handles"][0]["run_id"], begun["run_id"]);
+    assert!(!staging.exists());
+    let again = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "repair",
+            "staging",
+            "--handle",
+            handle,
+            "--format",
+            "json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(again["handles"][0]["result"], "already_retired");
+
+    let output = invoke(root, &["--workspace", "ws", "repair", "staging"], None);
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("No capture staging to retire."), "{text}");
+
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["staging"]["retired"], 1);
+    assert_eq!(check["issues"], json!([]));
+    let recovered = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--handle",
+            handle,
+            "--format",
+            "json",
+        ],
+        None,
+        0,
+    );
+    assert_eq!(recovered["handles"][0]["staging"], "retired");
+    assert_eq!(recovered["handles"][0]["items"][0]["key"], "started");
+
+    let unknown = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "repair",
+            "staging",
+            "--handle",
+            "not-a-handle",
+            "--format",
+            "json",
+        ],
+        None,
+        2,
+    );
+    assert_eq!(unknown["error"]["path"], "--handle");
+}
