@@ -128,7 +128,8 @@ pub(crate) fn start(
     require_case_agreement(store, global.case.as_deref(), None)?;
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
     let stdin = attachment == Path::new("-");
-    let attachment = &crate::first_use::attachment_path(store.workspace(), attachment);
+    let attachment =
+        &crate::first_use::check_attachment(store.workspace(), attachment, Some("--attach"))?;
     let command_id = match command_id {
         Some(command_id) => command_id.to_owned(),
         None => {
@@ -166,26 +167,21 @@ pub(crate) fn start(
             .map(str::to_owned)
     };
     if let (Some(case), Some(source)) = (created("case_"), created("src_")) {
-        let mut argv = crate::workspace_argv(store.workspace());
-        argv.extend(
-            [
-                "--case",
-                &case,
-                "observe",
-                "STATEMENT",
-                "--source",
-                &source,
-                "--quote",
-                "EXACT TEXT",
-                "--limitations",
-                "[\"LIMITATION\"]",
-            ]
-            .map(str::to_owned),
-        );
+        // The v1 receipt `next` list holds local reads only, so the write
+        // that should follow is published beside it as `next_write`.
+        let step =
+            crate::first_use::observe_step(store.workspace(), &actor.to_string(), &case, &source);
+        let argv: Vec<String> = step["argv"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|part| part.as_str().map(str::to_owned))
+            .collect();
         out.text.push_str(&format!(
             "\nRecord what the source shows, quoting it exactly: {}",
             crate::display_argv(&argv)
         ));
+        out.value["next_write"] = step;
     }
     Ok(out)
 }

@@ -141,13 +141,14 @@ enum Commands {
         after_help = "Example: investigation init ./casework --no-vault --import-root . --format json"
     )]
     Init {
-        /// New or empty directory for the workspace.
+        /// New or empty directory for the workspace, or an existing workspace.
         #[arg(value_name = "PATH")]
         path: PathBuf,
         /// Skip creation of the optional Obsidian vault.
         #[arg(long)]
         no_vault: bool,
         /// Let the workspace retain copies of files beneath DIR (read-only; repeatable).
+        /// On an existing workspace PATH, adds DIR to its import roots.
         #[arg(long = "import-root", value_name = "DIR")]
         import_roots: Vec<PathBuf>,
     },
@@ -708,17 +709,27 @@ fn init(
                 })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    let mut added = Vec::new();
     let (workspace, result) = match Workspace::init_with_import_roots(path, vault, &import_roots) {
         Ok(workspace) => (workspace, "initialized"),
         Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
             if path.join("investigation.toml").is_file() {
-                (
-                    Workspace::open(path).map_err(workspace_failure)?,
-                    "already_initialized",
-                )
+                let mut workspace = Workspace::open(path).map_err(workspace_failure)?;
+                added = workspace
+                    .add_import_roots(&import_roots)
+                    .map_err(|error| workspace_failure(error).at("--import-root"))?;
+                let result = if added.is_empty() {
+                    "already_initialized"
+                } else {
+                    "import_roots_added"
+                };
+                (workspace, result)
             } else {
                 return Err(workspace_failure(error));
             }
+        }
+        Err(error @ WorkspaceError::InvalidImportRoot(_)) => {
+            return Err(workspace_failure(error).at("--import-root"));
         }
         Err(error) => return Err(workspace_failure(error)),
     };
@@ -736,7 +747,8 @@ fn init(
         },
     );
     for root in configured_roots {
-        text.push_str(&format!("import root  {}\n", root.display()));
+        let state = if added.contains(root) { "  added" } else { "" };
+        text.push_str(&format!("import root  {}{state}\n", root.display()));
     }
     text.push_str(&first_use::start_text(&path, false));
     if configured_roots.is_empty() {
@@ -758,6 +770,7 @@ fn init(
                 "projection": vault.then_some("vault/"),
             },
             "import_roots": configured_roots,
+            "added_import_roots": added,
             "next": [start]
         }),
         text,
@@ -977,7 +990,9 @@ fn with_workspace_repair(workspace: &Workspace, mut failure: Failure) -> Failure
 
 pub(crate) fn scope_argv(workspace: &Workspace, argv: &mut Vec<String>) {
     if argv.first().is_some_and(|program| program == PROGRAM_NAME)
-        && !argv.get(1).is_some_and(|arg| arg == "--workspace")
+        && !argv
+            .get(1)
+            .is_some_and(|arg| arg == "--workspace" || arg == "init")
     {
         if argv.get(1).is_some_and(|command| command == "receipt")
             && argv.get(2).is_some_and(|key| key.starts_with('-'))

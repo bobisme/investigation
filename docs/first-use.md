@@ -53,6 +53,15 @@ On the two tuning cases, the current build reached 0/2 receipts. The final revis
 5. **`onboard` is not the first contact.** Agents start with `--help`, so the help text carries most of the guidance.
 6. **The `start` receipt in JSON format still lists `show case` as its next step.** It does not list `observe`.
 
+## Follow-up changes (unmeasured)
+
+W05b.18 changed the CLI after this comparison for items 1, 2, 3 and 6 above. **The study was not run again, so these changes are not measured.** The results above apply only to the two pinned builds.
+
+- **Pointer in the workspace.** `init` writes `README.txt` at the workspace root, and the header of `investigation.toml` now names `investigation --workspace DIR brief`. Both say not to read `state/` or `cache/` directly. They use a `DIR` placeholder and contain no absolute local path.
+- **Import root for an existing workspace.** `investigation init PATH --import-root DIR` on an existing workspace adds DIR to its import roots. The result is `import_roots_added`, or `already_initialized` if DIR is already a root. The config file is replaced atomically under the commit lock. DIR must be an existing directory with a canonical path, and it must lie outside the workspace. An attachment outside every import root is refused with this `init` command as its repair argv. No message advises an edit to `investigation.toml` now.
+- **Missing relative attachments.** If `--attach FILE` (or `source add PATH`) names a file that does not exist, the error gives the resolved path and the import roots. If the file exists beneath an import root, the repair argv repeats the command with that path.
+- **Next step after `start`.** The JSON receipt from `start` now has a `next_write` field. It holds the `observe` template with `STATEMENT`, `EXACT TEXT` and `LIMITATION` placeholders. The v1 receipt `next` list can only hold `local_read` steps, so it is not changed.
+
 ## Scope and provenance
 
 - **Scale.** The study used 6 comparison cases instead of a larger set, one variant per case and one run per cell. Total session time was about 25 min for the comparison and 11 min for tuning. With this sample, differences of one or two assignments are noise.

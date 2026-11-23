@@ -8,7 +8,10 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use investigation_core::{PROGRAM_NAME, wire::Failure};
+use investigation_core::{
+    PROGRAM_NAME,
+    wire::{ErrorCode, Failure},
+};
 use investigation_store::Workspace;
 use serde_json::{Value, json};
 
@@ -54,12 +57,163 @@ pub(crate) fn start_text(workspace: &str, init: bool) -> String {
     text
 }
 
+/// `init` on an existing workspace, which adds `directory` to its import roots.
+pub(crate) fn add_import_root_argv(workspace: &Workspace, directory: &str) -> Vec<String> {
+    let root = workspace.root().to_string_lossy();
+    argv(&[
+        PROGRAM_NAME,
+        "init",
+        &root,
+        "--import-root",
+        directory,
+        "--format",
+        "json",
+    ])
+}
+
 /// Advice when no configured import root can supply a path.
 pub(crate) fn import_root_advice(workspace: &Workspace) -> String {
     format!(
-        "Add the file's directory to import_roots in {}, or create the workspace with init PATH --import-root DIR.",
-        workspace.root().join("investigation.toml").display()
+        "Add the file's directory with: {}",
+        crate::display_argv(&add_import_root_argv(workspace, "DIR"))
     )
+}
+
+/// The observation template that follows a `start` receipt.
+pub(crate) fn observe_step(workspace: &Workspace, actor: &str, case: &str, source: &str) -> Value {
+    let mut argv = crate::workspace_argv(workspace);
+    argv.extend(
+        [
+            "--actor",
+            actor,
+            "--case",
+            case,
+            "observe",
+            "STATEMENT",
+            "--source",
+            source,
+            "--quote",
+            "EXACT TEXT",
+            "--limitations",
+            "[\"LIMITATION\"]",
+            "--format",
+            "json",
+        ]
+        .map(str::to_owned),
+    );
+    json!({
+        "kind":"record_observation",
+        "argv":argv,
+        "unresolved_fields":["STATEMENT", "EXACT TEXT", "LIMITATION"],
+        "effect":"Records what the source shows. EXACT TEXT must be copied from the source; LIMITATION says what the source cannot show."
+    })
+}
+
+/// Configured import roots as absolute lexical paths.
+fn configured_roots(workspace: &Workspace) -> Vec<PathBuf> {
+    workspace
+        .config()
+        .import_roots
+        .iter()
+        .filter_map(|root| {
+            lexical(&if root.is_absolute() {
+                root.clone()
+            } else {
+                workspace.root().join(root)
+            })
+        })
+        .collect()
+}
+
+/// Check a local FILE argument before ingest and return the path to submit.
+/// A missing file is refused with the path it resolved to and the import
+/// roots; a file outside every import root is refused with the `init`
+/// command that adds its directory. `flag` names the argument, or `None` for
+/// a positional one; the repair argv repeats the invocation with a found file.
+pub(crate) fn check_attachment(
+    workspace: &Workspace,
+    given: &Path,
+    flag: Option<&str>,
+) -> Result<PathBuf, Failure> {
+    let submitted = attachment_path(workspace, given);
+    if given == Path::new("-") {
+        return Ok(submitted);
+    }
+    let resolved = if given.is_absolute() {
+        lexical(given)
+    } else {
+        env::current_dir()
+            .ok()
+            .and_then(|cwd| lexical(&cwd.join(given)))
+    }
+    .unwrap_or_else(|| given.to_owned());
+    let roots = configured_roots(workspace);
+    // Ingest also tries a relative path beneath each import root.
+    let beneath_roots: Vec<PathBuf> = if given.is_absolute() {
+        Vec::new()
+    } else {
+        roots
+            .iter()
+            .filter_map(|root| lexical(&root.join(given)))
+            .filter(|path| path.is_file())
+            .collect()
+    };
+    let exists = fs::symlink_metadata(&resolved).is_ok();
+    let rewritten = submitted != given;
+    let at = flag.unwrap_or("PATH");
+    let detail = |failure: Failure| {
+        let mut failure = failure.at(at);
+        failure.error.actual = Some(json!({"resolved_path": resolved}));
+        failure.error.expected = Some(json!({"import_roots": roots}));
+        failure
+    };
+    let roots_text = if roots.is_empty() {
+        "none are configured".to_owned()
+    } else {
+        roots
+            .iter()
+            .map(|root| root.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    if !exists && (rewritten || beneath_roots.is_empty()) {
+        let mut message = format!(
+            "{} resolves to {}, which does not exist. Relative paths are resolved against the working directory. Import roots: {roots_text}.",
+            given.display(),
+            resolved.display()
+        );
+        let found = beneath_roots.first();
+        if let Some(found) = found {
+            message.push_str(&format!(" The file exists at {}.", found.display()));
+        }
+        let failure = Failure::new(ErrorCode::InvalidInput, message);
+        return Err(detail(
+            match found.and_then(|found| with_replaced_path(env::args_os(), flag, given, found)) {
+                Some(argv) => failure.with_argv(argv),
+                None => failure,
+            },
+        ));
+    }
+    let inside = roots.iter().any(|root| resolved.starts_with(root));
+    if exists && !inside && beneath_roots.is_empty() {
+        let directory = fs::canonicalize(&resolved)
+            .ok()
+            .and_then(|path| path.parent().map(Path::to_path_buf));
+        let directory = directory.as_deref().and_then(Path::to_str).unwrap_or("DIR");
+        let repair = add_import_root_argv(workspace, directory);
+        let failure = Failure::new(
+            ErrorCode::InvalidInput,
+            format!(
+                "{} resolves to {}, which is outside the import roots ({roots_text}). Add its directory with: {}",
+                given.display(),
+                resolved.display(),
+                crate::display_argv(&repair)
+            ),
+        )
+        .with_argv(repair);
+        return Err(detail(failure));
+    }
+    Ok(submitted)
 }
 
 /// The current invocation with `--actor` added, for a missing-actor repair.
@@ -107,6 +261,36 @@ pub(crate) fn with_replaced_value(
         .windows(2)
         .position(|pair| pair[0] == flag && Path::new(&pair[1]) == old)?;
     argv[index + 1] = new.to_str()?.to_owned();
+    argv.insert(0, PROGRAM_NAME.to_owned());
+    Some(argv)
+}
+
+/// The current invocation with a path argument replaced: the value after
+/// `flag`, or else the only argument equal to `old`.
+fn with_replaced_path(
+    args: impl Iterator<Item = OsString>,
+    flag: Option<&str>,
+    old: &Path,
+    new: &Path,
+) -> Option<Vec<String>> {
+    if let Some(flag) = flag {
+        return with_replaced_value(args, flag, old, new);
+    }
+    let mut argv: Vec<String> = args
+        .skip(1)
+        .map(OsString::into_string)
+        .collect::<Result<_, _>>()
+        .ok()?;
+    let mut matches = argv
+        .iter()
+        .enumerate()
+        .filter(|(_, arg)| Path::new(arg) == old)
+        .map(|(index, _)| index);
+    let index = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    argv[index] = new.to_str()?.to_owned();
     argv.insert(0, PROGRAM_NAME.to_owned());
     Some(argv)
 }

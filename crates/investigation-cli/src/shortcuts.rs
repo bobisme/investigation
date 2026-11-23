@@ -672,10 +672,12 @@ fn run_ingest(
     command_id: &str,
     generated: bool,
 ) -> Result<Output, Failure> {
-    let path = crate::first_use::attachment_path(
-        store.workspace(),
-        &PathBuf::from(value(shortcut, "path")),
-    );
+    let given = PathBuf::from(value(shortcut, "path"));
+    let path = if shortcut.print_envelope {
+        crate::first_use::attachment_path(store.workspace(), &given)
+    } else {
+        crate::first_use::check_attachment(store.workspace(), &given, None)?
+    };
     if path.as_os_str() == std::ffi::OsStr::new("-") {
         return Err(Failure::new(
             ErrorCode::InvalidInput,

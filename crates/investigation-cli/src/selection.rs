@@ -57,6 +57,7 @@ pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {
         WorkspaceError::WorkspaceAlreadyExists(_)
         | WorkspaceError::InvalidRoot(_)
         | WorkspaceError::SymlinkRejected(_)
+        | WorkspaceError::InvalidImportRoot(_)
         | WorkspaceError::UnsupportedFilesystem { .. } => ErrorCode::InvalidInput,
         _ => ErrorCode::IntegrityFailure,
     };

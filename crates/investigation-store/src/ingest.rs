@@ -569,24 +569,39 @@ impl<F: DurableFs> Store<F> {
                 Err(error) => failure = Some(error.to_string()),
             }
         }
-        Err(Failure::new(
-            ErrorCode::InvalidInput,
-            failure.unwrap_or_else(|| {
-                let configured = &self.workspace.config().import_roots;
+        let root = self.workspace.root().to_string_lossy().into_owned();
+        let Some(failure) = failure else {
+            let configured = &self.workspace.config().import_roots;
+            // An absolute path names its directory; a relative one does not.
+            let directory = path
+                .is_absolute()
+                .then(|| path.parent())
+                .flatten()
+                .and_then(Path::to_str)
+                .unwrap_or("DIR");
+            return Err(Failure::new(
+                ErrorCode::InvalidInput,
                 format!(
-                    "Path {} is outside configured import roots{}. Add the file's directory to import_roots in {}, or create the workspace with init PATH --import-root DIR.",
+                    "Path {} is outside configured import roots{}. Add the file's directory with {PROGRAM_NAME} init {root} --import-root {directory}.",
                     path.display(),
                     if configured.is_empty() {
                         " (none are configured)"
                     } else {
                         ""
                     },
-                    self.workspace.root().join("investigation.toml").display()
-                )
-            }),
-        )
-        .at(format!("/paths/{index}"))
-        .with_schema("ingest"))
+                ),
+            )
+            .at(format!("/paths/{index}"))
+            .with_schema("ingest")
+            .with_argv(
+                [PROGRAM_NAME, "init", &root, "--import-root", directory, "--format", "json"]
+                    .map(str::to_owned)
+                    .to_vec(),
+            ));
+        };
+        Err(Failure::new(ErrorCode::InvalidInput, failure)
+            .at(format!("/paths/{index}"))
+            .with_schema("ingest"))
     }
 
     /// A label for recorded identities: relative to the matching import root,

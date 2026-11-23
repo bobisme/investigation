@@ -13,12 +13,15 @@ use std::{
 };
 
 use investigation_core::{
+    PROGRAM_NAME,
     header::Actor,
     identity::{Id, IdSource, Kind, SystemIdSource},
 };
 use serde::{Deserialize, Serialize};
 
 const CONFIG_FILE: &str = "investigation.toml";
+/// A plain-text pointer at the workspace root for anyone listing it.
+pub const POINTER_FILE: &str = "README.txt";
 const GENESIS_FILE: &str = "state/workspace.json";
 const LOCK_FILE: &str = "state/locks/commit.lock";
 const WORKSPACE_VERSION: WorkspaceVersion = WorkspaceVersion::V1;
@@ -179,22 +182,94 @@ impl Workspace {
     }
 
     /// Create a workspace whose config names these read-only import roots.
-    /// Each root must be an absolute path to an existing directory; nothing
-    /// else about the roots is checked or touched here.
+    /// Each root must pass [`check_import_root`]; nothing else about the roots
+    /// is checked or touched here.
     pub fn init_with_import_roots(
         root: &Path,
         vault: bool,
         import_roots: &[PathBuf],
     ) -> Result<Self, WorkspaceError> {
         for import_root in import_roots {
-            if !import_root.is_absolute() || !import_root.is_dir() {
-                return Err(WorkspaceError::InvalidConfig(format!(
-                    "import root {} must be an absolute path to an existing directory",
+            check_import_root(import_root)?;
+        }
+        Self::init_inner(root, vault, import_roots, &NativeFilesystemDetector)
+    }
+
+    /// Add read-only import roots to this workspace's config and return the
+    /// roots that were not already configured. Each root must pass
+    /// [`check_import_root`] and lie outside the workspace. The config is
+    /// re-read and replaced atomically under the commit lock, so a concurrent
+    /// update is not lost; nothing is written when every root is present.
+    /// The rewritten file keeps every setting but not hand-written comments.
+    pub fn add_import_roots(
+        &mut self,
+        import_roots: &[PathBuf],
+    ) -> Result<Vec<PathBuf>, WorkspaceError> {
+        for import_root in import_roots {
+            check_import_root(import_root)?;
+            if import_root.starts_with(&self.root) {
+                return Err(WorkspaceError::InvalidImportRoot(format!(
+                    "{} lies inside the workspace; an import root must be outside it",
                     import_root.display()
                 )));
             }
         }
-        Self::init_inner(root, vault, import_roots, &NativeFilesystemDetector)
+        let lock_path = self.root.join(LOCK_FILE);
+        let _lock =
+            crate::durable::CommitLock::acquire(&lock_path, std::time::Duration::from_secs(2))
+                .map_err(|error| match error {
+                    crate::durable::LockError::Io(error) => io_at(&lock_path, error),
+                    crate::durable::LockError::Busy { .. } => io_at(
+                        &lock_path,
+                        io::Error::new(io::ErrorKind::WouldBlock, "workspace is busy"),
+                    ),
+                })?;
+        let config_path = self.root.join(CONFIG_FILE);
+        ensure_regular_file(&config_path)?;
+        let mut config: WorkspaceConfig = toml::from_str(&read_text(&config_path)?)
+            .map_err(|error| WorkspaceError::InvalidConfig(error.to_string()))?;
+        config.validate()?;
+        let configured: Vec<PathBuf> = config
+            .import_roots
+            .iter()
+            .map(|root| {
+                if root.is_absolute() {
+                    root.clone()
+                } else {
+                    self.root.join(root)
+                }
+            })
+            .collect();
+        let mut added = Vec::new();
+        for import_root in import_roots {
+            let known = configured
+                .iter()
+                .chain(&added)
+                .any(|root| fs::canonicalize(root).is_ok_and(|root| &root == import_root));
+            if !known {
+                added.push(import_root.clone());
+            }
+        }
+        if added.is_empty() {
+            self.config = config;
+            return Ok(added);
+        }
+        config.import_roots.extend(added.iter().cloned());
+        let bytes = config_text(&config)?;
+        // The stage lives on the workspace filesystem, so the rename is atomic.
+        // Only a holder of the commit lock writes it, so a leftover is stale.
+        let stage = self.root.join("state/tmp/investigation-config");
+        match fs::remove_file(&stage) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_at(&stage, error)),
+        }
+        write_new_file(&stage, bytes.as_bytes())?;
+        fs::rename(&stage, &config_path).map_err(|source| io_at(&config_path, source))?;
+        sync_directory(&self.root)?;
+        sync_directory(&self.root.join("state/tmp"))?;
+        self.config = config;
+        Ok(added)
     }
 
     /// Test and integration seam for filesystem policy. The detector must be
@@ -264,6 +339,7 @@ impl Workspace {
                     ),
                 })?;
         write_new_file(&root.join(CONFIG_FILE), config_bytes.as_bytes())?;
+        write_new_file(&root.join(POINTER_FILE), pointer_text().as_bytes())?;
 
         // Marker-last publication: every directory, lock and config exists and
         // its parent has been synced before this identity becomes discoverable.
@@ -460,11 +536,57 @@ fn verify_layout(root: &Path, vault_enabled: bool) -> Result<(), WorkspaceError>
     Ok(())
 }
 
+/// Text of [`POINTER_FILE`]. It names commands with a `DIR` placeholder and
+/// never an absolute local path, so the file can travel with the workspace.
+#[must_use]
+pub fn pointer_text() -> String {
+    format!(
+        "This directory is an investigation workspace. Read it with the {PROGRAM_NAME} command,\n\
+         not by opening files under state/ or cache/:\n\
+         \n\
+         \x20 {PROGRAM_NAME} --workspace DIR brief --format json\n\
+         \x20 {PROGRAM_NAME} --workspace DIR onboard --format json\n\
+         \n\
+         DIR is the path to this directory, for example ./casework. Inside it, --workspace\n\
+         can be omitted. state/ holds the canonical journal and retained bytes; cache/ holds\n\
+         a disposable index. To let the workspace retain files from another directory, run\n\
+         {PROGRAM_NAME} init DIR --import-root SOURCE_DIR instead of editing investigation.toml.\n"
+    )
+}
+
+/// Reject an import root that is not an absolute, canonical path to an
+/// existing directory that ingest could open. Canonical means no symbolic
+/// link or `..` component, so the stored root cannot be redirected later.
+pub fn check_import_root(import_root: &Path) -> Result<(), WorkspaceError> {
+    let invalid = |reason: &str| {
+        Err(WorkspaceError::InvalidImportRoot(format!(
+            "{} {reason}",
+            import_root.display()
+        )))
+    };
+    if !import_root.is_absolute() || !import_root.is_dir() {
+        return invalid("must be an absolute path to an existing directory");
+    }
+    if fs::canonicalize(import_root).ok().as_deref() != Some(import_root) {
+        return invalid("must be a canonical path without symbolic links or .. components");
+    }
+    if let Err(error) = crate::import_paths::ImportRoot::open(import_root) {
+        return invalid(&format!(
+            "cannot be opened as an import root: {:?}",
+            error.reason
+        ));
+    }
+    Ok(())
+}
+
 fn config_text(config: &WorkspaceConfig) -> Result<String, WorkspaceError> {
     let body = toml::to_string(config)
         .map_err(|error| WorkspaceError::Serialization(error.to_string()))?;
     Ok(format!(
         "# Investigation workspace configuration. Unknown top-level keys are rejected.\n\
+         # Read this workspace with {PROGRAM_NAME} --workspace DIR brief, where DIR is this directory;\n\
+         # do not read state/ or cache/ files directly. See README.txt.\n\
+         # Add an import root with {PROGRAM_NAME} init DIR --import-root SOURCE_DIR, not by editing this file.\n\
          # state/ is canonical evidence and journal data; do not sync it as an Obsidian vault.\n\
          # cache/ is rebuildable and can be deleted by cache maintenance.\n\
          # local/ stores machine-specific, noncanonical bookkeeping.\n\
@@ -755,6 +877,7 @@ pub enum WorkspaceError {
     SymlinkRejected(PathBuf),
     InvalidGenesis(String),
     InvalidConfig(String),
+    InvalidImportRoot(String),
     Serialization(String),
     Identity(String),
     UnsupportedWorkspaceVersion,
@@ -797,6 +920,7 @@ impl fmt::Display for WorkspaceError {
             }
             Self::InvalidGenesis(message) => write!(f, "invalid workspace genesis: {message}"),
             Self::InvalidConfig(message) => write!(f, "invalid investigation.toml: {message}"),
+            Self::InvalidImportRoot(message) => write!(f, "invalid import root: {message}"),
             Self::Serialization(message) => {
                 write!(f, "cannot serialize workspace metadata: {message}")
             }
@@ -883,7 +1007,7 @@ mod tests {
         let root = temp.0.join("casework");
         assert!(matches!(
             Workspace::init_with_import_roots(&root, false, &[PathBuf::from("relative")]),
-            Err(WorkspaceError::InvalidConfig(_))
+            Err(WorkspaceError::InvalidImportRoot(_))
         ));
         assert!(!root.exists(), "a rejected import root creates nothing");
         let created =
@@ -891,6 +1015,102 @@ mod tests {
         assert_eq!(created.config().import_roots, vec![inputs.clone()]);
         let reopened = Workspace::open(&root).unwrap();
         assert_eq!(reopened.config().import_roots, vec![inputs]);
+    }
+
+    #[test]
+    fn init_leaves_a_pointer_to_the_brief_command_without_local_paths() {
+        let temp = TempDir::new();
+        fs::create_dir(&temp.0).unwrap();
+        let root = temp.0.join("casework");
+        Workspace::init_with_detector(&root, false, &FixedDetector(local_info())).unwrap();
+        let pointer = fs::read_to_string(root.join(POINTER_FILE)).unwrap();
+        let config = fs::read_to_string(root.join(CONFIG_FILE)).unwrap();
+        let header: String = config
+            .lines()
+            .filter(|line| line.starts_with('#'))
+            .collect::<Vec<_>>()
+            .join("\n");
+        for text in [&pointer, &header] {
+            assert!(
+                text.contains("investigation --workspace DIR brief"),
+                "{text}"
+            );
+            assert!(text.contains("--import-root"), "{text}");
+            assert_eq!(
+                investigation_core::local_path::elide_local_paths(text),
+                text.as_str(),
+                "the pointer names no absolute local path"
+            );
+            assert!(!text.contains(temp.0.to_str().unwrap()));
+        }
+        Workspace::open(&root).unwrap();
+    }
+
+    #[test]
+    fn add_import_roots_rewrites_the_config_once_and_refuses_unsafe_roots() {
+        let temp = TempDir::new();
+        fs::create_dir(&temp.0).unwrap();
+        let base = fs::canonicalize(&temp.0).unwrap();
+        let inputs = base.join("inputs");
+        fs::create_dir(&inputs).unwrap();
+        let root = base.join("casework");
+        let mut workspace =
+            Workspace::init_with_detector(&root, false, &FixedDetector(local_info())).unwrap();
+        assert!(workspace.config().import_roots.is_empty());
+
+        for refused in [
+            PathBuf::from("inputs"),
+            base.join("missing"),
+            inputs.join("..").join("inputs"),
+            root.join("state"),
+            root.clone(),
+            PathBuf::from("/"),
+        ] {
+            assert!(
+                matches!(
+                    workspace.add_import_roots(std::slice::from_ref(&refused)),
+                    Err(WorkspaceError::InvalidImportRoot(_))
+                ),
+                "{}",
+                refused.display()
+            );
+        }
+        #[cfg(unix)]
+        {
+            let link = base.join("link");
+            std::os::unix::fs::symlink(&inputs, &link).unwrap();
+            assert!(matches!(
+                workspace.add_import_roots(std::slice::from_ref(&link)),
+                Err(WorkspaceError::InvalidImportRoot(_))
+            ));
+        }
+        let before = fs::read(root.join(CONFIG_FILE)).unwrap();
+        assert_eq!(
+            Workspace::open(&root).unwrap().config().import_roots,
+            Vec::<PathBuf>::new()
+        );
+
+        let added = workspace
+            .add_import_roots(&[inputs.clone(), inputs.clone()])
+            .unwrap();
+        assert_eq!(added, vec![inputs.clone()]);
+        assert_eq!(workspace.config().import_roots, vec![inputs.clone()]);
+        let reopened = Workspace::open(&root).unwrap();
+        assert_eq!(reopened.config().import_roots, vec![inputs.clone()]);
+        assert_eq!(reopened.config().vault_policy, VaultPolicy::default());
+        assert_ne!(fs::read(root.join(CONFIG_FILE)).unwrap(), before);
+        assert!(!root.join("state/tmp/investigation-config").exists());
+
+        // A second handle sees the first handle's root and adds nothing.
+        let mut other = Workspace::open(&root).unwrap();
+        let unchanged = fs::read(root.join(CONFIG_FILE)).unwrap();
+        assert!(
+            other
+                .add_import_roots(std::slice::from_ref(&inputs))
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(fs::read(root.join(CONFIG_FILE)).unwrap(), unchanged);
     }
 
     #[test]
