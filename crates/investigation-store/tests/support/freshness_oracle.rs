@@ -44,7 +44,9 @@ use investigation_core::{
 use serde_json::Value;
 
 /// Points where the oracle's plain reading and the index differ: open rule
-/// questions, and one index gap this harness found. Generated runs use
+/// questions. (The index gap this harness found, a basis expansion missed
+/// when the promotion closure walk failed, is fixed in rules version 5: rule
+/// 4's new-required-read check always applies, as here.) Generated runs use
 /// [`Readings::index`] so that everything else is compared; a pinned test per
 /// field shows the divergence under [`Readings::plain`].
 #[derive(Clone, Copy, Debug, Default)]
@@ -58,14 +60,6 @@ pub struct Readings {
     /// when that criterion changes (the disposition rests on it). The index
     /// treats an Option's `criterion_ref` as disposition metadata.
     pub disposition_criterion_is_basis: bool,
-    /// Plain reading (rule 4): a record newly required to read the subject
-    /// that the review did not read needs review, whatever else changed. The
-    /// index (W10.05) skips this check whenever the promotion closure walk
-    /// fails, assuming an exact dependency then changed and its own edge
-    /// reports it. A benign later revision (a restated criterion, an option
-    /// disposition) also fails the walk but is reported by no edge, so a
-    /// material assumption added about a closure record is missed.
-    pub basis_expansion_despite_benign_revisions: bool,
     /// Plain reading (rule 4): an objection the review did not see disputes
     /// it even after the reviewed subject changed in substance; the review is
     /// then both stale and disputed. The index reports only the subject
@@ -84,7 +78,6 @@ impl Readings {
         Self {
             resolution_evidence_is_basis: true,
             disposition_criterion_is_basis: true,
-            basis_expansion_despite_benign_revisions: true,
             review_checks_survive_subject_change: true,
         }
     }
@@ -379,45 +372,13 @@ impl<'a> Oracle<'a> {
             .flatten()
             .filter_map(ref_id)
             .collect();
-        let checked = self.readings.basis_expansion_despite_benign_revisions
-            || !self.closure_behind(now_subject);
-        for required in self.required(now_subject).into_iter().filter(|_| checked) {
+        // Rule 4: a record newly required to read the subject that the review
+        // did not read, whatever else changed in the closure.
+        for required in self.required(now_subject) {
             if required != subject && !read.contains(&required) {
                 verdict.review("basis_expanded", format!("{required} was not read"));
             }
         }
-    }
-
-    /// Whether the read closure of `root` cites a revision that is no longer
-    /// current, other than the Source, Artifact and Observation revisions the
-    /// promotion walk reads through to their current revision (index gap,
-    /// see [`Readings::basis_expansion_despite_benign_revisions`]).
-    fn closure_behind(&self, root: &Record) -> bool {
-        let mut seen = BTreeSet::new();
-        let mut pending = vec![root];
-        while let Some(record) = pending.pop() {
-            if !seen.insert(record.header.id) {
-                continue;
-            }
-            for citation in self.citations(record).into_iter().filter(|c| c.read) {
-                let behind = self
-                    .current(citation.target.id)
-                    .is_some_and(|now| now.reference() != citation.target);
-                if behind
-                    && !matches!(
-                        citation.target.id.kind(),
-                        Kind::Source | Kind::Artifact | Kind::Observation
-                    )
-                {
-                    return true;
-                }
-                pending.extend(self.state.revision(citation.target));
-            }
-            for assumption in self.material_assumptions(record.header.id).keys() {
-                pending.extend(self.current(*assumption));
-            }
-        }
-        false
     }
 
     /// The records a reviewer of `root` must read: its read citations,

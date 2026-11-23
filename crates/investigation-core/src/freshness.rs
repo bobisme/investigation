@@ -27,7 +27,7 @@ use crate::{
     evidence::MeasurementValidity,
     identity::{Id, Kind},
     measurement_ops::{MEASUREMENT_ASSESSMENT_KEY, effective_validity, validity_rank},
-    review_ops::{promotion_memberships, required_read_set},
+    review_ops::{promotion_memberships, required_reads},
     state::{Record, State},
     wire::{ErrorCode, Failure},
 };
@@ -38,8 +38,12 @@ use crate::{
 /// review that read a structural audit stale when the check set changes.
 /// Version 4 acknowledges a partial withdrawal or a raised source concern for
 /// a record whose current revision was accepted at or after it: that record
-/// read the Source or Artifact with the change in effect.
-pub const FRESHNESS_RULES_VERSION: u32 = 4;
+/// read the Source or Artifact with the change in effect. Version 5 checks a
+/// validation review for new required reads whatever else changed in its
+/// subject's closure: behind a benign later revision (such as a restated
+/// criterion), which the promotion closure now reads through, and where a
+/// promotion would refuse the walk (such as a rejected material assumption).
+pub const FRESHNESS_RULES_VERSION: u32 = 5;
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -1032,14 +1036,21 @@ fn review_basis(state: &State, case: Id, record: &Record) -> Vec<FreshnessReason
             ));
         }
     }
-    // A failed walk means an exact dependency changed; the read-set edges report it.
-    if let Ok(required) = required_read_set(state, target) {
+    // A record now required to read the subject that the review did not
+    // read, whatever else changed in the closure: the walk reads through
+    // benign successors and does not stop where a promotion would refuse.
+    if let Ok(required) = required_reads(state, target) {
         let read: BTreeSet<Id> = read_set.iter().map(|reference| reference.id).collect();
         for reference in required {
-            if !read.contains(&reference.id) {
+            if reference.id != target.header.id && !read.contains(&reference.id) {
+                // The tolerant walk may stand a cited revision in for a
+                // changed one; the cause names the current revision.
+                let cause = state
+                    .current(reference.id)
+                    .map_or(reference, Record::reference);
                 reasons.push(FreshnessReason::local(
                     Trigger::BasisExpanded,
-                    reference,
+                    cause,
                     Vec::new(),
                 ));
             }
@@ -1555,6 +1566,7 @@ mod tests {
         header::RecordHeader,
         header::SystemClock,
         identity::{IdSource, SystemIdSource},
+        review_ops::required_read_set,
         state::{Acceptance, AcceptedTransaction, validate_and_apply},
         wire::RecordChange,
     };

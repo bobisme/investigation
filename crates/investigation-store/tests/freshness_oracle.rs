@@ -37,7 +37,7 @@ use std::{
 use investigation_core::{
     basis::basis_digest,
     command::RevisionRef,
-    freshness::{Freshness, FreshnessIndex, RecordFreshness},
+    freshness::{Freshness, FreshnessIndex, RecordFreshness, Trigger},
     identity::{Id, Kind},
     review_ops::required_read_set,
     state::{Record, State},
@@ -2082,14 +2082,16 @@ fn open_question_a_ruled_out_option_does_not_rest_on_its_criterion() {
     );
 }
 
-/// Index gap found by this harness: after a benign revision of a record in a
-/// decision's closure (a restated criterion), a material assumption about a
-/// compared cell is a new required read the decision review never saw, yet
-/// the review and the accepted decision stay current. The index skips the
-/// check whenever the promotion closure walk fails, and the walk fails on any
-/// non-current Criterion revision, benign or not.
+/// Fixed index gap found by this harness (W10.05d): after a benign revision
+/// of a record in a decision's closure (a restated criterion), a material
+/// assumption about a compared cell is a new required read the decision
+/// review never saw. The promotion closure walk used to refuse any
+/// non-current Criterion revision, and the index skipped the check whenever
+/// the walk failed, so the review and the accepted decision stayed current.
+/// The walk now reads through every benign successor, so the index, the
+/// promotion gates and the `review.stale_read_set` gap rule agree.
 #[test]
-fn index_gap_basis_expansion_is_missed_behind_a_benign_revision() {
+fn basis_expansion_is_caught_behind_a_benign_revision() {
     let steps = [
         Step::One(Edit::AmendCriterion {
             criterion: 0,
@@ -2099,29 +2101,102 @@ fn index_gap_basis_expansion_is_missed_behind_a_benign_revision() {
             target: COMPARISON_0,
         }),
     ];
-    let report = pinned_divergence(
-        &small_graph(),
-        &steps,
-        Readings {
-            basis_expansion_despite_benign_revisions: true,
-            ..Readings::index()
-        },
-        "review#1(decision)",
+    // The index agrees with the oracle's plain rule 4 on this history (no
+    // open rule question bears on it, so every plain reading agrees too),
+    // and that rule fires.
+    let mut stats = Stats::default();
+    let settings = Settings {
+        readings: Readings::plain(),
+        replay_checks: false,
+        ..Settings::default()
+    };
+    check_history(1, &small_graph(), &steps, settings, &mut stats).unwrap();
+    check_history(1, &small_graph(), &steps, Settings::default(), &mut stats).unwrap();
+    assert!(
+        stats.rules.contains_key("basis_expanded"),
+        "{:?}",
+        stats.rules
     );
-    assert!(report.contains("basis_expanded"), "{report}");
-    // Without the benign revision the index does catch it.
-    check_history(
-        1,
-        &small_graph(),
-        &steps[1..],
-        Settings {
-            readings: Readings::plain(),
-            replay_checks: false,
-            ..Settings::default()
-        },
-        &mut Stats::default(),
-    )
-    .unwrap();
+
+    // Replay the history and read the index directly.
+    let mut run = Run::scaffold(&small_graph());
+    for step in &steps {
+        let Step::One(edit) = step else {
+            unreachable!()
+        };
+        let planned = run.plan(edit).expect("applicable");
+        let receipt = run.submit(&[planned.op], &[]).expect("accepted");
+        run.refresh();
+        run.register(&receipt);
+    }
+    let by_label = |label: &str| {
+        *run.labels
+            .iter()
+            .find(|(_, name)| name.as_str() == label)
+            .unwrap_or_else(|| panic!("{label} in {:?}", run.labels))
+            .0
+    };
+    let (criterion, review, decision) = (
+        by_label("criterion#0"),
+        by_label("review#1(decision)"),
+        by_label("decision"),
+    );
+    assert_eq!(run.current(criterion).header.revision.0, 2, "restated");
+    let index = FreshnessIndex::build(run.state(), run.case);
+    let review_freshness = index.get(review).unwrap();
+    assert_eq!(review_freshness.freshness, Freshness::NeedsReview);
+    let expanded: Vec<_> = review_freshness
+        .reasons
+        .iter()
+        .filter(|reason| reason.trigger == Trigger::BasisExpanded)
+        .map(|reason| reason.cause)
+        .collect();
+    assert_eq!(expanded.len(), 1, "{:?}", review_freshness.reasons);
+    assert_eq!(expanded[0].id.kind(), Kind::Assumption);
+    assert_eq!(
+        index.get(decision).unwrap().freshness,
+        Freshness::NeedsReview
+    );
+
+    // The promotion closure reads the restated criterion's current revision
+    // instead of refusing the walk, and now includes the new assumption.
+    let reads = required_read_set(run.state(), run.current(decision)).unwrap();
+    assert!(reads.contains(&run.cur(criterion)), "{reads:?}");
+    assert!(reads.contains(&expanded[0]), "{reads:?}");
+}
+
+// Material-assumption targets in `small_graph`: criterion#0 follows the
+// five objection targets.
+const CRITERION_0: u8 = 5;
+
+/// The same rule-4 check where a promotion would refuse the closure walk (a
+/// generated history found it with more cases): a material assumption about
+/// a criterion in the closures is added after the reviews and then rejected.
+/// Neither review read it and no review edge reports it, so the check must
+/// not lapse just because the gate refuses a rejected dependency.
+#[test]
+fn basis_expansion_is_caught_behind_a_rejected_assumption() {
+    let steps = [
+        Step::One(Edit::AddMaterialAssumption {
+            target: CRITERION_0,
+        }),
+        Step::One(Edit::AssessAssumption {
+            assumption: 1,
+            status: 2,
+        }),
+    ];
+    let mut stats = Stats::default();
+    let settings = Settings {
+        replay_checks: false,
+        ..Settings::default()
+    };
+    check_history(1, &small_graph(), &steps, settings, &mut stats).unwrap();
+    assert!(
+        stats.rules.contains_key("basis_expanded"),
+        "{:?}",
+        stats.rules
+    );
+    assert_eq!(stats.accepted.get("assumption.assess"), Some(&1));
 }
 
 /// Open rule question: once the reviewed subject changes in substance, the

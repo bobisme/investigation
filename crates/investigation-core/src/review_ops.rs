@@ -259,10 +259,15 @@ fn current<'a>(
 
 /// The revision a promotion reads for a cited one. A cited Source or Artifact
 /// reads its current revision when only evidentiary use changed: the reader
-/// examines the judgments too. A cited Observation reads its current revision
-/// when the shared freshness predicate finds the change benign, such as a
-/// measurement judgment that keeps or raises effective validity. Any other
-/// change is a revision conflict naming the record and the trigger.
+/// examines the judgments too. A cited Assessment or Conclusion reads its
+/// current revision when only its likelihood changed. Any cited record reads
+/// its current revision when the shared freshness predicate finds the change
+/// benign ([`crate::freshness::benign_successor`]), such as a measurement
+/// judgment that keeps or raises effective validity or a criterion restated
+/// without change. Any other change is a revision conflict naming the record
+/// and the trigger. The freshness index's basis-expansion check walks this
+/// same closure, so a benign revision neither blocks a promotion nor hides a
+/// new required read from the index.
 fn cited<'a>(
     state: &'a State,
     case: Id,
@@ -271,12 +276,12 @@ fn cited<'a>(
 ) -> Result<&'a Record, Failure> {
     let successor = match reference.id.kind() {
         Kind::Source | Kind::Artifact => crate::source_ops::use_successor(state, case, reference),
-        Kind::Observation => crate::freshness::benign_successor(state, case, reference),
         Kind::Assessment | Kind::Conclusion => {
             crate::likelihood::likelihood_only_successor(state, case, reference)
         }
         _ => None,
-    };
+    }
+    .or_else(|| crate::freshness::benign_successor(state, case, reference));
     if let Some(record) = successor {
         return Ok(record);
     }
@@ -388,6 +393,17 @@ pub fn promotion_memberships(
 }
 
 fn causal_rivals(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Failure> {
+    causal_rivals_in(state, record, false)
+}
+
+/// Rival hypotheses of a causal conclusion's factors. With `tolerant`, a
+/// factor whose later revision the gate would refuse is read at its cited
+/// revision ([`required_reads`]).
+fn causal_rivals_in(
+    state: &State,
+    record: &Record,
+    tolerant: bool,
+) -> Result<Vec<RevisionRef>, Failure> {
     if record.header.id.kind() != Kind::Conclusion {
         return Ok(Vec::new());
     }
@@ -399,7 +415,10 @@ fn causal_rivals(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Fai
         .ok_or_else(integrity)?
     {
         let factor: RevisionRef = decode(&factor["hypothesis_ref"])?;
-        let hypothesis = current(state, case, factor, "/causal_factors")?;
+        let hypothesis = match cited(state, case, factor, "/causal_factors") {
+            Err(_) if tolerant => state.revision(factor).ok_or_else(integrity)?,
+            read => read?,
+        };
         let question: RevisionRef = decode(&hypothesis.body["question_ref"])?;
         factors.insert(factor.id);
         questions.insert(question.id);
@@ -425,13 +444,43 @@ fn causal_rivals(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Fai
 /// Exact dependency closure, including current revisions of material assumptions
 /// whose reverse links name the subject or a transitive dependency.
 pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef>, Failure> {
+    dependency_closure(state, root, false)
+}
+
+/// The records a reviewer of `root` must read: the same closure as
+/// [`required_read_set`], walked without its promotion refusals. A
+/// dependency whose later revision is not benign is read at its cited
+/// revision, and a withdrawn or rejected dependency, a circular citation or
+/// an assessment of an older claim basis is kept rather than refused. The
+/// freshness index checks a validation review's read set against it, so a
+/// new required read (such as a material assumption about a closure record)
+/// is reported however else the closure changed. Only the IDs are meaningful.
+pub fn required_reads(state: &State, root: &Record) -> Result<Vec<RevisionRef>, Failure> {
+    dependency_closure(state, root, true)
+}
+
+fn dependency_closure(
+    state: &State,
+    root: &Record,
+    tolerant: bool,
+) -> Result<Vec<RevisionRef>, Failure> {
     struct Walk<'a> {
         state: &'a State,
         root: &'a Record,
+        tolerant: bool,
         open: BTreeSet<Id>,
         seen: BTreeMap<Id, RevisionRef>,
     }
-    impl Walk<'_> {
+    impl<'a> Walk<'a> {
+        /// A promotion refusal, or nothing in the tolerant walk.
+        fn refuse(&self, message: &str) -> Result<(), Failure> {
+            if self.tolerant {
+                Ok(())
+            } else {
+                Err(gate("/read_set", message))
+            }
+        }
+
         fn visit(&mut self, record: &Record) -> Result<(), Failure> {
             let id = record.header.id;
             if self.open.len() >= 128 {
@@ -441,13 +490,10 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
                 ));
             }
             if !self.open.insert(id) {
-                return Err(gate(
-                    "/read_set",
-                    "The evidence basis contains circular justification.",
-                ));
+                return self.refuse("The evidence basis contains circular justification.");
             }
             let mut dependencies = links(record)?;
-            dependencies.extend(causal_rivals(self.state, record)?);
+            dependencies.extend(causal_rivals_in(self.state, record, self.tolerant)?);
             let assumption_basis = membership(
                 self.state,
                 MembershipRule::MaterialAssumptions,
@@ -479,33 +525,29 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
                     }
                     let historic = self.state.revision(subject).ok_or_else(integrity)?;
                     if basis_digest(historic)? != basis_digest(self.root)? {
-                        return Err(gate(
-                            "/read_set",
-                            "An assessment belongs to an older substantive claim basis.",
-                        ));
+                        self.refuse("An assessment belongs to an older substantive claim basis.")?;
                     }
                 }
             }
             for reference in dependencies {
                 let case = self.root.header.case_id;
                 // Source and Artifact use changes (assessment, withdrawal) and
-                // benign Observation judgments keep the cited revision's content;
-                // the current revision is what is read.
-                let child = cited(self.state, case, reference, "/read_set")?;
+                // benign later revisions of any kind keep the cited revision's
+                // content; the current revision is what is read.
+                let child: &'a Record = match cited(self.state, case, reference, "/read_set") {
+                    Err(_) if self.tolerant => {
+                        self.state.revision(reference).ok_or_else(integrity)?
+                    }
+                    read => read?,
+                };
                 if inactive(child) {
-                    return Err(gate(
-                        "/read_set",
-                        format!(
-                            "Dependency {} is withdrawn, retracted, or retired.",
-                            reference.id
-                        ),
-                    ));
+                    self.refuse(&format!(
+                        "Dependency {} is withdrawn, retracted, or retired.",
+                        reference.id
+                    ))?;
                 }
                 if self.open.contains(&reference.id) {
-                    return Err(gate(
-                        "/read_set",
-                        "The evidence basis contains circular justification.",
-                    ));
+                    self.refuse("The evidence basis contains circular justification.")?;
                 }
                 if self.seen.insert(reference.id, child.reference()).is_none() {
                     self.visit(child)?;
@@ -518,6 +560,7 @@ pub fn required_read_set(state: &State, root: &Record) -> Result<Vec<RevisionRef
     let mut walk = Walk {
         state,
         root,
+        tolerant,
         open: BTreeSet::new(),
         seen: BTreeMap::new(),
     };
