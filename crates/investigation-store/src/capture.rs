@@ -697,3 +697,7 @@ pub mod retire;
 #[cfg(test)]
 #[path = "capture_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "capture_qualification_tests.rs"]
+mod qualification_tests;

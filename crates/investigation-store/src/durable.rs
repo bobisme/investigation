@@ -357,6 +357,11 @@ impl MemoryFs {
         s.calls = 0;
         s.fail_at = Some(call);
     }
+    /// Paths of every lock currently held through this filesystem.
+    #[cfg(test)]
+    pub(crate) fn held_locks(&self) -> Vec<PathBuf> {
+        self.0.borrow().locks.iter().cloned().collect()
+    }
     pub fn crash(&self) {
         let mut s = self.0.borrow_mut();
         s.entries = s.durable_entries.clone();
