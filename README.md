@@ -34,6 +34,8 @@ investigation --workspace casework next --format json
 
 Run `investigation onboard` from an existing workspace or an empty directory. `investigation schema --list` lists active operations. `investigation schema observation.add --format json` describes the payload and its repair guidance. Supply an exact revision for changes to an existing record and reuse the original command ID after a lost response.
 
+`investigation next` ranks up to three open gaps. `investigation frontier --format json` lists every gap at the same committed snapshot, unranked, with `--status`, `--kind` and `--rule` filters and a cursor that stays on the first page's snapshot. `investigation frontier --explain GAP_ID` names the rule and rule version that emits a gap and the fields it reads. A gap is missing or stale recorded information. It is not an assignment, and neither command dispatches work.
+
 ## Worked cases
 
 ```sh

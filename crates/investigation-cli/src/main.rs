@@ -1,6 +1,7 @@
 //! Local command-line frontend.
 
 mod evidence;
+mod frontier;
 mod next;
 mod onboard;
 mod schema;
@@ -162,6 +163,9 @@ enum Commands {
         #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=3))]
         limit: u8,
     },
+    /// List every snapshot-bound gap with filters, paging and rule explanations.
+    #[command(after_help = frontier::AFTER_HELP)]
+    Frontier(frontier::Args),
     /// Look up a command without resubmitting its original input.
     #[command(
         after_help = "Use the original command ID and actor.\nExample: investigation receipt create-case-1 --actor agent:investigator --format json"
@@ -313,6 +317,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                     brief(&mut store, &global, level, max_bytes)
                 }
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
+                Commands::Frontier(args) => frontier::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
