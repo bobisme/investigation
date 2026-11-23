@@ -115,6 +115,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("doctor bundle", Effect::Read),
     // Apply and remove change one file the user names outside any workspace,
     // like an export; --dry-run prints the diff and writes nothing.
+    // Preview by default; --apply changes named keys of one file in the
+    // vault's configuration folder, outside the workspace.
+    ("obsidian setup", Effect::ReadUnlessFlag(&["apply"])),
     ("integration show", Effect::Read),
     ("integration inspect", Effect::Read),
     ("integration apply", Effect::WriteUnlessFlag(&["dry_run"])),

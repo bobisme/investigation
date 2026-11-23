@@ -27,6 +27,7 @@ mod lessons;
 mod lineage;
 mod logging;
 mod next;
+mod obsidian_setup;
 mod onboard;
 mod read_only;
 mod retrospective;
@@ -333,6 +334,9 @@ enum Commands {
     /// Show, apply or remove the agent instructions in a file you name; never implicit.
     #[command(subcommand, after_help = integration::AFTER_HELP)]
     Integration(integration::IntegrationCommand),
+    /// Preview or apply a few named native viewer settings in a vault you name.
+    #[command(subcommand, after_help = obsidian_setup::AFTER_HELP)]
+    Obsidian(obsidian_setup::ObsidianCommand),
     /// Print the program version; the same as --version.
     // Hidden: agents guess `version` before `--version`, so accept it quietly.
     #[command(hide = true)]
@@ -445,6 +449,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Config(command) => config::run(&global, command),
         Commands::Integration(command) => integration::run(command),
         Commands::Archive(command) => archive::run(command),
+        Commands::Obsidian(command) => obsidian_setup::run(command),
         Commands::Version => Ok(version_output(format!(
             "{PROGRAM_NAME} {}",
             env!("CARGO_PKG_VERSION")
@@ -510,6 +515,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Config(_)
                 | Commands::Integration(_)
                 | Commands::Archive(_)
+                | Commands::Obsidian(_)
                 | Commands::Version => {
                     unreachable!("workspace-independent command")
                 }

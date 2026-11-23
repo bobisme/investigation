@@ -9,6 +9,9 @@ ownership-aware publisher, and a renderer lock separate from the commit lock.
 This directory holds vault fixtures; rendering never requires Obsidian to be
 installed or running.
 
+Syncing a vault, using it on a phone, and the paths that must never be
+synchronized are in [`docs/obsidian-sync.md`](../docs/obsidian-sync.md).
+
 ## Compatibility profile
 
 `compatibility-profile.json` pins the supported Obsidian release (1.15.1,
@@ -182,3 +185,40 @@ viewer may show a warning on generated notes; nothing breaks.
 | Date & time | `inv_updated` |
 
 Generated notes also carry the viewer's own `aliases` and `tags` lists.
+
+## Setup preview
+
+`investigation obsidian setup --vault PATH` shows, and only with `--apply`
+writes, a few native viewer settings in the vault's configuration folder. It
+is for the native baseline only: it never installs, enables or disables a
+plugin, never changes Restricted Mode, and never opens `community-plugins.json`,
+`plugins/`, `themes/`, `snippets/`, `hotkeys.json` or `workspace.json`.
+
+- **Without `--apply` nothing is written.** The response lists each proposed
+  key with its current value, an action (`add`, `change` or `unchanged`), the
+  exact unified diff, and the command that would apply it. `--read-only`
+  accepts the preview and refuses `--apply`.
+- **Apply changes only the previewed keys.** It splices the values of the
+  selected keys into `app.json`'s own text, so every other byte of the file
+  is as it was, and no other file is opened. It then checks that every other
+  key parses to the value it had. `--setting KEY` (repeatable) limits the
+  keys; without it every key in the table is proposed. A second apply changes
+  nothing.
+- **The configuration folder** is `.obsidian` when it exists. Otherwise it is
+  the one hidden folder of the vault that holds an `app.json`; two such
+  folders are refused as ambiguous. `--config-dir NAME` names a custom folder.
+  The folder must exist: setup creates no folder, so open the vault in the
+  viewer once first. The vault path and the folders it names must not be
+  symbolic links, and `app.json` must be a UTF-8 JSON object.
+- **The write is atomic.** A temporary file beside `app.json` is renamed over
+  it only if `app.json` still holds the bytes the diff was computed from.
+
+The settings it can propose:
+
+| Key | Proposed value | Why |
+|---|---|---|
+| `useMarkdownLinks` | `false` | Generated notes link with wikilinks; links you create then use the same form. |
+| `newLinkFormat` | `"absolute"` | Generated links name the path from the vault root, so a link you create cannot resolve to a generated note of the same name. |
+
+A test keeps this table equal to the `SETTINGS` table in
+`crates/investigation-cli/src/obsidian_setup.rs`.

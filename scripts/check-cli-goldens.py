@@ -18,7 +18,7 @@ SCOPES = (
     ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
     ("capture", "append"), ("capture", "attach"), ("vault", "render"), ("vault", "status"),
     ("vault", "conflicts"), ("vault", "reconcile"), ("vault", "copy-map"), ("vault", "remove"), ("export",), ("archive", "verify"), ("config", "list"), ("config", "get"), ("config", "path"), ("doctor",), ("doctor", "bundle"),
-    ("integration", "show"), ("integration", "apply"), ("integration", "remove"), ("integration", "inspect"),
+    ("integration", "show"), ("integration", "apply"), ("integration", "remove"), ("integration", "inspect"), ("obsidian", "setup"),
 )
 
 

@@ -449,7 +449,7 @@ fn read_text(file: &OwnedFile) -> Result<Option<String>, Failure> {
 }
 
 /// A one-hunk unified diff: every change here is one contiguous region.
-fn unified_diff(label: &str, before: Option<&str>, after: Option<&str>) -> String {
+pub(crate) fn unified_diff(label: &str, before: Option<&str>, after: Option<&str>) -> String {
     if before == after {
         return String::new();
     }
