@@ -77,8 +77,16 @@
 //!   measurement, evaluation or research), and the `brief`/`frontier`
 //!   commands to resume. It reuses core rules (freshness overview, objection
 //!   policy, synopsis status, `next` ranking) and never the CLI crate.
-//! - `Start Here.md`: extend the body in [`templates`] on top of
-//!   [`note::NoteContext`]; paths stay in [`layout`]. Bump
+//! - `Start Here.md` ([`start_here`]): what the vault is, projection
+//!   health, who owns which folder, and per case (capped, in case ID order)
+//!   its Overview, last committed snapshot, answer, pending questions,
+//!   outstanding reviews, unresolved blindspot reviews and retrospectives,
+//!   each list bounded with a link to the Overview, and the exact `brief`
+//!   and `frontier` commands. Health is an explicit input
+//!   ([`EntryHealth`]): the plan renders it healthy, and [`render_vault`]
+//!   publishes the variant announcing recorded drift or a partial render
+//!   through [`CaseRenderer::announce`] (`entry`). The vault health command
+//!   is not printed until a `vault status` command exists. Bump
 //!   [`RENDERER_VERSION`] whenever output bytes change for the same snapshot.
 //! - Evidence-family notes: [`evidence`] adds Source, Artifact and
 //!   Observation sections (acquisition, source assessment, role, integrity,
@@ -119,6 +127,7 @@
 //! filesystem is the only interface.
 
 pub mod drift;
+pub(crate) mod entry;
 pub mod error;
 pub mod evidence;
 pub mod layout;
@@ -131,6 +140,7 @@ pub mod policy;
 pub mod publish;
 pub(crate) mod records;
 pub mod snapshot;
+pub mod start_here;
 pub mod status;
 pub mod sweep;
 pub mod templates;
@@ -159,6 +169,7 @@ pub use publish::{
     Publisher, Refusal,
 };
 pub use snapshot::{CaseSnapshot, VerifiedSnapshot};
+pub use start_here::EntryHealth;
 pub use status::{VaultState, VaultStatus, vault_status};
 pub use sweep::{Swept, SweptAction};
 
@@ -196,17 +207,21 @@ pub struct RenderReport {
 ///    write-ahead intent ([`Manifest::begin`]); no vault file has changed yet;
 /// 3. the plan is published: records, then views, then the entry note, then
 ///    retired paths are removed. Paths with a conflict copy beside them are
-///    held, and drifted paths are refused; the rest render ([`drift`]);
+///    held, and drifted paths are refused; the rest render ([`drift`]). The
+///    entry note is planned announcing the drift the manifest recorded;
 /// 4. drift is diagnosed, and the content withheld from drifted paths is
 ///    retained under `local/conflicts/<generation>/`;
-/// 5. the manifest is stored with the outcomes and the drift records,
+/// 5. when the drift found differs from the drift announced, the entry note
+///    is written again announcing it, under a write-ahead intent;
+/// 6. the manifest is stored with the outcomes and the drift records,
 ///    `complete` or `partial` ([`Manifest::updated`]). It is the last file
 ///    the render writes.
 ///
 /// When a file operation fails, the outcomes reached so far are still
-/// recorded, with state `partial` and the error as its reason, before the
-/// error is returned. A render killed at any point leaves `updating` (or the
-/// earlier manifest), from which the next render completes.
+/// recorded, with state `partial` and the error as its reason, and the entry
+/// note announces the partial render when it can still be written, before
+/// the error is returned. A render killed at any point leaves `updating` (or
+/// the earlier manifest), from which the next render completes.
 pub fn render_vault<F: DurableFs>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
@@ -219,6 +234,14 @@ pub fn render_vault<F: DurableFs>(
     let workspace = store.workspace();
     let loaded = Manifest::load(workspace, &lock)?;
     let publisher = Publisher::open(workspace, &lock)?;
+    // The entry note announces the drift the last render recorded; it is
+    // written again below only when this render finds something else.
+    let expected = entry::health(None, loaded.manifest.drift());
+    let plan = if expected.is_healthy() {
+        plan
+    } else {
+        renderer.announce(&plan, &snapshot, policy, &expected)?
+    };
 
     let mut targets = loaded.manifest.known_paths();
     targets.extend(plan.entries().iter().map(|entry| entry.path().clone()));
@@ -231,6 +254,24 @@ pub fn render_vault<F: DurableFs>(
     let ownership = drift::Guard {
         manifest: &loaded.manifest,
         survey: &survey,
+    };
+    // A partial render is announced on the entry note when it can still be
+    // written; failing to announce it never hides the render error.
+    let announce_partial = |manifest: Manifest, reason: String| {
+        let health = entry::health(Some(reason), manifest.drift());
+        renderer
+            .announce(&plan, &snapshot, policy, &health)
+            .and_then(|announced| {
+                entry::publish(
+                    workspace,
+                    &lock,
+                    &publisher,
+                    &survey,
+                    manifest.clone(),
+                    &announced,
+                )
+            })
+            .map_or(manifest, |(manifest, _)| manifest)
     };
     loaded.manifest.begin(&plan).store(workspace, &lock)?;
     let mut reached = Vec::new();
@@ -249,9 +290,9 @@ pub fn render_vault<F: DurableFs>(
             // The render error is the one to report. A failed manifest write
             // leaves the `updating` record, whose intent still covers every
             // file this render may have written.
-            let _ = manifest
-                .failed(plan.generation(), error.to_string())
-                .store(workspace, &lock);
+            let manifest = manifest.failed(plan.generation(), error.to_string());
+            let _ = manifest.store(workspace, &lock);
+            let _ = announce_partial(manifest, error.to_string()).store(workspace, &lock);
             return Err(error);
         }
     };
@@ -266,13 +307,35 @@ pub fn render_vault<F: DurableFs>(
         Err(error) => {
             // Every vault file was processed; only the drift record is
             // incomplete. Earlier drift records are kept.
-            let _ = manifest
-                .failed(plan.generation(), error.to_string())
-                .store(workspace, &lock);
+            let manifest = manifest.failed(plan.generation(), error.to_string());
+            let _ = manifest.store(workspace, &lock);
+            let _ = announce_partial(manifest, error.to_string()).store(workspace, &lock);
             return Err(error);
         }
     };
     let manifest = manifest.with_drift(&publish, drifts);
+    let actual = entry::health(None, manifest.drift());
+    let manifest = if actual == expected {
+        manifest
+    } else {
+        let announced = renderer.announce(&plan, &snapshot, policy, &actual)?;
+        match entry::publish(
+            workspace,
+            &lock,
+            &publisher,
+            &survey,
+            manifest.clone(),
+            &announced,
+        ) {
+            Ok((manifest, _)) => manifest,
+            Err(error) => {
+                // Every plan entry was processed; only the announcement
+                // failed. The plan's entry note stays, as recorded.
+                manifest.store(workspace, &lock)?;
+                return Err(error);
+            }
+        }
+    };
     manifest.store(workspace, &lock)?;
     let unknown = publisher.unknown_files(&|path| manifest.owns(path))?;
     Ok(RenderReport {

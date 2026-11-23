@@ -440,7 +440,7 @@ impl<'lock> Publisher<'lock> {
         }
     }
 
-    fn apply(
+    pub(crate) fn apply(
         &self,
         generation: &Generation,
         entry: &PlanEntry,

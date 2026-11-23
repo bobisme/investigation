@@ -177,6 +177,57 @@ fn target(case: Id, id: Id) -> String {
     path.as_str().strip_suffix(".md").unwrap().to_owned()
 }
 
+/// `Start Here.md` describes every case with its Overview link, and every
+/// command it prints runs verbatim in the workspace folder.
+fn assert_start_here(workspace: &Path, snapshot: &VerifiedSnapshot, plan: &RenderPlan) -> String {
+    let note = std::str::from_utf8(plan.entry("Start Here.md").unwrap().content())
+        .unwrap()
+        .to_owned();
+    for heading in [
+        "Projection health",
+        "Who owns what",
+        "Resume a case",
+        "Cases",
+    ] {
+        assert!(
+            vault::section(&note, heading).is_some(),
+            "{heading}\n{note}"
+        );
+    }
+    assert!(note.contains("- State: complete."), "{note}");
+    let cases = vault::section(&note, "Cases").unwrap();
+    for case in snapshot.cases() {
+        let overview = layout::case_overview(case.case_id()).unwrap();
+        let target = overview.as_str().strip_suffix(".md").unwrap();
+        assert!(cases.contains(&format!("- [[{target}|")), "{cases}");
+        assert!(
+            cases.contains(&format!(
+                "Last committed snapshot: sequence {}, head `{}`",
+                case.head().sequence,
+                case.head().head_hash.as_str()
+            )),
+            "{cases}"
+        );
+    }
+    let mut commands = 0;
+    for span in note.split('`').skip(1).step_by(2) {
+        let Some(arguments) = span.strip_prefix("investigation ") else {
+            continue;
+        };
+        commands += 1;
+        let output = Command::new(env!("CARGO_BIN_EXE_investigation"))
+            .args(arguments.split_whitespace())
+            .current_dir(workspace)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{span}: {output:?}");
+        serde_json::from_slice::<Value>(&output.stdout)
+            .unwrap_or_else(|error| panic!("{span}: {error}"));
+    }
+    assert_eq!(commands, 2 * snapshot.cases().count(), "{note}");
+    note
+}
+
 fn assert_vault(snapshot: &VerifiedSnapshot, plan: &RenderPlan, kinds: &[Kind]) {
     let report = vault::check(plan, snapshot);
     assert!(report.problems.is_empty(), "{:#?}", report.problems);
@@ -221,6 +272,14 @@ fn scenario_a_renders_every_record_type_with_links_both_ways() {
             Kind::Retrospective,
         ],
     );
+
+    let start = assert_start_here(&workspace, &snapshot, &plan);
+    let cases = vault::section(&start, "Cases").unwrap();
+    assert!(
+        cases.contains("  - Retrospectives (1):\n    - [["),
+        "{cases}"
+    );
+    assert!(cases.contains("  - Focus: explanation\n"), "{cases}");
 
     // The validated conclusion and its review agree that the review is
     // current: validation was a lifecycle-only revision of the subject.
@@ -402,6 +461,9 @@ fn scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision() {
             Kind::Retrospective,
         ],
     );
+    let start = assert_start_here(&workspace, &snapshot, &plan);
+    let cases = vault::section(&start, "Cases").unwrap();
+    assert!(cases.contains("  - Focus: evaluation\n"), "{cases}");
     let case = snapshot.cases().next().unwrap();
     let state = case.state();
     let front = overview(&plan, case.case_id());

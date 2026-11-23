@@ -285,6 +285,41 @@ impl Manifest {
         self
     }
 
+    /// The write-ahead record for one extra write of `entry` after the plan
+    /// was published (the entry note announcing projection health): its hash
+    /// is added to the intent, and a `complete` state reads `updating` until
+    /// the write is recorded, so a render killed during it is completed by
+    /// the next one. A `partial` state is kept.
+    pub(crate) fn intending(&self, entry: &PlanEntry, generation: &Generation) -> Self {
+        let mut next = self.clone();
+        next.pending
+            .entry(entry.path().clone())
+            .or_default()
+            .insert(entry.sha256().clone());
+        if next.state == RenderState::Complete {
+            next.state = RenderState::Updating {
+                generation: generation.id().to_owned(),
+            };
+        }
+        next
+    }
+
+    /// The same record with `entry`'s path owned at its hash, after the
+    /// write [`Self::intending`] announced. Drift and pending hashes are
+    /// unchanged.
+    pub(crate) fn owning(mut self, entry: &PlanEntry, generation: &Generation) -> Self {
+        self.owned.insert(
+            entry.path().clone(),
+            OwnedPath {
+                path: entry.path().clone(),
+                sha256: entry.sha256().clone(),
+                generation: generation.id().to_owned(),
+                projects: entry.projects(),
+            },
+        );
+        self
+    }
+
     /// The manifest after a publication, and the paths it adopted.
     ///
     /// Written files are recorded with their new hash. A file that already

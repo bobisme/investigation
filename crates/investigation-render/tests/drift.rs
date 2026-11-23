@@ -250,6 +250,61 @@ fn edited_notes_and_property_edits_are_kept_and_the_generated_version_is_retaine
     );
 }
 
+/// `Start Here.md` announces drift: written again once when drift appears,
+/// kept as is while it lasts, and healthy again once it is reconciled.
+#[test]
+fn start_here_announces_drift_while_it_lasts() {
+    let directory = tempfile::tempdir().unwrap();
+    let (mut store, case_id, questions) = workspace(directory.path());
+    let vault = vault(&store);
+    let start = "Start Here.md";
+    let healthy = planned(&mut store, start);
+    assert_eq!(fs::read(vault.join(start)).unwrap(), healthy);
+    assert!(String::from_utf8_lossy(&healthy).contains("- Drift: none identified"));
+
+    let edited = note(case_id, questions[0]);
+    let original = fs::read(vault.join(&edited)).unwrap();
+    fs::write(vault.join(&edited), b"edited by hand\n").unwrap();
+    let report = render(&mut store);
+    assert_eq!(report.drift.len(), 1);
+    let announced = fs::read_to_string(vault.join(start)).unwrap();
+    assert!(
+        announced.contains(
+            "- Drift: 1 generated file changed outside the renderer (edited 1). Each is left \
+             exactly as found"
+        ),
+        "{announced}"
+    );
+    assert!(
+        announced.contains(&format!("  - `{edited}` (edited)\n")),
+        "{announced}"
+    );
+    assert!(announced.contains("- State: complete."));
+    let (stored, _) = manifest(&store);
+    assert_eq!(stored.state(), &RenderState::Complete);
+    assert_eq!(stored.pending().count(), 0);
+    assert_eq!(
+        stored.get(&PlanPath::new(start).unwrap()).unwrap().sha256,
+        hash_bytes(announced.as_bytes()),
+        "the announced note is owned, so the next render may replace it"
+    );
+
+    // While the drift lasts, the note is planned as announced: untouched.
+    let again = render(&mut store);
+    assert_eq!(action(&again, start), Action::Unchanged);
+    assert_eq!(fs::read_to_string(vault.join(start)).unwrap(), announced);
+
+    // Reconciled: the planned, healthy note again.
+    fs::write(vault.join(&edited), &original).unwrap();
+    let reconciled = render(&mut store);
+    assert!(reconciled.drift.is_empty());
+    assert_eq!(
+        fs::read(vault.join(start)).unwrap(),
+        planned(&mut store, start)
+    );
+    assert!(vault_status(store.workspace()).unwrap().drift.is_empty());
+}
+
 #[test]
 fn a_deleted_note_is_not_recreated_and_its_generated_version_is_retained() {
     let directory = tempfile::tempdir().unwrap();

@@ -77,7 +77,7 @@ impl Focus {
         }
     }
 
-    const fn word(self) -> &'static str {
+    pub(crate) const fn word(self) -> &'static str {
         match self {
             Self::Explanation => "explanation",
             Self::Measurement => "measurement",

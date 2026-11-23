@@ -13,10 +13,10 @@ use std::{
 
 use investigation_core::identity::Id;
 use investigation_render::{
-    Action, CaseRenderer, Generation, Manifest, NoteMarker, Phase, PlanBuilder, PlanPath,
-    RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan, RenderReport, RenderState,
-    SweptAction, VaultRenderer, VaultState, VerifiedSnapshot, ViewPolicy, render_vault,
-    vault_status,
+    Action, CaseRenderer, EntryHealth, Generation, Manifest, NoteMarker, Phase, PlanBuilder,
+    PlanPath, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan, RenderReport,
+    RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot, ViewPolicy,
+    render_vault, vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -95,6 +95,16 @@ impl CaseRenderer for Vault {
         }
         builder.add(Phase::Views, PlanPath::new(RETIRED)?, "retired\n", None)?;
         Ok(builder.finish())
+    }
+
+    fn announce(
+        &self,
+        plan: &RenderPlan,
+        snapshot: &VerifiedSnapshot,
+        policy: &ViewPolicy,
+        health: &EntryHealth,
+    ) -> Result<RenderPlan, RenderError> {
+        VaultRenderer.announce(plan, snapshot, policy, health)
     }
 }
 
@@ -442,6 +452,18 @@ fn a_failed_render_advertises_partial_while_canonical_reads_continue() {
     assert_eq!(
         status.last_complete.as_ref().unwrap().id,
         first.publish.generation.id()
+    );
+
+    // The opening note, written last and still writable, announces it.
+    let start = fs::read_to_string(vault(&store).join("Start Here.md")).unwrap();
+    assert!(
+        start.contains("- State: partial. The render of this generation stopped"),
+        "{start}"
+    );
+    assert!(start.contains("Permission denied"), "{start}");
+    assert_eq!(
+        NoteMarker::read(start.as_bytes()),
+        Some(NoteMarker::Generation(target.id().to_owned()))
     );
 
     // Canonical state is unaffected and still readable and writable.

@@ -5,31 +5,23 @@
 //! Per-type templates extend [`record_note`] with their own sections. The case
 //! Overview opens with the bounded summary and ladder written by
 //! `records::overview`, and ends with the record index. `Start Here.md` is
-//! still deliberately small; its full content is separate work behind the
-//! same function.
+//! written by [`crate::start_here`].
 //!
 //! Authored text reaches these notes only through [`crate::text`] and
 //! [`crate::yaml`], and only for records the view policy admits.
 
 use std::fmt::Write as _;
 
-use investigation_core::{identity::Id, state::Record};
+use investigation_core::state::Record;
 
 pub use crate::note::BANNER;
 use crate::{
-    Generation, RENDERER_VERSION, RenderError, VerifiedSnapshot, ViewPolicy, layout,
-    note::NoteContext,
+    Generation, RenderError, VerifiedSnapshot, ViewPolicy, layout, note::NoteContext,
+    start_here::EntryHealth,
 };
 
 fn heading(out: &mut String, title: &str) {
     let _ = write!(out, "# {title}\n\n{BANNER}\n");
-}
-
-fn case_link(case_id: Id) -> Result<String, RenderError> {
-    Ok(layout::wikilink(
-        &layout::case_overview(case_id)?,
-        &case_id.to_string(),
-    ))
 }
 
 /// One record's note: the shared skeleton with every fixed section, and the
@@ -86,38 +78,16 @@ pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
     Ok(out)
 }
 
+/// `Start Here.md`; see [`crate::start_here`]. `cases` holds contexts for
+/// the first [`crate::start_here::MAX_CASES`] cases or more, in case ID order.
 pub fn start_here(
     snapshot: &VerifiedSnapshot,
+    cases: &[NoteContext<'_>],
     policy: &ViewPolicy,
-    _generation: &Generation,
+    generation: &Generation,
+    health: &EntryHealth,
 ) -> Result<String, RenderError> {
-    let mut out = String::new();
-    heading(&mut out, "Start Here");
-    // The generation itself is the `inv_generation` marker property, added
-    // by `crate::marker::stamp_plan`.
-    let _ = writeln!(out, "- Renderer: `{RENDERER_VERSION}`");
-    let _ = writeln!(out, "- View audience: `{}`", policy.audience.as_str());
-    out.push_str("\n## Cases\n\n");
-    let mut any = false;
-    for case in snapshot.cases() {
-        any = true;
-        let head = case.head();
-        let _ = writeln!(
-            out,
-            "- {}: sequence {}, head `{}`",
-            case_link(case.case_id())?,
-            head.sequence,
-            head.head_hash
-        );
-    }
-    if !any {
-        out.push_str("No cases recorded yet.\n");
-    }
-    out.push_str(
-        "\n## Human-owned folders\n\n\
-         `Notes/`, `Boards/` and `Inbox/` belong to you. Rendering never writes into them.\n",
-    );
-    Ok(out)
+    crate::start_here::note(snapshot, cases, policy, generation, health)
 }
 
 #[cfg(test)]
@@ -125,7 +95,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use investigation_core::{
-        identity::Kind,
+        identity::{Id, Kind},
         state::{AcceptedTransaction, State},
         wire::{RecordChange, Snapshot},
     };

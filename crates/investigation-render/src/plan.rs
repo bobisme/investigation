@@ -15,12 +15,16 @@ use investigation_core::{
 use investigation_store::journal::hash_bytes;
 
 use crate::{
-    RenderError, VerifiedSnapshot, ViewPolicy, layout, marker, note::NoteContext, templates,
+    RenderError, VerifiedSnapshot, ViewPolicy, layout, marker, note::NoteContext,
+    start_here::EntryHealth, templates,
 };
 
 /// Identifies the vault renderer's output format. Bump it whenever the bytes
 /// produced for the same snapshot and policy change.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v6";
+///
+/// v7: the full `Start Here.md` (W08.06), and local absolute paths elided
+/// from display text (W06b.15, which changed bytes without its own bump).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v7";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -282,6 +286,20 @@ pub trait CaseRenderer {
         snapshot: &VerifiedSnapshot,
         policy: &ViewPolicy,
     ) -> Result<RenderPlan, RenderError>;
+
+    /// `plan` (planned from `snapshot` and `policy`) with its entry note
+    /// re-planned to announce `health`: a partial render or recorded drift.
+    /// The generation and every other entry are unchanged. The default, for
+    /// layouts without an entry note, returns the plan as it is.
+    fn announce(
+        &self,
+        plan: &RenderPlan,
+        _snapshot: &VerifiedSnapshot,
+        _policy: &ViewPolicy,
+        _health: &EntryHealth,
+    ) -> Result<RenderPlan, RenderError> {
+        Ok(plan.clone())
+    }
 }
 
 /// The working vault layout: one note per record, one overview per case and
@@ -297,8 +315,12 @@ impl CaseRenderer for VaultRenderer {
     ) -> Result<RenderPlan, RenderError> {
         let generation = Generation::new(RENDERER_VERSION, snapshot, policy);
         let mut plan = PlanBuilder::new(generation.clone());
-        for case in snapshot.cases() {
-            let notes = NoteContext::new(case, policy, &generation);
+        let contexts: Vec<NoteContext<'_>> = snapshot
+            .cases()
+            .map(|case| NoteContext::new(case, policy, &generation))
+            .collect();
+        for notes in &contexts {
+            let case = notes.case();
             for record in case.state().records() {
                 let id = record.header.id;
                 if id.kind() == Kind::Case {
@@ -307,10 +329,10 @@ impl CaseRenderer for VaultRenderer {
                 let Some(path) = layout::record_note(case.case_id(), id)? else {
                     continue;
                 };
-                let content = templates::record_note(&notes, record)?;
+                let content = templates::record_note(notes, record)?;
                 plan.add(Phase::Records, path, content, Some(id))?;
             }
-            let content = templates::case_overview(&notes)?;
+            let content = templates::case_overview(notes)?;
             plan.add(
                 Phase::Views,
                 layout::case_overview(case.case_id())?,
@@ -318,9 +340,52 @@ impl CaseRenderer for VaultRenderer {
                 Some(case.case_id()),
             )?;
         }
-        let content = templates::start_here(snapshot, policy, &generation)?;
+        let content = templates::start_here(
+            snapshot,
+            &contexts,
+            policy,
+            &generation,
+            &EntryHealth::default(),
+        )?;
         plan.add(Phase::Entry, layout::start_here()?, content, None)?;
         marker::stamp_plan(plan.finish(), snapshot)
+    }
+
+    fn announce(
+        &self,
+        plan: &RenderPlan,
+        snapshot: &VerifiedSnapshot,
+        policy: &ViewPolicy,
+        health: &EntryHealth,
+    ) -> Result<RenderPlan, RenderError> {
+        let generation = plan.generation().clone();
+        let contexts: Vec<NoteContext<'_>> = snapshot
+            .cases()
+            .take(crate::start_here::MAX_CASES)
+            .map(|case| NoteContext::new(case, policy, &generation))
+            .collect();
+        let content = templates::start_here(snapshot, &contexts, policy, &generation, health)?;
+        let path = layout::start_here()?;
+        let mut builder = PlanBuilder::new(generation.clone());
+        for entry in plan.entries() {
+            let content = if entry.path() == &path {
+                content.clone().into_bytes()
+            } else {
+                entry.content().to_vec()
+            };
+            builder.add(
+                entry.phase(),
+                entry.path().clone(),
+                content,
+                entry.projects(),
+            )?;
+        }
+        if plan.entry(path.as_str()).is_none() {
+            builder.add(Phase::Entry, path, content, None)?;
+        }
+        // Stamping verifies the markers already present and adds the new
+        // note's generation marker.
+        marker::stamp_plan(builder.finish(), snapshot)
     }
 }
 
@@ -382,6 +447,7 @@ mod tests {
             ("text.rs", include_str!("text.rs")),
             ("yaml.rs", include_str!("yaml.rs")),
             ("marker.rs", include_str!("marker.rs")),
+            ("start_here.rs", include_str!("start_here.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),
