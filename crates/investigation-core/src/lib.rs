@@ -31,6 +31,7 @@ pub mod measurement_flags;
 pub mod measurement_ops;
 pub mod method_pack;
 pub mod method_pack_ops;
+pub mod next_rank;
 pub mod objection_policy;
 pub mod observation_ops;
 pub mod origin_ops;

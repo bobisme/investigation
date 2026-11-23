@@ -12,11 +12,12 @@ use investigation_core::{
     command::RevisionRef,
     gap_explain::{GapExplanation, explain_gap, require_rule},
     gap_page::{
-        DEFAULT_GAP_PAGE_LIMIT, GapFilter, GapOrdering, GapPage, GapPageRequest, MAX_GAP_PAGE_LIMIT,
+        DEFAULT_GAP_PAGE_LIMIT, GapCursor, GapFilter, GapOrdering, GapPage, GapPageRequest,
+        MAX_GAP_PAGE_LIMIT,
     },
     gap_rules::{Gap, GapStatus, enumerate_gaps},
     identity::{Id, Kind},
-    wire::{ErrorCode, Failure},
+    wire::{ErrorCode, Failure, Snapshot},
 };
 use investigation_store::{Store, pinned::read_gap_page};
 use serde_json::{Value, json};
@@ -46,7 +47,8 @@ not assignments and nothing is dispatched.
 
 Filters combine with AND; repeated values of one filter combine with OR.
 --kind matches a gap when any of its subjects is a record of that kind. Pass a
-prefix (hyp) or a name (hypothesis).
+prefix (hyp) or a name (hypothesis). --reads matches a gap whose read set names
+that record ID.
 
 A continuation cursor binds the case, snapshot, rule version, filters and order.
 Later pages read the first page's snapshot even after new writes. Resend the same
@@ -56,6 +58,7 @@ Examples:
   investigation frontier --case <ID> --format json
   investigation frontier --status requires_source,stale_due_to_revision --format json
   investigation frontier --kind hypothesis --limit 20 --format json
+  investigation frontier --rule decision.option_criterion_cell_missing --reads <CRITERION_ID> --format json
   investigation frontier --explain <GAP_ID> --format json";
 
 #[derive(clap::Args)]
@@ -74,6 +77,9 @@ pub(crate) struct Args {
     /// Keep gaps emitted by this rule ID.
     #[arg(long, value_name = "RULE_ID", value_delimiter = ',')]
     rule: Vec<String>,
+    /// Keep gaps whose read set names this record ID.
+    #[arg(long, value_name = "ID", value_delimiter = ',')]
+    reads: Vec<String>,
     /// Return at most this many gaps per page (1 to 500).
     #[arg(long, value_name = "N", default_value_t = DEFAULT_GAP_PAGE_LIMIT)]
     limit: usize,
@@ -84,7 +90,7 @@ pub(crate) struct Args {
     #[arg(
         long,
         value_name = "GAP_ID",
-        conflicts_with_all = ["status", "kind", "rule", "limit", "cursor"]
+        conflicts_with_all = ["status", "kind", "rule", "reads", "limit", "cursor"]
     )]
     explain: Option<String>,
 }
@@ -147,6 +153,9 @@ impl Base {
         }
         for rule in &filter.rule_ids {
             argv.extend(["--rule".into(), rule.clone()]);
+        }
+        for id in &filter.read_ids {
+            argv.extend(["--reads".into(), id.to_string()]);
         }
         argv.extend(["--limit".into(), limit.to_string()]);
         if let Some(cursor) = cursor {
@@ -229,11 +238,48 @@ fn filter(args: &Args) -> Result<GapFilter, Failure> {
         .iter()
         .map(|rule| require_rule(rule, "--rule").map(|()| rule.clone()))
         .collect::<Result<BTreeSet<_>, _>>()?;
+    let read_ids = args
+        .reads
+        .iter()
+        .map(|id| {
+            id.trim().parse::<Id>().map_err(|_| {
+                let mut failure = Failure::new(
+                    ErrorCode::InvalidInput,
+                    format!("Invalid record ID {id:?}."),
+                )
+                .at("--reads");
+                failure.error.actual = Some(json!(id));
+                failure
+            })
+        })
+        .collect::<Result<BTreeSet<_>, _>>()?;
     Ok(GapFilter {
         statuses,
         subject_kinds,
         rule_ids,
+        read_ids,
     })
+}
+
+/// A `frontier` argv whose first page reads `snapshot`, not the current head,
+/// so a drill-down from another read stays on that read's snapshot.
+pub(crate) fn snapshot_argv(
+    workspace: &[String],
+    case_id: Id,
+    snapshot: &Snapshot,
+    filter: &GapFilter,
+) -> Vec<String> {
+    let base = Base {
+        workspace: workspace.to_vec(),
+        case: case_id.to_string(),
+    };
+    let cursor = GapCursor::start(
+        case_id,
+        snapshot.clone(),
+        filter.clone(),
+        GapOrdering::GapId,
+    );
+    base.list(filter, DEFAULT_GAP_PAGE_LIMIT, Some(&cursor.encode()))
 }
 
 fn kind_name(kind: Kind) -> String {

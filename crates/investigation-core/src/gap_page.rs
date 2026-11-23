@@ -54,6 +54,11 @@ pub struct GapFilter {
     pub subject_kinds: BTreeSet<String>,
     #[serde(default)]
     pub rule_ids: BTreeSet<String>,
+    /// Record IDs; matches when the gap's read set names any of them. Omitted
+    /// when empty so cursors issued before this field existed still decode
+    /// and compare equal.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub read_ids: BTreeSet<Id>,
 }
 
 impl GapFilter {
@@ -93,6 +98,11 @@ impl GapFilter {
                     .subject_refs
                     .iter()
                     .any(|subject| self.subject_kinds.contains(subject.id.kind().prefix())))
+            && (self.read_ids.is_empty()
+                || gap
+                    .read_set
+                    .iter()
+                    .any(|read| self.read_ids.contains(&read.id)))
     }
 }
 
@@ -130,6 +140,25 @@ pub struct GapCursor {
 }
 
 impl GapCursor {
+    /// A cursor positioned before the first matching gap at `snapshot`. It lets
+    /// another read (such as `next`) hand out a drill-down whose first page is
+    /// bound to the snapshot that read used, not to whatever head is current.
+    pub fn start(
+        case_id: Id,
+        snapshot: Snapshot,
+        filter: GapFilter,
+        ordering: GapOrdering,
+    ) -> Self {
+        Self {
+            case_id,
+            snapshot,
+            rule_version: GAP_RULE_VERSION.into(),
+            ordering,
+            filter,
+            after_gap_id: String::new(),
+        }
+    }
+
     pub fn encode(&self) -> String {
         let payload = serde_json::to_vec(self).expect("gap cursor serializes");
         let body = format!("{CURSOR_VERSION}.{}", base64url_encode(&payload));
@@ -267,9 +296,13 @@ pub fn page_gaps(
                     ),
                 ));
             }
-            matching
-                .iter()
-                .position(|gap| gap.gap_id == cursor.after_gap_id)
+            // An empty position is a start cursor; no gap ID is empty.
+            if cursor.after_gap_id.is_empty() {
+                0
+            } else {
+                matching
+                    .iter()
+                    .position(|gap| gap.gap_id == cursor.after_gap_id)
                 .map(|index| index + 1)
                 .ok_or_else(|| {
                     cursor_failure(
@@ -278,6 +311,7 @@ pub fn page_gaps(
                         Some(json!(cursor.after_gap_id)),
                     )
                 })?
+            }
         }
     };
     let end = start.saturating_add(limit).min(matching.len());
@@ -537,6 +571,60 @@ mod tests {
         assert_eq!(
             failure.error.actual.as_ref().unwrap()["filter"],
             json!(filter)
+        );
+    }
+
+    #[test]
+    fn start_cursors_and_read_filters_page_from_the_first_matching_gap() {
+        let full = inventory(7);
+        let subject = full.gaps[2].subject_refs[0].id;
+        let filter = GapFilter {
+            read_ids: [subject].into(),
+            ..GapFilter::default()
+        };
+        let start = GapCursor::start(
+            full.case_id,
+            full.snapshot.clone(),
+            filter.clone(),
+            GapOrdering::GapId,
+        );
+        let encoded = start.encode();
+        assert_eq!(GapCursor::decode(&encoded).unwrap(), start);
+        let page = page_gaps(&full, &filter, GapOrdering::GapId, 3, Some(&start)).unwrap();
+        assert_eq!(page.position, 0);
+        assert_eq!(page.matching_total, 1);
+        assert_eq!(page.gaps[0].gap_id, full.gaps[2].gap_id);
+
+        let every = GapCursor::start(
+            full.case_id,
+            full.snapshot.clone(),
+            GapFilter::default(),
+            GapOrdering::GapId,
+        );
+        let unfiltered = |cursor| {
+            page_gaps(&full, &GapFilter::default(), GapOrdering::GapId, 3, cursor).unwrap()
+        };
+        assert_eq!(unfiltered(Some(&every)).gaps, unfiltered(None).gaps);
+
+        // A start cursor is still bound to its snapshot.
+        let mut moved = full.clone();
+        moved.snapshot = snapshot(5, 'b');
+        let failure = page_gaps(
+            &moved,
+            &GapFilter::default(),
+            GapOrdering::GapId,
+            3,
+            Some(&every),
+        )
+        .unwrap_err();
+        assert!(failure.error.message.contains("pinned snapshot"));
+
+        // An empty read filter is omitted, so older cursors keep one spelling.
+        assert!(
+            serde_json::to_value(GapFilter::default())
+                .unwrap()
+                .get("read_ids")
+                .is_none()
         );
     }
 

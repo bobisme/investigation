@@ -1,12 +1,15 @@
 //! CLI adapter for deterministic, read-only gap ranking.
 
-use investigation_core::gap_rules::{enumerate_gaps, rank_next};
+use investigation_core::gap_page::GapFilter;
+use investigation_core::gap_rules::enumerate_gaps;
 use investigation_core::guidance::{self, GUIDANCE_RULE_VERSION, TriggerContext};
+use investigation_core::next_rank::{NextResponse, rank_next};
 use investigation_store::Store;
 use serde_json::{Value, json};
 
 use crate::{
     Global, Output, display_argv,
+    frontier::snapshot_argv,
     selection::{select_case, workspace_argv},
 };
 use investigation_core::catalog::standard_catalog;
@@ -16,9 +19,25 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
     let case_id = select_case(store, global.case.as_deref())?;
     let replay = store.case(case_id)?;
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case_id)?;
-    let response = rank_next(&inventory, limit.min(3));
+    let response = rank_next(&replay.state, &inventory, limit.min(3));
     let mut value = serde_json::to_value(&response).expect("next response serializes");
     let workspace = workspace_argv(store.workspace());
+    // Every query path reads this response's snapshot, even after new writes.
+    let frontier =
+        |filter: &GapFilter| snapshot_argv(&workspace, case_id, &response.snapshot, filter);
+    value["frontier_argv"] = json!(frontier(&GapFilter::default()));
+    for (index, entry) in response.not_ranked.iter().enumerate() {
+        value["not_ranked"][index]["frontier_argv"] = json!(frontier(&entry.filter));
+    }
+    for (index, entry) in response.withheld.iter().enumerate() {
+        value["withheld"][index]["frontier_argv"] = json!(frontier(&entry.filter));
+    }
+    for (index, recommendation) in response.recommendations.iter().enumerate() {
+        if let Some(group) = &recommendation.group {
+            value["recommendations"][index]["group"]["frontier_argv"] =
+                json!(frontier(&group.filter));
+        }
+    }
     // Guidance comes from the built-in pack and the case's available pins only.
     let packs = store.method_packs(&replay.state, case_id, None)?;
     let mode = TriggerContext::evaluate(&replay.state, case_id, &inventory).mode;
@@ -28,6 +47,27 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
         value["unavailable_method_packs"] = json!(unavailable);
     }
     let catalog = standard_catalog();
+    // `get_mut`, not indexing: indexing a missing key would insert a null.
+    if let Some(alternatives) = value
+        .get_mut("stop_or_defer")
+        .and_then(|stop| stop.get_mut("alternatives"))
+        .and_then(Value::as_array_mut)
+    {
+        for alternative in alternatives {
+            if let Some(operation) = alternative["operation"].as_str()
+                && catalog.available_operation(operation).is_ok()
+            {
+                let mut schema_argv = workspace.clone();
+                schema_argv.extend([
+                    "schema".into(),
+                    operation.into(),
+                    "--format".into(),
+                    "json".into(),
+                ]);
+                alternative["schema_argv"] = json!(schema_argv);
+            }
+        }
+    }
     for item in value["recommendations"]
         .as_array_mut()
         .into_iter()
@@ -91,7 +131,17 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
     Ok(Output::new(value, text))
 }
 
-fn render_text(value: &Value, response: &investigation_core::gap_rules::NextResponse) -> String {
+fn argv_text(value: &Value) -> Option<String> {
+    let argv = value
+        .as_array()?
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    Some(display_argv(&argv))
+}
+
+fn render_text(value: &Value, response: &NextResponse) -> String {
     let mut text = format!(
         "case {}  snapshot {}  rules {}\n",
         response.case_id, response.snapshot.sequence, response.rule_version
@@ -136,10 +186,59 @@ fn render_text(value: &Value, response: &investigation_core::gap_rules::NextResp
         ) {
             text.push_str(&format!("   Guide: {card} ({pack})  {summary}\n"));
         }
+        let decision_value = &recommendation.decision_value;
+        text.push_str(&format!(
+            "   Value: {}  {}\n",
+            decision_value.decision_effect, decision_value.basis
+        ));
+        if let Some(narrower) = &decision_value.narrower_value {
+            text.push_str(&format!(
+                "   Every recorded outcome leaves the disposition unchanged; ranked by its narrower value: {narrower}\n"
+            ));
+        }
         if !recommendation.outcome_branches.is_empty() {
             for branch in &recommendation.outcome_branches {
                 text.push_str(&format!("   {} → {}\n", branch.outcome, branch.consequence));
             }
+        }
+        if let Some(group) = &recommendation.group {
+            text.push_str(&format!(
+                "   Group: {} gaps of {} read criterion {} ({} ranked, {} withheld)\n",
+                group.gap_count,
+                group.rule_id,
+                group.criterion_ref.id,
+                group.ranked_count,
+                group.withheld_count
+            ));
+            if let Some(route) = argv_text(
+                &value["recommendations"][recommendation.rank - 1]["group"]["frontier_argv"],
+            ) {
+                text.push_str(&format!("   Group gaps: {route}\n"));
+            }
+        }
+    }
+    if response.remaining_recommendations > 0 {
+        text.push_str(&format!(
+            "{} more ranked recommendation(s); {} ranked gaps in all.\n",
+            response.remaining_recommendations, response.ranked_gap_total
+        ));
+    }
+    for (index, withheld) in response.withheld.iter().enumerate() {
+        text.push_str(&format!(
+            "Withheld: {} soft-criterion gap(s) for disqualified option {}\n",
+            withheld.gap_count, withheld.option_ref.id
+        ));
+        if let Some(route) = argv_text(&value["withheld"][index]["frontier_argv"]) {
+            text.push_str(&format!("   {route}\n"));
+        }
+    }
+    if let Some(stop) = &response.stop_or_defer {
+        text.push_str(&format!("Stop or defer: {}\n", stop.reason));
+        for alternative in &stop.alternatives {
+            text.push_str(&format!(
+                "   {}  {}\n",
+                alternative.operation, alternative.purpose
+            ));
         }
     }
     text.push_str(&format!(
@@ -150,6 +249,20 @@ fn render_text(value: &Value, response: &investigation_core::gap_rules::NextResp
         response.counts.stale_due_to_revision,
         response.counts.deferred,
     ));
+    for (index, entry) in response.not_ranked.iter().enumerate() {
+        if entry.count > 0
+            && let Some(route) = argv_text(&value["not_ranked"][index]["frontier_argv"])
+        {
+            let status = serde_json::to_value(entry.status)
+                .ok()
+                .and_then(|status| status.as_str().map(str::to_owned))
+                .unwrap_or_default();
+            text.push_str(&format!("Not ranked ({status}): {route}\n"));
+        }
+    }
+    if let Some(route) = argv_text(&value["frontier_argv"]) {
+        text.push_str(&format!("Frontier at this snapshot: {route}\n"));
+    }
     for pack in value["unavailable_method_packs"]
         .as_array()
         .into_iter()
@@ -174,16 +287,16 @@ mod tests {
     #[test]
     fn text_output_is_explicit_about_unknowns_and_not_completion() {
         let id: Id = "case_019acd16-0000-7000-8000-000000000001".parse().unwrap();
-        let response = investigation_core::gap_rules::NextResponse {
+        let response = NextResponse {
             schema_version: "inv.next.v1".into(),
             snapshot: Snapshot {
                 sequence: 3,
                 head_hash: format!("sha256:{}", "a".repeat(64)).parse().unwrap(),
             },
-            rule_version: "slice-next.v1".into(),
+            rule_version: investigation_core::next_rank::NEXT_RULE_VERSION.into(),
             case_id: id,
             recommendations: vec![],
-            counts: investigation_core::gap_rules::GapCounts {
+            counts: investigation_core::next_rank::GapCounts {
                 ready_to_analyze: 0,
                 requires_source: 0,
                 requires_external_action: 0,
@@ -193,6 +306,10 @@ mod tests {
                 resolved: 0,
             },
             remaining_recommendations: 0,
+            ranked_gap_total: 0,
+            not_ranked: vec![],
+            withheld: vec![],
+            stop_or_defer: None,
             limits: vec![],
         };
         let rendered = render_text(&serde_json::to_value(&response).unwrap(), &response);

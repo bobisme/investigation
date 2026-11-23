@@ -1,4 +1,4 @@
-//! Versioned, deterministic structural gaps and ordinal next-step ranking.
+//! Versioned, deterministic structural gaps. Ranking lives in `next_rank`.
 //!
 //! These rules inspect recorded fields only. They do not infer a domain test,
 //! calculate a score, execute a process, or treat source text as instructions.
@@ -17,8 +17,12 @@ use crate::{
 };
 
 pub const GAP_RULE_VERSION: &str = "slice-gaps.v1";
-pub const NEXT_RULE_VERSION: &str = "slice-next.v1";
-pub const DEFAULT_NEXT_LIMIT: usize = 3;
+
+// Ranking lives in `next_rank`; these re-exports keep older import paths.
+pub use crate::next_rank::{
+    DEFAULT_NEXT_LIMIT, GapCounts, NEXT_RULE_VERSION, NextResponse, OrdinalPriority, RankFactor,
+    RankReason, Recommendation, rank_next,
+};
 
 #[derive(
     Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, JsonSchema,
@@ -87,85 +91,6 @@ pub struct GapInventory {
     pub rule_version: String,
     pub case_id: Id,
     pub gaps: Vec<Gap>,
-    pub limits: Vec<String>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum RankFactor {
-    CanonicalIntegrity,
-    TimeSensitivePreservation,
-    ConsequentialBlocker,
-    DecisionChangingValue,
-    Applicability,
-    BoundedCost,
-    Novelty,
-    StableIdCreationOrder,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum OrdinalPriority {
-    Highest,
-    High,
-    Medium,
-    Low,
-    Unknown,
-    NotApplicable,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct RankReason {
-    pub factor: RankFactor,
-    pub priority: OrdinalPriority,
-    pub source: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct Recommendation {
-    pub rank: usize,
-    pub action_id: String,
-    pub gap_id: String,
-    pub rule_id: String,
-    pub action_kind: String,
-    pub subject_refs: Vec<RevisionRef>,
-    pub purpose: String,
-    pub expected_useful_result: String,
-    pub rank_reasons: Vec<RankReason>,
-    pub uncertainty: String,
-    pub prerequisites: Vec<Prerequisite>,
-    pub unresolved_fields: Vec<String>,
-    pub estimated_cost: Value,
-    pub external_effects: String,
-    pub schema_operation: Option<String>,
-    pub outcome_branches: Vec<OutcomeBranch>,
-    pub deferral_alternative: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct GapCounts {
-    pub ready_to_analyze: usize,
-    pub requires_source: usize,
-    pub requires_external_action: usize,
-    pub blocked_by_quality: usize,
-    pub stale_due_to_revision: usize,
-    pub deferred: usize,
-    pub resolved: usize,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct NextResponse {
-    pub schema_version: String,
-    pub snapshot: Snapshot,
-    pub rule_version: String,
-    pub case_id: Id,
-    pub recommendations: Vec<Recommendation>,
-    pub counts: GapCounts,
-    pub remaining_recommendations: usize,
     pub limits: Vec<String>,
 }
 
@@ -734,8 +659,6 @@ pub fn enumerate_gaps(
     })
 }
 
-/// Rank feasible recommendations lexicographically by the eight §7.2 factors.
-/// Ordinal factors are exposed; they are never summed into a pseudo-score.
 /// Live judgments the freshness index marks `needs_review`: a cited record was
 /// withdrawn, retracted, materially revised or newly judged doubtful, directly
 /// or through the records it relies on. The reason names each cause and path.
@@ -816,209 +739,22 @@ fn freshness_gaps(state: &State, case_id: Id, records: &[&Record], gaps: &mut Ve
     }
 }
 
-pub fn rank_next(inventory: &GapInventory, requested_limit: usize) -> NextResponse {
-    let limit = requested_limit.min(DEFAULT_NEXT_LIMIT);
-    let counts = count_gaps(&inventory.gaps);
-    let mut eligible: Vec<&Gap> = inventory
-        .gaps
-        .iter()
-        .filter(|gap| {
-            matches!(
-                gap.status,
-                GapStatus::ReadyToAnalyze
-                    | GapStatus::RequiresSource
-                    | GapStatus::RequiresExternalAction
-                    | GapStatus::StaleDueToRevision
-            )
-        })
-        .collect();
-    eligible.sort_by_key(|gap| rank_key(gap));
-    let total = eligible.len();
-    let recommendations = eligible
-        .iter()
-        .take(limit)
-        .enumerate()
-        .map(|(index, gap)| recommendation(gap, index + 1))
-        .collect();
-    NextResponse {
-        schema_version: "inv.next.v1".into(),
-        snapshot: inventory.snapshot.clone(),
-        rule_version: NEXT_RULE_VERSION.into(),
-        case_id: inventory.case_id,
-        recommendations,
-        counts,
-        remaining_recommendations: total.saturating_sub(limit),
-        limits: inventory.limits.clone(),
-    }
+pub(crate) struct GapFields<'a> {
+    pub(crate) rule_id: &'a str,
+    pub(crate) subject_refs: Vec<RevisionRef>,
+    pub(crate) read_set: Vec<RevisionRef>,
+    pub(crate) status: GapStatus,
+    pub(crate) reason: &'a str,
+    pub(crate) prerequisites: Vec<Prerequisite>,
+    pub(crate) suggested_operation: Option<&'a str>,
+    pub(crate) unresolved_fields: Vec<String>,
+    pub(crate) outcome_branches: Vec<OutcomeBranch>,
+    pub(crate) decision_effect: &'a str,
+    pub(crate) time_sensitive: bool,
+    pub(crate) creation_sequence: u64,
 }
 
-fn rank_key(gap: &Gap) -> (u8, u8, u8, u8, u8, u8, u8, u64, String) {
-    let integrity = u8::from(!gap.rule_id.starts_with("store.integrity."));
-    let preservation = u8::from(!gap.time_sensitive);
-    let consequential = u8::from(!matches!(
-        gap.decision_effect.as_str(),
-        "could_flip_choice" | "could_discriminate"
-    ));
-    let decision_value = match gap.decision_effect.as_str() {
-        "could_flip_choice" => 0,
-        "could_discriminate" => 1,
-        "context_only" => 2,
-        _ => 3,
-    };
-    let applicability = if gap.subject_refs.is_empty() { 1 } else { 0 };
-    // No comparable cost or prior-attempt history is stored for these rules.
-    let cost = 1;
-    let novelty = 1;
-    (
-        integrity,
-        preservation,
-        consequential,
-        decision_value,
-        applicability,
-        cost,
-        novelty,
-        gap.creation_sequence,
-        gap.gap_id.clone(),
-    )
-}
-
-fn recommendation(gap: &Gap, rank: usize) -> Recommendation {
-    let key = rank_key(gap);
-    let mut reasons = Vec::with_capacity(8);
-    for (factor, priority, source) in [
-        (
-            RankFactor::CanonicalIntegrity,
-            if key.0 == 0 {
-                OrdinalPriority::Highest
-            } else {
-                OrdinalPriority::NotApplicable
-            },
-            "the case was read from a verified snapshot; no corruption gap was emitted".to_string(),
-        ),
-        (
-            RankFactor::TimeSensitivePreservation,
-            if key.1 == 0 {
-                OrdinalPriority::Highest
-            } else {
-                OrdinalPriority::NotApplicable
-            },
-            if gap.time_sensitive {
-                "explicit time-sensitive preservation field".into()
-            } else {
-                "no explicit preservation deadline on this gap".into()
-            },
-        ),
-        (
-            RankFactor::ConsequentialBlocker,
-            if key.2 == 0 {
-                OrdinalPriority::High
-            } else {
-                OrdinalPriority::NotApplicable
-            },
-            format!("rule {} consequence", gap.rule_id),
-        ),
-        (
-            RankFactor::DecisionChangingValue,
-            match key.3 {
-                0 => OrdinalPriority::High,
-                1 => OrdinalPriority::Medium,
-                2 => OrdinalPriority::Low,
-                _ => OrdinalPriority::Unknown,
-            },
-            gap.decision_effect.clone(),
-        ),
-        (
-            RankFactor::Applicability,
-            if key.4 == 0 {
-                OrdinalPriority::High
-            } else {
-                OrdinalPriority::Unknown
-            },
-            "subject belongs to the selected case snapshot".into(),
-        ),
-        (
-            RankFactor::BoundedCost,
-            OrdinalPriority::Unknown,
-            "no comparable user-supplied cost estimate is recorded".into(),
-        ),
-        (
-            RankFactor::Novelty,
-            OrdinalPriority::Unknown,
-            "prior failed or inconclusive attempts are not represented by this first-slice rule"
-                .into(),
-        ),
-        (
-            RankFactor::StableIdCreationOrder,
-            OrdinalPriority::NotApplicable,
-            format!(
-                "creation sequence {}, then stable gap_id",
-                gap.creation_sequence
-            ),
-        ),
-    ]
-    .into_iter()
-    {
-        reasons.push(RankReason {
-            factor,
-            priority,
-            source,
-        });
-    }
-    let action_kind = if gap.status == GapStatus::RequiresExternalAction {
-        "consumer_information"
-    } else {
-        "local_record_or_read"
-    };
-    Recommendation {
-        rank,
-        action_id: format!("action:{}", gap.gap_id),
-        gap_id: gap.gap_id.clone(),
-        rule_id: gap.rule_id.clone(),
-        action_kind: action_kind.into(),
-        subject_refs: gap.subject_refs.clone(),
-        purpose: gap.reason.clone(),
-        expected_useful_result: if gap.outcome_branches.is_empty() { "Resolve the named prerequisite or keep its unknown state explicit.".into() } else { "Record which declared branch is supported; do not infer a result before evidence is supplied.".into() },
-        rank_reasons: reasons,
-        uncertainty: "Ordinal deterministic heuristic; not a probability, expected-information calculation, or universal ranking.".into(),
-        prerequisites: gap.prerequisites.clone(),
-        unresolved_fields: gap.unresolved_fields.clone(),
-        estimated_cost: serde_json::json!({"state":"unknown"}),
-        external_effects: if gap.status == GapStatus::RequiresExternalAction { "consumer_managed".into() } else { "none".into() },
-        schema_operation: gap.suggested_operation.clone(),
-        outcome_branches: gap.outcome_branches.clone(),
-        deferral_alternative: "Keep the gap visible as deferred or unknown; this tool does not dispatch work.".into(),
-    }
-}
-
-fn count_gaps(gaps: &[Gap]) -> GapCounts {
-    let count = |status| gaps.iter().filter(|gap| gap.status == status).count();
-    GapCounts {
-        ready_to_analyze: count(GapStatus::ReadyToAnalyze),
-        requires_source: count(GapStatus::RequiresSource),
-        requires_external_action: count(GapStatus::RequiresExternalAction),
-        blocked_by_quality: count(GapStatus::BlockedByQuality),
-        stale_due_to_revision: count(GapStatus::StaleDueToRevision),
-        deferred: count(GapStatus::Deferred),
-        resolved: count(GapStatus::Resolved),
-    }
-}
-
-struct GapFields<'a> {
-    rule_id: &'a str,
-    subject_refs: Vec<RevisionRef>,
-    read_set: Vec<RevisionRef>,
-    status: GapStatus,
-    reason: &'a str,
-    prerequisites: Vec<Prerequisite>,
-    suggested_operation: Option<&'a str>,
-    unresolved_fields: Vec<String>,
-    outcome_branches: Vec<OutcomeBranch>,
-    decision_effect: &'a str,
-    time_sensitive: bool,
-    creation_sequence: u64,
-}
-
-fn make_gap(fields: GapFields<'_>) -> Gap {
+pub(crate) fn make_gap(fields: GapFields<'_>) -> Gap {
     let GapFields {
         rule_id,
         mut subject_refs,
@@ -1089,16 +825,16 @@ fn reference(record: &Record) -> RevisionRef {
     record.reference()
 }
 
-fn content(body: &Value) -> &Value {
+pub(crate) fn content(body: &Value) -> &Value {
     body.get("content").unwrap_or(body)
 }
 
-fn field<'a>(body: &'a Value, key: &str) -> Option<&'a Value> {
+pub(crate) fn field<'a>(body: &'a Value, key: &str) -> Option<&'a Value> {
     body.get(key)
         .or_else(|| body.get("content").and_then(|content| content.get(key)))
 }
 
-fn exact_ref(value: Option<&Value>) -> Option<RevisionRef> {
+pub(crate) fn exact_ref(value: Option<&Value>) -> Option<RevisionRef> {
     value.and_then(|value| serde_json::from_value(value.clone()).ok())
 }
 
@@ -1109,13 +845,13 @@ fn join_refs(mut refs: Vec<RevisionRef>, extra: Vec<RevisionRef>) -> Vec<Revisio
     refs
 }
 
-fn is_retracted(body: &Value) -> bool {
+pub(crate) fn is_retracted(body: &Value) -> bool {
     field(body, "status").and_then(Value::as_str) == Some("retracted")
         || field(body, "retracted").and_then(Value::as_bool) == Some(true)
         || field(body, "lifecycle").and_then(Value::as_str) == Some("retracted")
 }
 
-fn is_live(record: &Record) -> bool {
+pub(crate) fn is_live(record: &Record) -> bool {
     !matches!(
         field(&record.body, "lifecycle").and_then(Value::as_str),
         Some("retired" | "rejected_within_scope" | "rejected" | "retracted" | "superseded")
@@ -1327,109 +1063,5 @@ mod tests {
                 .iter()
                 .all(|gap| gap.gap_id.contains(&gap.rule_id))
         );
-    }
-
-    #[test]
-    fn next_is_stable_lexicographic_and_never_emits_a_score_or_shell_command() {
-        let inventory = GapInventory {
-            schema_version: "inv.gaps.v1".into(),
-            snapshot: snapshot(),
-            rule_version: GAP_RULE_VERSION.into(),
-            case_id: id("case_019acd16-0000-7000-8000-000000000001"),
-            gaps: vec![
-                make_gap(GapFields {
-                    rule_id: "z.rule",
-                    subject_refs: vec![],
-                    read_set: vec![],
-                    status: GapStatus::RequiresSource,
-                    reason: "later",
-                    prerequisites: vec![],
-                    suggested_operation: Some("observation.add"),
-                    unresolved_fields: vec!["source".into()],
-                    outcome_branches: vec![],
-                    decision_effect: "context_only",
-                    time_sensitive: false,
-                    creation_sequence: 2,
-                }),
-                make_gap(GapFields {
-                    rule_id: "a.rule",
-                    subject_refs: vec![],
-                    read_set: vec![],
-                    status: GapStatus::RequiresSource,
-                    reason: "earlier",
-                    prerequisites: vec![],
-                    suggested_operation: Some("comparison.add"),
-                    unresolved_fields: vec!["evidence".into()],
-                    outcome_branches: vec![],
-                    decision_effect: "could_flip_choice",
-                    time_sensitive: false,
-                    creation_sequence: 1,
-                }),
-            ],
-            limits: vec!["not completion".into()],
-        };
-        let first = rank_next(&inventory, 3);
-        let second = rank_next(&inventory, 3);
-        assert_eq!(first, second);
-        assert_eq!(first.recommendations[0].rule_id, "a.rule");
-        assert_eq!(first.recommendations.len(), 2);
-        assert!(
-            first
-                .recommendations
-                .iter()
-                .all(|item| item.estimated_cost["state"] == "unknown")
-        );
-        assert!(
-            serde_json::to_value(&first)
-                .unwrap()
-                .to_string()
-                .find("score")
-                .is_none()
-        );
-    }
-
-    #[test]
-    fn blockers_and_deferred_items_are_counted_but_not_ranked_as_actions() {
-        let inventory = GapInventory {
-            schema_version: "inv.gaps.v1".into(),
-            snapshot: snapshot(),
-            rule_version: GAP_RULE_VERSION.into(),
-            case_id: id("case_019acd16-0000-7000-8000-000000000001"),
-            gaps: vec![
-                make_gap(GapFields {
-                    rule_id: "blocked",
-                    subject_refs: vec![],
-                    read_set: vec![],
-                    status: GapStatus::BlockedByQuality,
-                    reason: "invalid",
-                    prerequisites: vec![],
-                    suggested_operation: Some("measurement.assess"),
-                    unresolved_fields: vec![],
-                    outcome_branches: vec![],
-                    decision_effect: "unknown",
-                    time_sensitive: false,
-                    creation_sequence: 1,
-                }),
-                make_gap(GapFields {
-                    rule_id: "deferred",
-                    subject_refs: vec![],
-                    read_set: vec![],
-                    status: GapStatus::Deferred,
-                    reason: "deferred",
-                    prerequisites: vec![],
-                    suggested_operation: None,
-                    unresolved_fields: vec![],
-                    outcome_branches: vec![],
-                    decision_effect: "unknown",
-                    time_sensitive: false,
-                    creation_sequence: 2,
-                }),
-            ],
-            limits: vec![],
-        };
-        let next = rank_next(&inventory, DEFAULT_NEXT_LIMIT);
-        assert!(next.recommendations.is_empty());
-        assert_eq!(next.counts.blocked_by_quality, 1);
-        assert_eq!(next.counts.deferred, 1);
     }
 }

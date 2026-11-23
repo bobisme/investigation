@@ -483,7 +483,7 @@ fn brief(
         "json".into(),
     ]);
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case)?;
-    let next = rank_next(&inventory, 3);
+    let next = rank_next(&replay.state, &inventory, 3);
     let index = FreshnessIndex::build(&replay.state, case);
     let mut effective = replay
         .state
