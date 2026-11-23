@@ -11,6 +11,7 @@ mod doctor;
 mod evidence;
 mod explain;
 mod export;
+mod exposure;
 mod first_use;
 mod frontier;
 mod guide;
@@ -288,6 +289,9 @@ enum Commands {
     /// Find records by text; results are labelled pointers, not evidence.
     #[command(after_help = search::AFTER_HELP)]
     Search(search::Args),
+    /// Diagnose where exposed text lives in this workspace; removes nothing.
+    #[command(after_help = exposure::AFTER_HELP)]
+    Exposure(exposure::Args),
     /// Verify the journal, blobs, and index without repairing them.
     #[command(after_help = "Example: investigation check --format json")]
     Check,
@@ -455,6 +459,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Calibration(args) => calibration::run(&mut store, &global, args),
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
+                Commands::Exposure(args) => exposure::run(&mut store, &global, args),
                 Commands::Vault(command) => vault::run(&mut store, &global, command),
                 Commands::Export(args) => export::run(&mut store, &global, args),
                 Commands::Repair(RepairCommand::Staging { handle }) => {

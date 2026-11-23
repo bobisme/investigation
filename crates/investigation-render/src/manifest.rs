@@ -495,7 +495,7 @@ impl Manifest {
     /// [`Manifest::load`] without the render lock, for status reads. The
     /// manifest is replaced atomically, so an unlocked read sees one whole
     /// version.
-    pub(crate) fn read(workspace: &Workspace) -> Result<LoadedManifest, RenderError> {
+    pub fn read(workspace: &Workspace) -> Result<LoadedManifest, RenderError> {
         let rebuilt = |reason: String| {
             Ok(LoadedManifest {
                 manifest: Self::new(),

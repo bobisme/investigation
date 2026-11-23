@@ -64,6 +64,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("calibration", Effect::Read),
     ("search", Effect::Read),
     ("check", Effect::Read),
+    // Reads every workspace file; writes nothing, not even cache entries.
+    ("exposure", Effect::Read),
     ("repair index", Effect::Write),
     ("repair staging", Effect::Write),
     ("observe", Effect::WriteUnlessFlag("print_envelope")),

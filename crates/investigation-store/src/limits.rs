@@ -15,7 +15,7 @@ use serde::Serialize;
 
 use crate::{
     delimited, journal, opaque, owned_file, selectors,
-    store::{capture::HandleLimits, evidence_read, ingest},
+    store::{capture::HandleLimits, evidence_read, exposure, ingest},
     utf8,
 };
 
@@ -312,6 +312,13 @@ pub const LIMITS: &[Limit] = &[
         owned_file::MAX_OWNED_FILE_BYTES,
         Bytes,
         "An agent instructions file that integration apply or remove reads and rewrites.",
+        INVALID_INPUT,
+    ),
+    limit(
+        "exposure.text_bytes",
+        exposure::MAX_TEXT_BYTES as u64,
+        Bytes,
+        "The exposed text that exposure searches the workspace for, read from a file or standard input.",
         INVALID_INPUT,
     ),
     limit(

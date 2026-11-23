@@ -65,6 +65,9 @@ pub mod search;
 #[path = "session_reads.rs"]
 pub mod session_reads;
 
+#[path = "exposure.rs"]
+pub mod exposure;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;

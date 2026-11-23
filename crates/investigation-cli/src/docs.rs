@@ -29,6 +29,9 @@ pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v1
 /// Version of the consumer migration recipe.
 pub(crate) const MIGRATION_GUIDANCE_VERSION: &str = "inv.migration-guidance.v1";
 
+/// Version of the secret-exposure diagnosis and manual remediation page.
+pub(crate) const EXPOSURE_GUIDANCE_VERSION: &str = "inv.exposure-guidance.v1";
+
 pub(crate) const AFTER_HELP: &str = "\
 Prints one embedded page as Markdown; without PAGE, lists the pages.
 Pages are compiled into the binary and need no workspace or network.
@@ -71,6 +74,7 @@ pub(crate) const PAGES: &[Page] = &[
     page!("skill", "skill.md", AGENT_INSTRUCTIONS_VERSION, "Optional installable skill: triggers and a compact main loop."),
     page!("producer", "producer.md", PRODUCER_ONBOARDING_VERSION, "Producer-only onboarding: record a program run with the capture calls, no method knowledge needed."),
     page!("migration", "migration.md", MIGRATION_GUIDANCE_VERSION, "Recipe for moving a producer's own journal onto the shared recorder."),
+    page!("exposure", "exposure.md", EXPOSURE_GUIDANCE_VERSION, "A secret reached the workspace: diagnose where it lives, rotate it, and the manual remediation; nothing is erased."),
 ];
 
 pub(crate) fn page(name: &str) -> Option<&'static Page> {
@@ -207,6 +211,11 @@ mod tests {
             "migration",
             "inv.migration-guidance.v1",
             "sha256:b2926052eabd0e70e0c2c36b93519ce382847fc42f1f73d70f7fdedd1f8c76c9",
+        ),
+        (
+            "exposure",
+            "inv.exposure-guidance.v1",
+            "sha256:47a803e9c4c56d5f8e7703fbd848232bc6e6484a7d56016a059a63dd7717c0dd",
         ),
     ];
 

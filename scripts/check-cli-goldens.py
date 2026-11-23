@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 GOLDEN = ROOT / "fixtures/development/cli-goldens.json"
 SCOPES = (
     ("init",), ("schema",), ("record",), ("ingest",), ("start",), ("receipt",), ("show",),
-    ("brief",), ("explain",), ("review-packet",), ("next",), ("frontier",), ("blindspots",), ("retrospective",), ("search",), ("guide",), ("method", "list"), ("onboard",), ("docs",), ("check",), ("repair", "index"), ("repair", "staging"), ("evidence", "read"),
+    ("brief",), ("explain",), ("review-packet",), ("next",), ("frontier",), ("blindspots",), ("retrospective",), ("search",), ("guide",), ("method", "list"), ("onboard",), ("docs",), ("check",), ("exposure",), ("repair", "index"), ("repair", "staging"), ("evidence", "read"),
     ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
     ("capture", "append"), ("capture", "attach"), ("vault", "render"), ("vault", "status"),
     ("vault", "conflicts"), ("export",), ("doctor",), ("doctor", "bundle"),

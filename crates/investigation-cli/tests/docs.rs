@@ -51,13 +51,17 @@ fn pages_print_offline_from_an_empty_directory_even_in_read_only_mode() {
         .iter()
         .map(|page| page["page"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["agents", "skill", "producer", "migration"]);
+    assert_eq!(
+        names,
+        ["agents", "skill", "producer", "migration", "exposure"]
+    );
 
     for (name, file) in [
         ("agents", "agents.md"),
         ("skill", "skill.md"),
         ("producer", "producer.md"),
         ("migration", "migration.md"),
+        ("exposure", "exposure.md"),
     ] {
         let expected = page_file(file);
         let (code, text) = investigation(cwd, &["docs", name], &[("INVESTIGATION_READ_ONLY", "1")]);
