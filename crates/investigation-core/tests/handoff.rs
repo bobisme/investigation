@@ -1,7 +1,7 @@
 //! Development handoff: only case and question are active runtime operations.
 use investigation_core::{
     catalog::{standard_catalog, wire_schema},
-    command::Command,
+    command::{Command, CommandVersion},
     evidence::{ObservationAdd, SelectorKind, SourceBody},
     explain::HypothesisCreate,
     header::{Clock, UtcTimestamp},
@@ -56,7 +56,9 @@ fn handoff_replays_active_commands_and_checks_deferred_drafts() {
     let commands = raw_commands
         .iter()
         .map(|raw| {
-            validator.validate(raw).unwrap();
+            let mut v1 = raw.clone();
+            v1["schema_version"] = serde_json::to_value(CommandVersion::V1).unwrap();
+            validator.validate(&v1).unwrap();
             Command::parse(&serde_json::to_vec(raw).unwrap()).unwrap().0
         })
         .collect::<Vec<_>>();

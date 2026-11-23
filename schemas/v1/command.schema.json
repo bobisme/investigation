@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "Actor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9:_.-]+$",
+      "type": "string"
+    },
+    "ActorDescriptor": {
+      "additionalProperties": false,
+      "description": "Every field is self-reported, including kind; it is not an authentication claim.",
+      "properties": {
+        "harness": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ActorKind"
+        },
+        "model_family": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ActorKind": {
+      "enum": [
+        "human",
+        "agent"
+      ],
+      "type": "string"
+    },
+    "CommandVersion": {
+      "enum": [
+        "inv.command.v1"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Operation": {
+      "additionalProperties": false,
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "op": {
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "op",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:record",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor"
+    },
+    "actor_descriptor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ActorDescriptor"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "case_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "command_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/Operation"
+      },
+      "maxItems": 128,
+      "minItems": 1,
+      "type": "array"
+    },
+    "preconditions": {
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/CommandVersion"
+    }
+  },
+  "required": [
+    "schema_version",
+    "command_id",
+    "actor",
+    "preconditions",
+    "operations"
+  ],
+  "title": "Command",
+  "type": "object"
+}

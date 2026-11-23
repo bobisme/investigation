@@ -1,0 +1,344 @@
+{
+  "$defs": {
+    "BlindspotVerdict": {
+      "enum": [
+        "gaps_identified",
+        "no_gap_identified_within_scope",
+        "inconclusive"
+      ],
+      "type": "string"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ContextIsolation": {
+      "enum": [
+        "same_session_self_review",
+        "fresh_context_unblinded",
+        "fresh_context_blinded",
+        "external_evidence_backed"
+      ],
+      "type": "string"
+    },
+    "Dependence": {
+      "enum": [
+        "shared",
+        "partly_shared",
+        "independent_on_stated_dimensions",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "ReviewContext": {
+      "additionalProperties": false,
+      "properties": {
+        "activity": {
+          "type": "string"
+        },
+        "dependence_basis": {
+          "type": "string"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/Dependence"
+        },
+        "gathered_new_evidence": {
+          "$ref": "#/$defs/Knowledge"
+        },
+        "method_or_source_changes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "saw_original_conclusion": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "saw_original_conclusion",
+        "gathered_new_evidence",
+        "method_or_source_changes",
+        "activity",
+        "dependencies",
+        "dependence_basis"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "ValidationVerdict": {
+      "enum": [
+        "supports",
+        "objects",
+        "inconclusive"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:review.submit",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "basis_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "context": {
+          "$ref": "#/$defs/ReviewContext"
+        },
+        "context_isolation": {
+          "$ref": "#/$defs/ContextIsolation"
+        },
+        "kind": {
+          "const": "validation",
+          "type": "string"
+        },
+        "materials_examined": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "method": {
+          "type": "string"
+        },
+        "objection_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "read_set": {
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "shared_dependencies": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "verdict": {
+          "$ref": "#/$defs/ValidationVerdict"
+        }
+      },
+      "required": [
+        "kind",
+        "subject_ref",
+        "basis_digest",
+        "read_set",
+        "method",
+        "materials_examined",
+        "shared_dependencies",
+        "objection_refs",
+        "verdict",
+        "caveats",
+        "context_isolation",
+        "context"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "assumption_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "audited_snapshot": {
+          "$ref": "#/$defs/Snapshot"
+        },
+        "checks_considered": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "context": {
+          "$ref": "#/$defs/ReviewContext"
+        },
+        "context_isolation": {
+          "$ref": "#/$defs/ContextIsolation"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "const": "blindspot",
+          "type": "string"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "method": {
+          "type": "string"
+        },
+        "no_gap_reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "read_set": {
+          "items": {
+            "$ref": "#/$defs/RevisionRef"
+          },
+          "type": "array"
+        },
+        "scope_examined": {
+          "type": "string"
+        },
+        "subject_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "verdict": {
+          "$ref": "#/$defs/BlindspotVerdict"
+        }
+      },
+      "required": [
+        "kind",
+        "subject_ref",
+        "audited_snapshot",
+        "read_set",
+        "method",
+        "scope_examined",
+        "checks_considered",
+        "gaps",
+        "evidence_refs",
+        "assumption_refs",
+        "limitations",
+        "verdict",
+        "context_isolation",
+        "context"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ReviewSubmit"
+}

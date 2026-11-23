@@ -45,14 +45,14 @@ class Driver:
 
     def record(self, case, op, payload, success=True):
         self.counter += 1
-        envelope = {"schema_version": "inv.command.v0-alpha", "command_id": f"scenario-c-{self.counter}",
+        envelope = {"schema_version": "inv.command.v1", "command_id": f"scenario-c-{self.counter}",
                     "case_id": case, "actor": ACTOR, "preconditions": [],
                     "operations": [{"op": op, "payload": payload}]}
         return self.call("record", "--input", "-", stdin=json.dumps(envelope).encode(), success=success)
 
     def batch(self, case, operations, preconditions):
         self.counter += 1
-        envelope = {"schema_version": "inv.command.v0-alpha", "command_id": f"scenario-c-{self.counter}",
+        envelope = {"schema_version": "inv.command.v1", "command_id": f"scenario-c-{self.counter}",
                     "case_id": case, "actor": ACTOR, "preconditions": preconditions, "operations": operations}
         return self.call("record", "--input", "-", stdin=json.dumps(envelope).encode())
 
@@ -120,7 +120,7 @@ def main():
         # Ingestion uses the selected workspace as an explicit import root; no
         # target code, parser command or network service is executed.
         shutil.copyfile(SOURCE, workspace / "recovery-tests.json")
-        manifest = {"schema_version": "inv.ingest.v0-alpha", "command_id": "scenario-c-ingest",
+        manifest = {"schema_version": "inv.ingest.v1", "command_id": "scenario-c-ingest",
             "actor": ACTOR, "case_id": case, "source": {"title": "Synthetic recovery trials",
             "producer": "offline simulator", "identity": "recovery-tests.json", "format": "application/json",
             "verification_limits": ["Synthetic simulator; 30 trials and the stated failure model only"]},
@@ -171,7 +171,7 @@ def main():
                 "outcome": "unknown", "method": "inspection", "basis": {"kind": "unknown", "reason": "Production cost is not measured"},
                 "evidence_refs": [], "assumption_refs": [], "uncertainty": "Traffic estimate is unverified", "rationale": "Estimated cost is not measured cost"})))
         shutil.copyfile(BENCHMARK, workspace / "benchmark-samples.json")
-        benchmark_manifest = {"schema_version": "inv.ingest.v0-alpha", "command_id": "scenario-c-benchmark", "actor": ACTOR,
+        benchmark_manifest = {"schema_version": "inv.ingest.v1", "command_id": "scenario-c-benchmark", "actor": ACTOR,
             "case_id": case, "source": {"title": "Synthetic enqueue benchmark", "producer": "offline simulator",
             "identity": "benchmark-samples.json", "format": "application/json", "verification_limits": ["Only twelve samples per option"]},
             "paths": ["benchmark-samples.json"], "extract_text": True}

@@ -8,3 +8,4 @@
 | [0004](0004-product-boundaries.md) | Executable name, material closure, and supported durability claims |
 | [0005](0005-milestone-a-qualification.md) | Alpha evidence, import, recovery, and qualification boundaries |
 | [0006](0006-a-gate-catalog-disposition.md) | Pilot outcome and record-type disposition |
+| [0007](0007-v1-schema-freeze.md) | Frozen public v1 contracts and compatibility |

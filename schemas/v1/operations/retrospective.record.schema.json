@@ -1,0 +1,210 @@
+{
+  "$defs": {
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "MethodAttempt": {
+      "additionalProperties": false,
+      "properties": {
+        "inquiry_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProposedLesson": {
+      "additionalProperties": false,
+      "properties": {
+        "applies_when": {
+          "type": "string"
+        },
+        "guidance": {
+          "type": "string"
+        },
+        "support_refs": {
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "type": "array"
+        },
+        "transfer_limits": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "guidance",
+        "applies_when",
+        "support_refs",
+        "transfer_limits"
+      ],
+      "type": "object"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "StepAccount": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "support_refs": {
+          "items": {
+            "$ref": "#/$defs/Id"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "description",
+        "support_refs"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:retrospective.record",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "case_ref": {
+      "$ref": "#/$defs/Reference"
+    },
+    "costs_or_constraints": {
+      "type": "string"
+    },
+    "effective_steps": {
+      "items": {
+        "$ref": "#/$defs/StepAccount"
+      },
+      "type": "array"
+    },
+    "invalid_or_misleading_steps": {
+      "items": {
+        "$ref": "#/$defs/StepAccount"
+      },
+      "type": "array"
+    },
+    "lessons": {
+      "items": {
+        "$ref": "#/$defs/ProposedLesson"
+      },
+      "type": "array"
+    },
+    "methods_attempted": {
+      "items": {
+        "$ref": "#/$defs/MethodAttempt"
+      },
+      "type": "array"
+    },
+    "no_reusable_lesson_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "none_observed_reason": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "residual_unknowns": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/Snapshot"
+    }
+  },
+  "required": [
+    "case_ref",
+    "snapshot",
+    "methods_attempted",
+    "effective_steps",
+    "invalid_or_misleading_steps",
+    "costs_or_constraints",
+    "residual_unknowns",
+    "lessons"
+  ],
+  "title": "RetrospectiveInput",
+  "type": "object"
+}

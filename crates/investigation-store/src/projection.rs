@@ -366,7 +366,7 @@ mod tests {
 
     fn receipt(accepted: &AcceptedTransaction, command_id: &str, hash: Digest) -> Receipt {
         Receipt {
-            schema_version: ResponseVersion::Alpha,
+            schema_version: ResponseVersion::V1,
             ok: true,
             result: CommitResult::Committed,
             command_id: command_id.to_owned(),

@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
       - run: cargo install --locked just --version 1.57.0
       - run: cargo install --locked cargo-deny --version 0.20.2
       - run: just check
@@ -20,8 +22,12 @@ jobs:
       - run: python3 scripts/grade-a-gate.py self-test
       - run: python3 scripts/check-a-gate-fixtures.py
       - name: Exercise the README and worked cases against the public binary
+        env:
+          V1_SCHEMA_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: |
           cargo build --locked -p investigation-cli
+          python3 scripts/check-v1-schemas.py target/debug/investigation --against "$V1_SCHEMA_BASE"
+          python3 scripts/check-v1-legacy.py target/debug/investigation
           python3 scripts/check-cli-goldens.py target/debug/investigation
           python3 scripts/check-readme-quickstart.py target/debug/investigation
           python3 scripts/prove_milestone_a.py target/debug/investigation

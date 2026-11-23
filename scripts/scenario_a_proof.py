@@ -48,7 +48,7 @@ class Cli:
         self.sequence += 1
         return self.call(
             "record", "--input", "-", exit_code=exit_code, request={
-                "schema_version": "inv.command.v0-alpha", "command_id": f"timeout-{self.sequence}",
+                "schema_version": "inv.command.v1", "command_id": f"timeout-{self.sequence}",
                 "case_id": case, "actor": actor, "preconditions": list(preconditions),
                 "operations": operations,
             },
@@ -66,7 +66,7 @@ class Cli:
         target = self.root / filename
         shutil.copyfile(source, target)
         manifest = {
-            "schema_version": "inv.ingest.v0-alpha", "command_id": f"capture-{self.sequence}",
+            "schema_version": "inv.ingest.v1", "command_id": f"capture-{self.sequence}",
             "actor": ACTOR, "case_id": case, "source": {"title": filename, "format": "application/json"},
             "paths": [filename], "extract_text": True,
         }

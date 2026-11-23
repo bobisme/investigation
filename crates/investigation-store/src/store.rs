@@ -600,7 +600,7 @@ fn receipt_for(verified: &VerifiedEvent) -> Receipt {
         })
         .collect();
     Receipt {
-        schema_version: ResponseVersion::Alpha,
+        schema_version: ResponseVersion::V1,
         ok: true,
         result: CommitResult::Committed,
         command_id: event.command_id.clone(),

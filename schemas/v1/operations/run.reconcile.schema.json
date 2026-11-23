@@ -1,0 +1,419 @@
+{
+  "$defs": {
+    "Actor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9:_.-]+$",
+      "type": "string"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "EvidenceCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "EvidenceKind": {
+      "enum": [
+        "observational",
+        "interventional"
+      ],
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MeasurementValidity": {
+      "enum": [
+        "unknown",
+        "valid",
+        "invalid",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "RunIntent": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "plan",
+              "type": "string"
+            },
+            "plan_ref": {
+              "$ref": "#/$defs/RevisionRef"
+            }
+          },
+          "required": [
+            "kind",
+            "plan_ref"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "const": "exploration",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "intent"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "RunRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "environment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_completeness": {
+          "$ref": "#/$defs/EvidenceCompleteness"
+        },
+        "evidence_kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "execution_status": {
+          "$ref": "#/$defs/ExecutionStatus"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "intent": {
+          "$ref": "#/$defs/RunIntent"
+        },
+        "manifest_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producer": {
+          "$ref": "#/$defs/Actor"
+        },
+        "result_assertion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "search_coverage": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SearchCoverage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceTime"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "variables_changed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "intent",
+        "producer",
+        "artifact_refs",
+        "execution_status",
+        "evidence_completeness",
+        "evidence_kind",
+        "variables_changed"
+      ],
+      "type": "object"
+    },
+    "SearchCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "corpus": {
+          "type": "string"
+        },
+        "empty_hits": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "examined_hits": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "exclusion_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "filters": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "inclusion_rules": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "queries": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "revision_bounds": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "total_hits": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "corpus",
+        "queries",
+        "filters",
+        "inclusion_rules",
+        "exclusion_rules"
+      ],
+      "type": "object"
+    },
+    "SourceTime": {
+      "additionalProperties": false,
+      "description": "The original time and offset are source claims and must not determine ordering.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality"
+        },
+        "offset": {
+          "$ref": "#/$defs/Knowledge"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "timestamp",
+        "offset",
+        "clock_quality"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:run.reconcile",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "evidence_validity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MeasurementValidity"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "external_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "outcome": {
+      "$ref": "#/$defs/RunRecord"
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "retrospective_plan_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "run_ref": {
+      "$ref": "#/$defs/RevisionRef"
+    }
+  },
+  "required": [
+    "run_ref",
+    "outcome",
+    "rationale"
+  ],
+  "title": "RunReconcile",
+  "type": "object"
+}

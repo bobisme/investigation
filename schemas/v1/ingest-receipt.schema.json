@@ -1,0 +1,339 @@
+{
+  "$defs": {
+    "CommitResult": {
+      "enum": [
+        "committed",
+        "already_committed"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Guidance": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/GuidanceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "argv"
+      ],
+      "type": "object"
+    },
+    "GuidanceKind": {
+      "enum": [
+        "local_read"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "ItemReceipt": {
+      "properties": {
+        "artifact_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "derivative_id": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "source_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "text_status": {
+          "$ref": "#/$defs/TextStatus"
+        }
+      },
+      "required": [
+        "source_id",
+        "artifact_id",
+        "digest",
+        "size_bytes",
+        "text_status"
+      ],
+      "type": "object"
+    },
+    "Projection": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "$ref": "#/$defs/ProjectionStatus"
+        },
+        "vault": {
+          "$ref": "#/$defs/ProjectionStatus"
+        }
+      },
+      "required": [
+        "index",
+        "vault"
+      ],
+      "type": "object"
+    },
+    "ProjectionStatus": {
+      "enum": [
+        "current",
+        "pending",
+        "degraded",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "ReceiptArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact",
+        "digest",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "ReceiptObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "quote_state": {
+          "$ref": "#/$defs/TextQuoteState"
+        },
+        "selector_validation": {
+          "$ref": "#/$defs/SelectorValidation"
+        }
+      },
+      "required": [
+        "observation",
+        "selector_validation",
+        "quote_state"
+      ],
+      "type": "object"
+    },
+    "RecordChange": {
+      "additionalProperties": false,
+      "properties": {
+        "client_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorValidation": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "TextQuoteState": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable",
+        "not_applicable"
+      ],
+      "type": "string"
+    },
+    "TextStatus": {
+      "enum": [
+        "not_requested",
+        "decoded",
+        "invalid_utf8"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:ingest-receipt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ReceiptArtifact"
+      },
+      "type": "array"
+    },
+    "command_id": {
+      "type": "string"
+    },
+    "created": {
+      "items": {
+        "$ref": "#/$defs/RecordChange"
+      },
+      "type": "array"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/ItemReceipt"
+      },
+      "type": "array"
+    },
+    "manifest_artifact_id": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "next": {
+      "items": {
+        "$ref": "#/$defs/Guidance"
+      },
+      "type": "array"
+    },
+    "observation_checks": {
+      "items": {
+        "$ref": "#/$defs/ReceiptObservation"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "projection": {
+      "$ref": "#/$defs/Projection"
+    },
+    "result": {
+      "$ref": "#/$defs/CommitResult"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ResponseVersion"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/Snapshot"
+    },
+    "transaction_id": {
+      "$ref": "#/$defs/Id"
+    },
+    "updated": {
+      "items": {
+        "$ref": "#/$defs/RecordChange"
+      },
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "result",
+    "command_id",
+    "transaction_id",
+    "snapshot",
+    "created",
+    "updated",
+    "projection",
+    "warnings",
+    "next",
+    "items"
+  ],
+  "title": "IngestReceipt",
+  "type": "object"
+}

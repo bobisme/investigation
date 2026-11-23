@@ -550,7 +550,7 @@ fn run_operation(
     let descriptor = catalog.get(operation).expect("target operation exists");
     descriptor.validate_payload(&payload)?;
     let request = RecordCommand {
-        schema_version: investigation_core::command::CommandVersion::Alpha,
+        schema_version: investigation_core::command::CommandVersion::V1,
         command_id: command_id.to_owned(),
         case_id,
         actor: actor.clone(),
@@ -703,7 +703,7 @@ fn run_ingest(
             source[manifest_key] = json!(value);
         }
     }
-    let mut manifest = json!({"schema_version":"inv.ingest.v0-alpha","command_id":command_id,"actor":actor,"case_id":case,"source":source,"paths":[path],"extract_text":true});
+    let mut manifest = json!({"schema_version":ingest::IngestVersion::V1,"command_id":command_id,"actor":actor,"case_id":case,"source":source,"paths":[path],"extract_text":true});
     for (path, value) in &shortcut.payload_overrides {
         set_json_path(&mut manifest, path, value.clone());
     }

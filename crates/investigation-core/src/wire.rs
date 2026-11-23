@@ -1,4 +1,4 @@
-//! Shared receipts, source digests, and structured failures for the alpha API.
+//! Shared receipts, source digests, and structured failures.
 
 use std::fmt;
 
@@ -14,8 +14,8 @@ use crate::{
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum ResponseVersion {
-    #[serde(rename = "inv.response.v0-alpha")]
-    Alpha,
+    #[serde(rename = "inv.response.v1", alias = "inv.response.v0-alpha")]
+    V1,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -272,7 +272,7 @@ pub struct Failure {
 impl Failure {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
-            schema_version: ResponseVersion::Alpha,
+            schema_version: ResponseVersion::V1,
             ok: false,
             result: RejectionResult::Rejected,
             commit_status: code.commit_status(),
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn a_degraded_view_keeps_the_commit_and_retry_ids() {
         let receipt = Receipt {
-            schema_version: ResponseVersion::Alpha,
+            schema_version: ResponseVersion::V1,
             ok: true,
             result: CommitResult::Committed,
             command_id: "first-case".into(),

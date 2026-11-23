@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "CommitStatus": {
+      "enum": [
+        "not_committed",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ErrorCode": {
+      "enum": [
+        "INVALID_INPUT",
+        "EMPTY_TRANSACTION",
+        "BUDGET_TOO_SMALL",
+        "WORKSPACE_REQUIRED",
+        "CASE_REQUIRED",
+        "OBJECT_REQUIRED",
+        "UNKNOWN_REFERENCE",
+        "AMBIGUOUS_REFERENCE",
+        "REVISION_CONFLICT",
+        "IDEMPOTENCY_KEY_REUSED",
+        "GATE_FAILED",
+        "RETROSPECTIVE_REQUIRED",
+        "RETROSPECTIVE_STALE",
+        "INTEGRITY_FAILURE",
+        "WORKSPACE_BUSY",
+        "IO_FAILURE",
+        "DURABILITY_UNKNOWN"
+      ],
+      "type": "string"
+    },
+    "ErrorDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "actual": true,
+        "code": {
+          "$ref": "#/$defs/ErrorCode"
+        },
+        "expected": true,
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "repair": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Repair"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "RejectionResult": {
+      "enum": [
+        "rejected"
+      ],
+      "type": "string"
+    },
+    "Repair": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "schema": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:error",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "commit_status": {
+      "$ref": "#/$defs/CommitStatus"
+    },
+    "error": {
+      "$ref": "#/$defs/ErrorDetail"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "result": {
+      "$ref": "#/$defs/RejectionResult"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/ResponseVersion"
+    }
+  },
+  "required": [
+    "schema_version",
+    "ok",
+    "result",
+    "commit_status",
+    "error"
+  ],
+  "title": "Failure",
+  "type": "object"
+}

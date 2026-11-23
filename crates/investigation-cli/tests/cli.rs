@@ -529,6 +529,65 @@ fn ingest_and_read_verify_original_bytes_before_accepting_an_observation() {
 }
 
 #[test]
+fn v1_envelopes_retain_opaque_source_metadata_and_reject_unknown_versions() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let (mut command, receipt) = create_case(root, "v1-case");
+    assert_eq!(command["schema_version"], "inv.command.v1");
+    assert_eq!(receipt["schema_version"], "inv.response.v1");
+    let case = receipt["created"][0]["id"].as_str().unwrap();
+    command["schema_version"] = json!("inv.command.v2");
+    command["command_id"] = json!("unsupported-version");
+    let rejected = run(
+        root,
+        &["record", "--input", "-", "--json"],
+        Some(&command),
+        2,
+    );
+    assert_eq!(rejected["schema_version"], "inv.response.v1");
+    assert_eq!(rejected["commit_status"], "not_committed");
+    assert_eq!(rejected["error"]["path"], "/schema_version");
+    let absent = run(
+        root,
+        &["receipt", "unsupported-version", "--actor", ACTOR, "--json"],
+        None,
+        0,
+    );
+    assert_eq!(absent["result"], "not_found_at_snapshot");
+
+    let config = root.join("investigation.toml");
+    let configured = fs::read_to_string(&config)
+        .unwrap()
+        .replace("import_roots = []", "import_roots = [\".\"]");
+    fs::write(config, configured).unwrap();
+    fs::write(root.join("capture.txt"), "Original source bytes").unwrap();
+    let metadata = json!({
+        "provider.example": {"format_hint": "unknown", "properties": [1, false, null]}
+    });
+    let manifest = json!({
+        "schema_version": "inv.ingest.v1", "command_id": "v1-import", "actor": ACTOR,
+        "case_id": case, "source": {"title": "Capture", "metadata": metadata},
+        "paths": ["capture.txt"]
+    });
+    let imported = run(
+        root,
+        &["ingest", "--input", "-", "--json"],
+        Some(&manifest),
+        0,
+    );
+    let source = imported["items"][0]["source_id"].as_str().unwrap();
+    assert_eq!(imported["schema_version"], "inv.response.v1");
+    let displayed = run(
+        root,
+        &["show", source, "--depth", "full", "--json"],
+        None,
+        0,
+    );
+    assert_eq!(displayed["record"]["body"]["metadata"], metadata);
+}
+
+#[test]
 fn json_discovery_and_usage_are_single_objects() {
     let dir = tempfile::tempdir().unwrap();
     let cwd = dir.path();

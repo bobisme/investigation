@@ -1,0 +1,315 @@
+{
+  "$defs": {
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "SelectorKind": {
+      "description": "The actual discriminated union. `EvidenceSelector` binds this to a digest\nand a core-computed validation result.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "whole",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "start": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "byte_range",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parser_version": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "text_lines",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start_line",
+            "end_line",
+            "encoding",
+            "parser_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exact": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "suffix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "text_quote",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "exact"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "parser": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pointer": {
+              "type": "string"
+            },
+            "type": {
+              "const": "json_pointer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "pointer"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "extraction_version": {
+              "type": "string"
+            },
+            "row_identity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "row_index": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "const": "table_cell",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "extraction_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "coordinate_origin": {
+              "type": "string"
+            },
+            "end": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "start": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "type": {
+              "const": "time_window",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end",
+            "unit",
+            "coordinate_origin",
+            "channel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "blob_digest": {
+              "$ref": "#/$defs/Digest"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "code_span",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "repository",
+            "commit",
+            "blob_digest",
+            "path",
+            "start_line",
+            "end_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "schema_uri": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "type": {
+              "const": "external_selector",
+              "type": "string"
+            },
+            "validator": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "namespace",
+            "schema_uri",
+            "schema_version",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SelectorVersion": {
+      "description": "The selector schema is versioned independently from record and command schemas.",
+      "enum": [
+        "inv.selector.v1"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:evidence-selector",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Request form deliberately lacks a validation field.",
+  "properties": {
+    "artifact_digest": {
+      "$ref": "#/$defs/Digest"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/SelectorVersion"
+    },
+    "selector": {
+      "$ref": "#/$defs/SelectorKind"
+    }
+  },
+  "required": [
+    "schema_version",
+    "artifact_digest",
+    "selector"
+  ],
+  "title": "SelectorRequest",
+  "type": "object"
+}

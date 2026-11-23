@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "CaseExpectations": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_answer_or_choice": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_effort": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "surprising_outcomes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "surprising_outcomes"
+      ],
+      "type": "object"
+    },
+    "CaseMode": {
+      "enum": [
+        "explain",
+        "measure",
+        "evaluate",
+        "explore",
+        "record"
+      ],
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge2": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/StopCondition"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "StopCondition": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "$ref": "#/$defs/StopReason"
+          },
+          "type": "array"
+        },
+        "reopening_conditions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "residual_risks": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "description",
+        "reasons",
+        "residual_risks",
+        "reopening_conditions"
+      ],
+      "type": "object"
+    },
+    "StopReason": {
+      "enum": [
+        "question_answered",
+        "choice_made",
+        "conditional_decision_accepted",
+        "uncertainty_tolerated",
+        "insufficient_evidence",
+        "prerequisite_unavailable",
+        "cost_or_time_exhausted",
+        "experiment_too_disruptive",
+        "experiment_not_authorized",
+        "volatile_evidence_preserved",
+        "superseded_question",
+        "investigator_pause"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:case.create",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Payload for `case.create`; the engine assigns a durable case ID.",
+  "properties": {
+    "decision_relevance": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "exclusions": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "expectations": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CaseExpectations"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "method_pins": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "mode": {
+      "$ref": "#/$defs/CaseMode",
+      "default": "explore"
+    },
+    "objective": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "policy_pins": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "scope": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Knowledge"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stop_condition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Knowledge2"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "title": {
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "title": "CaseCreate",
+  "type": "object"
+}

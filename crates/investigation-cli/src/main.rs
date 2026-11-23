@@ -220,7 +220,7 @@ impl Output {
 
     pub(crate) fn success(result: &str, mut value: Value, text: String) -> Self {
         let object = value.as_object_mut().expect("CLI response is an object");
-        object.insert("schema_version".into(), json!(ResponseVersion::Alpha));
+        object.insert("schema_version".into(), json!(ResponseVersion::V1));
         object.insert("ok".into(), json!(true));
         object.insert("result".into(), json!(result));
         Self::new(value, text)

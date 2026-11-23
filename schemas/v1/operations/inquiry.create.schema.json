@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ConfirmatoryPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_holdout_boundary": {
+          "type": "string"
+        },
+        "predictions": {
+          "items": {
+            "$ref": "#/$defs/RivalPrediction"
+          },
+          "type": "array"
+        },
+        "prior_exposure": {
+          "type": "string"
+        },
+        "stop_analysis_rule": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "predictions",
+        "evidence_holdout_boundary",
+        "prior_exposure",
+        "stop_analysis_rule"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "InquiryMode": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "const": "exploratory",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "confirmatory": {
+              "$ref": "#/$defs/ConfirmatoryPlan"
+            },
+            "mode": {
+              "const": "confirmatory",
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode",
+            "confirmatory"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "RivalPrediction": {
+      "additionalProperties": false,
+      "properties": {
+        "predicted_outcome": {
+          "type": "string"
+        },
+        "rival_ref": {
+          "$ref": "#/$defs/Reference"
+        }
+      },
+      "required": [
+        "rival_ref",
+        "predicted_outcome"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:inquiry.create",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "controls": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "desired_observations": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "inquiry": {
+      "$ref": "#/$defs/InquiryMode"
+    },
+    "limits": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "method": {
+      "type": "string"
+    },
+    "purpose": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "purpose",
+    "method",
+    "controls",
+    "limits",
+    "desired_observations",
+    "inquiry"
+  ],
+  "title": "InquiryCreate",
+  "type": "object"
+}

@@ -1,0 +1,241 @@
+{
+  "$defs": {
+    "ChoiceInput": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "select",
+              "type": "string"
+            },
+            "option_ref": {
+              "$ref": "#/$defs/Reference"
+            }
+          },
+          "required": [
+            "kind",
+            "option_ref"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "defer",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ConditionInput": {
+      "additionalProperties": false,
+      "properties": {
+        "criterion_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "criterion_ref",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "ReversalInput": {
+      "additionalProperties": false,
+      "properties": {
+        "assumption_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comparison_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "condition": {
+          "type": "string"
+        },
+        "criterion_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "option_ref": {
+          "$ref": "#/$defs/Reference"
+        }
+      },
+      "required": [
+        "option_ref",
+        "condition"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:decision.propose",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assumption_refs": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "check_when": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "choice": {
+      "$ref": "#/$defs/ChoiceInput"
+    },
+    "compared_alternatives": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "comparison_refs": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "consequences": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "expected_outcome": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hard_conditions": {
+      "items": {
+        "$ref": "#/$defs/ConditionInput"
+      },
+      "type": "array"
+    },
+    "question_ref": {
+      "$ref": "#/$defs/Reference"
+    },
+    "reopen_trigger": {
+      "type": "string"
+    },
+    "reversal_conditions": {
+      "items": {
+        "$ref": "#/$defs/ReversalInput"
+      },
+      "type": "array"
+    },
+    "tradeoffs": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "question_ref",
+    "choice",
+    "compared_alternatives",
+    "comparison_refs",
+    "hard_conditions",
+    "evidence_refs",
+    "assumption_refs",
+    "tradeoffs",
+    "consequences",
+    "reopen_trigger",
+    "reversal_conditions"
+  ],
+  "title": "DecisionInput",
+  "type": "object"
+}

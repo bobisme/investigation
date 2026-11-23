@@ -1,4 +1,4 @@
-//! Alpha transaction input shared by the frontends and the store.
+//! Transaction input shared by the frontends and the store.
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -15,8 +15,8 @@ pub const MAX_OPERATIONS: usize = 128;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum CommandVersion {
-    #[serde(rename = "inv.command.v0-alpha")]
-    Alpha,
+    #[serde(rename = "inv.command.v1", alias = "inv.command.v0-alpha")]
+    V1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]

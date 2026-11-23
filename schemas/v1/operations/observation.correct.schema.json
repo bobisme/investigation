@@ -1,0 +1,680 @@
+{
+  "$defs": {
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "EvidenceKind": {
+      "enum": [
+        "observational",
+        "interventional"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "MeasurementValidity": {
+      "enum": [
+        "unknown",
+        "valid",
+        "invalid",
+        "partial"
+      ],
+      "type": "string"
+    },
+    "ObservationBasisRequest": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "artifact_ref": {
+              "$ref": "#/$defs/Reference",
+              "description": "Distinguishes acquisitions even when their artifact bytes deduplicate."
+            },
+            "kind": {
+              "const": "source",
+              "type": "string"
+            },
+            "selector": {
+              "$ref": "#/$defs/SelectorRequest"
+            },
+            "text_quote": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/TextQuoteRequest"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "artifact_ref",
+            "selector"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Explicitly attributed assertion, not a source-backed observation.",
+          "properties": {
+            "assertion": {
+              "type": "string"
+            },
+            "context": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "assertion",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "assertion"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ObservationValue": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "text",
+              "type": "string"
+            },
+            "statement": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "statement"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "measurement",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/DecimalString"
+            }
+          },
+          "required": [
+            "kind",
+            "value",
+            "unit"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "digest": {
+              "$ref": "#/$defs/Digest"
+            },
+            "kind": {
+              "const": "binary",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "digest"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorKind": {
+      "description": "The actual discriminated union. `EvidenceSelector` binds this to a digest\nand a core-computed validation result.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "type": {
+              "const": "whole",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "start": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "byte_range",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "encoding": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "parser_version": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "text_lines",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start_line",
+            "end_line",
+            "encoding",
+            "parser_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "exact": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "suffix": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "const": "text_quote",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "exact"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "parser": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "pointer": {
+              "type": "string"
+            },
+            "type": {
+              "const": "json_pointer",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "pointer"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "column": {
+              "type": "string"
+            },
+            "extraction_version": {
+              "type": "string"
+            },
+            "row_identity": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "row_index": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "table": {
+              "type": "string"
+            },
+            "type": {
+              "const": "table_cell",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "table",
+            "column",
+            "extraction_version"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "channel": {
+              "type": "string"
+            },
+            "coordinate_origin": {
+              "type": "string"
+            },
+            "end": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "start": {
+              "$ref": "#/$defs/DecimalString"
+            },
+            "type": {
+              "const": "time_window",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "start",
+            "end",
+            "unit",
+            "coordinate_origin",
+            "channel"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "blob_digest": {
+              "$ref": "#/$defs/Digest"
+            },
+            "commit": {
+              "type": "string"
+            },
+            "end_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "path": {
+              "type": "string"
+            },
+            "repository": {
+              "type": "string"
+            },
+            "start_line": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": {
+              "const": "code_span",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "repository",
+            "commit",
+            "blob_digest",
+            "path",
+            "start_line",
+            "end_line"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "namespace": {
+              "type": "string"
+            },
+            "schema_uri": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "type": {
+              "const": "external_selector",
+              "type": "string"
+            },
+            "validator": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "value": true
+          },
+          "required": [
+            "type",
+            "namespace",
+            "schema_uri",
+            "schema_version",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "SelectorRequest": {
+      "additionalProperties": false,
+      "description": "Request form deliberately lacks a validation field.",
+      "properties": {
+        "artifact_digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/SelectorVersion"
+        },
+        "selector": {
+          "$ref": "#/$defs/SelectorKind"
+        }
+      },
+      "required": [
+        "schema_version",
+        "artifact_digest",
+        "selector"
+      ],
+      "type": "object"
+    },
+    "SelectorVersion": {
+      "description": "The selector schema is versioned independently from record and command schemas.",
+      "enum": [
+        "inv.selector.v1"
+      ],
+      "type": "string"
+    },
+    "SourceTime": {
+      "additionalProperties": false,
+      "description": "The original time and offset are source claims and must not determine ordering.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality"
+        },
+        "offset": {
+          "$ref": "#/$defs/Knowledge"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "timestamp",
+        "offset",
+        "clock_quality"
+      ],
+      "type": "object"
+    },
+    "TextQuoteRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "exact": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "prefix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suffix": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "exact"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:observation.correct",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A correction carries the replacement ObservationAdd fields at top level.",
+  "properties": {
+    "basis": {
+      "$ref": "#/$defs/ObservationBasisRequest"
+    },
+    "evidence_kind": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "extraction_method": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "observation_ref": {
+      "$ref": "#/$defs/RevisionRef"
+    },
+    "observed_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourceTime"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "quality": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "revision_reason": {
+      "type": "string"
+    },
+    "run_ref": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "validity": {
+      "$ref": "#/$defs/MeasurementValidity"
+    },
+    "value": {
+      "$ref": "#/$defs/ObservationValue"
+    },
+    "variables_changed": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "observation_ref",
+    "revision_reason",
+    "value",
+    "basis",
+    "validity",
+    "quality",
+    "limitations",
+    "variables_changed"
+  ],
+  "title": "ObservationCorrectPayload",
+  "type": "object"
+}

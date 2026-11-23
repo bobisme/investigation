@@ -442,7 +442,7 @@ pub fn wire_schema(name: &str) -> Option<Schema> {
     }
 }
 
-/// Public record operations for the alpha schema.
+/// Public record operations and reserved names.
 pub fn standard_catalog() -> Catalog {
     Catalog::new(
         [

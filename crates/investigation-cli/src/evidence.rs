@@ -66,7 +66,7 @@ pub(crate) fn start(
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
     let stdin = attachment == Path::new("-");
     let mut manifest = json!({
-        "schema_version":"inv.ingest.v0-alpha",
+        "schema_version":ingest::IngestVersion::V1,
         "command_id":command_id,
         "actor":actor,
         "new_case":{"title":question,"mode":"explore","objective":question},

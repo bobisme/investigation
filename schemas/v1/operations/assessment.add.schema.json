@@ -1,0 +1,284 @@
+{
+  "$defs": {
+    "AssessmentRelation": {
+      "enum": [
+        "supports",
+        "contradicts",
+        "non_diagnostic",
+        "inconclusive"
+      ],
+      "type": "string"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "Confidence": {
+      "additionalProperties": false,
+      "properties": {
+        "downgrade_reasons": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DowngradeReasons"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "level": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "what_would_change_it": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "level",
+        "rationale",
+        "limitations"
+      ],
+      "type": "object"
+    },
+    "ConfidenceLevel": {
+      "enum": [
+        "low",
+        "moderate",
+        "high",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "DowngradeJudgment": {
+      "enum": [
+        "ok",
+        "concern",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "DowngradeReasons": {
+      "additionalProperties": false,
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "consistency": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "directness": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "precision": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "validity": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        }
+      },
+      "required": [
+        "validity",
+        "consistency",
+        "directness",
+        "precision",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "Expectation": {
+      "enum": [
+        "more_expected",
+        "equally_expected",
+        "less_expected",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Likelihood": {
+      "additionalProperties": false,
+      "properties": {
+        "estimate": {
+          "$ref": "#/$defs/LikelihoodEstimate"
+        },
+        "resolution_condition": {
+          "$ref": "#/$defs/ResolutionCondition"
+        }
+      },
+      "required": [
+        "estimate",
+        "resolution_condition"
+      ],
+      "type": "object"
+    },
+    "LikelihoodEstimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Probability"
+        },
+        {
+          "$ref": "#/$defs/LikelihoodTerm"
+        }
+      ]
+    },
+    "LikelihoodTerm": {
+      "description": "Ordinal labels from the first row of ICD 203 §D.6.e(2)(a).",
+      "enum": [
+        "almost_no_chance",
+        "very_unlikely",
+        "unlikely",
+        "roughly_even_chance",
+        "likely",
+        "very_likely",
+        "almost_certain"
+      ],
+      "type": "string"
+    },
+    "Probability": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "ResolutionCondition": {
+      "pattern": "\\S",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "RivalExpectation": {
+      "additionalProperties": false,
+      "properties": {
+        "expectation": {
+          "$ref": "#/$defs/Expectation"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "rival_ref": {
+          "$ref": "#/$defs/Reference"
+        }
+      },
+      "required": [
+        "rival_ref",
+        "expectation",
+        "rationale"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:assessment.add",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "assumption_refs": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "confidence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Confidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/Reference"
+      },
+      "type": "array"
+    },
+    "likelihood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Likelihood"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "relation": {
+      "$ref": "#/$defs/AssessmentRelation"
+    },
+    "rival_expectations": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/RivalExpectation"
+      },
+      "type": "array"
+    },
+    "subject_ref": {
+      "$ref": "#/$defs/Reference"
+    }
+  },
+  "required": [
+    "subject_ref",
+    "evidence_refs",
+    "relation",
+    "rationale"
+  ],
+  "title": "AssessmentAdd",
+  "type": "object"
+}

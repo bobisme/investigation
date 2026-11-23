@@ -8,7 +8,7 @@ use std::{
 };
 
 use investigation_core::{
-    command::{Command, RevisionRef, SemanticRequest},
+    command::{Command, CommandVersion, RevisionRef, SemanticRequest},
     header::{Actor, UtcTimestamp},
     identity::{Id, Kind},
     input::{self, MAX_REQUEST_BYTES},
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
-use crate::durable::DurableFs;
+use crate::{durable::DurableFs, store::ingest::IngestVersion};
 
 pub const GENESIS_FILENAME: &str = "genesis.json";
 pub const EVENTS_DIRECTORY: &str = "events";
@@ -30,8 +30,6 @@ const MAX_SEQUENCE: u64 = 999_999_999_999;
 const GENESIS_VERSION: &str = "inv.case-genesis.v0-alpha";
 const LEGACY_EVENT_VERSION: &str = "inv.event.v0-alpha";
 const EVENT_VERSION: &str = "inv.event.v0-alpha.2";
-const COMMAND_VERSION: &str = "inv.command.v0-alpha";
-pub(crate) const INGEST_VERSION: &str = "inv.ingest.v0-alpha";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JournalErrorKind {
@@ -275,12 +273,8 @@ impl Event {
                 "Stored request digest disagrees with the stored semantic request.",
             ));
         }
-        let request_version = self
-            .request
-            .input
-            .get("schema_version")
-            .and_then(Value::as_str);
-        if request_version == Some(COMMAND_VERSION) {
+        let request_version = &self.request.input["schema_version"];
+        if input::decode::<CommandVersion>(request_version).is_ok() {
             let command: Command = decode(
                 &self.request.input,
                 path,
@@ -301,7 +295,7 @@ impl Event {
             if self.manifest_digest.is_some() {
                 return Err(invalid("Record events cannot carry an import manifest."));
             }
-        } else if request_version == Some(INGEST_VERSION) {
+        } else if input::decode::<IngestVersion>(request_version).is_ok() {
             let request = &self.request.input;
             let target = (self.sequence != 1).then_some(self.accepted.case_id);
             let actual_target = request.get("case_id").cloned().unwrap_or(Value::Null);

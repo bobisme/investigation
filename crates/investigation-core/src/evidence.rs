@@ -2,7 +2,7 @@
 //! are produced by ingest; callers cannot create them with a standalone write.
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
+use std::{cmp::Ordering, collections::BTreeMap};
 
 use crate::{
     command::{Reference, RevisionRef},
@@ -214,6 +214,8 @@ pub struct SourceBody {
     pub acquisition: SourceAcquisition,
     pub access: SourceAccess,
     pub verification_limits: Vec<String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub metadata: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

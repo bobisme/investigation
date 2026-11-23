@@ -2,7 +2,7 @@
 
 ![Investigation — Trace conclusions back to their sources. A hooded investigator aligns a carved stone fragment with its matching broken edge above a gorge.](docs/investigation.webp)
 
-**The A-gate pilot met its decision rule.** With the CLI available, successor accuracy was 76.7% versus 64.2% with Markdown notes. This checkout still uses the `v0-alpha` contracts pending the v1 freeze. [Pilot results](docs/a-gate.md)
+**The A-gate pilot met its decision rule.** With the CLI available, successor accuracy was 76.7% versus 64.2% with Markdown notes. The command and response contracts are frozen at v1. [Pilot results](docs/a-gate.md) · [v1 contracts](docs/schema-v1.md)
 
 `investigation` is an offline workbench for questions that need multiple observations, competing explanations or options, and a handoff. It retains original bytes, binds observations to selectors, and records attributed claims, comparisons, reviews, objections, and retrospectives. A successor can trace a finding to the exact revisions and select the next useful observation from the committed case.
 
@@ -48,11 +48,11 @@ Use `--output PATH` to keep the case workspaces and their handoffs in a new dire
 | --- | --- |
 | [`crates/`](crates/) | Rust core, storage, recording boundary, and CLI |
 | [`fixtures/`](fixtures/) | Synthetic sources, development cases, and adversarial variants |
-| [`schemas/`](schemas/) | Schema conventions. The live catalog emits active operation schemas. |
+| [`schemas/`](schemas/) | Published v1 envelopes, operation schemas, and reserved names |
 | [`scripts/`](scripts/) | Worked proofs, local qualification, and repository checks |
 | [`docs/adr/`](docs/adr/) | Architecture and product decisions |
 | [`docs/deferred.md`](docs/deferred.md) | Deferred features and revisit conditions |
 | [`docs/support-matrix.md`](docs/support-matrix.md) | Filesystem support, durability tests, and recovery limits |
 | [`notes/plan.md`](notes/plan.md) | Implementation specification, review dispositions, and acceptance gates |
 
-The controlled comparison against Markdown notes follows Milestone A. Its procedure and threshold are documented in the A-gate ADR. [A-gate decision](docs/adr/0003-a-gate.md)
+The sealed release trial follows the A-gate pilot. Its preregistration fixes the outcome, burden limit and sample size before sealed cases are opened. [Release trial](docs/release-trial.md)

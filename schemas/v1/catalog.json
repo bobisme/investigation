@@ -1,0 +1,180 @@
+{
+  "operations": {
+    "annotation.add": "operations/annotation.add.schema.json",
+    "assessment.add": "operations/assessment.add.schema.json",
+    "assessment.retract": "operations/assessment.retract.schema.json",
+    "assessment.supersede": "operations/assessment.supersede.schema.json",
+    "assumption.assess": "operations/assumption.assess.schema.json",
+    "assumption.create": "operations/assumption.create.schema.json",
+    "case.amend": "operations/case.amend.schema.json",
+    "case.close": "operations/case.close.schema.json",
+    "case.create": "operations/case.create.schema.json",
+    "case.pause": "operations/case.pause.schema.json",
+    "case.reopen": "operations/case.reopen.schema.json",
+    "comparison.add": "operations/comparison.add.schema.json",
+    "comparison.retract": "operations/comparison.retract.schema.json",
+    "comparison.revise": "operations/comparison.revise.schema.json",
+    "conclusion.amend": "operations/conclusion.amend.schema.json",
+    "conclusion.create": "operations/conclusion.create.schema.json",
+    "conclusion.disposition": "operations/conclusion.disposition.schema.json",
+    "conclusion.request_review": "operations/conclusion.request_review.schema.json",
+    "conclusion.validate": "operations/conclusion.validate.schema.json",
+    "criterion.amend": "operations/criterion.amend.schema.json",
+    "criterion.create": "operations/criterion.create.schema.json",
+    "criterion.retire": "operations/criterion.retire.schema.json",
+    "decision.accept": "operations/decision.accept.schema.json",
+    "decision.propose": "operations/decision.propose.schema.json",
+    "decision.supersede": "operations/decision.supersede.schema.json",
+    "hypothesis.amend": "operations/hypothesis.amend.schema.json",
+    "hypothesis.create": "operations/hypothesis.create.schema.json",
+    "hypothesis.disposition": "operations/hypothesis.disposition.schema.json",
+    "inquiry.amend": "operations/inquiry.amend.schema.json",
+    "inquiry.create": "operations/inquiry.create.schema.json",
+    "inquiry.freeze": "operations/inquiry.freeze.schema.json",
+    "inquiry.retire": "operations/inquiry.retire.schema.json",
+    "objection.raise": "operations/objection.raise.schema.json",
+    "objection.resolve": "operations/objection.resolve.schema.json",
+    "objection.withdraw": "operations/objection.withdraw.schema.json",
+    "observation.add": "operations/observation.add.schema.json",
+    "observation.correct": "operations/observation.correct.schema.json",
+    "observation.retract": "operations/observation.retract.schema.json",
+    "option.amend": "operations/option.amend.schema.json",
+    "option.create": "operations/option.create.schema.json",
+    "option.disposition": "operations/option.disposition.schema.json",
+    "question.create": "operations/question.create.schema.json",
+    "question.resolve": "operations/question.resolve.schema.json",
+    "retrospective.record": "operations/retrospective.record.schema.json",
+    "retrospective.supersede": "operations/retrospective.supersede.schema.json",
+    "review.submit": "operations/review.submit.schema.json",
+    "run.reconcile": "operations/run.reconcile.schema.json",
+    "run.record": "operations/run.record.schema.json",
+    "run.start": "operations/run.start.schema.json"
+  },
+  "reserved_operations": [
+    "artifact.withdraw",
+    "coverage.define",
+    "coverage.link",
+    "coverage.revise",
+    "measurement.assess",
+    "source.assess",
+    "source.withdraw"
+  ],
+  "reserved_wire_schemas": [
+    "capture"
+  ],
+  "schema_version": "inv.catalog.v1",
+  "stages": [
+    {
+      "operations": [
+        "assessment.add",
+        "assessment.retract",
+        "assessment.supersede",
+        "assumption.assess"
+      ],
+      "stage": "assess"
+    },
+    {
+      "operations": [
+        "retrospective.record",
+        "retrospective.supersede"
+      ],
+      "stage": "close"
+    },
+    {
+      "operations": [
+        "inquiry.amend",
+        "inquiry.create",
+        "inquiry.freeze",
+        "inquiry.retire",
+        "run.reconcile",
+        "run.record",
+        "run.start"
+      ],
+      "stage": "collect"
+    },
+    {
+      "operations": [
+        "decision.accept",
+        "decision.propose",
+        "decision.supersede"
+      ],
+      "stage": "decide"
+    },
+    {
+      "operations": [
+        "comparison.add",
+        "comparison.retract",
+        "comparison.revise",
+        "criterion.amend",
+        "criterion.create",
+        "criterion.retire",
+        "option.amend",
+        "option.create",
+        "option.disposition"
+      ],
+      "stage": "evaluate"
+    },
+    {
+      "operations": [
+        "hypothesis.amend",
+        "hypothesis.create",
+        "hypothesis.disposition"
+      ],
+      "stage": "explain"
+    },
+    {
+      "operations": [
+        "assumption.create",
+        "case.amend",
+        "case.close",
+        "case.pause",
+        "case.reopen",
+        "question.create",
+        "question.resolve"
+      ],
+      "stage": "frame"
+    },
+    {
+      "operations": [
+        "observation.add",
+        "observation.correct",
+        "observation.retract"
+      ],
+      "stage": "observe"
+    },
+    {
+      "operations": [
+        "annotation.add"
+      ],
+      "stage": "record"
+    },
+    {
+      "operations": [
+        "conclusion.amend",
+        "conclusion.create",
+        "conclusion.disposition",
+        "conclusion.request_review",
+        "conclusion.validate",
+        "objection.raise",
+        "objection.resolve",
+        "objection.withdraw",
+        "review.submit"
+      ],
+      "stage": "review"
+    },
+    {
+      "operations": [
+        "case.create"
+      ],
+      "stage": "start"
+    }
+  ],
+  "wire_schemas": {
+    "error": "error.schema.json",
+    "evidence-selector": "evidence-selector.schema.json",
+    "ingest": "ingest.schema.json",
+    "ingest-receipt": "ingest-receipt.schema.json",
+    "receipt": "receipt.schema.json",
+    "record": "command.schema.json"
+  }
+}

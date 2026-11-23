@@ -1,0 +1,373 @@
+{
+  "$defs": {
+    "CausalFactor": {
+      "additionalProperties": false,
+      "properties": {
+        "hypothesis_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "role": {
+          "$ref": "#/$defs/FactorRole"
+        }
+      },
+      "required": [
+        "hypothesis_ref",
+        "role"
+      ],
+      "type": "object"
+    },
+    "CausalTest": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/Reference"
+        },
+        "factor_ref": {
+          "$ref": "#/$defs/Reference"
+        },
+        "failure_boundary": {
+          "$ref": "#/$defs/FailureBoundary"
+        },
+        "reversal": {
+          "$ref": "#/$defs/Reference"
+        },
+        "treatment": {
+          "$ref": "#/$defs/Reference"
+        },
+        "variable": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "factor_ref",
+        "variable",
+        "baseline",
+        "treatment",
+        "reversal",
+        "failure_boundary"
+      ],
+      "type": "object"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "ConclusionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "causal_factors": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CausalFactor"
+          },
+          "type": "array"
+        },
+        "causal_test": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CausalTest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Confidence"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contradiction_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "likelihood": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Likelihood"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "scope": {
+          "type": "string"
+        },
+        "significance": {
+          "type": "string"
+        },
+        "statement": {
+          "type": "string"
+        },
+        "support_refs": {
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "statement",
+        "scope",
+        "significance",
+        "support_refs",
+        "contradiction_refs",
+        "caveats"
+      ],
+      "type": "object"
+    },
+    "Confidence": {
+      "additionalProperties": false,
+      "properties": {
+        "downgrade_reasons": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DowngradeReasons"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "level": {
+          "$ref": "#/$defs/ConfidenceLevel"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "what_would_change_it": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "level",
+        "rationale",
+        "limitations"
+      ],
+      "type": "object"
+    },
+    "ConfidenceLevel": {
+      "enum": [
+        "low",
+        "moderate",
+        "high",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "DowngradeJudgment": {
+      "enum": [
+        "ok",
+        "concern",
+        "not_assessed"
+      ],
+      "type": "string"
+    },
+    "DowngradeReasons": {
+      "additionalProperties": false,
+      "properties": {
+        "completeness": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "consistency": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "directness": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "precision": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        },
+        "validity": {
+          "$ref": "#/$defs/DowngradeJudgment"
+        }
+      },
+      "required": [
+        "validity",
+        "consistency",
+        "directness",
+        "precision",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "FactorRole": {
+      "enum": [
+        "trigger",
+        "latent_condition",
+        "contributor"
+      ],
+      "type": "string"
+    },
+    "FailureBoundary": {
+      "additionalProperties": false,
+      "properties": {
+        "operator": {
+          "$ref": "#/$defs/ThresholdOperator"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "operator",
+        "value",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Likelihood": {
+      "additionalProperties": false,
+      "properties": {
+        "estimate": {
+          "$ref": "#/$defs/LikelihoodEstimate"
+        },
+        "resolution_condition": {
+          "$ref": "#/$defs/ResolutionCondition"
+        }
+      },
+      "required": [
+        "estimate",
+        "resolution_condition"
+      ],
+      "type": "object"
+    },
+    "LikelihoodEstimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Probability"
+        },
+        {
+          "$ref": "#/$defs/LikelihoodTerm"
+        }
+      ]
+    },
+    "LikelihoodTerm": {
+      "description": "Ordinal labels from the first row of ICD 203 §D.6.e(2)(a).",
+      "enum": [
+        "almost_no_chance",
+        "very_unlikely",
+        "unlikely",
+        "roughly_even_chance",
+        "likely",
+        "very_likely",
+        "almost_certain"
+      ],
+      "type": "string"
+    },
+    "Probability": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "ResolutionCondition": {
+      "pattern": "\\S",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ThresholdOperator": {
+      "enum": [
+        "less_than",
+        "at_most",
+        "equal",
+        "at_least",
+        "greater_than"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:conclusion.amend",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "conclusion_ref": {
+      "$ref": "#/$defs/RevisionRef"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "replacement": {
+      "$ref": "#/$defs/ConclusionRequest"
+    }
+  },
+  "required": [
+    "conclusion_ref",
+    "replacement",
+    "reason"
+  ],
+  "title": "ConclusionAmend",
+  "type": "object"
+}

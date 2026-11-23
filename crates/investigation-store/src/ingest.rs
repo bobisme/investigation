@@ -26,8 +26,8 @@ pub const TEXT_PARSER_VERSION: &str = "inv.text.utf8.v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum IngestVersion {
-    #[serde(rename = "inv.ingest.v0-alpha")]
-    Alpha,
+    #[serde(rename = "inv.ingest.v1", alias = "inv.ingest.v0-alpha")]
+    V1,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -65,6 +65,9 @@ pub struct SourceManifest {
     pub context: Option<String>,
     #[serde(default)]
     pub verification_limits: Vec<String>,
+    /// Opaque producer metadata retained with the resulting Source.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub metadata: std::collections::BTreeMap<String, Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -73,7 +76,7 @@ pub enum StreamContent {
     Stdin { name: String },
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct ItemReceipt {
     pub source_id: Id,
     pub artifact_id: Id,
@@ -83,7 +86,7 @@ pub struct ItemReceipt {
     pub text_status: TextStatus,
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TextStatus {
     NotRequested,
@@ -91,7 +94,7 @@ pub enum TextStatus {
     InvalidUtf8,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct IngestReceipt {
     #[serde(flatten)]
     pub receipt: Receipt,
@@ -109,6 +112,10 @@ struct PreparedItem {
 
 pub fn manifest_schema() -> Schema {
     schema_for!(Manifest)
+}
+
+pub fn receipt_schema() -> Schema {
+    schema_for!(IngestReceipt)
 }
 
 pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
@@ -394,6 +401,7 @@ fn create_records(
                 SourceAccess::LocalOnly
             },
             verification_limits: manifest.source.verification_limits.clone(),
+            metadata: manifest.source.metadata.clone(),
         };
         first_source.get_or_insert(source_ref);
         builder.add(source_id, format!("source:{index}"), source, Vec::new())?;

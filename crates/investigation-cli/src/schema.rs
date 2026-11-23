@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, env};
 use clap::ArgGroup;
 use investigation_core::{
     PROGRAM_NAME,
-    catalog::{Catalog, OperationDescriptor, standard_catalog, wire_schema},
+    catalog::{Catalog, OperationDescriptor, Status, standard_catalog, wire_schema},
     command::CommandVersion,
     identity::{Id, Kind},
     wire::{ErrorCode, Failure},
@@ -16,16 +16,27 @@ use crate::{
     selection::{open_workspace, select_actor, select_case, workspace_argv},
 };
 
-const WIRE_SCHEMAS: &[&str] = &["record", "receipt", "error", "ingest", "evidence-selector"];
+const WIRE_SCHEMAS: &[&str] = &[
+    "record",
+    "receipt",
+    "error",
+    "ingest",
+    "ingest-receipt",
+    "evidence-selector",
+];
+const RESERVED_WIRE_SCHEMAS: &[&str] = &["capture"];
 
 #[derive(clap::Args)]
 #[command(group(ArgGroup::new("selection").required(true).args(["operation", "list"])))]
 pub(crate) struct Args {
-    /// Operation name or wire schema name (record, receipt, error, ingest, evidence-selector).
+    /// Operation or wire schema name. Use --list to see the available names.
     operation: Option<String>,
     /// List available operations by workflow stage.
     #[arg(long)]
     list: bool,
+    /// Include reserved operation and wire names along with the active catalog.
+    #[arg(long, requires = "list")]
+    include_deferred: bool,
     /// Return the JSON Schema object by itself.
     #[arg(long, requires = "operation")]
     schema_only: bool,
@@ -34,7 +45,7 @@ pub(crate) struct Args {
 pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
     let catalog = standard_catalog();
     if args.list {
-        return Ok(list(&catalog));
+        return Ok(list(&catalog, args.include_deferred));
     }
     let name = args
         .operation
@@ -42,6 +53,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         .expect("clap requires an operation or --list");
     let wire = match name {
         "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
+        "ingest-receipt" => Some(investigation_store::store::ingest::receipt_schema()),
         _ => wire_schema(name),
     };
     if let Some(schema) = wire {
@@ -53,6 +65,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 "record" => "Submit a transaction with investigation record --input FILE.",
                 "receipt" => "Inspect the result of an accepted transaction.",
                 "ingest" => "Retain original source bytes with investigation ingest --input FILE.",
+                "ingest-receipt" => "Inspect the receipt and retained items from ingest or start.",
                 "evidence-selector" => {
                     "Choose a digest-bound selection for investigation evidence read."
                 }
@@ -137,7 +150,7 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
     Ok(Output::success("schema", description, report))
 }
 
-fn list(catalog: &Catalog) -> Output {
+fn list(catalog: &Catalog, include_deferred: bool) -> Output {
     let mut groups = BTreeMap::<&str, Vec<&str>>::new();
     for operation in catalog.available() {
         let info = operation.info();
@@ -153,11 +166,22 @@ fn list(catalog: &Catalog) -> Output {
         .into_iter()
         .map(|(stage, operations)| json!({"stage": stage, "operations": operations}))
         .collect();
-    Output::success(
-        "schema_list",
-        json!({"stages": stages, "wire_schemas": WIRE_SCHEMAS}),
-        text.join("\n"),
-    )
+    let mut value = json!({"stages": stages, "wire_schemas": WIRE_SCHEMAS});
+    if include_deferred {
+        let reserved: Vec<_> = catalog
+            .operations()
+            .filter(|descriptor| descriptor.status() == Status::Deferred)
+            .map(|descriptor| descriptor.info().name)
+            .collect();
+        text.push(format!("reserved operations  {}", reserved.join(", ")));
+        text.push(format!(
+            "reserved wire  {}",
+            RESERVED_WIRE_SCHEMAS.join(", ")
+        ));
+        value["reserved_operations"] = json!(reserved);
+        value["reserved_wire_schemas"] = json!(RESERVED_WIRE_SCHEMAS);
+    }
+    Output::success("schema_list", value, text.join("\n"))
 }
 
 fn raw(schema: Value) -> Output {
@@ -290,7 +314,7 @@ fn transaction_form(
         "unresolved_fields": unresolved_fields,
         "guidance": "Choose a unique command_id for your write. Reuse that ID only with identical input and attribution.",
         "input": {
-            "schema_version": CommandVersion::Alpha,
+            "schema_version": CommandVersion::V1,
             "command_id": format!("example-{}", name.replace('.', "-")),
             "case_id": case,
             "actor": actor,
