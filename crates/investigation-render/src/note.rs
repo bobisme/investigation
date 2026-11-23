@@ -36,7 +36,7 @@ use serde_json::Value;
 
 use crate::{
     CaseSnapshot, Generation, PlanPath, RenderError, ViewPolicy, layout, marker,
-    text::{display_text, inline_code, inline_text},
+    text::{display_text, inline_code, inline_text, table_code},
     yaml::Frontmatter,
 };
 
@@ -270,17 +270,15 @@ impl<'a> NoteContext<'a> {
             .link("inv_case", &layout::case_overview(self.case.case_id())?);
         if visible {
             let effective = self.effective(record);
-            front
-                .text(
-                    "inv_status",
-                    effective
-                        .and_then(|effective| effective.lifecycle.as_deref())
-                        .unwrap_or("recorded"),
-                )
-                .text(
-                    "inv_effective",
-                    effective.map_or("unknown", |effective| effective.freshness.as_str()),
-                );
+            // The lifecycle word comes from the record body: show it as a label.
+            let status = effective
+                .and_then(|effective| effective.lifecycle.as_deref())
+                .and_then(|lifecycle| display_text(lifecycle, TITLE_CHARS))
+                .unwrap_or_else(|| "recorded".to_owned());
+            front.text("inv_status", &status).text(
+                "inv_effective",
+                effective.map_or("unknown", |effective| effective.freshness.as_str()),
+            );
         }
         front
             .integer("inv_revision", header.revision.0)
@@ -325,7 +323,7 @@ impl<'a> NoteContext<'a> {
         let kind = header.id.kind();
         let label = layout::record_kind(kind).map_or(layout::kind_name(kind), |(_, name)| name);
         out.push_str("| Basis | Value |\n|---|---|\n");
-        let _ = writeln!(out, "| ID | {} |", inline_code(&header.id.to_string()));
+        let _ = writeln!(out, "| ID | {} |", table_code(&header.id.to_string()));
         let _ = writeln!(out, "| Kind | {label} |");
         if kind != Kind::Case {
             let _ = writeln!(out, "| Case | {} |", self.table_link(self.case.case_id())?);
@@ -350,7 +348,7 @@ impl<'a> NoteContext<'a> {
                 out,
                 "| Recorded | {} by {} |",
                 header.recorded_at,
-                inline_code(&header.recorded_by.to_string())
+                table_code(&header.recorded_by.to_string())
             );
             let effective = self.classifier.effective(record);
             let _ = writeln!(
@@ -363,7 +361,7 @@ impl<'a> NoteContext<'a> {
             out,
             "| Snapshot | sequence {}, head {} |",
             head.sequence,
-            inline_code(head.head_hash.as_str())
+            table_code(head.head_hash.as_str())
         );
         Ok(())
     }

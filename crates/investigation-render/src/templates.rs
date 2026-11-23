@@ -406,7 +406,7 @@ mod tests {
                 assert_eq!(map["inv_updated"], TIME);
                 let alias = map["aliases"][0].as_str().unwrap();
                 assert!(
-                    alias.starts_with("Title Other script alert(1) /script"),
+                    alias.starts_with("Title )) \u{a6} ((Other)) \u{2039}script\u{203a}alert(1)"),
                     "{alias}"
                 );
                 assert!(note.contains(&format!("\n# {alias}\n")));
@@ -441,7 +441,9 @@ mod tests {
         let hypothesis = text(&plan, &note_path(fixture.case, fixture.hypothesis));
         let hypothesis_target = note_path(fixture.case, fixture.hypothesis);
         let hypothesis_target = hypothesis_target.strip_suffix(".md").unwrap();
-        assert!(question.contains(&format!("- [[{hypothesis_target}|Title Other")));
+        assert!(question.contains(&format!(
+            "- [[{hypothesis_target}|Title )) \u{a6} ((Other))"
+        )));
         assert!(question.contains("through `question_ref`, citing revision 1"));
         assert!(
             hypothesis.contains(
@@ -495,16 +497,16 @@ mod tests {
         );
         let path = note_path(fixture.case, fixture.hypothesis);
         let note = text(&after, &path);
-        assert!(note.contains("\n# Renamed: pool exhaustion precedes timeouts\n"));
+        assert!(note.contains("\n# Renamed: pool exhaustion \u{a6} )) precedes timeouts\n"));
         assert_eq!(
             frontmatter(&note)["aliases"][0],
-            "Renamed: pool exhaustion precedes timeouts"
+            "Renamed: pool exhaustion \u{a6} )) precedes timeouts"
         );
         assert!(note.contains("| Revision | 2 (earlier: 1) |"));
         let question = text(&after, &note_path(fixture.case, fixture.question));
         let target = path.strip_suffix(".md").unwrap();
         assert!(question.contains(&format!(
-            "[[{target}|Renamed: pool exhaustion precedes timeouts]]"
+            "[[{target}|Renamed: pool exhaustion \u{a6} )) precedes timeouts]]"
         )));
         for entry in after.entries() {
             for target in link_targets(std::str::from_utf8(entry.content()).unwrap()) {
@@ -519,7 +521,7 @@ mod tests {
         let plan = render_state(&fixture.state, &ViewPolicy::for_audience(Audience::Public));
         for entry in plan.entries() {
             let note = std::str::from_utf8(entry.content()).unwrap();
-            assert!(!note.contains("Title Other"), "{}", entry.path());
+            assert!(!note.contains("((Other))"), "{}", entry.path());
             if let Some(projected) = entry.projects() {
                 let map = frontmatter(note);
                 assert_eq!(map["inv_withheld"], true);

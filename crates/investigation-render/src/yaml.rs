@@ -190,12 +190,30 @@ pub(crate) mod tests {
         yaml_serde::from_str(inner).expect("frontmatter parses as YAML")
     }
 
+    /// The checked-in hostile corpus shared with the Markdown tests, plus
+    /// generated long values.
+    fn corpus() -> Vec<String> {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/hostile-text.json")).unwrap();
+        let mut values: Vec<String> = fixture["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|case| case["text"].as_str().unwrap().to_owned())
+            .collect();
+        values.extend(HOSTILE.iter().map(|value| (*value).to_owned()));
+        values.push("long ".repeat(20_000));
+        values.push(format!("{}\n---\ninv_id: x", "\"".repeat(5_000)));
+        values
+    }
+
     #[test]
     fn hostile_strings_round_trip_as_single_flat_scalars() {
-        for value in HOSTILE {
+        for value in &corpus() {
+            let value = value.as_str();
             let mut front = Frontmatter::new();
             front.text("inv_title", value).integer("inv_revision", 3);
-            front.list("aliases", &[*value, "second"]);
+            front.list("aliases", &[value, "second"]);
             let block = front.finish();
             // The block has exactly the lines we wrote: nothing escaped into a new line.
             assert_eq!(block.lines().count(), 7, "{block}");
@@ -207,10 +225,10 @@ pub(crate) mod tests {
             );
             let map = parse(&block);
             assert_eq!(map.len(), 3);
-            assert_eq!(map["inv_title"], yaml_serde::Value::String((*value).into()));
+            assert_eq!(map["inv_title"], yaml_serde::Value::String(value.into()));
             assert_eq!(map["inv_revision"], yaml_serde::Value::Number(3.into()));
             let aliases = map["aliases"].as_sequence().unwrap();
-            assert_eq!(aliases[0], yaml_serde::Value::String((*value).into()));
+            assert_eq!(aliases[0], yaml_serde::Value::String(value.into()));
         }
     }
 

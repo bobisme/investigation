@@ -76,10 +76,22 @@ pub fn link_target(path: &PlanPath) -> &str {
     path.as_str().strip_suffix(".md").unwrap_or(path.as_str())
 }
 
-/// A vault-relative wikilink. `display` must already be safe link text, such
-/// as the output of [`crate::text::display_text`] or a record ID.
+/// A vault-relative wikilink: the only way generated Markdown links anywhere.
+/// The target is a validated plan path, never data. `display` passes through
+/// [`crate::text::display_text`] again, which leaves safe labels and record
+/// IDs unchanged, so no caller can smuggle markup into a label; an empty
+/// label falls back to the file name.
 pub fn wikilink(path: &PlanPath, display: &str) -> String {
-    format!("[[{}|{display}]]", link_target(path))
+    let target = link_target(path);
+    debug_assert!(
+        target
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | ' ')),
+        "link target {target:?} is not built from identifiers"
+    );
+    let label = crate::text::display_text(display, usize::MAX)
+        .unwrap_or_else(|| target.rsplit('/').next().unwrap_or(target).to_owned());
+    format!("[[{target}|{label}]]")
 }
 
 /// Stable lowercase kind word for `inv_kind` and tags, independent of folder

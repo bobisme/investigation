@@ -28,7 +28,8 @@
 //!   ([`yaml`]), display title and aliases, the tool-owned banner, the basis
 //!   table and fixed sections (summary and caveat, typed links with reasons,
 //!   evidence selectors with excerpt anchors, next action or blocker).
-//!   Authored text passes through the conservative escapers in [`text`].
+//!   Authored text passes through the context-specific escapers in [`text`]
+//!   and [`yaml`]; links come only from [`layout::wikilink`].
 //! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for.
 //! - [`publish`]: [`Publisher`] applies a plan. Each path is checked against an
 //!   [`Ownership`] decision before any write. [`NoManifest`] is the
@@ -60,8 +61,10 @@
 //!   [`templates`] on top of [`note::NoteContext`]; paths stay in [`layout`].
 //!   Bump [`RENDERER_VERSION`] whenever output bytes change for the same
 //!   snapshot.
-//! - Safe Markdown rendering: replace [`text`] with context-specific escapers
-//!   behind the same call sites.
+//! - Safe Markdown rendering: every new authored or captured string goes
+//!   through the [`text`] function for its context; block excerpts use
+//!   [`text::fenced_block`]. Add hostile cases to
+//!   `tests/fixtures/hostile-text.json`.
 //! - Vault status (`vault status`): [`vault_status`] reports
 //!   [`VaultState`] (unrendered, complete, updating, partial) and the last
 //!   complete generation from the manifest and the lock alone;

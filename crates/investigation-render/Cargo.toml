@@ -17,5 +17,7 @@ serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.149"
 
 [dev-dependencies]
+# Parses generated Markdown in tests to prove authored text stays inert.
+pulldown-cmark = { version = "=0.13.6", default-features = false }
 yaml_serde = "=0.10.7"
 tempfile = "=3.27.0"

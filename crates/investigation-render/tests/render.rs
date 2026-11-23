@@ -487,7 +487,11 @@ fn recorded_title_changes_keep_identity_files_and_links() {
     let id = hypothesis_id.to_string();
     for (text, revision, title) in [
         (old_note, "1", "Pool exhaustion precedes the timeouts"),
-        (new_note, "2", "Renamed Other b x /b --- inv id: forged"),
+        (
+            new_note,
+            "2",
+            "Renamed )) \u{a6} ((Other)) \u{2039}b\u{203a}x\u{2039}/b\u{203a} --- inv_id: forged",
+        ),
     ] {
         assert_eq!(property(text, "inv_id"), Some(format!("\"{id}\"").as_str()));
         assert_eq!(property(text, "inv_revision"), Some(revision));
@@ -496,14 +500,15 @@ fn recorded_title_changes_keep_identity_files_and_links() {
         assert!(text.contains(&format!("\n# {title}\n")), "{text}");
         assert!(text.contains("tool-owned projection"));
     }
-    assert!(!new_note.contains("inv_id: forged") && !new_note.contains("[[Other"));
+    // The forged key never starts a line; the label keeps the text inside a quoted alias.
+    assert!(!new_note.contains("\ninv_id: forged") && !new_note.contains("[[Other"));
 
     // The question's backlink keeps its target and shows the new title.
     let target = format!("Cases/{case_id}/Hypotheses/{hypothesis_id}");
     let question_note = note(&after, case_id, question_id);
     assert!(
         question_note.contains(&format!(
-            "- [[{target}|Renamed Other b x /b --- inv id: forged]] through `question_ref`, citing revision 1"
+            "- [[{target}|Renamed )) \u{a6} ((Other)) \u{2039}b\u{203a}x\u{2039}/b\u{203a} --- inv_id: forged]] through `question_ref`, citing revision 1"
         )),
         "{question_note}"
     );
