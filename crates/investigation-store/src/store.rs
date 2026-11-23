@@ -14,7 +14,7 @@ use investigation_core::{
     evidence::{ArtifactBody, ObservationBasis},
     header::{Actor, Clock, SystemClock},
     identity::{Id, IdSource, Kind, SystemIdSource},
-    state::{Acceptance, AcceptedTransaction, State, validate_and_apply_with_observations},
+    state::{Acceptance, AcceptedTransaction, State, validate_and_apply_with_packs},
     wire::{
         CommitResult, ErrorCode, Failure, Guidance, GuidanceKind, Projection as ReceiptProjection,
         ProjectionStatus, Receipt, ReceiptArtifact, ReceiptObservation, ResponseVersion, Snapshot,
@@ -201,13 +201,14 @@ impl<F: DurableFs> Store<F> {
             },
             clock,
             ids,
-            |state, catalog, acceptance, _| {
-                validate_and_apply_with_observations(
+            |state, catalog, acceptance, visible| {
+                validate_and_apply_with_packs(
                     state,
                     command,
                     catalog,
                     acceptance,
                     &observations,
+                    visible.packs,
                 )
                 .map(Prepared::Accept)
             },
@@ -280,6 +281,7 @@ impl<F: DurableFs> Store<F> {
             Visible {
                 target: case.as_ref(),
                 others: &replay,
+                packs: &method_packs::RetainedPacks(&self.fs),
             },
         )
         .map_err(|error| add_conflict_context(error, original, case_id))?;
@@ -562,6 +564,8 @@ struct Visible<'a> {
     target: Option<&'a CaseReplay>,
     /// Every other case.
     others: &'a WorkspaceReplay,
+    /// Retained method pack bytes, read under the commit lock for policy gates.
+    packs: &'a dyn investigation_core::pack_policy::PackSource,
 }
 
 /// What a preparation decided under the commit lock.

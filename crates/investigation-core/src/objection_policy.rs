@@ -17,6 +17,8 @@ use crate::{
     basis::{MembershipRule, MembershipScope, ObjectionBody, membership},
     command::{Reference, RevisionRef},
     identity::{Id, Kind},
+    method_pack::PolicyInput,
+    pack_policy::Consulted,
     review::{ObjectionSeverity, ObjectionStatus},
     review_ops::{ValidationReviewBody, required_read_set},
     state::{Record, State},
@@ -129,14 +131,19 @@ impl AcknowledgmentPolicy {
     }
 }
 
-/// The acknowledgment policy in force for a case.
+/// The acknowledgment policy in force at a `decision.accept` gate.
 ///
-/// Seam for pack policy inputs (W09.07): a pinned pack will be able to select
-/// [`AcknowledgmentPolicy::AllOpen`] here. Until such inputs exist every case
-/// uses the core default, which is recorded with each accepted decision so a
-/// later policy change never rewrites what was required at acceptance.
-pub fn acknowledgment_policy(_state: &State, _case: Id) -> AcknowledgmentPolicy {
-    AcknowledgmentPolicy::Critical
+/// The core default is [`AcknowledgmentPolicy::Critical`]. An available pack
+/// pinned to the case selects [`AcknowledgmentPolicy::AllOpen`] by declaring
+/// `acknowledge_open_objections` at `decision.accept`; no pack can relax the
+/// default. The policy is recorded with each accepted decision so a later
+/// adoption never rewrites what was required at acceptance.
+pub fn acknowledgment_policy(policy: &Consulted) -> AcknowledgmentPolicy {
+    if policy.requires(PolicyInput::AcknowledgeOpenObjections) {
+        AcknowledgmentPolicy::AllOpen
+    } else {
+        AcknowledgmentPolicy::Critical
+    }
 }
 
 /// Caller-supplied acknowledgment of one open objection.

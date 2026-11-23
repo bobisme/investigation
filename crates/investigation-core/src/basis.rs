@@ -228,6 +228,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "disposition_evidence_refs",
                 "successor_ref",
                 "change_reason",
+                "gate_policy",
             ],
         ),
         Kind::Decision => (
@@ -256,6 +257,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "superseded_by",
                 "change_reason",
                 "acceptance_challenges",
+                "gate_policy",
             ],
         ),
         _ => return Err(failure("Record kind has no defined substantive basis.")),

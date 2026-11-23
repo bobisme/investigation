@@ -64,6 +64,23 @@ impl TriggerContext {
     /// Evaluate every trigger input for one case from recorded fields only.
     /// `inventory` must come from the same snapshot as `state`.
     pub fn evaluate(state: &State, case_id: Id, inventory: &GapInventory) -> Self {
+        let gap_rules: BTreeSet<String> = inventory
+            .gaps
+            .iter()
+            .filter(|gap| !matches!(gap.status, GapStatus::Resolved | GapStatus::Deferred))
+            .map(|gap| gap.rule_id.clone())
+            .collect();
+        Self::from_records(state, case_id, gap_rules)
+    }
+
+    /// Evaluate case facts and record kinds only; no gap rule holds. Used by
+    /// policy gates, which run inside a transaction without a verified
+    /// snapshot to enumerate gaps from.
+    pub fn evaluate_recorded(state: &State, case_id: Id) -> Self {
+        Self::from_records(state, case_id, BTreeSet::new())
+    }
+
+    fn from_records(state: &State, case_id: Id, gap_rules: BTreeSet<String>) -> Self {
         let records: Vec<&Record> = state
             .records()
             .filter(|record| record.header.case_id == case_id)
@@ -72,12 +89,6 @@ impl TriggerContext {
             .current(case_id)
             .and_then(|case| case.body.get("mode"))
             .and_then(|mode| serde_json::from_value(mode.clone()).ok());
-        let gap_rules: BTreeSet<String> = inventory
-            .gaps
-            .iter()
-            .filter(|gap| !matches!(gap.status, GapStatus::Resolved | GapStatus::Deferred))
-            .map(|gap| gap.rule_id.clone())
-            .collect();
         let record_kinds = ALL_RECORD_KINDS
             .iter()
             .copied()

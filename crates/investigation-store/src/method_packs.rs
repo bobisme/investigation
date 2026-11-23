@@ -9,7 +9,31 @@ use investigation_core::{
     input,
     method_pack::{self, MAX_PACK_BYTES},
     method_pack_ops::{self, MethodPackPin, ResolvedPack},
+    pack_policy::PackSource,
+    wire::Digest,
 };
+
+/// Retained pack bytes by digest for promotion gates. Reads the same
+/// content-addressed blob as read-time resolution, never an ingest path.
+pub(super) struct RetainedPacks<'a, F>(pub(super) &'a F);
+
+impl<F: DurableFs> PackSource for RetainedPacks<'_, F> {
+    fn pack_bytes(&self, digest: &Digest) -> Option<Vec<u8>> {
+        retained_pack_bytes(self.0, digest)
+    }
+}
+
+fn retained_pack_bytes<F: DurableFs>(fs: &F, digest: &Digest) -> Option<Vec<u8>> {
+    let hex = digest.as_str().strip_prefix("sha256:")?;
+    let path = Path::new(BLOBS).join(hex.get(..2)?).join(hex);
+    let mut bytes = Vec::new();
+    fs.read(&path)
+        .ok()?
+        .take(MAX_PACK_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    Some(bytes)
+}
 
 use super::*;
 
@@ -31,16 +55,7 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn retained_pack_bytes(&self, pin: &MethodPackPin) -> Option<Vec<u8>> {
-        let hex = pin.digest.as_str().strip_prefix("sha256:")?;
-        let path = Path::new(BLOBS).join(&hex[..2]).join(hex);
-        let mut bytes = Vec::new();
-        self.fs
-            .read(&path)
-            .ok()?
-            .take(MAX_PACK_BYTES as u64 + 1)
-            .read_to_end(&mut bytes)
-            .ok()?;
-        Some(bytes)
+        retained_pack_bytes(&self.fs, &pin.digest)
     }
 
     /// Reject a new pin unless its retained bytes load as the declared pack.

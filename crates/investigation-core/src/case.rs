@@ -108,6 +108,9 @@ pub struct CaseClosureDetails {
     pub reopen_condition: Option<String>,
     pub retrospective_ref: Option<RevisionRef>,
     pub retrospective_waived: Option<String>,
+    /// Pinned pack policy consulted by the `case.close` gate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate_policy: Option<crate::pack_policy::GatePolicy>,
 }
 
 /// Payload for `case.create`; the engine assigns a durable case ID.

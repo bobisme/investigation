@@ -22,6 +22,7 @@ use crate::{
     header::Knowledge,
     identity::{Id, Kind},
     objection_policy::{open_objections, raised_after_review},
+    pack_policy::{self, Gate, Subject},
     review::{
         AssessmentRelation, BlindspotVerdict, ConclusionCreate, ConclusionStatus,
         ConclusionValidate, ContextIsolation, EffectiveDisposition, ObjectionChange,
@@ -962,9 +963,42 @@ fn conclusion_request_review(
     let tracked = record.clone();
     warn_open_challenges(ctx, &tracked, &reads)?;
     body["status"] = json!(ConclusionStatus::ReviewReady);
+    let (body, policy) = apply_pack_policy(ctx, Gate::ConclusionRequestReview, &tracked, body)?;
     ctx.update(payload.conclusion_ref, body)?;
-    ctx.check_final(move |state| closure_changed(&tracked, state, &basis, &reads, &sets));
+    let actor = ctx.actor().clone();
+    let id = tracked.header.id;
+    ctx.check_final(move |state| {
+        closure_changed(&tracked, state, &basis, &reads, &sets)?;
+        policy.recheck(state, &actor, id)
+    });
     Ok(())
+}
+
+/// Enforce the case's pinned pack policy for a Conclusion gate and store the
+/// policy it consulted on the new revision.
+fn apply_pack_policy(
+    ctx: &mut OperationContext<'_>,
+    gate_kind: Gate,
+    record: &Record,
+    mut body: Value,
+) -> Result<(Value, pack_policy::Consulted), Failure> {
+    let policy = pack_policy::consult(ctx, gate_kind)?;
+    if let Some(fields) = body.as_object_mut() {
+        fields.remove("gate_policy");
+    }
+    let gated = policy.enforce(
+        ctx.state(),
+        ctx.actor(),
+        &Subject {
+            body: &body,
+            record: Some(record),
+        },
+    )?;
+    for warning in policy.warnings() {
+        ctx.warn(warning);
+    }
+    body["gate_policy"] = pack_policy::encode(&gated)?;
+    Ok((body, policy))
 }
 
 fn context_shape(context: &ReviewContext) -> Result<(), Failure> {
@@ -1365,8 +1399,11 @@ fn conclusion_validate(
     body["status"] = json!(ConclusionStatus::Validated);
     body["review_ref"] = json!(review_ref);
     body["reviewed_basis"] = json!(review_body.basis_digest);
+    let (body, policy) = apply_pack_policy(ctx, Gate::ConclusionValidate, record, body)?;
     ctx.update(payload.conclusion_ref, body)?;
+    let actor = ctx.actor().clone();
     ctx.check_final(move |state| {
+        policy.recheck(state, &actor, id)?;
         let final_record = state.current(id).ok_or_else(integrity)?;
         if final_record.body["status"] != "validated"
             || final_record.body["review_ref"] != json!(review_ref)

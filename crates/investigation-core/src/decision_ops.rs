@@ -18,6 +18,7 @@ use crate::{
         AcceptanceChallenges, ObjectionAcknowledgmentInput, acknowledge, acknowledgment_policy,
         relevant_open_objections,
     },
+    pack_policy::{self, Consulted, Gate, GatePolicy, Subject},
     review::ValidationVerdict,
     review_ops::{ValidationReviewBody, validation_review_current},
     state::{OperationContext, Record, State},
@@ -113,6 +114,10 @@ pub struct DecisionBody {
     /// Written once at acceptance; absent on proposals and older records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub acceptance_challenges: Option<AcceptanceChallenges>,
+    /// Pinned pack policy consulted by the gate that wrote this revision
+    /// (`decision.propose` or `decision.accept`). Absent on older records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gate_policy: Option<GatePolicy>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -448,6 +453,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
         superseded_by: None,
         change_reason: None,
         acceptance_challenges: None,
+        gate_policy: None,
     })
 }
 /// A claim without current validated, retained evidence stays uncertain.
@@ -603,9 +609,10 @@ fn acceptance_challenges(
     target: &Record,
     b: &DecisionBody,
     acknowledgments: &[(RevisionRef, String)],
+    pack_policy: &Consulted,
 ) -> Result<AcceptanceChallenges, Failure> {
     let case = target.header.case_id;
-    let policy = acknowledgment_policy(s, case);
+    let policy = acknowledgment_policy(pack_policy);
     let open_objections = acknowledge(
         relevant_open_objections(s, target)?,
         acknowledgments,
@@ -625,6 +632,27 @@ fn acceptance_challenges(
         uncertain_comparisons,
         conditional_hard_criteria: b.hard_conditions.iter().map(|h| h.criterion_ref).collect(),
     })
+}
+/// Apply the pinned pack policy for `decision.propose` to a new proposal.
+fn proposal_gate(
+    c: &mut OperationContext<'_>,
+    mut b: DecisionBody,
+) -> Result<DecisionBody, Failure> {
+    let policy = pack_policy::consult(c, Gate::DecisionPropose)?;
+    b.gate_policy = None;
+    let gated = policy.enforce(
+        c.state(),
+        c.actor(),
+        &Subject {
+            body: &body(b.clone())?,
+            record: None,
+        },
+    )?;
+    for warning in policy.warnings() {
+        c.warn(warning);
+    }
+    b.gate_policy = Some(gated);
+    Ok(b)
 }
 fn current_review(s: &State, target: &Record, r: RevisionRef) -> Result<(), Failure> {
     let review = exact(s, target.header.case_id, r, Kind::Review, "/review_ref")?;
@@ -905,7 +933,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             example.clone(),
             ok,
             |p: DecisionInput, c| {
-                let b = normalize(c, p)?;
+                let b = proposal_gate(c, normalize(c, p)?)?;
                 c.create(Kind::Decision, body(b)?)?;
                 Ok(())
             },
@@ -946,7 +974,9 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                         ))
                     })
                     .collect::<Result<Vec<_>, Failure>>()?;
-                let challenges = acceptance_challenges(c.state(), &target, &b, &acknowledgments)?;
+                let policy = pack_policy::consult(c, Gate::DecisionAccept)?;
+                let challenges =
+                    acceptance_challenges(c.state(), &target, &b, &acknowledgments, &policy)?;
                 for warning in challenges.warnings(p.decision_ref.id) {
                     c.warn(warning);
                 }
@@ -958,9 +988,24 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 b.lifecycle = DecisionLifecycle::Accepted;
                 b.review_ref = Some(r);
                 b.acceptance_challenges = Some(challenges);
+                b.gate_policy = None;
+                let actor = c.actor().clone();
+                let gated = policy.enforce(
+                    c.state(),
+                    &actor,
+                    &Subject {
+                        body: &body(b.clone())?,
+                        record: Some(&target),
+                    },
+                )?;
+                for warning in policy.warnings() {
+                    c.warn(warning);
+                }
+                b.gate_policy = Some(gated);
                 c.update(p.decision_ref, body(b)?)?;
                 let id = p.decision_ref.id;
                 c.check_final(move |s| {
+                    policy.recheck(s, &actor, id)?;
                     let record = s
                         .current(id)
                         .ok_or_else(|| fail("/decision_ref", "Decision missing."))?;
@@ -1006,7 +1051,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                         "Only accepted decisions may be superseded.",
                     ));
                 }
-                let mut replacement = normalize(c, p.replacement)?;
+                let mut replacement = proposal_gate(c, normalize(c, p.replacement)?)?;
                 if replacement.question_ref.id != previous.question_ref.id {
                     return Err(fail(
                         "/replacement/question_ref",

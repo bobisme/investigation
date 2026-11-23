@@ -93,7 +93,7 @@ pub enum PackOrigin {
     Pinned,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PackStatus {
     Available,
@@ -101,7 +101,7 @@ pub enum PackStatus {
 }
 
 /// Why a pinned pack cannot be used. The pin itself stays on the case.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
     /// The retained bytes for the pinned digest cannot be read.

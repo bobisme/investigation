@@ -11,6 +11,7 @@ use crate::{
     header::{Actor, Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
     identity::{Id, IdSource, Kind},
     observation_ops::ObservationProof,
+    pack_policy::PackSource,
     wire::{Digest, ErrorCode, Failure, RecordChange, Snapshot},
 };
 
@@ -223,7 +224,29 @@ pub fn validate_and_apply_with_observations(
     observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
 ) -> Result<AcceptedTransaction, Failure> {
     command.validate_shape()?;
-    apply_operations(state, command, catalog, acceptance, observations)
+    apply_operations(state, command, catalog, acceptance, observations, None)
+}
+
+/// As [`validate_and_apply_with_observations`], with retained method pack
+/// bytes so promotion gates can consult the case's pinned pack policy. Without
+/// a source every pinned pack resolves as unavailable and supplies no policy.
+pub fn validate_and_apply_with_packs(
+    state: &State,
+    command: &Command,
+    catalog: &Catalog,
+    acceptance: Acceptance<'_>,
+    observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
+    packs: &dyn PackSource,
+) -> Result<AcceptedTransaction, Failure> {
+    command.validate_shape()?;
+    apply_operations(
+        state,
+        command,
+        catalog,
+        acceptance,
+        observations,
+        Some(packs),
+    )
 }
 
 /// Validate a transaction composed by a store pipeline rather than read from a
@@ -237,7 +260,7 @@ pub fn validate_and_apply_composed(
     acceptance: Acceptance<'_>,
 ) -> Result<AcceptedTransaction, Failure> {
     command.validate_composed_shape()?;
-    apply_operations(state, command, catalog, acceptance, &BTreeMap::new())
+    apply_operations(state, command, catalog, acceptance, &BTreeMap::new(), None)
 }
 
 fn apply_operations(
@@ -246,6 +269,7 @@ fn apply_operations(
     catalog: &Catalog,
     acceptance: Acceptance<'_>,
     observations: &BTreeMap<usize, Result<ObservationProof, Failure>>,
+    packs: Option<&dyn PackSource>,
 ) -> Result<AcceptedTransaction, Failure> {
     if acceptance.sequence <= state.sequence {
         return Err(Failure::new(
@@ -310,6 +334,7 @@ fn apply_operations(
             aliases: &aliases,
             preconditions: &preconditions,
             observation_proof: observations.get(&index),
+            packs,
             images: Vec::new(),
             creation: None,
             final_checks: Vec::new(),
@@ -386,6 +411,7 @@ pub struct OperationContext<'a> {
     aliases: &'a BTreeMap<String, RevisionRef>,
     preconditions: &'a BTreeMap<Id, u64>,
     observation_proof: Option<&'a Result<ObservationProof, Failure>>,
+    packs: Option<&'a dyn PackSource>,
     images: Vec<Record>,
     creation: Option<RevisionRef>,
     final_checks: Vec<FinalCheck>,
@@ -414,6 +440,11 @@ impl OperationContext<'_> {
         self.observation_proof
             .map(|proof| proof.as_ref().map_err(Clone::clone))
             .transpose()
+    }
+
+    /// Retained method pack bytes, when the caller supplied them.
+    pub fn pack_source(&self) -> Option<&dyn PackSource> {
+        self.packs
     }
 
     pub fn preconditions(&self) -> &BTreeMap<Id, u64> {

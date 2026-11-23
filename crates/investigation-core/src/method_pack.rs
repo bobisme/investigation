@@ -356,20 +356,46 @@ pub struct PolicyProposal {
     pub input: PolicyInput,
     /// One of the promotion or closure operations in [`POLICY_GATES`].
     pub gate: String,
-    /// `required_fields` only: dotted payload field names.
+    /// `required_fields` only: dotted field names that must be present and
+    /// nonempty on the gated record (the Conclusion, Decision or Case).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<String>,
+    /// `closure_retrospective` only: case facts or record kinds that make the
+    /// case material for closure. Empty means every closing case is material.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub triggers: Vec<Trigger>,
     pub rationale: String,
 }
 
-/// The enumerated policy inputs. Each can only add a requirement at its gate.
+/// The enumerated policy inputs. Each can only add a requirement at its gate;
+/// none can relax a built-in gate or apply to recording.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PolicyInput {
+    /// Named fields must be present and nonempty on the gated record.
     RequiredFields,
+    /// A current blindspot review of the gated Conclusion or Decision.
     BlindspotReview,
+    /// A Retrospective, not a waiver, when the declared triggers hold.
     ClosureRetrospective,
+    /// The promoting actor did not author the subject's current content.
     DistinctActor,
+    /// Every open objection, not only critical ones, needs an acknowledgment.
+    AcknowledgeOpenObjections,
+}
+
+impl PolicyInput {
+    /// The gates this input may be declared at.
+    pub const fn gates(self) -> &'static [&'static str] {
+        match self {
+            Self::RequiredFields => POLICY_GATES,
+            Self::BlindspotReview | Self::DistinctActor => {
+                &["conclusion.validate", "decision.accept"]
+            }
+            Self::ClosureRetrospective => &["case.close"],
+            Self::AcknowledgeOpenObjections => &["decision.accept"],
+        }
+    }
 }
 
 /// A named view built from a renderer-provided view kind.
@@ -984,6 +1010,38 @@ fn validate(pack: &MethodPack) -> Result<(), PackError> {
                 PackErrorKind::UnknownReference,
                 "gate",
                 "Policies may only add requirements to promotion or closure operations",
+            ));
+        }
+        if !policy.input.gates().contains(&policy.gate.as_str()) {
+            return Err(check.fail(
+                PackErrorKind::UnknownReference,
+                "gate",
+                "This policy input does not apply at that gate",
+            ));
+        }
+        if policy.input == PolicyInput::ClosureRetrospective {
+            check.each("triggers", &policy.triggers, |check, trigger| {
+                validate_trigger(check, trigger)?;
+                if trigger.gap_rule.is_some() {
+                    return Err(check.fail(
+                        PackErrorKind::InvalidField,
+                        "gap_rule",
+                        "Closure triggers name a case fact or record kind",
+                    ));
+                }
+                Ok(())
+            })?;
+            let triggers: Vec<String> = policy
+                .triggers
+                .iter()
+                .map(|trigger| serde_json::to_string(trigger).expect("trigger serializes"))
+                .collect();
+            check.unique("triggers", triggers.iter().map(String::as_str))?;
+        } else if !policy.triggers.is_empty() {
+            return Err(check.fail(
+                PackErrorKind::InvalidField,
+                "triggers",
+                "Only closure_retrospective takes triggers",
             ));
         }
         match (policy.input, policy.fields.is_empty()) {

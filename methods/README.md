@@ -55,13 +55,50 @@ Optional sections:
   optional `minimum`/`maximum`, `decimal`, `boolean`, `array` with `items` and
   `max_items`, or `object` with `fields` and optional `required`).
 - `[[observation_guidance]]`: `name`, `title`, `text`, optional `modes`.
-- `[[policies]]`: `name`, `input` (`required_fields`, `blindspot_review`,
-  `closure_retrospective` or `distinct_actor`), `gate` (one of `case.close`,
-  `conclusion.request_review`, `conclusion.validate`, `decision.propose`,
-  `decision.accept`), `fields` for `required_fields`, and `rationale`.
+- `[[policies]]`: `name`, `input`, `gate`, `fields` for `required_fields`,
+  optional `triggers` for `closure_retrospective`, and `rationale`. See
+  [Policy inputs](#policy-inputs).
 - `[[views]]`: `name`, `title`, `view` (a renderer view identifier), optional
   `record_kinds`.
 - `[[reports]]`: `name`, `title`, `template` (a renderer template identifier).
+
+## Policy inputs
+
+A pinned pack can add requirements at promotion and closure gates. It cannot
+relax a built-in gate, and no input applies to recording: `observation.add`,
+`source add`, `ingest` and `capture` are never refused for pack policy. Each
+input is bound to the gates it can tighten; a pack that declares another
+combination is rejected when it loads.
+
+| `input` | Gates | Adds |
+|---|---|---|
+| `required_fields` | `conclusion.request_review`, `conclusion.validate`, `decision.propose`, `decision.accept`, `case.close` | Each dotted name in `fields` must be present on the gated record (the Conclusion, Decision or Case) and not null, blank, empty or an explicit `unknown`. Names under `extensions` also resolve in the record header's extension map. |
+| `blindspot_review` | `conclusion.validate`, `decision.accept` | A current `review.submit` of `kind: blindspot` on the subject: submitted, about a revision with the same substantive basis, and with every read-set revision still current. |
+| `distinct_actor` | `conclusion.validate`, `decision.accept` | The promoting actor did not record the subject's current substantive content. Actors are attributed claims, not authenticated identities. |
+| `acknowledge_open_objections` | `decision.accept` | Every open objection on the decision or its basis needs an acknowledgment, not only critical ones. |
+| `closure_retrospective` | `case.close` | The case is material, so closing needs a current Retrospective instead of a waiver, when any of `triggers` holds (a `case_fact` or `record_kind`; no `gap_rule`). Without `triggers`, every closure is material. |
+
+```toml
+[[policies]]
+name = "challenge-before-accept"
+input = "blindspot_review"
+gate = "decision.accept"
+rationale = "Consequential choices get a recorded challenge first."
+```
+
+An unmet rule fails the gate with `GATE_FAILED` (`RETROSPECTIVE_REQUIRED` at
+closure) and `error.expected.policy_blockers`: one entry per rule with the pack
+ID, version and digest, the policy name, input, gate, rationale, what is unmet
+and, where one exists, `repair_schema`.
+
+Only available pinned packs supply policy; the built-in pack supplies none.
+Every gate stores `gate_policy` on the revision it writes (on a Case, under
+`closure`): the gate, `rule_version`, the acceptance `sequence`, every pinned
+pack it consulted with its status, and the rules it applied with the records
+that satisfied them. A pin whose bytes are unavailable supplies no policy; the
+gate records it as unavailable and the receipt warns, so the change is never
+silent. Policy applies from adoption onward: earlier accepted records are not
+re-gated when a pack is adopted or replaced.
 
 ## Adoption per case
 

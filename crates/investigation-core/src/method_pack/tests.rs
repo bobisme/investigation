@@ -769,3 +769,80 @@ const PART_B_CARDS: [&str; 12] = [
     "handoff",
     "close",
 ];
+
+#[test]
+fn each_policy_input_is_bound_to_the_gates_it_can_tighten() {
+    let policy = |input: &str, gate: &str, extra: &str| {
+        pack(
+            "",
+            &format!(
+                "[[policies]]\nname = \"p\"\ninput = \"{input}\"\ngate = \"{gate}\"\n{extra}rationale = \"r\"\n"
+            ),
+        )
+    };
+    let inputs = [
+        ("required_fields", "fields = [\"caveats\"]\n"),
+        ("blindspot_review", ""),
+        ("closure_retrospective", ""),
+        ("distinct_actor", ""),
+        ("acknowledge_open_objections", ""),
+    ];
+    for (input, extra) in inputs {
+        let declared: PolicyInput = serde_json::from_value(serde_json::json!(input)).unwrap();
+        for gate in POLICY_GATES {
+            let text = policy(input, gate, extra);
+            if declared.gates().contains(gate) {
+                load(text.as_bytes()).unwrap_or_else(|error| panic!("{input} at {gate}: {error}"));
+            } else {
+                assert_rejected(&text, PackErrorKind::UnknownReference, "/policies/0/gate");
+            }
+        }
+        assert!(
+            declared
+                .gates()
+                .iter()
+                .all(|gate| POLICY_GATES.contains(gate)),
+            "{input}"
+        );
+    }
+
+    let triggered = policy(
+        "closure_retrospective",
+        "case.close",
+        "triggers = [{ record_kind = \"observation\" }, { case_fact = \"multiple_sources\" }]\n",
+    );
+    let loaded = load(triggered.as_bytes()).unwrap();
+    assert_eq!(loaded.pack().policies[0].triggers.len(), 2);
+    assert_rejected(
+        &policy(
+            "closure_retrospective",
+            "case.close",
+            "triggers = [{ gap_rule = \"conclusion.disputed\" }]\n",
+        ),
+        PackErrorKind::InvalidField,
+        "/policies/0/triggers/0/gap_rule",
+    );
+    assert_rejected(
+        &policy(
+            "closure_retrospective",
+            "case.close",
+            "triggers = [{ record_kind = \"run\" }, { record_kind = \"run\" }]\n",
+        ),
+        PackErrorKind::Duplicate,
+        "/policies/0/triggers/1",
+    );
+    assert_rejected(
+        &policy(
+            "blindspot_review",
+            "decision.accept",
+            "triggers = [{ record_kind = \"run\" }]\n",
+        ),
+        PackErrorKind::InvalidField,
+        "/policies/0/triggers",
+    );
+}
+
+#[test]
+fn the_builtin_pack_supplies_no_policy() {
+    assert!(builtin_general().pack().policies.is_empty());
+}

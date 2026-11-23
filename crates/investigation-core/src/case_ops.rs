@@ -12,6 +12,7 @@ use crate::{
     command::RevisionRef,
     identity::{Id, Kind},
     input,
+    pack_policy::{self, Gate, Subject},
     retrospective_ops::{check_retrospective, material_revisions, retrospective_failure},
     state::{OperationContext, State},
     wire::{ErrorCode, Failure},
@@ -186,7 +187,12 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
     let (expected, mut body) = case_for_update(context)?;
     let case = expected.id;
     let triggers = material_revisions(context.state(), case);
-    if let Err(blocker) = payload.validate_materiality(body.mode, !triggers.is_empty()) {
+    // A pinned pack may declare further material-case triggers; it can never
+    // make a material case waivable.
+    let policy = pack_policy::consult(context, Gate::CaseClose)?;
+    let pack_triggers = policy.closure_blockers(context.state());
+    let material = !triggers.is_empty() || !pack_triggers.is_empty();
+    if let Err(blocker) = payload.validate_materiality(body.mode, material) {
         if blocker == CaseBlocker::RetrospectiveRequired {
             let mut failure = retrospective_failure(
                 ErrorCode::RetrospectiveRequired,
@@ -194,6 +200,9 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
             )
             .at("/retrospective_ref");
             failure.error.actual = Some(json!(triggers));
+            if !pack_triggers.is_empty() {
+                failure.error.expected = Some(json!({"policy_blockers": pack_triggers}));
+            }
             return Err(failure);
         }
         return Err(gate(blocker.code()));
@@ -229,9 +238,32 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
         reopen_condition: payload.reopen_condition,
         retrospective_ref: retrospective,
         retrospective_waived: payload.retrospective_waived,
+        gate_policy: None,
     });
+    let actor = context.actor().clone();
+    let gated = policy.enforce(
+        context.state(),
+        &actor,
+        &Subject {
+            body: &encode(&body)?,
+            record: context.current(case),
+        },
+    )?;
+    for warning in policy.warnings() {
+        context.warn(warning);
+    }
+    if let Some(closure) = body.closure.as_mut() {
+        closure.gate_policy = Some(gated);
+    }
     context.update(expected, encode(body)?)?;
     context.check_final(move |state| {
+        policy.recheck(state, &actor, case)?;
+        if retrospective.is_none() && !policy.closure_blockers(state).is_empty() {
+            let mut failure = retrospective_failure(ErrorCode::RetrospectiveRequired, "The final transaction state meets a pinned pack's closure trigger, which needs a current Retrospective.")
+                .at("/retrospective_ref");
+            failure.error.expected = Some(json!({"policy_blockers": policy.closure_blockers(state)}));
+            return Err(failure);
+        }
         for (index, reference) in unresolved.into_iter().enumerate() {
             unresolved_question(state, case, reference, &format!("/unresolved_questions/{index}"))?;
         }
