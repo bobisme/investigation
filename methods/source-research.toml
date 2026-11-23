@@ -1,0 +1,89 @@
+# Optional example pack (inv.method-pack.v1): source research on documents.
+#
+# Declarative data only. Not a default; a case uses it only after an explicit
+# method_pack.adopt. Nothing here runs, loads code or contacts a service.
+schema_version = "inv.method-pack.v1"
+id = "source-research"
+version = "1.0.0"
+title = "Source research"
+summary = "Documents as evidence: edition, currency, origin tracing and recorded searches."
+modes = ["explain", "evaluate", "explore"]
+
+[[cards]]
+name = "source-quality"
+title = "Characterise a document"
+stage = "observe"
+summary = "A document is about to support a finding and its edition and currency are not stated."
+operations = ["observation.add", "annotation.add"]
+triggers = [
+  { case_fact = "multiple_sources" },
+  { record_kind = "source" },
+]
+
+[cards.body]
+when = "A report, standard, manual, article or record is being quoted and more than one edition or version may exist."
+record = "Note which edition or version was read and whether it is current, superseded or withdrawn. Put it in the source-research edition and currency fields of the source. Note who wrote it, when, and for whom. Say what the document cannot show, such as practice after its publication."
+mistake = "Quoting a superseded edition as if it were the current one, or citing a title without the edition."
+skip = "The document has one edition and its date and author are already recorded."
+
+[[cards]]
+name = "independence"
+title = "Trace a claim to its origin"
+stage = "assess"
+summary = "Several documents repeat the same claim and may share one origin."
+operations = ["assessment.add", "annotation.add"]
+triggers = [
+  { case_fact = "multiple_sources" },
+  { record_kind = "conclusion" },
+]
+
+[cards.body]
+when = "Two or more documents agree and each may cite, copy or summarise the same earlier work."
+record = "Follow each citation back until it reaches a first-hand record or a dead end, and note each step in the origin field of the source. Documents that reach the same origin count once. State where a trace stopped and why, for example because a reference could not be found."
+mistake = "Counting a review, a summary of it and a news item about it as three confirmations."
+skip = "Only one document is used, or every document was already traced to a distinct origin."
+
+[[cards]]
+name = "negative-result"
+title = "Record a search that found nothing"
+stage = "observe"
+summary = "A search of documents came back empty and the gap is being read as absence."
+operations = ["observation.add", "annotation.add"]
+triggers = [
+  { record_kind = "observation" },
+]
+
+[cards.body]
+when = "A search of an archive, library, index or collection found no document and the missing document is being read as evidence of absence."
+record = "Record each search in the searches field of the observation: where it looked, the terms and period used, how many items came back and who ran it. State the result as not found within these bounds. Say what kind of document the search could not have reached."
+mistake = "Reporting no document exists after a single search of one collection with one wording."
+skip = "Nothing rests on the absence of a document."
+
+[[properties]]
+name = "edition"
+record_kinds = ["source"]
+description = "The edition or version of the document that was read."
+schema = { type = "string", max_length = 64 }
+
+[[properties]]
+name = "currency"
+record_kinds = ["source"]
+description = "Whether the document is the current edition, as far as the recorder could tell."
+schema = { type = "string", enum = ["current", "superseded", "withdrawn", "unknown"], max_length = 16 }
+
+[[properties]]
+name = "origin"
+record_kinds = ["source"]
+description = "The first-hand origin the document was traced to, or where the trace stopped."
+schema = { type = "string", max_length = 400 }
+
+[[properties]]
+name = "searches"
+record_kinds = ["observation"]
+description = "Searches behind a negative result."
+schema = { type = "array", max_items = 20, items = { type = "object", required = ["where", "terms"], fields = [
+  { name = "where", schema = { type = "string", max_length = 200 } },
+  { name = "terms", schema = { type = "string", max_length = 200 } },
+  { name = "period", schema = { type = "string", max_length = 100 } },
+  { name = "results", schema = { type = "integer", minimum = 0, maximum = 1000000 } },
+] } }

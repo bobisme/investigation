@@ -1,0 +1,95 @@
+# Optional example pack (inv.method-pack.v1): decision analysis.
+#
+# Declarative data only. Not a default; a case uses it only after an explicit
+# method_pack.adopt. Nothing here runs, loads code or contacts a service.
+schema_version = "inv.method-pack.v1"
+id = "decision-analysis"
+version = "1.0.0"
+title = "Decision analysis"
+summary = "Explicit criteria, cell-by-cell comparison, sensitivity and a premortem, with disclosed preferences."
+modes = ["evaluate", "explore"]
+
+[[cards]]
+name = "criteria"
+title = "Write the criteria first"
+stage = "evaluate"
+summary = "Options are open and the standards for choosing are unstated."
+operations = ["criterion.create", "criterion.amend"]
+triggers = [
+  { case_fact = "multiple_options" },
+  { gap_rule = "decision.option_criterion_cell_missing" },
+]
+
+[cards.body]
+when = "Options are being weighed and no one has written down what a good option must be."
+record = "List must-haves apart from preferences. For each criterion say whether it is measured or a matter of judgment, and which direction is better. Where a preference is a judgment, say so in the subjective_preferences field of the decision."
+mistake = "Adding or reweighting a criterion after seeing which option it favours."
+skip = "One option is open, or the criteria are recorded and agreed."
+
+[[cards]]
+name = "compare"
+title = "Fill every cell or mark it unknown"
+stage = "evaluate"
+summary = "Some option and criterion pairs have no stated evidence."
+operations = ["comparison.add", "comparison.revise"]
+triggers = [
+  { gap_rule = "decision.option_criterion_cell_missing" },
+  { gap_rule = "decision.hard_criterion_cell_missing" },
+  { record_kind = "comparison" },
+]
+
+[cards.body]
+when = "A preference is forming and not every option has been assessed against every criterion."
+record = "For each option and criterion, record the evidence or the stated assumption and its uncertainty. Keep unknown cells visible as unknown."
+mistake = "Comparing on the easy criteria and reading a blank as a pass."
+skip = "Only one option is open, or the comparison is complete."
+
+[[cards]]
+name = "sensitivity"
+title = "Find what would reverse the choice"
+stage = "evaluate"
+summary = "The leading option is close to another or rests on an uncertain input."
+operations = ["assumption.create", "annotation.add"]
+triggers = [
+  { gap_rule = "decision.hard_criterion_cell_unknown" },
+  { record_kind = "decision" },
+]
+
+[cards.body]
+when = "The margin is small, or the preference depends on an uncertain weight, threshold or measurement."
+record = "Name the one input that, moved within its plausible range, would change the preferred option. Record it with assumption.create and the size of change that flips the result. Use it as the reopen trigger of the decision."
+mistake = "Varying only the inputs that are easy to vary."
+skip = "One option beats every other on a hard criterion that no plausible input could change."
+
+[[cards]]
+name = "premortem"
+title = "Imagine the choice failed"
+stage = "decide"
+summary = "A consequential decision is about to be proposed or accepted."
+operations = ["assumption.create", "annotation.add"]
+triggers = [
+  { record_kind = "decision" },
+  { gap_rule = "decision.accepted_with_unresolved_hard_cell" },
+]
+
+[cards.body]
+when = "A choice is about to be accepted and it would be costly or slow to undo."
+record = "Assume the choice has failed. Write two or three concrete failure stories and trace each to an untested assumption. For each, note the early sign that would show it happening and use that sign as the reopen trigger."
+mistake = "Listing generic risks that apply to every choice. This card is advisory and does not block the decision."
+skip = "The choice is cheap to reverse, or failure stories already exist for this choice."
+
+# A decision cannot be accepted without a reopen trigger and a statement of the
+# subjective preferences behind it. Both apply at acceptance only; recording is
+# never refused for pack policy.
+[[policies]]
+name = "trigger-and-preferences-at-accept"
+input = "required_fields"
+gate = "decision.accept"
+fields = ["reopen_trigger", "extensions.decision-analysis.subjective_preferences"]
+rationale = "An accepted choice says what would reopen it and which preferences were judgments."
+
+[[properties]]
+name = "subjective_preferences"
+record_kinds = ["decision"]
+description = "The preferences behind the choice that are judgments, not measurements; write none if there are none."
+schema = { type = "string", max_length = 600 }

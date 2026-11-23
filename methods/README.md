@@ -182,3 +182,18 @@ freshness, ranking, blindspot check or basis digest. Only the pack's own
 replay does not need the pack file.
 [`fixtures/method-packs/bench-notes.toml`](../fixtures/method-packs/bench-notes.toml)
 is a complete example with a card and four properties.
+
+## Optional example packs
+
+Opt-in packs under `methods/`. None is a default and none is compiled into the
+binary: a case uses one only after the adoption steps above, and without a
+pin the core, its views and the vault show nothing from it. Each one loads
+with no core change and is exercised by a test in `crates/investigation-cli/tests`.
+
+| File | Pack ID | Provides |
+|---|---|---|
+| [`source-research.toml`](source-research.toml) | `source-research` | Cards `source-quality`, `independence`, `negative-result` for documents; source fields `edition`, `currency`, `origin` and observation field `searches`. |
+| [`decision-analysis.toml`](decision-analysis.toml) | `decision-analysis` | Cards `criteria`, `compare`, `sensitivity`, `premortem`; a `required_fields` policy at `decision.accept` for `reopen_trigger` and the decision field `subjective_preferences`. |
+| [`security-research.toml`](security-research.toml) | `security-research` | Guidance cards only, on handling untrusted evidence and bounding claims. No fields, policies, guardrails, views or reports; it grants no authority and proposes no action. A test scans it for commands, targets and permission claims. |
+
+A card with the same name as a built-in card is read with `guide NAME --pack ID`.
