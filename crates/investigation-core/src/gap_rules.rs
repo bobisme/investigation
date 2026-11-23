@@ -95,6 +95,9 @@ pub struct Gap {
     /// The journal items and moves of a stall rule; absent on other rules.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stall: Option<crate::stall::StallDetail>,
+    /// The recorded advice feedback that governs this gap, if any.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advice: Option<crate::advice_feedback::GapAdvice>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
@@ -115,6 +118,24 @@ pub fn enumerate_gaps(
     snapshot: &Snapshot,
     case_id: Id,
 ) -> Result<GapInventory, Failure> {
+    let gaps = case_gaps(state, case_id)?;
+    Ok(GapInventory {
+        schema_version: "inv.gaps.v1".into(),
+        snapshot: snapshot.clone(),
+        rule_version: GAP_RULE_VERSION.into(),
+        case_id,
+        gaps,
+        limits: vec![
+            "A detected structural gap is not proof that an unrecorded explanation exists.".into(),
+            "Zero detected gaps means no gap was emitted by this rule version; it does not mean the investigation is complete.".into(),
+            "Rules inspect committed typed fields only and never emit tests, scores, shell commands, or external execution.".into(),
+        ],
+    })
+}
+
+/// The gaps of [`enumerate_gaps`] for the state as it stands, with recorded
+/// advice feedback applied. Write handlers use it to name an emitted gap.
+pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure> {
     if case_id.kind() != Kind::Case {
         return Err(Failure::new(ErrorCode::InvalidInput, "Select a case ID.").at("/case_id"));
     }
@@ -663,18 +684,9 @@ pub fn enumerate_gaps(
     measurement_flag_gaps(state, case_id, &mut gaps);
     stall_gaps(state, case_id, &mut gaps);
     deduplicate_and_sort(&mut gaps);
-    Ok(GapInventory {
-        schema_version: "inv.gaps.v1".into(),
-        snapshot: snapshot.clone(),
-        rule_version: GAP_RULE_VERSION.into(),
-        case_id,
-        gaps,
-        limits: vec![
-            "A detected structural gap is not proof that an unrecorded explanation exists.".into(),
-            "Zero detected gaps means no gap was emitted by this rule version; it does not mean the investigation is complete.".into(),
-            "Rules inspect committed typed fields only and never emit tests, scores, shell commands, or external execution.".into(),
-        ],
-    })
+    // Feedback changes only how a gap is presented, after every rule ran.
+    crate::advice_feedback::apply(state, case_id, &mut gaps);
+    Ok(gaps)
 }
 
 /// Live judgments the freshness index marks `needs_review`: a cited record was
@@ -813,6 +825,7 @@ pub(crate) fn make_gap(fields: GapFields<'_>) -> Gap {
         time_sensitive,
         creation_sequence,
         stall: None,
+        advice: None,
     }
 }
 

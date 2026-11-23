@@ -8,6 +8,7 @@ use serde_json::{Value, json};
 
 use crate::{
     PROGRAM_NAME,
+    advice_feedback::{ADVICE_FEEDBACK_ROLE, AdviceFeedbackInput, feedback_body},
     catalog::{OperationDescriptor, OperationInfo},
     command::{Reference, RevisionRef},
     evidence::{ArtifactAvailability, ArtifactBody, ArtifactIntegrity, ArtifactSensitivity},
@@ -45,6 +46,9 @@ struct AnnotationInput {
     #[serde(flatten)]
     content: AnnotationAdd,
     role: Option<AnnotationRole>,
+    /// Required with `role: advice_feedback`, and only with it.
+    #[serde(default)]
+    advice_feedback: Option<AdviceFeedbackInput>,
 }
 
 fn text(input: &str, path: &str) -> Result<(), Failure> {
@@ -461,12 +465,20 @@ pub(crate) fn check_retrospective(
 }
 
 fn annotation_shape(payload: &AnnotationInput) -> Result<(), Failure> {
-    if matches!(payload.role, Some(AnnotationRole::AdviceFeedback)) {
+    let advice = matches!(payload.role, Some(AnnotationRole::AdviceFeedback));
+    if advice != payload.advice_feedback.is_some() {
         return Err(Failure::new(
             ErrorCode::InvalidInput,
-            "This annotation role is deferred. Record an ordinary note for now.",
+            "Role advice_feedback and the advice_feedback object go together: name the rule, version and disposition with that role, and only with it.",
         )
-        .at("/role"));
+        .at("/advice_feedback"));
+    }
+    if advice && !matches!(payload.content.content, AnnotationContent::Text { .. }) {
+        return Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "State the reason for advice feedback as text.",
+        )
+        .at("/content"));
     }
     if payload.content.subject_refs.is_empty() {
         return Err(Failure::new(
@@ -510,6 +522,7 @@ fn synopsis_shape(payload: &AnnotationAdd) -> Result<(), Failure> {
 
 fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
     let synopsis = matches!(payload.role, Some(AnnotationRole::Synopsis));
+    let advice = payload.advice_feedback;
     let AnnotationAdd {
         subject_refs,
         mut content,
@@ -570,16 +583,17 @@ fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> R
         }
         *artifact_ref = Reference::Existing(exact);
     }
-    ctx.create_classified(
-        Kind::Annotation,
-        json!({
-            "subject_refs": subjects,
-            "content": content,
-            "role": if synopsis { SYNOPSIS_ROLE } else { "note" },
-            "evidentiary_status": "none",
-        }),
-        classification,
-    )?;
+    let mut body = json!({
+        "subject_refs": subjects,
+        "content": content,
+        "role": if synopsis { SYNOPSIS_ROLE } else { "note" },
+        "evidentiary_status": "none",
+    });
+    if let Some(advice) = &advice {
+        body["role"] = json!(ADVICE_FEEDBACK_ROLE);
+        body["advice_feedback"] = feedback_body(ctx, advice, &subjects)?;
+    }
+    ctx.create_classified(Kind::Annotation, body, classification)?;
     Ok(())
 }
 
@@ -683,9 +697,9 @@ pub(crate) fn operations() -> [OperationDescriptor; 3] {
             info(
                 "annotation.add",
                 "record",
-                "Attach an attributed narrative note or authored synopsis.",
-                "Record context, a note snapshot or, with role synopsis, a bounded summary of one subject revision without asserting evidence.",
-                "Create a classified annotation with exact subjects and no evidentiary standing. A synopsis turns stale when its subject changes materially.",
+                "Attach an attributed narrative note, authored synopsis or advice feedback.",
+                "Record context, a note snapshot, with role synopsis a bounded summary of one subject revision, or with role advice_feedback a deferral or resumption of one emitted gap, without asserting evidence.",
+                "Create a classified annotation with exact subjects and no evidentiary standing. A synopsis turns stale when its subject changes materially. A deferral stops next ranking its gap until the gap changes materially or is resumed; it satisfies no gate.",
                 "Annotation ID and revision 1.",
                 "Use exact revisions or aliases of subjects created earlier in this transaction.",
                 "Use an exact subject and either text or a verified artifact with its digest.",
@@ -957,10 +971,13 @@ mod tests {
             Some("/operations/0/payload/invalid_or_misleading_steps/0/support_refs/0")
         );
 
-        let deferred = case.transact(vec![json!({"op":"annotation.add","payload":{
-            "subject_refs":[expected],"content":{"kind":"text","text":"A reserved annotation."},"role":"advice_feedback"
+        let bare = case.transact(vec![json!({"op":"annotation.add","payload":{
+            "subject_refs":[expected],"content":{"kind":"text","text":"Advice feedback without its object."},"role":"advice_feedback"
         }})], &[]).unwrap_err();
-        assert!(deferred.error.message.contains("deferred"));
+        assert_eq!(
+            bare.error.path.as_deref(),
+            Some("/operations/0/payload/advice_feedback")
+        );
     }
 
     #[test]

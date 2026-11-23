@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use clap::builder::PossibleValuesParser;
 use investigation_core::{
+    advice_feedback::{AdviceState, GapAdvice},
     catalog::standard_catalog,
     command::RevisionRef,
     gap_explain::{GapExplanation, explain_gap, require_rule},
@@ -411,6 +412,9 @@ fn render_page(value: &Value, page: &GapPage) -> String {
             .map(|subject| format!("{}@{}", subject.id, subject.revision))
             .collect::<Vec<_>>();
         text.push_str(&format!("   subjects: {}\n", subjects.join(", ")));
+        if let Some(advice) = &gap.advice {
+            text.push_str(&advice_line(advice));
+        }
         let prerequisites = gap
             .prerequisites
             .iter()
@@ -507,4 +511,30 @@ fn render_explanation(explanation: &GapExplanation) -> String {
         text.push_str(&format!("{limit}\n"));
     }
     text.trim_end().to_owned()
+}
+
+/// One indented line naming the advice feedback behind a gap, and each reason
+/// a deferral lapsed. The authored reason stays in the annotation.
+pub(crate) fn advice_line(advice: &GapAdvice) -> String {
+    let mut text = match advice.state {
+        AdviceState::Deferred => format!(
+            "   advice: deferred by {} in {}@{}; rule status {}\n",
+            advice.recorded_by,
+            advice.feedback_ref.id,
+            advice.feedback_ref.revision,
+            status_name(advice.rule_status)
+        ),
+        AdviceState::Resurfaced => format!(
+            "   advice: deferral {}@{} by {} no longer holds\n",
+            advice.feedback_ref.id, advice.feedback_ref.revision, advice.recorded_by
+        ),
+        AdviceState::Resumed => format!(
+            "   advice: resumed by {} in {}@{}\n",
+            advice.recorded_by, advice.feedback_ref.id, advice.feedback_ref.revision
+        ),
+    };
+    for change in &advice.resurfaced_because {
+        text.push_str(&format!("     {}\n", change.description));
+    }
+    text
 }

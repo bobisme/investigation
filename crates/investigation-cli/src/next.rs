@@ -248,6 +248,9 @@ fn render_text(value: &Value, response: &NextResponse) -> String {
                 ));
             }
         }
+        if let Some(advice) = &recommendation.advice {
+            text.push_str(&crate::frontier::advice_line(advice));
+        }
         if let Some(narrower) = &decision_value.narrower_value {
             text.push_str(&format!(
                 "   Every recorded outcome leaves the disposition unchanged; ranked by its narrower value: {narrower}\n"

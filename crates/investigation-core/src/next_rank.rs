@@ -209,6 +209,9 @@ pub struct Recommendation {
     /// What a stall rule counted and the moves it offers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stall: Option<crate::stall::StallDetail>,
+    /// Recorded advice feedback: a lapsed deferral says why it re-surfaced.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub advice: Option<crate::advice_feedback::GapAdvice>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
@@ -1328,6 +1331,7 @@ fn recommendation(
         outcome_branches: branches,
         deferral_alternative: "Keep the gap visible as deferred or unknown; this tool does not dispatch work.".into(),
         stall: gap.stall.clone(),
+        advice: gap.advice.clone(),
     }
 }
 

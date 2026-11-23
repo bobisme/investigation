@@ -1,5 +1,50 @@
 {
   "$defs": {
+    "AdviceDisposition": {
+      "oneOf": [
+        {
+          "const": "defer",
+          "description": "Stop ranking the suggestion until it changes materially or is resumed.",
+          "type": "string"
+        },
+        {
+          "const": "resume",
+          "description": "End a recorded deferral now.",
+          "type": "string"
+        }
+      ]
+    },
+    "AdviceFeedbackInput": {
+      "additionalProperties": false,
+      "description": "The `advice_feedback` object of `annotation.add` with\n`role: advice_feedback`. `subject_refs` are the gap's exact subject\nrevisions and `content` is the reason, as text.",
+      "properties": {
+        "disposition": {
+          "$ref": "#/$defs/AdviceDisposition"
+        },
+        "revisit_condition": {
+          "default": null,
+          "description": "When the investigator means to look again. Recorded, never evaluated.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "rule_id": {
+          "description": "The gap rule ID that emits the suggestion, as `frontier` reports it.",
+          "type": "string"
+        },
+        "rule_version": {
+          "description": "The gap rule version that emitted it, as `frontier` reports it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule_id",
+        "rule_version",
+        "disposition"
+      ],
+      "type": "object"
+    },
     "AnnotationContent": {
       "oneOf": [
         {
@@ -140,6 +185,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "advice_feedback": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AdviceFeedbackInput"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Required with `role: advice_feedback`, and only with it."
+    },
     "classification": {
       "$ref": "#/$defs/Classification",
       "default": {

@@ -457,6 +457,7 @@ mod tests {
             time_sensitive: false,
             creation_sequence: 1,
             stall: None,
+            advice: None,
         }
     }
 
