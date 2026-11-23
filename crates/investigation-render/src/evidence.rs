@@ -866,11 +866,7 @@ fn excerpts_section(
     let state = notes.case().state();
     let mut listed = 0usize;
     let mut omitted = 0usize;
-    for observation in state.records().filter(|candidate| {
-        candidate.header.id.kind() == Kind::Observation
-            && candidate.body["basis"]["artifact_ref"]["id"].as_str()
-                == Some(record.header.id.to_string().as_str())
-    }) {
+    for &observation in notes.observations_citing(record.header.id) {
         if !notes.may_show(observation, Field::Content) {
             continue;
         }

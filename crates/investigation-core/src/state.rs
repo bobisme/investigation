@@ -2,7 +2,7 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock, PoisonError},
 };
 
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use crate::{
     basis::MaterialAssumptions,
     catalog::Catalog,
     command::{Command, Reference, RevisionRef},
+    decision_ops::{ParetoInputs, ParetoOption},
     guardrails::SessionEvidence,
     header::{Actor, Classification, Clock, RecordHeader, Revision, SchemaVersion, UtcTimestamp},
     identity::{Id, IdSource, Kind},
@@ -66,6 +67,41 @@ pub struct State {
 #[derive(Clone, Default)]
 struct Derived {
     material_assumptions: OnceLock<BTreeMap<Id, MaterialAssumptions>>,
+    /// What [`crate::decision_ops::pareto`] reads of each case: its active
+    /// criteria and its verified cells, read once per case.
+    pareto_inputs: Memo<Id, Arc<Result<ParetoInputs, Failure>>>,
+    /// The Pareto table of each (case, question) asked for.
+    pareto: Memo<(Id, Id), Result<Vec<ParetoOption>, Failure>>,
+}
+
+/// Values computed on first request, one per key. The lock is held only to
+/// look up and to insert, never while computing, so a computation may itself
+/// read other derived values.
+struct Memo<K, V>(Mutex<BTreeMap<K, V>>);
+
+impl<K: Ord, V: Clone> Memo<K, V> {
+    fn get_or_insert_with(&self, key: K, compute: impl FnOnce() -> V) -> V {
+        let lock = || self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(value) = lock().get(&key) {
+            return value.clone();
+        }
+        let value = compute();
+        lock().entry(key).or_insert(value).clone()
+    }
+}
+
+impl<K, V> Default for Memo<K, V> {
+    fn default() -> Self {
+        Self(Mutex::new(BTreeMap::new()))
+    }
+}
+
+/// A clone starts empty: the scratch copy a validation takes is about to
+/// change, and would drop what it copied.
+impl<K, V> Clone for Memo<K, V> {
+    fn clone(&self) -> Self {
+        Self::default()
+    }
 }
 
 impl PartialEq for Derived {
@@ -170,6 +206,26 @@ impl State {
         self.derived
             .material_assumptions
             .get_or_init(|| MaterialAssumptions::index(self))
+    }
+
+    /// The Pareto inputs of `case` at this snapshot, read on first use.
+    pub(crate) fn pareto_inputs(&self, case: Id) -> Arc<Result<ParetoInputs, Failure>> {
+        self.derived
+            .pareto_inputs
+            .get_or_insert_with(case, || Arc::new(ParetoInputs::read(self, case)))
+    }
+
+    /// The Pareto table of `question` in `case` at this snapshot: `compute`
+    /// runs on the first request only.
+    pub(crate) fn pareto_table(
+        &self,
+        case: Id,
+        question: Id,
+        compute: impl FnOnce() -> Result<Vec<ParetoOption>, Failure>,
+    ) -> Result<Vec<ParetoOption>, Failure> {
+        self.derived
+            .pareto
+            .get_or_insert_with((case, question), compute)
     }
 
     /// Apply already accepted images atomically, without a catalog, clock or ID source.

@@ -823,41 +823,73 @@ pub struct ParetoOption {
     pub determining_cells: Vec<RevisionRef>,
     pub uncertain_criteria: Vec<RevisionRef>,
 }
+/// What [`pareto`] reads of one case, in one pass over its records: the
+/// active criteria of every question and the verified cells of every
+/// (option, criterion) pair, each list in record order. Neither depends on
+/// the question asked, so every question of the case shares them.
+#[derive(Debug)]
+pub(crate) struct ParetoInputs {
+    criteria: BTreeMap<Id, Vec<(RevisionRef, CriterionBody)>>,
+    cells: BTreeMap<(Id, Id), Vec<(RevisionRef, ComparisonBody)>>,
+}
+
+impl ParetoInputs {
+    /// The inputs of `case`, or the first criterion or comparison of the case,
+    /// in record order, that does not decode.
+    pub(crate) fn read(s: &State, case: Id) -> Result<Self, Failure> {
+        let mut criteria: BTreeMap<Id, Vec<(RevisionRef, CriterionBody)>> = BTreeMap::new();
+        let mut cells: BTreeMap<(Id, Id), Vec<(RevisionRef, ComparisonBody)>> = BTreeMap::new();
+        for r in s.records().filter(|r| r.header.case_id == case) {
+            match r.header.id.kind() {
+                Kind::Criterion => {
+                    let c: CriterionBody = decode(&r.body)?;
+                    if c.lifecycle == CriterionLifecycle::Active {
+                        criteria
+                            .entry(c.question_ref.id)
+                            .or_default()
+                            .push((r.reference(), c));
+                    }
+                }
+                Kind::Comparison => {
+                    let c: ComparisonBody = decode(&r.body)?;
+                    if !c.retracted
+                        && exact(s, case, c.option_ref, Kind::Option, "/option").is_ok()
+                        && exact(s, case, c.criterion_ref, Kind::Criterion, "/criterion").is_ok()
+                        && verified(s, case, &c)
+                    {
+                        cells
+                            .entry((c.option_ref.id, c.criterion_ref.id))
+                            .or_default()
+                            .push((r.reference(), c));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(Self { criteria, cells })
+    }
+}
+
 /// Weight-free and conservative: unknown, stale, multiple, subjective, and
 /// noncomparable cells never prove dominance. This is advisory, not a gate.
+/// Computed once per question per snapshot, from inputs read once per case.
 pub fn pareto(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Failure> {
+    s.pareto_table(case, question, || pareto_of(s, case, question))
+}
+
+fn pareto_of(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Failure> {
     let scope = MembershipScope::Question {
         case_id: case,
         question_id: question,
         option_id: None,
     };
     let opts = membership(s, MembershipRule::EligibleOptions, scope)?.members;
-    let mut criteria = Vec::new();
-    let mut cells: BTreeMap<(Id, Id), Vec<(RevisionRef, ComparisonBody)>> = BTreeMap::new();
-    for r in s.records().filter(|r| r.header.case_id == case) {
-        match r.header.id.kind() {
-            Kind::Criterion => {
-                let c: CriterionBody = decode(&r.body)?;
-                if c.question_ref.id == question && c.lifecycle == CriterionLifecycle::Active {
-                    criteria.push((r.reference(), c));
-                }
-            }
-            Kind::Comparison => {
-                let c: ComparisonBody = decode(&r.body)?;
-                if !c.retracted
-                    && exact(s, case, c.option_ref, Kind::Option, "/option").is_ok()
-                    && exact(s, case, c.criterion_ref, Kind::Criterion, "/criterion").is_ok()
-                    && verified(s, case, &c)
-                {
-                    cells
-                        .entry((c.option_ref.id, c.criterion_ref.id))
-                        .or_default()
-                        .push((r.reference(), c));
-                }
-            }
-            _ => {}
-        }
-    }
+    let inputs = s.pareto_inputs(case);
+    let ParetoInputs { criteria, cells } = match inputs.as_ref() {
+        Ok(inputs) => inputs,
+        Err(failure) => return Err(failure.clone()),
+    };
+    let criteria = criteria.get(&question).map_or(&[][..], Vec::as_slice);
     let mut result = Vec::new();
     for member in &opts {
         let option = s
@@ -867,7 +899,7 @@ pub fn pareto(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Fa
         let mut determining = Vec::new();
         let mut uncertain = Vec::new();
         let mut disqualified = false;
-        for (cr, c) in &criteria {
+        for (cr, c) in criteria {
             if c.option_refs
                 .as_ref()
                 .is_some_and(|v| !v.iter().any(|x| x.id == option.id))
@@ -906,7 +938,7 @@ pub fn pareto(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Fa
             let mut inferior = false;
             let mut comparable = !criteria.is_empty();
             let mut pair_cells = Vec::new();
-            for (cr, c) in &criteria {
+            for (cr, c) in criteria {
                 if c.option_refs.as_ref().is_some_and(|v| {
                     !v.iter().any(|x| x.id == option.id) || !v.iter().any(|x| x.id == other.id)
                 }) {
@@ -1632,6 +1664,75 @@ mod tests {
             assert!(cell.value.as_ref().unwrap().sample_count.is_none());
             assert_eq!(verified(&state, case, &cell), expected, "{observed}");
         }
+    }
+
+    #[test]
+    fn pareto_is_computed_once_per_snapshot_and_again_after_any_change() {
+        let rows = [
+            [Cell::Measured(10), Cell::Measured(5), Cell::Measured(10)],
+            [Cell::Measured(20), Cell::Measured(20), Cell::Measured(20)],
+        ];
+        let (mut state, case, question) = generated_table(&rows, &[0, 1]);
+        let table = |state: &State, question| {
+            serde_json::to_value(pareto(state, case, question).unwrap()).unwrap()
+        };
+        let statuses = |state: &State| -> Vec<ParetoStatus> {
+            pareto(state, case, question)
+                .unwrap()
+                .into_iter()
+                .map(|option| option.status)
+                .collect()
+        };
+        let first = table(&state, question);
+        assert_eq!(
+            statuses(&state),
+            [
+                ParetoStatus::ParetoFrontier,
+                ParetoStatus::StrictlyDominated
+            ]
+        );
+        // A repeated question reads the memo; an uncached replay of the same
+        // snapshot computes the same table.
+        assert_eq!(table(&state, question), first);
+        assert_eq!(table(&state.as_of(state.sequence()), question), first);
+        // Another question of the case has its own table and leaves this one.
+        let other = id("q", 950);
+        let next = state.sequence() + 1;
+        add(&mut state, rec(other, case, next, json!({})));
+        assert_eq!(table(&state, other), json!([]));
+        assert_eq!(table(&state, question), first);
+        // Both questions read the case's inputs from one pass.
+        assert!(std::sync::Arc::ptr_eq(
+            &state.pareto_inputs(case),
+            &state.pareto_inputs(case)
+        ));
+        // A material correction of the dominating option's evidence leaves its
+        // cell unverified: the memo of the earlier snapshot is not reused.
+        let observation = id("obs", 1201);
+        let mut corrected = state.current(observation).unwrap().body.clone();
+        corrected["value"]["value"] = json!("6");
+        update_body(&mut state, observation, corrected);
+        assert_eq!(
+            statuses(&state),
+            [
+                ParetoStatus::UncertainFrontier,
+                ParetoStatus::UncertainFrontier
+            ]
+        );
+        assert_eq!(
+            table(&state, question),
+            table(&state.as_of(state.sequence()), question)
+        );
+        // A case whose comparison does not decode fails every question alike.
+        let mut broken = state.current(id("cmp", 1300)).unwrap().body.clone();
+        broken["outcome"] = json!("sideways");
+        update_body(&mut state, id("cmp", 1300), broken);
+        let failure = pareto(&state, case, question).unwrap_err();
+        assert_eq!(pareto(&state, case, other).unwrap_err(), failure);
+        assert_eq!(
+            pareto(&state.as_of(state.sequence()), case, question).unwrap_err(),
+            failure
+        );
     }
 
     #[test]

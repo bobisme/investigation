@@ -24,7 +24,10 @@ fn smoke_run_reports_every_measurement_with_environment_and_targets() {
         .iter()
         .map(|f| f["name"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["exhaustive_small", "sparse_choice", "large"]);
+    assert_eq!(
+        names,
+        ["exhaustive_small", "sparse_choice", "large", "excerpts"]
+    );
     for fixture in &fixtures {
         assert_eq!(fixture["check"]["ok"], true, "{fixture}");
         assert!(fixture["objects"].as_u64().unwrap() > 0);
@@ -84,6 +87,21 @@ fn smoke_run_reports_every_measurement_with_environment_and_targets() {
             assert!(["met", "missed", "no_target"].contains(&item["verdict"].as_str().unwrap()));
         }
     }
+    // The excerpt fixture is rendered only, with every artifact note listing
+    // the observations that cite it.
+    for name in ["vault_render_first", "vault_render_unchanged"] {
+        let item = measurements
+            .iter()
+            .find(|item| item["fixture"] == "excerpts" && item["measurement"] == name)
+            .unwrap_or_else(|| panic!("excerpts {name}"));
+        assert!(item["stats"]["n"].as_u64().unwrap() >= 1, "{item}");
+    }
+    let excerpts = fixtures[3];
+    assert!(
+        excerpts["objects_by_kind"]["art"].as_u64().unwrap() >= 4,
+        "{excerpts}"
+    );
+    assert_eq!(excerpts["objects_by_kind"]["obs"], 12, "{excerpts}");
     let targeted = measurements
         .iter()
         .filter(|item| item["target_ms"].is_number())

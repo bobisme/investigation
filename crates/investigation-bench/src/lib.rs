@@ -18,7 +18,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use fixtures::{ChoiceShape, Fixture, LargeShape};
+use fixtures::{ChoiceShape, ExcerptShape, Fixture, LargeShape};
 use investigation_core::identity::{Id, Kind};
 use investigation_store::{Store, Workspace};
 use measure::{Invocation, load_average, summarize, time};
@@ -89,16 +89,18 @@ pub fn run(config: &Config) -> Result<Value, String> {
         .canonicalize()
         .map_err(|error| format!("{}: {error}", config.binary.display()))?;
     let environment = measure::environment(&binary, &config.fixtures_dir);
-    let (exhaustive_shape, sparse_shape, large_shape) = match config.scale {
+    let (exhaustive_shape, sparse_shape, large_shape, excerpt_shape) = match config.scale {
         Scale::Full => (
             ChoiceShape::exhaustive(),
             ChoiceShape::sparse(),
             LargeShape::target(),
+            ExcerptShape::target(),
         ),
         Scale::Smoke => (
             ChoiceShape::exhaustive(),
             ChoiceShape::smoke_sparse(),
             LargeShape::smoke(),
+            ExcerptShape::smoke(),
         ),
     };
 
@@ -131,6 +133,13 @@ pub fn run(config: &Config) -> Result<Value, String> {
     let large_profile = profile::next_phases(&large, config.samples.clamp(1, 10))?;
     measurements.extend(measure_fixture(config, &binary, &large, &large_profile)?);
     profiles.push(large_profile);
+
+    // Renders only: the excerpt lists of many artifact notes.
+    let excerpts = fixtures::excerpts(&config.fixtures_dir.join("excerpts"), excerpt_shape)?;
+    fixtures_out.push(describe(&binary, &excerpts)?);
+    if !config.skip_render {
+        measurements.extend(measure_renders(config, &binary, &excerpts)?);
+    }
 
     let misses: Vec<Value> = measurements
         .iter()
@@ -169,7 +178,7 @@ pub fn run(config: &Config) -> Result<Value, String> {
             "time_budget_seconds_per_measurement": config.budget_seconds,
             "min_samples_per_read_and_mutation": config.min_samples,
             "early_stop": "sampling of one measurement stops when its timed samples exceed the budget and it has the minimum (1 for rebuilds and renders); stopped_by_time_budget and stats.n say so",
-            "trial_order": "per fixture: reads interleaved round-robin (warmup rounds first, then timed rounds in the same command order each round, a command leaving the rotation when it has its samples or has spent its budget); then mutations one after another; then index rebuilds; then vault renders (one first render, then rounds of an unchanged re-render and a render after one untimed mutation). Fixtures run in the order exhaustive (completeness only), sparse, large.",
+            "trial_order": "per fixture: reads interleaved round-robin (warmup rounds first, then timed rounds in the same command order each round, a command leaving the rotation when it has its samples or has spent its budget); then mutations one after another; then index rebuilds; then vault renders (one first render, then rounds of an unchanged re-render and a render after one untimed mutation). Fixtures run in the order exhaustive (completeness only), sparse, large, excerpts (vault renders only: one first render, then unchanged re-renders).",
             "mutations_change_the_head": "each timed mutation commits a new record, so later samples see a slightly larger journal",
             "noise": "The machine is shared with other parallel jobs; samples include their interference. Load averages are recorded at start, end and per measurement. Compare runs only at similar load.",
         },
@@ -503,6 +512,31 @@ fn measure_fixture(
         out.push(record(fixture, &after, &load, profile));
     }
     Ok(out)
+}
+
+/// A first vault render, then unchanged re-renders, of a fixture measured
+/// for rendering alone.
+fn measure_renders(
+    config: &Config,
+    binary: &Path,
+    fixture: &Fixture,
+) -> Result<Vec<Value>, String> {
+    let budget_ms = config.budget_seconds * 1e3;
+    let render = Invocation::new(&["vault", "render", "--format", "json"]);
+    let mut first = Measured::new("vault_render_first", render.clone(), None).plan(1, 1);
+    first.samples.push(time(binary, &fixture.root, &render)?.0);
+    let mut unchanged =
+        Measured::new("vault_render_unchanged", render, None).plan(config.slow_samples, 1);
+    while unchanged.wants_more(budget_ms) {
+        unchanged
+            .samples
+            .push(time(binary, &fixture.root, &unchanged.command)?.0);
+    }
+    let load = load_average();
+    Ok(vec![
+        record(fixture, &first, &load, &Value::Null),
+        record(fixture, &unchanged, &load, &Value::Null),
+    ])
 }
 
 /// Distinct single-operation commands: a Comparison on a free cell for a

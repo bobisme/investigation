@@ -802,3 +802,107 @@ fn long_and_multiline_quotes_are_bounded() {
         .collect();
     assert_eq!(blocks, ["text"]);
 }
+
+/// Each artifact's excerpt list names exactly the observations that cite it,
+/// in record order, however their creation interleaves with observations of
+/// other artifacts, and counts those past the list bound.
+#[test]
+fn each_artifact_lists_only_the_observations_that_cite_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("workspace");
+    Workspace::init(&root, true).unwrap();
+    let config = root.join("investigation.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        contents.replace("import_roots = []", "import_roots = [\".\"]"),
+    )
+    .unwrap();
+    let mut store = Store::open(Workspace::open(&root).unwrap());
+    let case = submit(
+        &mut store,
+        "case",
+        None,
+        "case.create",
+        json!({"title":"Which measurement applies?", "mode":"record"}),
+    )
+    .created[0]
+        .id;
+    let mut artifacts = Vec::new();
+    for key in ["busy", "single", "uncited"] {
+        let path = root.join(format!("{key}.txt"));
+        fs::write(&path, format!("Measurements from the {key} file.\n")).unwrap();
+        let receipt = ingest(
+            &mut store,
+            &json!({
+                "schema_version":"inv.ingest.v1", "command_id":key, "actor":ACTOR, "case_id":case,
+                "source":{"title":key, "format":"text/plain"},
+                "paths":[path], "classification":"internal"
+            }),
+        );
+        artifacts.push((receipt.items[0].artifact_id, json!(receipt.items[0].digest)));
+    }
+    let bound = investigation_render::evidence::MAX_LISTED;
+    let mut cited: [Vec<Id>; 3] = Default::default();
+    for index in 0..bound + 3 {
+        let which = usize::from(index == 3);
+        let (artifact, digest) = &artifacts[which];
+        let observation = submit(
+            &mut store,
+            &format!("observe-{index}"),
+            Some(case),
+            "observation.add",
+            json!({
+                "value":{"kind":"measurement", "value":format!("{}", 10 + index), "unit":"ms"},
+                "basis":{"kind":"source", "artifact_ref":{"id":artifact, "revision":1},
+                    "selector":{"schema_version":"inv.selector.v1", "artifact_digest":digest,
+                        "selector":{"type":"whole"}},
+                    "text_quote":null},
+                "validity":"valid", "quality":[], "limitations":[],
+                "evidence_kind":"observational", "variables_changed":[]
+            }),
+        )
+        .created[0]
+            .id;
+        cited[which].push(observation);
+    }
+    let snapshot = VerifiedSnapshot::read(&mut store).unwrap();
+    let plan = render(&snapshot, &ViewPolicy::for_audience(Audience::Internal)).unwrap();
+    for (which, (artifact, _)) in artifacts.iter().enumerate() {
+        let text = note(&plan, case, *artifact);
+        let section = text
+            .split("### Excerpts cited from this artifact")
+            .nth(1)
+            .unwrap()
+            .split("\n## ")
+            .next()
+            .unwrap();
+        let mut expected = cited[which].clone();
+        expected.sort();
+        let more = expected.len().saturating_sub(bound);
+        expected.truncate(bound);
+        let expected: Vec<(String, bool)> = expected
+            .into_iter()
+            .map(|id| (path(case, id).strip_suffix(".md").unwrap().to_owned(), true))
+            .collect();
+        let listed: Vec<(String, bool)> = links(section)
+            .into_iter()
+            .map(|(target, anchor)| (target, anchor.is_some()))
+            .collect();
+        assert_eq!(listed, expected, "{section}");
+        assert_eq!(
+            section.contains(&format!("- and {more} more")),
+            more > 0,
+            "{section}"
+        );
+        assert_eq!(
+            section.contains("No visible observation quotes or selects from this artifact."),
+            cited[which].is_empty(),
+            "{section}"
+        );
+    }
+    assert_eq!(
+        cited.iter().map(Vec::len).collect::<Vec<_>>(),
+        [bound + 2, 1, 0]
+    );
+}

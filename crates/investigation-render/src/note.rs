@@ -248,6 +248,9 @@ pub struct NoteContext<'a> {
     /// The consequences table of every question of this case with an active
     /// criterion, judged against [`Self::freshness`] and built on first use.
     tables: OnceCell<BTreeMap<Id, ConsequencesTable>>,
+    /// Observations by the `basis.artifact_ref.id` text they name, in record
+    /// order.
+    observations_by_artifact: BTreeMap<&'a str, Vec<&'a Record>>,
 }
 
 impl<'a> NoteContext<'a> {
@@ -257,8 +260,17 @@ impl<'a> NoteContext<'a> {
         let mut mentioned_by: BTreeMap<Id, Vec<Mention>> = BTreeMap::new();
         let mut by_subject: BTreeMap<Kind, BTreeMap<&'a str, Vec<&'a Record>>> = BTreeMap::new();
         let mut hypotheses_by_question: BTreeMap<&'a str, Vec<&'a Record>> = BTreeMap::new();
+        let mut observations_by_artifact: BTreeMap<&'a str, Vec<&'a Record>> = BTreeMap::new();
         for record in state.records() {
             let kind = record.header.id.kind();
+            if kind == Kind::Observation
+                && let Some(artifact) = record.body["basis"]["artifact_ref"]["id"].as_str()
+            {
+                observations_by_artifact
+                    .entry(artifact)
+                    .or_default()
+                    .push(record);
+            }
             if matches!(kind, Kind::Review | Kind::Objection)
                 && record.header.case_id == case.case_id()
                 && let Some(subject) = text_at(&record.body, "subject_ref.id")
@@ -332,6 +344,7 @@ impl<'a> NoteContext<'a> {
             by_subject,
             hypotheses_by_question,
             tables: OnceCell::new(),
+            observations_by_artifact,
         }
     }
 
@@ -341,6 +354,14 @@ impl<'a> NoteContext<'a> {
         self.by_subject
             .get(&kind)
             .and_then(|by_id| by_id.get(id.to_string().as_str()))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Observations, of any case in this snapshot, whose
+    /// `basis.artifact_ref.id` is `artifact`, in record order.
+    pub(crate) fn observations_citing(&self, artifact: Id) -> &[&'a Record] {
+        self.observations_by_artifact
+            .get(artifact.to_string().as_str())
             .map_or(&[], Vec::as_slice)
     }
 

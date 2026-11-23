@@ -65,6 +65,30 @@ impl LargeShape {
     }
 }
 
+/// Sizes of the excerpt fixture: many retained artifacts, each cited by a
+/// few observations, so every artifact note lists the excerpts that cite it.
+#[derive(Clone, Copy, Debug)]
+pub struct ExcerptShape {
+    pub artifacts: usize,
+    pub observations_per_artifact: usize,
+}
+
+impl ExcerptShape {
+    pub fn target() -> Self {
+        Self {
+            artifacts: 1_000,
+            observations_per_artifact: 8,
+        }
+    }
+
+    pub fn smoke() -> Self {
+        Self {
+            artifacts: 4,
+            observations_per_artifact: 3,
+        }
+    }
+}
+
 /// Sizes of a choice fixture: one question, `options` × `criteria` cells.
 #[derive(Clone, Copy, Debug)]
 pub struct ChoiceShape {
@@ -332,6 +356,51 @@ impl Builder {
         Ok(artifacts)
     }
 
+    /// Retain one small text file per artifact, up to the per-manifest item
+    /// limit in each `ingest`.
+    fn ingest_many(&mut self, count: usize) -> Result<Vec<Id>, String> {
+        const ITEMS: usize = 32;
+        let case = self.case.ok_or("ingest needs a case")?;
+        let mut artifacts = Vec::with_capacity(count);
+        for first in (0..count).step_by(ITEMS) {
+            let mut paths = Vec::new();
+            for index in first..(first + ITEMS).min(count) {
+                let path = self.inputs.join(format!("excerpts-{index}.txt"));
+                fs::write(&path, format!("synthetic excerpts, file {index}\n"))
+                    .map_err(|error| error.to_string())?;
+                paths.push(path);
+            }
+            self.commands += 1;
+            let manifest = json!({
+                "schema_version": "inv.ingest.v1", "command_id": format!("bench-{}", self.commands),
+                "actor": ACTOR, "case_id": case,
+                "source": {"title": format!("Excerpt files from {first}"), "format": "text/plain"},
+                "paths": paths,
+            });
+            let receipt = self
+                .store
+                .ingest(
+                    &serde_json::to_vec(&manifest).map_err(|e| e.to_string())?,
+                    None,
+                )
+                .map_err(|failure| format!("ingest rejected: {}", failure.error.message))?;
+            for change in receipt
+                .receipt
+                .created
+                .iter()
+                .chain(&receipt.receipt.updated)
+            {
+                self.revisions.insert(change.id, change.revision);
+            }
+            for item in &receipt.items {
+                self.digests
+                    .insert(item.artifact_id, item.digest.to_string());
+                artifacts.push(item.artifact_id);
+            }
+        }
+        Ok(artifacts)
+    }
+
     fn observation(&self, artifact: Id, value: &str) -> Value {
         op(
             "observation.add",
@@ -554,6 +623,30 @@ pub fn large(directory: &Path, shape: LargeShape) -> Result<Fixture, String> {
         b.submit_all(ops)?;
     }
     Ok(b.finish("large", questions[0], started))
+}
+
+/// Many artifacts, each cited by `observations_per_artifact` observations
+/// created round-robin, so the observations citing one artifact are spread
+/// through the snapshot and every artifact note lists its excerpts.
+pub fn excerpts(directory: &Path, shape: ExcerptShape) -> Result<Fixture, String> {
+    let started = Instant::now();
+    let mut b = Builder::new(directory, true)?;
+    b.create_case("Synthetic excerpt workspace")?;
+    let artifacts = b.ingest_many(shape.artifacts)?;
+    let ops = (0..shape.artifacts * shape.observations_per_artifact)
+        .map(|index| {
+            b.observation(
+                artifacts[index % artifacts.len()],
+                &format!("{}", 10 + index % 90),
+            )
+        })
+        .collect();
+    b.submit_all(ops)?;
+    let question = b.submit(vec![op(
+        "question.create",
+        json!({"wording": "Which measurement applies?", "importance": "normal"}),
+    )])?[0];
+    Ok(b.finish("excerpts", question, started))
 }
 
 /// One question with `options` × `criteria` cells, a few of them recorded.
