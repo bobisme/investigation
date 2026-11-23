@@ -69,6 +69,26 @@ To reverify, supply the bytes in a manifest with `case_id`, one path or stdin co
 - On a match, copied bytes become `retained` and `verified`; in reference mode the Artifact stays `external` and becomes `verified`. Dependents stay current. The item reports `reverified`.
 - On a mismatch, integrity becomes `mismatch`. The recorded digest and size do not change, and the supplied bytes are not retained. The item reports `reverification_failed`, the receipt carries a warning, and records that cite the Artifact become `needs_review` with trigger `external_mismatch`. To keep the changed bytes, ingest them as a separate acquisition.
 
+## Evidence reads
+
+`investigation evidence read ARTIFACT --selector-file FILE --format json` returns
+an `inv.response.v1` result of `evidence_read`. The response includes the full
+Artifact ID and revision in `artifact` and the verified whole-artifact SHA-256
+digest in `selector.artifact_digest`. Reads use the default audience and verify
+the retained artifact's size and digest before returning a selection.
+
+`whole` selects the entire artifact. `byte_range` uses zero-based, half-open
+byte offsets with `0 <= start < end <= size_bytes`. A read can return at most
+32 KiB of selected bytes from an artifact at most 64 MiB in size.
+
+For selected bytes containing NUL or invalid UTF-8, `excerpt.availability` is
+`binary` and `excerpt.bytes_base64` contains exactly the bytes from
+`excerpt.start` up to `excerpt.end`, in standard RFC 4648 base64 with padding
+when needed. Decoding preserves every byte, including NUL and CRLF. A slice
+of valid UTF-8 without NUL is returned in `excerpt.text` with availability
+`text`. A `json_pointer` returns a parsed `excerpt.value` with availability
+`json_value`. Human-readable output summarizes binary excerpts.
+
 ## Evidence selectors
 
 Every selector is stored with the `validation` the core computed when the Observation was accepted. The core reads retained bytes only, with its own bounded readers, and never loads or runs a reader named in a selector or a manifest. A selector the core cannot check is stored `unavailable`, never `verified`.

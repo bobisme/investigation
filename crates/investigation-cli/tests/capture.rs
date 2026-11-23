@@ -923,6 +923,169 @@ fn walk(directory: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 }
 
 #[test]
+fn evidence_read_returns_exact_bytes_from_a_finalized_capture() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    fs::create_dir(root.join("outputs")).unwrap();
+    json_run(
+        root,
+        &[
+            "init",
+            "ws",
+            "--no-vault",
+            "--import-root",
+            "outputs",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let bytes = b"header\r\n\0\xff\xfe\r\nfooter\r\n";
+    fs::write(root.join("outputs/result.bin"), bytes).unwrap();
+    let capture = |op, request: Value| {
+        json_run(
+            root,
+            &["--workspace", "ws", "capture", op, "--input", "-", "--json"],
+            Some(&serde_json::to_vec(&request).unwrap()),
+            0,
+        )
+    };
+    let begun = capture("begin", begin_request());
+    let handle = begun["handle"].as_str().unwrap();
+    let attached = capture(
+        "attach",
+        json!({
+            "handle": handle, "key": "result", "position": 1, "role": "original-output",
+            "source": {"kind": "file", "path": "result.bin"},
+            "media_type": "application/octet-stream",
+        }),
+    );
+    let hex = "78d110bb8c12ac2c1b3abb7798599fed1320c5ab14086fefdd3f620329bdf6ef";
+    let digest = format!("sha256:{hex}");
+    assert_eq!(attached["digest"], digest);
+    capture(
+        "finalize",
+        json!({
+            "handle": handle, "key": "run-0001/finalize", "expected_last_position": 1,
+            "completion": "complete", "execution": {"state": "completed", "exit_code": 0},
+        }),
+    );
+    let run = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "show",
+            begun["run_id"].as_str().unwrap(),
+            "--depth",
+            "full",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let retained = &run["record"]["body"]["capture_finalization"]["artifacts"][0]["retention"];
+    assert_eq!(retained["state"], "retained");
+    assert_eq!(retained["digest"], digest);
+    let artifact = &retained["artifact_ref"];
+    let id = artifact["id"].as_str().unwrap();
+    let read = |artifact_digest: &str, selector: &Value, exit| {
+        let request = json!({
+            "schema_version": "inv.selector.v1", "artifact_digest": artifact_digest,
+            "selector": selector,
+        });
+        json_run(
+            root,
+            &[
+                "--workspace",
+                "ws",
+                "evidence",
+                "read",
+                id,
+                "--selector-file",
+                "-",
+                "--json",
+            ],
+            Some(&serde_json::to_vec(&request).unwrap()),
+            exit,
+        )
+    };
+    let range = |start, end| json!({"type": "byte_range", "start": start, "end": end});
+    let whole = json!({"type": "whole"});
+    let bounded = range(8, 13);
+    let end = bytes.len() as i32;
+    for (selector, start, end, encoded) in [
+        (&whole, 0, end, "aGVhZGVyDQoA//4NCmZvb3Rlcg0K"),
+        (&bounded, 8, 13, "AP/+DQo="),
+    ] {
+        let result = read(&digest, selector, 0);
+        assert_eq!(result["schema_version"], "inv.response.v1");
+        assert_eq!(result["result"], "evidence_read");
+        assert_eq!(result["artifact"], *artifact);
+        assert_eq!(result["selector"]["artifact_digest"], digest);
+        assert_eq!(result["selector"]["selector"], *selector);
+        assert_eq!(result["content_trust"], "untrusted_evidence");
+        assert_eq!(
+            result["excerpt"],
+            json!({"availability": "binary", "start": start, "end": end, "bytes_base64": encoded})
+        );
+    }
+    let text = read(&digest, &range(0, 8), 0);
+    assert_eq!(
+        text["excerpt"],
+        json!({"availability": "text", "start": 0, "end": 8, "text": "header\r\n"})
+    );
+
+    for selector in [
+        range(-1, 13),
+        range(8, -1),
+        range(13, 8),
+        range(8, 8),
+        range(8, end + 1),
+    ] {
+        let result = read(&digest, &selector, 2);
+        assert_eq!(result["error"]["code"], "INVALID_INPUT", "{selector}");
+        assert!(result.get("excerpt").is_none(), "{result}");
+    }
+    let wrong = read(&format!("sha256:{}", "0".repeat(64)), &whole, 2);
+    assert_eq!(wrong["error"]["code"], "INVALID_INPUT");
+    assert!(wrong.get("excerpt").is_none(), "{wrong}");
+
+    // Corrupt a byte outside the selected range without changing the size.
+    let blob = root.join("ws/state/blobs/sha256").join(&hex[..2]).join(hex);
+    let mut corrupted = *bytes;
+    corrupted[0] = b'H';
+    fs::remove_file(&blob).unwrap();
+    fs::write(&blob, corrupted).unwrap();
+    let corrupt = read(&digest, &bounded, 6);
+    assert_eq!(corrupt["error"]["code"], "INTEGRITY_FAILURE");
+    assert!(corrupt.get("excerpt").is_none(), "{corrupt}");
+
+    // Effective classification takes precedence even over blob verification.
+    json_run(
+        root,
+        &["--workspace", "ws", "record", "--input", "-", "--json"],
+        Some(
+            &serde_json::to_vec(&json!({
+                "schema_version": "inv.command.v1", "command_id": "restrict-result",
+                "case_id": begun["case_id"], "actor": "agent:example-producer",
+                "preconditions": [], "operations": [{"op": "classification.raise", "payload": {
+                    "subject_ref": artifact, "level": "restricted", "reason": "Restricted result"
+                }}]
+            }))
+            .unwrap(),
+        ),
+        0,
+    );
+    for selector in [&whole, &bounded] {
+        let restricted = read(&digest, selector, 5);
+        assert_eq!(restricted["error"]["code"], "GATE_FAILED");
+        assert_eq!(restricted["error"]["path"], "/artifact");
+        assert!(restricted.get("excerpt").is_none(), "{restricted}");
+    }
+}
+
+#[test]
 fn repair_staging_retires_only_finalized_staging_and_check_names_it() {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path();

@@ -649,6 +649,7 @@ dependencies = [
 name = "investigation-store"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "investigation-core",
  "proptest",
  "rusqlite",

@@ -15,6 +15,7 @@ tracing-subscriber.workspace = true
 workspace = true
 
 [dependencies]
+base64 = "=0.22.1"
 investigation-core.workspace = true
 rusqlite = { version = "=0.43.0", features = ["bundled"] }
 schemars = "=1.2.3"

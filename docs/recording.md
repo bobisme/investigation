@@ -14,6 +14,11 @@ A producer is an external program that runs something under its own authority an
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
+After finalization, use the retained Artifact's ID and digest with
+`investigation evidence read`. JSON output includes the exact selected binary
+bytes in `excerpt.bytes_base64` for a `whole` or `byte_range` read.
+[Evidence read contract](schema-v1.md#evidence-reads)
+
 **Status.** The types and signatures are fixed. Every operation is implemented and has its CLI command: `capture begin`, `capture append`, `capture attach`, `capture finalize` and `capture recover`.
 
 ## Discovery

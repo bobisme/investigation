@@ -1,5 +1,6 @@
 //! Digest-bound reads and observation verification over retained snapshots.
 use super::*;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use investigation_core::{
     classification::{AudiencePolicy, Classifier, Field},
     command::Reference,
@@ -39,6 +40,7 @@ pub enum Excerpt {
     Binary {
         start: usize,
         end: usize,
+        bytes_base64: String,
     },
 }
 
@@ -330,7 +332,11 @@ impl<F: DurableFs> Store<F> {
                     end,
                     text: text.into(),
                 },
-                _ => Excerpt::Binary { start, end },
+                _ => Excerpt::Binary {
+                    start,
+                    end,
+                    bytes_base64: STANDARD.encode(&bytes[start..end]),
+                },
             },
             Selection::Json(value) => Excerpt::JsonValue { value },
         };
