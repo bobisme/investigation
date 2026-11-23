@@ -59,3 +59,10 @@ path = "fuzz_targets/resolve_selector.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "load_method_pack"
+path = "fuzz_targets/load_method_pack.rs"
+test = false
+doc = false
+bench = false

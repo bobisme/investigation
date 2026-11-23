@@ -22,6 +22,7 @@ jobs:
           - replay_journal
           - parse_selector
           - resolve_selector
+          - load_method_pack
     env:
       FUZZ_BUDGET: ${{ github.event_name == 'schedule' && 'scheduled' || 'quick' }}
       FUZZ_TARGET: ${{ matrix.target }}

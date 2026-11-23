@@ -1,0 +1,7 @@
+schema_version = "inv.method-pack.v1"
+id = "h"
+version = "1"
+title = "T"
+summary = "S"
+modes = ["explain"]
+hook = "x"

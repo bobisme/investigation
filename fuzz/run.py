@@ -22,6 +22,7 @@ MAX_LENGTH = {
     "replay_journal": 32 * 1024 + 1,
     "parse_selector": 512 * 1024 + 1,
     "resolve_selector": 32 * 1024,
+    "load_method_pack": 256 * 1024 + 1,
 }
 
 

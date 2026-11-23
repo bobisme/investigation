@@ -14,6 +14,7 @@ python3 fuzz/run.py quick decode_event
 python3 fuzz/run.py quick replay_journal
 python3 fuzz/run.py quick parse_selector
 python3 fuzz/run.py quick resolve_selector
+python3 fuzz/run.py quick load_method_pack
 ```
 
 Pull requests use the quick budget, up to 25,000 inputs or 30 seconds per

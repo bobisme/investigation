@@ -464,11 +464,36 @@ impl PackError {
     fn new(kind: PackErrorKind, path: impl Into<String>, message: &'static str) -> Self {
         Self {
             kind,
-            path: path.into(),
+            path: safe_path(&path.into()),
             message,
             line: None,
         }
     }
+}
+
+/// Elide path segments that are not conservative identifiers. A pack author
+/// chooses key names, and diagnostics are read by agents, so an arbitrary key
+/// must not be echoed back. Elided segments become `<key#N>` where N is the
+/// segment's position in the path.
+fn safe_path(path: &str) -> String {
+    let plain = |segment: &str| {
+        !segment.is_empty()
+            && segment.len() <= 64
+            && segment
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-' | b'$'))
+    };
+    path.split('/')
+        .skip(1)
+        .enumerate()
+        .map(|(index, segment)| {
+            if plain(segment) {
+                format!("/{segment}")
+            } else {
+                format!("/<key#{index}>")
+            }
+        })
+        .collect()
 }
 
 impl fmt::Display for PackError {
