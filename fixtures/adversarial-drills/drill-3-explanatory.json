@@ -1,0 +1,139 @@
+{
+  "drill": 3,
+  "form": "explanatory",
+  "title": "A blindspot that changes the answer: an apparent root cause ignores a corrupted clock",
+  "plan": "notes/plan.md §17.7 drill 3, §8.5, §20.1",
+  "description": "Scenario A variant. The checked-in timeout case has a validated root cause. The variant reopens it and records the clock-alignment assumption as material and unassessed. The audit reports the pinned checks, including promoted.material_assumption_unsupported on the root cause. The scripted reviewer records a blindspot Review, a Question and an Assumption in one transaction. No Conclusion changes.",
+  "base": {"workspace": "scenario-a"},
+  "steps": [
+    {"find": {"case": {"kind": "case", "where": {"/mode": "explain"}}}},
+    {"find": {
+      "root_cause": {"kind": "concl", "where": {"/status": "validated"}},
+      "rival": {"kind": "hyp", "where": {"/statement": "Scheduler delay alone accounts for the connection-hold overshoot."}}
+    }},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "root_cause/id"}, "--depth", "full"],
+     "expect": {"/record/body/status": "validated", "/effective_status/state": "validated"}},
+    {"record": {
+      "actor": "agent:drill-variant",
+      "preconditions": [{"$": "case"}],
+      "operations": [
+        {"op": "case.reopen", "payload": {"reason": "Drill 3 variant: the root cause relies on traces whose clock alignment was never assessed."}},
+        {"op": "assumption.create", "payload": {
+          "claim": "Every trace the root cause relies on shares one aligned clock with the reference trace.",
+          "consequence": "If a clock is misaligned, the hold intervals cannot be ordered against the callback wait and the root cause may not follow.",
+          "materiality": "material",
+          "affected_refs": [{"$": "root_cause"}]}}
+      ]},
+     "bind": {"clock_assumption": "/created/0"}},
+    {"audit": {}, "as": "audit",
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": [
+         "case.material_closure_without_current_retrospective",
+         "comparability.environment_differs",
+         "conclusion.causal_claim_without_rival_account",
+         "conclusion.causal_claim_without_rival_account",
+         "empirical.confirmatory_basis_incomplete",
+         "promoted.basis_not_current",
+         "promoted.material_assumption_unsupported"
+       ],
+       "findings": [
+         {"check_id": "promoted.material_assumption_unsupported", "subject_refs": [{"$": "root_cause"}],
+          "facts_include": [{"fact": "assumption_status:unassessed", "refs": [{"$": "clock_assumption"}]}]},
+         {"check_id": "promoted.basis_not_current", "subject_refs": [{"$": "root_cause"}],
+          "facts_include": [{"fact": "freshness_trigger:membership_changed:material_assumptions", "refs": [{"$": "root_cause"}]}]},
+         {"check_id": "empirical.confirmatory_basis_incomplete", "subject_refs": [{"$": "root_cause"}]},
+         {"check_id": "conclusion.causal_claim_without_rival_account", "subject_refs": [{"$": "root_cause"}],
+          "rule_id": "conclusion.causal_claim_without_rival_account"}
+       ]}},
+    {"record": {
+      "actor": "agent:drill-reviewer",
+      "response": true,
+      "preconditions": [{"$": "root_cause"}],
+      "operations": [
+        {"op": "question.create", "client_ref": "alignment", "payload": {
+          "wording": "Can the unaligned trace be mapped onto the reference clock, and do the relied-on traces share one?",
+          "importance": "high",
+          "context": "Ordering claims from a trace with an unmapped clock are unusable until this is answered."}},
+        {"op": "assumption.create", "client_ref": "not_negative", "payload": {
+          "claim": "The trace with the unmapped clock carries no evidence for or against scheduler delay.",
+          "consequence": "Counting it against the scheduler rival would weaken that rival without a valid observation.",
+          "materiality": "material",
+          "affected_refs": [{"$": "rival"}]}},
+        {"op": "review.submit", "payload": {
+          "kind": "blindspot",
+          "subject_ref": {"$": "root_cause"},
+          "audited_snapshot": {"$": "audit/snapshot"},
+          "read_set": {"$": "audit/checks/[check_id=promoted.material_assumption_unsupported]/related_refs"},
+          "method": "Compared the root cause's recorded basis with each audit finding and asked what an unaligned clock would change.",
+          "scope_examined": "The validated root cause, the clock-alignment assumption it rests on and the audit at the recorded snapshot.",
+          "checks_considered": {"$": "audit/checks_run/*/check_id"},
+          "gaps": ["The root cause rests on a clock-alignment assumption that no recorded assessment supports."],
+          "no_gap_reason": null,
+          "evidence_refs": [],
+          "assumption_refs": [],
+          "limitations": ["Recorded material only; no trace was re-read or re-aligned."],
+          "verdict": "gaps_identified",
+          "context_isolation": "fresh_context_unblinded",
+          "context": {
+            "saw_original_conclusion": {"state": "known", "value": true},
+            "gathered_new_evidence": {"state": "known", "value": false},
+            "method_or_source_changes": [],
+            "activity": "Read the audit and the root cause's recorded basis.",
+            "dependencies": "shared",
+            "dependence_basis": "The same retained traces.",
+            "work_kind": {"state": "known", "value": "independent_interpretation"},
+            "prior_involvement": {"state": "known", "value": []},
+            "read_other_reviews": {"state": "known", "value": true}},
+          "audit": {"check_version": {"$": "audit/check_version"}, "check_set_digest": {"$": "audit/check_set_digest"}},
+          "gap_dispositions": [
+            {"gap_id": {"$": "audit/checks/[check_id=promoted.material_assumption_unsupported]/gap_id"},
+             "disposition": "accepted",
+             "reason": "No recorded assessment supports clock alignment for the traces the root cause relies on.",
+             "uncertainty": "The alignment may hold; it was never checked.",
+             "related_refs": {"$": "audit/checks/[check_id=promoted.material_assumption_unsupported]/related_refs"},
+             "record_refs": [{"client_ref": "alignment"}]}
+          ],
+          "novel_gaps": [
+            {"statement": "The trace with the unmapped clock must not count as evidence against the scheduler rival.",
+             "uncertainty": "Whether its clock can be mapped at all is unknown.",
+             "record_refs": [{"client_ref": "not_negative"}]}
+          ]}}
+      ]},
+     "as": "response",
+     "bind": {"question": "/created/0", "review_assumption": "/created/1", "review": "/created/2"},
+     "expect": {"/created/0/client_ref": "alignment", "/created/1/client_ref": "not_negative"}},
+    {"audit": {}, "as": "after",
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": [
+         "case.material_closure_without_current_retrospective",
+         "comparability.environment_differs",
+         "conclusion.causal_claim_without_rival_account",
+         "conclusion.causal_claim_without_rival_account",
+         "empirical.confirmatory_basis_incomplete",
+         "promoted.basis_not_current",
+         "promoted.material_assumption_unsupported"
+       ],
+       "findings": [
+         {"check_id": "promoted.material_assumption_unsupported", "subject_refs": [{"$": "root_cause"}],
+          "facts_include": [{"fact": "assumption_status:unassessed", "refs": [{"$": "clock_assumption"}, {"$": "review_assumption"}]}]}
+       ]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "root_cause/id"}, "--depth", "full"],
+     "expect": {
+       "/record/header/revision": {"$": "root_cause/revision"},
+       "/record/body/status": "validated",
+       "/effective_status/recorded": "validated",
+       "/effective_status/state": "needs_review"}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "review/id"}, "--depth", "full"],
+     "expect": {
+       "/record/body/kind": "blindspot",
+       "/record/body/verdict": "gaps_identified",
+       "/record/body/subject_ref": {"$": "root_cause"},
+       "/record/body/gap_dispositions/0/check_id": "promoted.material_assumption_unsupported",
+       "/record/body/gap_dispositions/0/record_refs": [{"$": "question"}],
+       "/record/body/novel_gaps/0/origin": "reviewer",
+       "/record/body/novel_gaps/0/record_refs": [{"$": "review_assumption"}],
+       "/record/body/audit/scope": "case"}}
+  ]
+}

@@ -51,3 +51,12 @@ For each source, the manifest should preserve origin/revision, acquisition, dige
 ## Scenario D source shape
 
 Scenario D (`development/scenario-d-source-research/`) is a source-only family: a primary specification, a trade article that restates it and reports its own bench test, a blog that repeats the article, and a first-party erratum tied to one edition. Each manifest lists `claim_origins` so three acquisitions can trace to one originating claim while every Source and selector stays intact. Variants: `baseline`, `later-edition-twin` (the erratum applies only to a later edition than the named build), and `injected-output` (crawler output with planted instructions that must stay inert data). Run `python3 scripts/check-scenario-d-fixture.py` to evaluate digests, selectors, origin structure, search coverage and the injection sample. See the family's README for roles.
+
+## Adversarial drills 3 and 4
+
+`adversarial-drills/` holds scripted drills from plan §17.7. Each file is a list of steps: `find` (bind a record by ID kind and body fields), `record` (one `inv.command.v1` transaction), `cli`, `audit` (`blindspots`) and `surface` (`next` or `frontier`). Each step can pin expected values. Placeholders such as `{"$": "audit/checks/[check_id=criterion.hard_unmeasured]/gap_id"}` read earlier bindings, so no file pins a generated ID. The format is documented in `crates/investigation-cli/tests/drills_3_4.rs`, which replays every file through the CLI.
+
+- `drill-3-explanatory.json` and `drill-3-evaluative.json` start from the checked-in Scenario A and C workspaces in `vault-goldens/`. They add a variant (an unassessed clock-alignment assumption under the validated root cause, or a queue choice that ignores the unknown recovery guarantee), pin the audit's check IDs and record a scripted blindspot Review with a Question and an Assumption. No Conclusion or Decision changes.
+- `drill-4-explanatory.json` and `drill-4-evaluative.json` build small cases whose audit is clean. A scripted fresh reviewer then adds a rival Hypothesis or Option and a material Objection through a blindspot review. `next` and `frontier` show the rival, the subject reads as disputed, and the clean audit replays byte for byte at its own snapshot.
+
+The responses are scripted transactions, not model runs. MCP parity (W13.05) and W14 can replay the same files.

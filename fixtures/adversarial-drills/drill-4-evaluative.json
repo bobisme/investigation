@@ -1,0 +1,227 @@
+{
+  "drill": 4,
+  "form": "evaluative",
+  "title": "A semantic gap outside rule coverage: a fresh reviewer proposes an alternative no one compared",
+  "plan": "notes/plan.md §17.7 drill 4, §8.5, §20.1",
+  "description": "A small queue choice built from the Scenario C recovery trials. Two options meet the hard criterion that no acknowledged job is lost, and the reviewed choice of the database queue is accepted. A second question stays open, so the audit is clean and the frontier is empty. A scripted fresh reviewer proposes an append-only log, an alternative no check could know about. The review records it as a new Option plus a material Objection, cited as a novel gap. The new option's hard cell then appears in next and frontier, the accepted choice reads as disputed, and the clean audit replays unchanged at its own snapshot.",
+  "base": {
+    "init": true,
+    "sources": [{"from": "fixtures/development/scenario-c-architecture-choice/baseline/sources/recovery-tests.json", "as": "recovery-tests.json"}]
+  },
+  "steps": [
+    {"record": {
+      "case": null,
+      "actor": "agent:drill-investigator",
+      "operations": [{"op": "case.create", "payload": {"title": "Which queue keeps acknowledged jobs?", "mode": "evaluate"}}]},
+     "bind": {"case": "/created/0"}},
+    {"cli": ["ingest", "--input", "-"],
+     "stdin": {
+       "schema_version": "inv.ingest.v1", "command_id": "drill-4-evaluative-ingest", "actor": "agent:drill-investigator",
+       "case_id": {"$": "case/id"},
+       "source": {"title": "recovery-tests.json", "format": "application/json"},
+       "paths": ["recovery-tests.json"], "extract_text": true},
+     "as": "trials"},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "question.create", "client_ref": "question", "payload": {
+          "wording": "Which queue design should keep acknowledged jobs?", "importance": "high"}},
+        {"op": "question.create", "payload": {
+          "wording": "Which failure model must the queue survive beyond a single host stop?", "importance": "normal"}},
+        {"op": "option.create", "client_ref": "database_queue", "payload": {
+          "question_ref": {"client_ref": "question"}, "description": "Retain the database-backed queue",
+          "dependencies": [], "tradeoff_notes": []}},
+        {"op": "option.create", "client_ref": "managed_queue", "payload": {
+          "question_ref": {"client_ref": "question"}, "description": "Adopt a managed queue",
+          "dependencies": [], "tradeoff_notes": []}},
+        {"op": "criterion.create", "client_ref": "no_loss", "payload": {
+          "name": "No acknowledged job is lost", "kind": "hard",
+          "scope": {"kind": "all_options", "question_ref": {"client_ref": "question"}},
+          "scale": {"unit": "jobs", "description": "Acknowledged jobs lost under the failure model", "anchors": []},
+          "preferred_direction": "lower",
+          "threshold": {"kind": "measured", "operator": "at_most", "value": {"decimal": "0", "unit": "jobs"}},
+          "weighting_rationale": null}}
+      ]},
+     "bind": {"question": "/created/0", "database_queue": "/created/2", "managed_queue": "/created/3", "no_loss": "/created/4"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "option.disposition", "payload": {"option_ref": {"$": "database_queue"}, "lifecycle": "eligible", "reason": "Plausible for the stated workload."}},
+        {"op": "option.disposition", "payload": {"option_ref": {"$": "managed_queue"}, "lifecycle": "eligible", "reason": "Plausible for the stated workload."}}
+      ]},
+     "bind": {"database_queue": "/updated/0", "managed_queue": "/updated/1"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "observation.add", "payload": {
+          "value": {"kind": "measurement", "value": "0", "unit": "jobs"},
+          "basis": {"kind": "source", "artifact_ref": {"id": {"$": "trials/items/0/artifact_id"}, "revision": 1},
+            "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "trials/items/0/digest"},
+              "selector": {"type": "json_pointer", "pointer": "/results/database_queue/lost_acknowledged_jobs", "parser": null}},
+            "text_quote": null},
+          "extraction_method": "Read lost_acknowledged_jobs from the retained trial JSON.",
+          "validity": "valid", "quality": [], "limitations": ["Synthetic trials only."],
+          "evidence_kind": "observational", "variables_changed": [], "observed_at": null}},
+        {"op": "observation.add", "payload": {
+          "value": {"kind": "measurement", "value": "0", "unit": "jobs"},
+          "basis": {"kind": "source", "artifact_ref": {"id": {"$": "trials/items/0/artifact_id"}, "revision": 1},
+            "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "trials/items/0/digest"},
+              "selector": {"type": "json_pointer", "pointer": "/results/managed_queue/lost_acknowledged_jobs", "parser": null}},
+            "text_quote": null},
+          "extraction_method": "Read lost_acknowledged_jobs from the retained trial JSON.",
+          "validity": "valid", "quality": [], "limitations": ["Synthetic trials only."],
+          "evidence_kind": "observational", "variables_changed": [], "observed_at": null}}
+      ]},
+     "bind": {"database_trial": "/created/0", "managed_trial": "/created/1"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "measurement.assess", "payload": {
+          "observation_ref": {"$": "database_trial"}, "channel": null, "validity": "valid",
+          "verification": [{"kind": "equivalent", "justification": "The trial harness counts acknowledged jobs directly."}],
+          "rationale": "Counted by the trial harness.", "limits": []}},
+        {"op": "measurement.assess", "payload": {
+          "observation_ref": {"$": "managed_trial"}, "channel": null, "validity": "valid",
+          "verification": [{"kind": "equivalent", "justification": "The trial harness counts acknowledged jobs directly."}],
+          "rationale": "Counted by the trial harness.", "limits": []}}
+      ]},
+     "bind": {"database_trial": "/updated/0", "managed_trial": "/updated/1"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "comparison.add", "payload": {
+          "option_ref": {"$": "database_queue"}, "criterion_ref": {"$": "no_loss"}, "outcome": "meets",
+          "method": "Synthetic recovery trial.", "value": {"decimal": "0", "unit": "jobs"},
+          "evidence_refs": [{"$": "database_trial"}], "assumption_refs": [],
+          "uncertainty": "Synthetic trials only.", "rationale": "No acknowledged job was lost."}},
+        {"op": "comparison.add", "payload": {
+          "option_ref": {"$": "managed_queue"}, "criterion_ref": {"$": "no_loss"}, "outcome": "meets",
+          "method": "Synthetic recovery trial.", "value": {"decimal": "0", "unit": "jobs"},
+          "evidence_refs": [{"$": "managed_trial"}], "assumption_refs": [],
+          "uncertainty": "Synthetic trials only.", "rationale": "No acknowledged job was lost."}}
+      ]},
+     "bind": {"database_cell": "/created/0", "managed_cell": "/created/1"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [{"op": "decision.propose", "payload": {
+        "question_ref": {"$": "question"},
+        "choice": {"kind": "select", "option_ref": {"$": "database_queue"}},
+        "compared_alternatives": [{"$": "database_queue"}, {"$": "managed_queue"}],
+        "comparison_refs": [{"$": "database_cell"}, {"$": "managed_cell"}],
+        "hard_conditions": [], "evidence_refs": [], "assumption_refs": [],
+        "tradeoffs": ["Keeps the existing operational model."],
+        "consequences": ["Keep the database-backed queue."],
+        "reopen_trigger": "A recovery trial loses an acknowledged job.",
+        "reversal_conditions": []}}]},
+     "bind": {"choice": "/created/0"}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "choice/id"}, "--depth", "full"], "as": "proposed"},
+    {"record": {
+      "actor": "agent:drill-validator",
+      "operations": [{"op": "review.submit", "payload": {
+        "kind": "validation", "subject_ref": {"$": "proposed/review_basis/subject_ref"},
+        "basis_digest": {"$": "proposed/review_basis/basis_digest"}, "read_set": {"$": "proposed/review_basis/read_set"},
+        "method": "Read both trial counts against the hard criterion.", "materials_examined": [],
+        "shared_dependencies": [], "objection_refs": [], "verdict": "supports", "caveats": ["Synthetic trials only."],
+        "context_isolation": "fresh_context_unblinded",
+        "context": {
+          "saw_original_conclusion": {"state": "known", "value": true},
+          "gathered_new_evidence": {"state": "known", "value": false},
+          "method_or_source_changes": [], "activity": "Read the recorded basis.",
+          "dependencies": "shared", "dependence_basis": "The same synthetic trials."}}}]},
+     "bind": {"validation": "/created/0"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "preconditions": {"$concat": [{"$": "choice"}, {"$": "validation"}, {"$": "proposed/review_basis/read_set"}]},
+      "operations": [{"op": "decision.accept", "payload": {
+        "decision_ref": {"$": "choice"}, "review_ref": {"$": "validation"}}}]},
+     "bind": {"choice": "/updated/0"}},
+    {"audit": {}, "as": "clean",
+     "expect": {"outcome": "no_structural_gap_identified_under_checks", "check_ids": []}},
+    {"surface": "frontier", "expect": {"count": 0}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "choice/id"}, "--depth", "full"],
+     "expect": {"/record/body/lifecycle": "accepted", "/effective_status/state": "accepted"}},
+    {"record": {
+      "actor": "agent:drill-fresh-reviewer",
+      "response": true,
+      "preconditions": [{"$": "choice"}],
+      "operations": [
+        {"op": "option.create", "client_ref": "log", "payload": {
+          "question_ref": {"$": "question"},
+          "description": "Use an append-only log with consumer offsets",
+          "dependencies": [], "tradeoff_notes": ["Keeps acknowledged records by design; adds offset management."]}},
+        {"op": "objection.raise", "client_ref": "challenge", "payload": {
+          "subject_ref": {"$": "choice"},
+          "statement": "The choice never compared an append-only log, which keeps acknowledged jobs by design.",
+          "scope": "The set of compared alternatives.", "severity": "material",
+          "evidence_refs": {"state": "unknown"}}},
+        {"op": "review.submit", "payload": {
+          "kind": "blindspot",
+          "subject_ref": {"$": "choice"},
+          "audited_snapshot": {"$": "clean/snapshot"},
+          "read_set": [{"$": "question"}, {"$": "database_queue"}, {"$": "managed_queue"}],
+          "method": "Proposed alternatives that the recorded options do not name.",
+          "scope_examined": "The accepted choice and the alternatives it compared.",
+          "checks_considered": {"$": "clean/checks_run/*/check_id"},
+          "gaps": [],
+          "no_gap_reason": null,
+          "evidence_refs": [],
+          "assumption_refs": [],
+          "limitations": ["No new evidence was gathered; the alternative is unmeasured."],
+          "verdict": "gaps_identified",
+          "context_isolation": "fresh_context_unblinded",
+          "context": {
+            "saw_original_conclusion": {"state": "known", "value": true},
+            "gathered_new_evidence": {"state": "known", "value": false},
+            "method_or_source_changes": [],
+            "activity": "Read the question, options and choice; proposed an alternative no one compared.",
+            "dependencies": "shared",
+            "dependence_basis": "The same synthetic trials.",
+            "work_kind": {"state": "known", "value": "independent_interpretation"},
+            "prior_involvement": {"state": "known", "value": []},
+            "read_other_reviews": {"state": "known", "value": true}},
+          "audit": {"check_version": {"$": "clean/check_version"}, "check_set_digest": {"$": "clean/check_set_digest"}},
+          "novel_gaps": [
+            {"statement": "An append-only log is an alternative the choice never compared.",
+             "uncertainty": "Unmeasured against the hard criterion.",
+             "related_refs": [{"$": "question"}],
+             "record_refs": [{"client_ref": "challenge"}]}
+          ]}}
+      ]},
+     "as": "response",
+     "bind": {"rival": "/created/0", "challenge": "/created/1", "review": "/created/2"},
+     "expect": {"/warnings": []}},
+    {"surface": "next", "expect": {"contains": [
+      {"rule_id": "decision.hard_criterion_cell_missing", "subject": {"$": "rival/id"}},
+      {"rule_id": "decision.accepted_with_unresolved_hard_cell", "subject": {"$": "choice/id"}}]}},
+    {"surface": "frontier", "expect": {"count": 2, "contains": [
+      {"rule_id": "decision.hard_criterion_cell_missing", "subject": {"$": "rival/id"}},
+      {"rule_id": "decision.accepted_with_unresolved_hard_cell", "subject": {"$": "choice/id"}}]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "choice/id"}, "--depth", "full"],
+     "expect": {
+       "/record/header/revision": {"$": "choice/revision"},
+       "/record/body/lifecycle": "accepted",
+       "/effective_status/recorded": "accepted",
+       "/effective_status/state": "disputed"}},
+    {"audit": {}, "as": "later",
+     "replays": "clean",
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": [
+         "criterion.hard_unmeasured",
+         "decision.accepted_with_unresolved_hard_cell",
+         "promoted.open_material_objection"
+       ],
+       "findings": [
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "no_loss"}],
+          "facts_include": [{"fact": "hard_cell:missing", "refs": [{"$": "rival"}]}]},
+         {"check_id": "promoted.open_material_objection", "subject_refs": [{"$": "choice"}]}
+       ]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "review/id"}, "--depth", "full"],
+     "expect": {
+       "/record/body/kind": "blindspot",
+       "/record/body/subject_ref": {"$": "choice"},
+       "/record/body/audit/reported_gap_ids": [],
+       "/record/body/novel_gaps/0/origin": "reviewer",
+       "/record/body/novel_gaps/0/record_refs": [{"$": "challenge"}]}}
+  ]
+}

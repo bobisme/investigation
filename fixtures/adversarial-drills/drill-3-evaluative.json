@@ -1,0 +1,133 @@
+{
+  "drill": 3,
+  "form": "evaluative",
+  "title": "A blindspot that changes the answer: a queue choice ignores an unmeasured recovery guarantee",
+  "plan": "notes/plan.md §17.7 drill 3, §8.5, §20.1",
+  "description": "Scenario C variant. The checked-in architecture case is reopened, and a new choice of the dedicated broker is proposed. It cites only the enqueue-latency cells and states no hard condition, while the hard criterion that no acknowledged job is lost is unknown for every option. The audit reports the pinned checks, including criterion.hard_unmeasured on that criterion. The scripted reviewer records a blindspot Review, a Question and an Assumption in one transaction. No Decision changes.",
+  "base": {"workspace": "scenario-c"},
+  "steps": [
+    {"find": {"case": {"kind": "case", "where": {"/mode": "evaluate"}}}},
+    {"find": {
+      "question": {"kind": "q", "where": {"/wording": "Which queue design should the application use?"}},
+      "database_queue": {"kind": "opt", "where": {"/description": "Retain database-backed queue (do-nothing baseline)"}},
+      "managed_queue": {"kind": "opt", "where": {"/description": "Adopt managed queue"}},
+      "broker": {"kind": "opt", "where": {"/description": "Run dedicated broker"}},
+      "recovery_guarantee": {"kind": "crit", "where": {"/name": "No acknowledged job is lost"}},
+      "latency": {"kind": "crit", "where": {"/name": "Enqueue latency (small synthetic benchmark)"}},
+      "effort": {"kind": "crit", "where": {"/name": "Team implementation effort"}}
+    }},
+    {"find": {"latency_cells": {"kind": "cmp", "all": true, "where": {"/criterion_ref/id": {"$": "latency/id"}}}}},
+    {"record": {
+      "actor": "agent:drill-variant",
+      "preconditions": [{"$": "case"}],
+      "operations": [
+        {"op": "case.reopen", "payload": {"reason": "Drill 3 variant: a new queue choice is proposed on enqueue latency alone."}},
+        {"op": "decision.propose", "payload": {
+          "question_ref": {"$": "question"},
+          "choice": {"kind": "select", "option_ref": {"$": "broker"}},
+          "compared_alternatives": [{"$": "database_queue"}, {"$": "managed_queue"}, {"$": "broker"}],
+          "comparison_refs": {"$": "latency_cells"},
+          "hard_conditions": [],
+          "evidence_refs": [],
+          "assumption_refs": [],
+          "tradeoffs": ["The broker reports the lowest enqueue latency in the small benchmark."],
+          "consequences": ["Run a dedicated broker."],
+          "reopen_trigger": "A recovery test of the broker loses an acknowledged job.",
+          "reversal_conditions": []}}
+      ]},
+     "bind": {"choice": "/created/0"}},
+    {"audit": {}, "as": "audit",
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": [
+         "case.material_closure_without_current_retrospective",
+         "criterion.hard_unmeasured",
+         "criterion.weight_without_range"
+       ],
+       "findings": [
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_guarantee"}]},
+         {"check_id": "criterion.weight_without_range", "subject_refs": [{"$": "effort"}]}
+       ]}},
+    {"record": {
+      "actor": "agent:drill-reviewer",
+      "response": true,
+      "preconditions": [{"$": "choice"}],
+      "operations": [
+        {"op": "question.create", "client_ref": "recovery", "payload": {
+          "wording": "Does the dedicated broker lose an acknowledged job under the specified failure model?",
+          "importance": "high",
+          "context": "The recovery guarantee is a hard requirement and its cell is unknown for every option."}},
+        {"op": "assumption.create", "client_ref": "restart_only", "payload": {
+          "claim": "The broker's consumer-restart trial says nothing about recovery after an abrupt host stop.",
+          "consequence": "Reading it as a pass would let the choice ignore the hard recovery guarantee.",
+          "materiality": "material",
+          "affected_refs": [{"$": "choice"}]}},
+        {"op": "review.submit", "payload": {
+          "kind": "blindspot",
+          "subject_ref": {"$": "choice"},
+          "audited_snapshot": {"$": "audit/snapshot"},
+          "read_set": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/related_refs"},
+          "method": "Compared the proposed choice's cited cells with each hard criterion the audit reports.",
+          "scope_examined": "The proposed broker choice and the hard recovery guarantee of its question.",
+          "checks_considered": {"$": "audit/checks_run/*/check_id"},
+          "gaps": ["The choice cites no cell of the hard recovery guarantee, which is unknown for every option."],
+          "no_gap_reason": null,
+          "evidence_refs": [],
+          "assumption_refs": [],
+          "limitations": ["Recorded material only; no recovery trial was run."],
+          "verdict": "gaps_identified",
+          "context_isolation": "fresh_context_unblinded",
+          "context": {
+            "saw_original_conclusion": {"state": "known", "value": true},
+            "gathered_new_evidence": {"state": "known", "value": false},
+            "method_or_source_changes": [],
+            "activity": "Read the audit and the proposed choice.",
+            "dependencies": "shared",
+            "dependence_basis": "The same synthetic trials and benchmark.",
+            "work_kind": {"state": "known", "value": "independent_interpretation"},
+            "prior_involvement": {"state": "known", "value": []},
+            "read_other_reviews": {"state": "known", "value": true}},
+          "audit": {"check_version": {"$": "audit/check_version"}, "check_set_digest": {"$": "audit/check_set_digest"}},
+          "gap_dispositions": [
+            {"gap_id": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/gap_id"},
+             "disposition": "accepted",
+             "reason": "No option has an evidence-backed disposition for the hard recovery guarantee, so the latency ranking cannot settle the choice.",
+             "uncertainty": "The broker may meet the guarantee; it was not tested under the failure model.",
+             "related_refs": {"$": "audit/checks/[check_id=criterion.hard_unmeasured]/related_refs"},
+             "record_refs": [{"client_ref": "recovery"}]}
+          ],
+          "novel_gaps": [
+            {"statement": "The broker's restart-only trial cannot stand in for the specified failure model.",
+             "uncertainty": "A host-stop trial has not been run.",
+             "record_refs": [{"client_ref": "restart_only"}]}
+          ]}}
+      ]},
+     "as": "response",
+     "bind": {"question_recorded": "/created/0", "review_assumption": "/created/1", "review": "/created/2"}},
+    {"audit": {}, "as": "after",
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": [
+         "case.material_closure_without_current_retrospective",
+         "criterion.hard_unmeasured",
+         "criterion.weight_without_range"
+       ],
+       "findings": [
+         {"check_id": "criterion.hard_unmeasured", "subject_refs": [{"$": "recovery_guarantee"}]}
+       ]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "choice/id"}, "--depth", "full"],
+     "expect": {
+       "/record/header/revision": {"$": "choice/revision"},
+       "/record/body/lifecycle": "proposed",
+       "/record/body/hard_conditions": [],
+       "/record/body/comparison_refs": {"$": "latency_cells"}}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "review/id"}, "--depth", "full"],
+     "expect": {
+       "/record/body/kind": "blindspot",
+       "/record/body/subject_ref": {"$": "choice"},
+       "/record/body/gap_dispositions/0/check_id": "criterion.hard_unmeasured",
+       "/record/body/gap_dispositions/0/record_refs": [{"$": "question_recorded"}],
+       "/record/body/novel_gaps/0/origin": "reviewer",
+       "/record/body/novel_gaps/0/record_refs": [{"$": "review_assumption"}]}}
+  ]
+}

@@ -1,0 +1,189 @@
+{
+  "drill": 4,
+  "form": "explanatory",
+  "title": "A semantic gap outside rule coverage: a fresh reviewer proposes a rival explanation",
+  "plan": "notes/plan.md §17.7 drill 4, §8.5, §20.1",
+  "description": "A small timeout case built from the Scenario A slow trace. A validated conclusion rests on a checked quote, and both recorded hypotheses are assessed, so the audit is clean and the frontier is empty. A scripted fresh reviewer proposes retry-driven pool exhaustion, which no check could know about. The review records it as a rival Hypothesis plus a material Objection, cited as a novel gap. The rival then appears in next and frontier, the conclusion reads as disputed, and the clean audit replays unchanged at its own snapshot.",
+  "base": {
+    "init": true,
+    "sources": [{"from": "fixtures/development/scenario-a-timeout/baseline/sources/trace-slow.json", "as": "trace-slow.json"}]
+  },
+  "steps": [
+    {"record": {
+      "case": null,
+      "actor": "agent:drill-investigator",
+      "operations": [{"op": "case.create", "payload": {"title": "Why did the lookup request stall?", "mode": "explain"}}]},
+     "bind": {"case": "/created/0"}},
+    {"cli": ["ingest", "--input", "-"],
+     "stdin": {
+       "schema_version": "inv.ingest.v1", "command_id": "drill-4-explanatory-ingest", "actor": "agent:drill-investigator",
+       "case_id": {"$": "case/id"},
+       "source": {"title": "trace-slow.json", "format": "application/json"},
+       "paths": ["trace-slow.json"], "extract_text": true},
+     "as": "trace"},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "question.create", "client_ref": "question", "payload": {
+          "wording": "Why did the lookup request stall for 28 seconds?", "importance": "high"}},
+        {"op": "hypothesis.create", "client_ref": "held", "payload": {
+          "question_ref": {"client_ref": "question"},
+          "statement": "The request held its connection across the asynchronous callback wait.",
+          "assumption_refs": [], "rival_refs": [],
+          "possible_falsifiers": ["The connection is released before the callback wait begins."]}},
+        {"op": "hypothesis.create", "client_ref": "scheduler", "payload": {
+          "question_ref": {"client_ref": "question"},
+          "statement": "Scheduler delay alone accounts for the stall.",
+          "assumption_refs": [], "rival_refs": [{"client_ref": "held"}],
+          "possible_falsifiers": ["The callback ran promptly once scheduled."]}},
+        {"op": "observation.add", "client_ref": "wait", "payload": {
+          "value": {"kind": "text", "statement": "The slow trace records a 28-second callback wait."},
+          "basis": {"kind": "source",
+            "artifact_ref": {"id": {"$": "trace/items/0/derivative_id"}, "revision": 1},
+            "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "trace/items/0/digest"},
+              "selector": {"type": "byte_range", "start": 801, "end": 835}},
+            "text_quote": {"exact": "callback returned after 28 seconds"}},
+          "validity": "unknown", "quality": [], "limitations": ["One retained trace."],
+          "evidence_kind": "observational", "variables_changed": []}}
+      ]},
+     "bind": {"question": "/created/0", "held": "/created/1", "scheduler": "/created/2", "observation": "/created/3"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [{"op": "measurement.assess", "payload": {
+        "observation_ref": {"$": "observation"}, "channel": null, "validity": "valid",
+        "verification": [{"kind": "equivalent", "justification": "The trace records an aligned clock mapping for itself."}],
+        "rationale": "The trace's own clock mapping is aligned.", "limits": []}}]},
+     "bind": {"observation": "/updated/0"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [
+        {"op": "assessment.add", "payload": {
+          "subject_ref": {"$": "held"}, "evidence_refs": [{"$": "observation"}], "relation": "supports",
+          "rationale": "The callback wait falls inside the connection hold.",
+          "rival_expectations": [{"rival_ref": {"$": "scheduler"}, "expectation": "less_expected",
+            "rationale": "Scheduler delay alone would not keep the connection checked out."}]}},
+        {"op": "assessment.add", "payload": {
+          "subject_ref": {"$": "scheduler"}, "evidence_refs": [{"$": "observation"}], "relation": "inconclusive",
+          "rationale": "One trace cannot separate scheduler delay from the callback wait.",
+          "rival_expectations": [{"rival_ref": {"$": "held"}, "expectation": "equally_expected",
+            "rationale": "The trace fits both accounts."}]}}
+      ]}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "operations": [{"op": "conclusion.create", "payload": {
+        "statement": "The slow request waited 28 seconds for its callback while its connection stayed checked out.",
+        "scope": "This retained trace.", "significance": "The stall is a callback wait, not a slow query.",
+        "support_refs": [{"$": "observation"}], "contradiction_refs": [], "caveats": ["One trace."]}}]},
+     "bind": {"explanation": "/created/0"}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "explanation/id"}, "--depth", "full"], "as": "candidate"},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "preconditions": {"$concat": [{"$": "candidate/review_basis/subject_ref"}, {"$": "candidate/review_basis/read_set"}]},
+      "operations": [{"op": "conclusion.request_review", "payload": {"conclusion_ref": {"$": "explanation"}}}]},
+     "bind": {"explanation": "/updated/0"}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "explanation/id"}, "--depth", "full"], "as": "ready"},
+    {"record": {
+      "actor": "agent:drill-validator",
+      "operations": [{"op": "review.submit", "payload": {
+        "kind": "validation", "subject_ref": {"$": "ready/review_basis/subject_ref"},
+        "basis_digest": {"$": "ready/review_basis/basis_digest"}, "read_set": {"$": "ready/review_basis/read_set"},
+        "method": "Read the quoted trace line and its clock mapping.", "materials_examined": [],
+        "shared_dependencies": [], "objection_refs": [], "verdict": "supports", "caveats": ["One trace."],
+        "context_isolation": "fresh_context_unblinded",
+        "context": {
+          "saw_original_conclusion": {"state": "known", "value": true},
+          "gathered_new_evidence": {"state": "known", "value": false},
+          "method_or_source_changes": [], "activity": "Read the recorded basis.",
+          "dependencies": "shared", "dependence_basis": "The same retained trace."}}}]},
+     "bind": {"validation": "/created/0"}},
+    {"record": {
+      "actor": "agent:drill-investigator",
+      "preconditions": {"$concat": [{"$": "explanation"}, {"$": "validation"}, {"$": "ready/review_basis/read_set"}]},
+      "operations": [{"op": "conclusion.validate", "payload": {
+        "conclusion_ref": {"$": "explanation"}, "review_ref": {"$": "validation"}}}]},
+     "bind": {"explanation": "/updated/0"}},
+    {"audit": {}, "as": "clean",
+     "expect": {"outcome": "no_structural_gap_identified_under_checks", "check_ids": []}},
+    {"surface": "frontier", "expect": {"count": 0}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "explanation/id"}, "--depth", "full"],
+     "expect": {"/record/body/status": "validated", "/effective_status/state": "validated"}},
+    {"record": {
+      "actor": "agent:drill-fresh-reviewer",
+      "response": true,
+      "preconditions": [{"$": "explanation"}],
+      "operations": [
+        {"op": "hypothesis.create", "client_ref": "retry_storm", "payload": {
+          "question_ref": {"$": "question"},
+          "statement": "Retries exhausted the connection pool, so the callback queued behind them.",
+          "assumption_refs": [], "rival_refs": [{"$": "held"}],
+          "possible_falsifiers": ["Pool telemetry shows free connections throughout the wait."]}},
+        {"op": "objection.raise", "client_ref": "challenge", "payload": {
+          "subject_ref": {"$": "explanation"},
+          "statement": "The explanation does not consider retry-driven pool exhaustion as the cause of the wait.",
+          "scope": "The account of the 28-second wait.", "severity": "material",
+          "evidence_refs": {"state": "unknown"}}},
+        {"op": "review.submit", "payload": {
+          "kind": "blindspot",
+          "subject_ref": {"$": "explanation"},
+          "audited_snapshot": {"$": "clean/snapshot"},
+          "read_set": [{"$": "question"}, {"$": "held"}, {"$": "scheduler"}],
+          "method": "Proposed mechanisms that the recorded hypotheses do not name.",
+          "scope_examined": "The validated explanation and the hypotheses of its question.",
+          "checks_considered": {"$": "clean/checks_run/*/check_id"},
+          "gaps": [],
+          "no_gap_reason": null,
+          "evidence_refs": [],
+          "assumption_refs": [],
+          "limitations": ["No new evidence was gathered; the rival is untested."],
+          "verdict": "gaps_identified",
+          "context_isolation": "fresh_context_unblinded",
+          "context": {
+            "saw_original_conclusion": {"state": "known", "value": true},
+            "gathered_new_evidence": {"state": "known", "value": false},
+            "method_or_source_changes": [],
+            "activity": "Read the question, hypotheses and explanation; proposed an unrecorded mechanism.",
+            "dependencies": "shared",
+            "dependence_basis": "The same retained trace.",
+            "work_kind": {"state": "known", "value": "independent_interpretation"},
+            "prior_involvement": {"state": "known", "value": []},
+            "read_other_reviews": {"state": "known", "value": true}},
+          "audit": {"check_version": {"$": "clean/check_version"}, "check_set_digest": {"$": "clean/check_set_digest"}},
+          "novel_gaps": [
+            {"statement": "Retry-driven pool exhaustion is a rival explanation the record does not consider.",
+             "uncertainty": "Untested; no pool telemetry is recorded.",
+             "related_refs": [{"$": "question"}, {"$": "held"}],
+             "record_refs": [{"client_ref": "challenge"}]}
+          ]}}
+      ]},
+     "as": "response",
+     "bind": {"rival": "/created/0", "challenge": "/created/1", "review": "/created/2"},
+     "expect": {"/warnings": []}},
+    {"surface": "next", "expect": {"contains": [
+      {"rule_id": "hypothesis.no_assessment", "subject": {"$": "rival/id"}},
+      {"rule_id": "conclusion.disputed", "subject": {"$": "explanation/id"}}]}},
+    {"surface": "frontier", "expect": {"count": 2, "contains": [
+      {"rule_id": "hypothesis.no_assessment", "subject": {"$": "rival/id"}},
+      {"rule_id": "conclusion.disputed", "subject": {"$": "explanation/id"}}]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "explanation/id"}, "--depth", "full"],
+     "expect": {
+       "/record/header/revision": {"$": "explanation/revision"},
+       "/record/body/status": "validated",
+       "/effective_status/recorded": "validated",
+       "/effective_status/state": "disputed"}},
+    {"audit": {}, "as": "later",
+     "replays": "clean",
+     "cites_any_of": {"$": "response/created/*/id"},
+     "expect": {
+       "outcome": "gaps_identified_in_recorded_structure",
+       "check_ids": ["promoted.open_material_objection"],
+       "findings": [{"check_id": "promoted.open_material_objection", "subject_refs": [{"$": "explanation"}]}]}},
+    {"cli": ["--case", {"$": "case/id"}, "show", {"$": "review/id"}, "--depth", "full"],
+     "expect": {
+       "/record/body/kind": "blindspot",
+       "/record/body/subject_ref": {"$": "explanation"},
+       "/record/body/audit/reported_gap_ids": [],
+       "/record/body/audit/undispositioned_gap_ids": [],
+       "/record/body/novel_gaps/0/origin": "reviewer",
+       "/record/body/novel_gaps/0/record_refs": [{"$": "challenge"}]}}
+  ]
+}
