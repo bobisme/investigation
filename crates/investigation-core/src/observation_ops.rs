@@ -18,6 +18,7 @@ use crate::{
     header::SourceTime,
     identity::Kind,
     input,
+    measurement_fields::MeasurementFields,
     state::{OperationContext, Record},
     wire::{Digest, ErrorCode, Failure},
 };
@@ -62,6 +63,10 @@ struct ObservationAddPayload {
     variables_changed: Vec<String>,
     observed_at: Option<SourceTime>,
     run_ref: Option<RevisionRef>,
+    /// Optional typed measurement fields. Absent means not recorded; a field
+    /// with state `unknown` is recorded as explicitly unknown.
+    #[serde(default)]
+    measurement: Option<MeasurementFields>,
 }
 
 impl ObservationAddPayload {
@@ -76,6 +81,7 @@ impl ObservationAddPayload {
             evidence_kind: self.evidence_kind,
             variables_changed: self.variables_changed.clone(),
             observed_at: self.observed_at.clone(),
+            measurement: self.measurement.clone(),
         }
     }
 
@@ -91,6 +97,7 @@ impl ObservationAddPayload {
                 evidence_kind: self.evidence_kind,
                 variables_changed: self.variables_changed,
                 observed_at: self.observed_at,
+                measurement: self.measurement,
             },
             self.run_ref,
         )
@@ -113,6 +120,10 @@ struct ObservationCorrectPayload {
     variables_changed: Vec<String>,
     observed_at: Option<SourceTime>,
     run_ref: Option<RevisionRef>,
+    /// Optional typed measurement fields. Absent means not recorded; a field
+    /// with state `unknown` is recorded as explicitly unknown.
+    #[serde(default)]
+    measurement: Option<MeasurementFields>,
 }
 
 impl ObservationCorrectPayload {
@@ -130,6 +141,7 @@ impl ObservationCorrectPayload {
                 evidence_kind: self.evidence_kind,
                 variables_changed: self.variables_changed,
                 observed_at: self.observed_at,
+                measurement: self.measurement,
             },
             self.run_ref,
         )
@@ -151,16 +163,29 @@ pub(crate) fn operations() -> [OperationDescriptor; 3] {
                 "Record a bounded observation tied to a source selector or explicit assertion.",
             ),
             json!({
-                "value":{"kind":"text","statement":"A synthetic response reports a 28-second callback wait."},
-                "basis":{"kind":"assertion","assertion":"The test output reported this value.","context":"Synthetic demonstration only."},
-                "extraction_method":"direct_read",
+                "value":{"kind":"measurement","value":"0.62","unit":"fraction"},
+                "basis":{"kind":"assertion","assertion":"A reviewer counted documents that cite a primary source.","context":"Synthetic demonstration only."},
+                "extraction_method":"manual_count",
                 "validity":"unknown",
                 "quality":[],
                 "limitations":["Synthetic source."],
                 "evidence_kind":"observational",
                 "variables_changed":[],
                 "observed_at":null,
-                "run_ref":null
+                "run_ref":null,
+                "measurement":{
+                    "unit":{"state":"known","value":"fraction"},
+                    "workload":{"state":"known","value":"Synthetic sample of 50 documents."},
+                    "sample_count":{"state":"known","value":48},
+                    "trial_order":{"state":"unknown"},
+                    "attempts":{
+                        "started":{"count":{"state":"known","value":50},"definition":{"state":"known","value":"Documents drawn for review."}},
+                        "observed":{"count":{"state":"known","value":48},"definition":{"state":"known","value":"Documents read in full."}},
+                        "excluded":{"count":{"state":"known","value":2},"definition":{"state":"known","value":"Documents unavailable at review time."}}
+                    },
+                    "tool_identity":{"state":"known","value":{"rubric":{"state":"known","value":"citation-rubric-1"}}},
+                    "limitations":["One reviewer; agreement between reviewers was not checked."]
+                }
             }),
             validate_add,
             add,
@@ -248,7 +273,8 @@ fn decode<T: serde::de::DeserializeOwned>(body: &Value, metadata: &[&str]) -> Re
 
 fn validate_add(payload: &ObservationAddPayload) -> Result<(), Failure> {
     let add = payload.clone_add();
-    add.validate_shape().map_err(blocker_failure)
+    add.validate_shape().map_err(blocker_failure)?;
+    measurement_shape(&add.value, add.measurement.as_ref())
 }
 
 fn validate_correct(payload: &ObservationCorrectPayload) -> Result<(), Failure> {
@@ -263,9 +289,20 @@ fn validate_correct(payload: &ObservationCorrectPayload) -> Result<(), Failure> 
         evidence_kind: payload.evidence_kind,
         variables_changed: payload.variables_changed.clone(),
         observed_at: payload.observed_at.clone(),
+        measurement: payload.measurement.clone(),
     }
     .validate_shape()
-    .map_err(blocker_failure)
+    .map_err(blocker_failure)?;
+    measurement_shape(&payload.value, payload.measurement.as_ref())
+}
+
+fn measurement_shape(
+    value: &ObservationValue,
+    measurement: Option<&MeasurementFields>,
+) -> Result<(), Failure> {
+    measurement.map_or(Ok(()), |fields| {
+        fields.validate_for_observation(value, "/measurement")
+    })
 }
 
 fn validate_retract(payload: &ObservationRetractPayload) -> Result<(), Failure> {
@@ -435,6 +472,7 @@ fn accepted_body(
     context: &OperationContext<'_>,
 ) -> Result<ObservationBody, Failure> {
     add.validate_shape().map_err(blocker_failure)?;
+    measurement_shape(&add.value, add.measurement.as_ref())?;
     let (artifact_ref, digest, selector_validation, quote_validation) = match &add.basis {
         ObservationBasisRequest::Assertion { .. } => {
             if context.observation_proof()?.is_some() {
@@ -651,6 +689,7 @@ mod tests {
             evidence_kind: Some(EvidenceKind::Observational),
             variables_changed: vec![],
             observed_at: None,
+            measurement: None,
         }
     }
 
@@ -772,6 +811,7 @@ mod tests {
             evidence_kind: None,
             variables_changed: vec![],
             observed_at: None,
+            measurement: None,
         };
         let value = encode(add.into_body(None, None, None, None).unwrap()).unwrap();
         assert!(value.get("support").is_none());

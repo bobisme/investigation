@@ -20,9 +20,10 @@ use crate::{
     catalog::{OperationDescriptor, OperationInfo},
     command::RevisionRef,
     evidence::MeasurementValidity,
-    header::Actor,
+    header::{Actor, Knowledge},
     identity::Kind,
     input,
+    measurement_fields::{IdentityComponents, observation_fields},
     state::{OperationContext, Record, State},
     wire::{ErrorCode, Failure},
 };
@@ -44,7 +45,10 @@ pub enum VerificationRequest {
     /// A comparable Observation. It qualifies only when its own effective
     /// validity is `valid` and its recorded Run environment equals
     /// `expected_environment`, or the assessed Observation's recorded Run
-    /// environment when `expected_environment` is null.
+    /// environment when `expected_environment` is null. When the assessed
+    /// Observation or its Run records a structured environment or tool
+    /// identity, each known component must also be recorded with the same
+    /// value for the control.
     Control {
         observation_ref: RevisionRef,
         expected_environment: Option<String>,
@@ -93,6 +97,28 @@ pub struct Verification {
 pub struct ComparedEnvironments {
     pub required: Option<String>,
     pub control: Option<String>,
+    /// Structured environment and tool components compared, when the assessed
+    /// Observation or its Run records them. Empty when none were compared.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<ComponentComparison>,
+}
+
+/// One known identity component of the assessed measurement and the control's
+/// recorded value for it. `control` is null when unrecorded or unknown.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ComponentComparison {
+    pub scope: IdentityScope,
+    pub component: String,
+    pub required: String,
+    pub control: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum IdentityScope {
+    Environment,
+    Tool,
 }
 
 /// One attributed judgment. The assessor is the command actor.
@@ -390,6 +416,81 @@ pub fn recorded_environment(state: &State, observation: &Record) -> Option<Strin
         .map(str::to_owned)
 }
 
+/// The structured identity an Observation records, or else its exact Run's.
+fn recorded_identity(
+    state: &State,
+    observation: &Record,
+    scope: IdentityScope,
+) -> Option<Knowledge<IdentityComponents>> {
+    let fields = observation_fields(state, observation);
+    fields
+        .first(|fields| match scope {
+            IdentityScope::Environment => fields.environment_identity.as_ref(),
+            IdentityScope::Tool => fields.tool_identity.as_ref(),
+        })
+        .map(|(_, identity)| identity.clone())
+}
+
+/// Compare every known structured component of the target with the control.
+/// Unknown target components cannot be required and are not compared.
+fn compare_identities(
+    state: &State,
+    target: &Record,
+    control: &Record,
+    reasons: &mut Vec<&'static str>,
+) -> Vec<ComponentComparison> {
+    let mut compared = Vec::new();
+    for scope in [IdentityScope::Environment, IdentityScope::Tool] {
+        let Some(Knowledge::Known(required)) = recorded_identity(state, target, scope) else {
+            continue;
+        };
+        let control_identity = match recorded_identity(state, control, scope) {
+            Some(Knowledge::Known(identity)) => Some(identity),
+            _ => None,
+        };
+        let (unrecorded, unknown_component, mismatch) = match scope {
+            IdentityScope::Environment => (
+                "CONTROL_ENVIRONMENT_IDENTITY_UNRECORDED",
+                "CONTROL_ENVIRONMENT_COMPONENT_UNRECORDED",
+                "CONTROL_ENVIRONMENT_COMPONENT_MISMATCH",
+            ),
+            IdentityScope::Tool => (
+                "CONTROL_TOOL_IDENTITY_UNRECORDED",
+                "CONTROL_TOOL_COMPONENT_UNRECORDED",
+                "CONTROL_TOOL_COMPONENT_MISMATCH",
+            ),
+        };
+        for (component, value) in &required {
+            let Knowledge::Known(value) = value else {
+                continue;
+            };
+            let actual = control_identity
+                .as_ref()
+                .and_then(|identity| identity.get(component))
+                .and_then(|actual| match actual {
+                    Knowledge::Known(actual) => Some(actual.clone()),
+                    Knowledge::Unknown => None,
+                });
+            let reason = match &actual {
+                _ if control_identity.is_none() => unrecorded,
+                None => unknown_component,
+                Some(actual) if actual != value => mismatch,
+                Some(_) => "",
+            };
+            if !reason.is_empty() && !reasons.contains(&reason) {
+                reasons.push(reason);
+            }
+            compared.push(ComponentComparison {
+                scope,
+                component: component.clone(),
+                required: value.clone(),
+                control: actual,
+            });
+        }
+    }
+    compared
+}
+
 fn resolve(
     state: &State,
     target: &Record,
@@ -424,7 +525,12 @@ fn resolve(
                 .clone()
                 .or_else(|| recorded_environment(state, target));
             let actual = recorded_environment(state, control);
+            let components = compare_identities(state, target, control, &mut reasons);
+            let structured_environment = components
+                .iter()
+                .any(|item| item.scope == IdentityScope::Environment);
             match (&required, &actual) {
+                (None, _) if structured_environment => {}
                 (None, _) => reasons.push("REQUIRED_ENVIRONMENT_UNRECORDED"),
                 (_, None) => reasons.push("CONTROL_ENVIRONMENT_UNRECORDED"),
                 (Some(required), Some(actual)) if required != actual => {
@@ -435,6 +541,7 @@ fn resolve(
             compared = Some(ComparedEnvironments {
                 required,
                 control: actual,
+                components,
             });
             if reasons.is_empty() {
                 Qualification::Qualified
@@ -1003,7 +1110,8 @@ mod tests {
             verification.compared_environments,
             Some(ComparedEnvironments {
                 required: Some("build-41".into()),
-                control: Some("build-40".into())
+                control: Some("build-40".into()),
+                components: Vec::new(),
             })
         );
 

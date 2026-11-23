@@ -6,6 +6,99 @@
       "pattern": "^[A-Za-z0-9:_.-]+$",
       "type": "string"
     },
+    "AttemptCount": {
+      "additionalProperties": false,
+      "description": "One attempt count and what it counts.",
+      "properties": {
+        "count": {
+          "$ref": "#/$defs/Knowledge3"
+        },
+        "definition": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "count",
+        "definition"
+      ],
+      "type": "object"
+    },
+    "AttemptCounts": {
+      "additionalProperties": false,
+      "description": "Started, observed, timed-out, excluded and unknown attempt counts. Each is\nkept as recorded; the core does not reconcile one count against another.",
+      "properties": {
+        "excluded": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timed_out": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknown": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCount"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
     "EvidenceKind": {
       "enum": [
         "observational",
@@ -16,6 +109,522 @@
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge2": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/Quantity"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge3": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge4": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/TrialOrder"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge5": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/LoadModel"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge6": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/LoadLoop"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge7": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge8": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "additionalProperties": {
+                "$ref": "#/$defs/Knowledge"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LoadLoop": {
+      "oneOf": [
+        {
+          "const": "open",
+          "description": "Work arrives on its own schedule, whether or not earlier work finished.",
+          "type": "string"
+        },
+        {
+          "const": "closed",
+          "description": "New work waits for earlier work to finish.",
+          "type": "string"
+        }
+      ]
+    },
+    "LoadModel": {
+      "additionalProperties": false,
+      "properties": {
+        "loop": {
+          "$ref": "#/$defs/Knowledge6"
+        },
+        "timed_from_intended_send": {
+          "$ref": "#/$defs/Knowledge7",
+          "description": "Whether each duration is measured from the intended send time rather\nthan the actual send time."
+        }
+      },
+      "required": [
+        "loop",
+        "timed_from_intended_send"
+      ],
+      "type": "object"
+    },
+    "MeasurementFields": {
+      "additionalProperties": false,
+      "description": "Optional typed measurement fields. Absent means not recorded; `unknown`\nmeans recorded as explicitly unknown.",
+      "properties": {
+        "attempts": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttemptCounts"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Attempt accounting, each count with its definition."
+        },
+        "environment_identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge8"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Structured identity of the environment measured in."
+        },
+        "instrumentation_changed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge7"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether instrumentation changed relative to the runs this one is compared with."
+        },
+        "limitations": {
+          "description": "Limits of these measurement conditions.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "load_model": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge5"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How load was generated, for measurements taken under generated load."
+        },
+        "observation_window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Length of the window in which samples were taken."
+        },
+        "sample_count": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge3"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Number of samples the reported value rests on, as stated by the recorder."
+        },
+        "samples": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SampleSet"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Raw samples, flat or carrying their repetition level and order."
+        },
+        "tool_identity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge8"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Structured identity of the instrument or tool that measured."
+        },
+        "trial_order": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge4"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Order in which compared trials or conditions were run."
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Unit of the measured quantity. On an Observation with a measurement\nvalue, a known unit must equal `value.unit`."
+        },
+        "warmup": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Settling or warm-up period excluded before the observation window."
+        },
+        "workload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Identity of the workload, input set or procedure that was measured."
+        }
+      },
+      "type": "object"
+    },
+    "Quantity": {
+      "additionalProperties": false,
+      "description": "A decimal quantity with its unit.",
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "type": "object"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "Repetition": {
+      "additionalProperties": false,
+      "description": "Identity of one repeat of a measurement procedure. Each repeat is its own\nRun with a distinct acquisition; repeats share their series and setup.",
+      "properties": {
+        "acquisition": {
+          "$ref": "#/$defs/RunAcquisition",
+          "description": "Producer namespace and stable ID of this attempt. A second Run with the\nsame acquisition is rejected."
+        },
+        "series": {
+          "description": "Identity shared by every repeat of the same procedure.",
+          "type": "string"
+        },
+        "setup_refs": {
+          "default": [],
+          "description": "Setup dependencies the repeats share, such as a build Artifact or a\nsetup Run. Pinned to exact revisions when accepted.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "series",
+        "acquisition"
+      ],
+      "type": "object"
     },
     "RevisionRef": {
       "additionalProperties": false,
@@ -33,6 +642,22 @@
       "required": [
         "id",
         "revision"
+      ],
+      "type": "object"
+    },
+    "RunAcquisition": {
+      "additionalProperties": false,
+      "properties": {
+        "external_id": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "namespace",
+        "external_id"
       ],
       "type": "object"
     },
@@ -73,6 +698,116 @@
           "type": "object"
         }
       ]
+    },
+    "Sample": {
+      "additionalProperties": false,
+      "description": "One raw sample with its repetition level (build, process, iteration).",
+      "properties": {
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "iteration": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge3"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "order": {
+          "$ref": "#/$defs/Knowledge3",
+          "description": "Position in acquisition order. Known positions are unique within a set."
+        },
+        "process": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "value",
+        "order"
+      ],
+      "type": "object"
+    },
+    "SampleSet": {
+      "description": "Raw samples. A flat array is accepted; it carries no repetition level or\nacquisition order beyond its array position.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "shape": {
+              "const": "flat",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            },
+            "values": {
+              "items": {
+                "$ref": "#/$defs/DecimalString"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "shape",
+            "unit",
+            "values"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Each sample states its repetition level and acquisition order.",
+          "properties": {
+            "samples": {
+              "items": {
+                "$ref": "#/$defs/Sample"
+              },
+              "type": "array"
+            },
+            "shape": {
+              "const": "leveled",
+              "type": "string"
+            },
+            "unit": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "shape",
+            "unit",
+            "samples"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "TrialOrder": {
+      "enum": [
+        "interleaved",
+        "randomized",
+        "sequential"
+      ],
+      "type": "string"
     }
   },
   "$id": "urn:investigation:schema:v1:operation:run.start",
@@ -97,8 +832,32 @@
     "intent": {
       "$ref": "#/$defs/RunIntent"
     },
+    "measurement": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MeasurementFields"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional typed measurement fields known when the Run is declared."
+    },
     "producer": {
       "$ref": "#/$defs/Actor"
+    },
+    "repetition": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Repetition"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Identity of this Run as one repeat of a measurement procedure."
     },
     "tool": {
       "type": [

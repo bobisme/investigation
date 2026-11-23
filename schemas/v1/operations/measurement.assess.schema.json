@@ -37,7 +37,7 @@
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "A comparable Observation. It qualifies only when its own effective\nvalidity is `valid` and its recorded Run environment equals\n`expected_environment`, or the assessed Observation's recorded Run\nenvironment when `expected_environment` is null.",
+          "description": "A comparable Observation. It qualifies only when its own effective\nvalidity is `valid` and its recorded Run environment equals\n`expected_environment`, or the assessed Observation's recorded Run\nenvironment when `expected_environment` is null. When the assessed\nObservation or its Run records a structured environment or tool\nidentity, each known component must also be recorded with the same\nvalue for the control.",
           "properties": {
             "expected_environment": {
               "type": [

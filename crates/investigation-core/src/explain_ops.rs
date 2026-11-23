@@ -21,6 +21,7 @@ use crate::{
     },
     header::Actor,
     identity::{Id, Kind},
+    measurement_fields::{MeasurementFields, Repetition, recorded_repetition},
     review::{AssessmentAdd, AssessmentRelation, Expectation, RivalExpectation},
     state::{OperationContext, Record},
     wire::{Digest, ErrorCode, Failure},
@@ -114,6 +115,12 @@ struct RunStart {
     evidence_kind: EvidenceKind,
     #[serde(default)]
     variables_changed: Vec<String>,
+    /// Optional typed measurement fields known when the Run is declared.
+    #[serde(default)]
+    measurement: Option<MeasurementFields>,
+    /// Identity of this Run as one repeat of a measurement procedure.
+    #[serde(default)]
+    repetition: Option<Repetition>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -764,6 +771,57 @@ fn run_shape(payload: &RunRecord) -> Result<(), Failure> {
             ));
         }
     }
+    if let Some(measurement) = &payload.measurement {
+        measurement.validate("/measurement")?;
+    }
+    if let Some(repetition) = &payload.repetition {
+        repetition.validate("/repetition")?;
+    }
+    Ok(())
+}
+
+/// Pin a repetition's shared setup references to exact revisions.
+fn pin_repetition(
+    ctx: &OperationContext<'_>,
+    repetition: Option<&mut Repetition>,
+    path: &str,
+) -> Result<(), Failure> {
+    match repetition {
+        Some(repetition) => pin_all(
+            ctx,
+            &mut repetition.setup_refs,
+            &[Kind::Artifact, Kind::Run, Kind::Source],
+            &format!("{path}/setup_refs"),
+        ),
+        None => Ok(()),
+    }
+}
+
+/// A repeat is a distinct Run: no other Run in the case may record the same
+/// acquisition identity.
+fn distinct_acquisition(
+    ctx: &OperationContext<'_>,
+    repetition: Option<&Repetition>,
+    this: Option<Id>,
+    path: &str,
+) -> Result<(), Failure> {
+    let Some(repetition) = repetition else {
+        return Ok(());
+    };
+    let prior = ctx.records().find(|record| {
+        record.header.id.kind() == Kind::Run
+            && Some(record.header.id) != this
+            && recorded_repetition(&record.body)
+                .is_some_and(|other| other.acquisition == repetition.acquisition)
+    });
+    if let Some(prior) = prior {
+        let mut failure = blocked(
+            &format!("{path}/acquisition"),
+            "Another Run already records this acquisition. Give each repeat its own acquisition identity, or reconcile the existing Run.",
+        );
+        failure.error.actual = Some(json!(prior.reference()));
+        return Err(failure);
+    }
     Ok(())
 }
 
@@ -824,6 +882,8 @@ fn run_create(
         &[Kind::Artifact],
         "/artifact_refs",
     )?;
+    pin_repetition(ctx, payload.repetition.as_mut(), "/repetition")?;
+    distinct_acquisition(ctx, payload.repetition.as_ref(), None, "/repetition")?;
     let sequence = ctx.acceptance_sequence();
     let order = match payload.intent {
         RunIntent::Plan { plan_ref } => plan_order(ctx, plan_ref, sequence)?,
@@ -888,6 +948,8 @@ fn run_start(payload: RunStart, ctx: &mut OperationContext<'_>) -> Result<(), Fa
             evidence_kind: payload.evidence_kind,
             variables_changed: payload.variables_changed,
             search_coverage: None,
+            measurement: payload.measurement,
+            repetition: payload.repetition,
         },
         payload.external_ref,
         MeasurementValidity::Unknown,
@@ -926,6 +988,32 @@ fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> R
         &[Kind::Artifact],
         "/outcome/artifact_refs",
     )?;
+    pin_repetition(
+        ctx,
+        payload.outcome.repetition.as_mut(),
+        "/outcome/repetition",
+    )?;
+    match (&old.repetition, &payload.outcome.repetition) {
+        (Some(old), Some(new))
+            if old.series == new.series
+                && old.acquisition == new.acquisition
+                && old
+                    .setup_refs
+                    .iter()
+                    .all(|reference| new.setup_refs.contains(reference)) => {}
+        (Some(_), _) => {
+            return Err(blocked(
+                "/outcome/repetition",
+                "Preserve the repetition series, acquisition and setup references. A separate attempt requires a new run.",
+            ));
+        }
+        (None, new) => distinct_acquisition(
+            ctx,
+            new.as_ref(),
+            Some(payload.run_ref.id),
+            "/outcome/repetition",
+        )?,
+    }
     let open_execution = matches!(
         old.execution_status,
         ExecutionStatus::Declared | ExecutionStatus::Running | ExecutionStatus::Unknown
@@ -1373,6 +1461,45 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             "variables_changed": [],
         })
     };
+    let benchmark = || {
+        let mut run = outcome();
+        run["measurement"] = json!({
+            "unit": {"state": "known", "value": "ms"},
+            "workload": {"state": "known", "value": "Synthetic request mix A."},
+            "observation_window": {"state": "known", "value": {"value": "300", "unit": "s"}},
+            "warmup": {"state": "known", "value": {"value": "30", "unit": "s"}},
+            "sample_count": {"state": "known", "value": 2},
+            "samples": {"shape": "leveled", "unit": "ms", "samples": [
+                {"value": "10.4", "order": {"state": "known", "value": 0},
+                 "build": {"state": "known", "value": "build-41"},
+                 "process": {"state": "known", "value": "1"},
+                 "iteration": {"state": "known", "value": 0}},
+                {"value": "10.9", "order": {"state": "known", "value": 1},
+                 "build": {"state": "known", "value": "build-41"},
+                 "process": {"state": "known", "value": "1"},
+                 "iteration": {"state": "known", "value": 1}}
+            ]},
+            "trial_order": {"state": "known", "value": "interleaved"},
+            "load_model": {"state": "known", "value": {
+                "loop": {"state": "known", "value": "open"},
+                "timed_from_intended_send": {"state": "known", "value": true}
+            }},
+            "attempts": {
+                "started": {"count": {"state": "known", "value": 100}, "definition": {"state": "known", "value": "Requests sent."}},
+                "observed": {"count": {"state": "known", "value": 95}, "definition": {"state": "known", "value": "Requests answered."}},
+                "timed_out": {"count": {"state": "known", "value": 5}, "definition": {"state": "known", "value": "Requests unanswered after 1 s."}},
+                "excluded": {"count": {"state": "known", "value": 0}, "definition": {"state": "known", "value": "Requests removed by the stated exclusion policy."}}
+            },
+            "environment_identity": {"state": "known", "value": {
+                "build": {"state": "known", "value": "build-41"},
+                "host": {"state": "unknown"}
+            }},
+            "tool_identity": {"state": "known", "value": {"version": {"state": "known", "value": "2.1"}}},
+            "instrumentation_changed": {"state": "known", "value": false},
+            "limitations": ["Synthetic example; one host."]
+        });
+        run
+    };
     let assessment = || {
         json!({
             "subject_ref": exact_example(Kind::Hypothesis),
@@ -1577,8 +1704,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             "Run ID and revision 1.",
             "Pin every retained artifact and any frozen plan revision.",
             "Give execution status and evidence completeness as independent claims.",
-            ["run.reconcile", "observation.add"],
-            outcome(),
+            ["run.reconcile", "observation.add", "measurement.assess"],
+            benchmark(),
             |payload: &RunSubmission| run_shape(&payload.outcome),
             run_record
         ),

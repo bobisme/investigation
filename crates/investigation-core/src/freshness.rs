@@ -367,6 +367,12 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
             out.add(&body["intent"], "plan_ref", "intent.plan_ref", ChangeOnly)?;
             out.add(body, "artifact_refs", "artifact_refs", Inherit)?;
             out.add(
+                &body["repetition"],
+                "setup_refs",
+                "repetition.setup_refs",
+                Inherit,
+            )?;
+            out.add(
                 body,
                 "retrospective_plan_ref",
                 "retrospective_plan_ref",

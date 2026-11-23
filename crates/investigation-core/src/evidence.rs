@@ -476,6 +476,9 @@ pub struct ObservationAdd {
     pub evidence_kind: Option<EvidenceKind>,
     pub variables_changed: Vec<String>,
     pub observed_at: Option<SourceTime>,
+    /// Optional typed measurement fields; see `measurement_fields`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measurement: Option<crate::measurement_fields::MeasurementFields>,
 }
 
 /// Persisted observation domain fields. `basis` stores the core-computed
@@ -492,6 +495,8 @@ pub struct ObservationBody {
     pub evidence_kind: Option<EvidenceKind>,
     pub variables_changed: Vec<String>,
     pub observed_at: Option<SourceTime>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measurement: Option<crate::measurement_fields::MeasurementFields>,
 }
 
 impl ObservationAdd {
@@ -660,6 +665,7 @@ impl ObservationAdd {
             evidence_kind: self.evidence_kind,
             variables_changed: self.variables_changed,
             observed_at: self.observed_at,
+            measurement: self.measurement,
         })
     }
 }

@@ -179,6 +179,12 @@ pub struct RunRecord {
     pub evidence_kind: EvidenceKind,
     pub variables_changed: Vec<String>,
     pub search_coverage: Option<SearchCoverage>,
+    /// Optional typed measurement fields; see `measurement_fields`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub measurement: Option<crate::measurement_fields::MeasurementFields>,
+    /// Identity of this Run as one repeat of a measurement procedure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub repetition: Option<crate::measurement_fields::Repetition>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
