@@ -152,6 +152,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
         );
     }
     let text = render_text(&value, &response);
+    investigation_store::store::free_later(inventory);
     Ok(Output::new(value, text))
 }
 

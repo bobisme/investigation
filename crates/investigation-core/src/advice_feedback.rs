@@ -324,7 +324,7 @@ pub(crate) fn apply(state: &State, case_id: Id, gaps: &mut [Gap]) {
         if advice_state == AdviceState::Deferred {
             gap.status = GapStatus::Deferred;
         }
-        gap.advice = Some(GapAdvice {
+        gap.advice = Some(Box::new(GapAdvice {
             state: advice_state,
             feedback_ref: record.reference(),
             recorded_by: record.header.created_by.clone(),
@@ -334,7 +334,7 @@ pub(crate) fn apply(state: &State, case_id: Id, gaps: &mut [Gap]) {
             has_revisit_condition: feedback.revisit_condition.is_some(),
             resurfaced_because: changes,
             notice: NOTICE.into(),
-        });
+        }));
     }
 }
 

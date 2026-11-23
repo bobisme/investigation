@@ -103,10 +103,25 @@ impl fmt::Display for Kind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Id {
     kind: Kind,
     uuid: Uuid,
+}
+/// By kind, then by UUID bytes: the order a derive gives, with the UUID
+/// compared as one big-endian number instead of byte by byte. Every map keyed
+/// by ID compares IDs on each lookup.
+impl Ord for Id {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.kind
+            .cmp(&other.kind)
+            .then_with(|| self.uuid.as_u128().cmp(&other.uuid.as_u128()))
+    }
+}
+impl PartialOrd for Id {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IdError {
@@ -243,6 +258,36 @@ pub fn resolve_prefix(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ids_order_by_kind_then_uuid_bytes() {
+        // UUIDs that differ in the first, a middle and the last byte, and at
+        // the top bit of a byte, so a word-wise compare that broke byte order
+        // would show.
+        let uuids = [
+            "01890f3e-7c00-7000-8000-000000000001",
+            "01890f3e-7c00-7000-8000-000000000002",
+            "01890f3e-7c00-7000-8000-000000000080",
+            "01890f3e-7c00-7000-8000-000000000100",
+            "01890f3e-7c00-7000-8000-800000000000",
+            "01890f3e-7c00-7000-bfff-ffffffffffff",
+            "01890f3f-0000-7000-8000-000000000000",
+            "81890f3e-7c00-7000-8000-000000000000",
+            "ff890f3e-7c00-7fff-8000-000000000000",
+        ]
+        .map(|text| Uuid::parse_str(text).unwrap());
+        let ids: Vec<Id> = [Kind::Case, Kind::Option, Kind::Criterion, Kind::Workspace]
+            .into_iter()
+            .flat_map(|kind| uuids.iter().map(move |&uuid| Id::new(kind, uuid).unwrap()))
+            .collect();
+        for a in &ids {
+            for b in &ids {
+                let expected = (a.kind, a.uuid.as_bytes()).cmp(&(b.kind, b.uuid.as_bytes()));
+                assert_eq!(a.cmp(b), expected, "{a} vs {b}");
+                assert_eq!(a.partial_cmp(b), Some(expected));
+                assert_eq!(a.cmp(b) == std::cmp::Ordering::Equal, a == b);
+            }
+        }
+    }
     #[test]
     fn all_prefixes_round_trip_and_reject_wrong_kind() {
         let u = Uuid::parse_str("01890f3e-7c00-7000-8000-000000000001").unwrap();

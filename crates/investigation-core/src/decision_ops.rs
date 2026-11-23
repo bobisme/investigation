@@ -930,6 +930,11 @@ fn pareto_of(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Fai
         }
         let mut dominated = false;
         let mut any_indeterminate = criteria.is_empty();
+        // The option's own cell on each criterion, the same against every rival.
+        let own: Vec<Option<&[(RevisionRef, ComparisonBody)]>> = criteria
+            .iter()
+            .map(|(cr, _)| cells.get(&(option.id, cr.id)).map(Vec::as_slice))
+            .collect();
         for other in &opts {
             if other.id == option.id {
                 continue;
@@ -938,16 +943,20 @@ fn pareto_of(s: &State, case: Id, question: Id) -> Result<Vec<ParetoOption>, Fai
             let mut inferior = false;
             let mut comparable = !criteria.is_empty();
             let mut pair_cells = Vec::new();
-            for (cr, c) in criteria {
+            for ((cr, c), b) in criteria.iter().zip(&own) {
                 if c.option_refs.as_ref().is_some_and(|v| {
                     !v.iter().any(|x| x.id == option.id) || !v.iter().any(|x| x.id == other.id)
                 }) {
                     comparable = false;
                     break;
                 }
-                let a = cells.get(&(other.id, cr.id)).map(Vec::as_slice);
-                let b = cells.get(&(option.id, cr.id)).map(Vec::as_slice);
-                let (Some([(ar, ac)]), Some([(_, bc)])) = (a, b) else {
+                // Both cells must be single; the option's own is checked first
+                // because it needs no lookup.
+                let Some([(_, bc)]) = b else {
+                    comparable = false;
+                    break;
+                };
+                let Some([(ar, ac)]) = cells.get(&(other.id, cr.id)).map(Vec::as_slice) else {
                     comparable = false;
                     break;
                 };

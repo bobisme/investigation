@@ -8,7 +8,13 @@
 //! exposed with its source. Nothing here is a probability, an expected
 //! information gain, a cost estimate or a score, and nothing is summed.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Cow,
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+    ops::Deref,
+    sync::{Arc, Mutex, OnceLock, PoisonError},
+};
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -293,65 +299,91 @@ pub struct NextResponse {
 /// exposed; they are never summed into a pseudo-score.
 pub fn rank_next(state: &State, inventory: &GapInventory, requested_limit: usize) -> NextResponse {
     let limit = requested_limit.min(DEFAULT_NEXT_LIMIT);
-    let context = Context::build(state, inventory);
+    let facts = Facts::build(state, inventory);
+    // Every eligible gap gets its rank key and value class. The words and
+    // example references that explain a value are written only for the
+    // recommendations shown, by the same analysis (`Context::explain`).
+    // Each gap's outcome depends on the replay alone, so a large inventory is
+    // analyzed on a few threads; the outcomes come back in inventory order
+    // and are folded below exactly as one loop would.
+    let outcomes = crate::parallel::map_chunks(
+        &inventory.gaps,
+        inventory.gaps.len().saturating_mul(RANK_WORK_PER_GAP),
+        |gaps| {
+            let context = Context::new(&facts);
+            gaps.iter().map(|gap| context.outcome(gap)).collect()
+        },
+    );
     let mut ranked = Vec::new();
+    // Which inventory positions were ranked, for the group counts.
+    let mut is_ranked = vec![false; inventory.gaps.len()];
     let mut withheld = BTreeMap::<Id, WithheldGaps>::new();
     let mut withheld_ids = BTreeSet::new();
-    for gap in inventory.gaps.iter().filter(|gap| eligible(gap.status)) {
-        let analysis = context.analyze(gap);
-        if let Some((option_ref, determining_refs)) = &analysis.withhold {
-            withheld_ids.insert(gap.gap_id.as_str());
-            withheld
-                .entry(option_ref.id)
-                .or_insert_with(|| WithheldGaps {
-                    reason_code: "soft_criterion_on_hard_disqualified_option".into(),
-                    explanation: "The option already fails a hard criterion on a verified comparison, so no soft-criterion result can change its disposition or Pareto status. Measuring it is not recommended.".into(),
-                    option_ref: *option_ref,
-                    determining_refs: determining_refs.clone(),
-                    gap_count: 0,
-                    filter: GapFilter {
-                        rule_ids: [SOFT_CELL_MISSING.to_owned()].into(),
-                        read_ids: [option_ref.id].into(),
-                        ..GapFilter::default()
-                    },
-                })
-                .gap_count += 1;
-            continue;
+    for (index, (gap, outcome)) in inventory.gaps.iter().zip(outcomes).enumerate() {
+        match outcome {
+            Outcome::NotEligible => {}
+            Outcome::Withheld(option_ref, determining_refs) => {
+                withheld_ids.insert(gap.gap_id.as_str());
+                withheld
+                    .entry(option_ref.id)
+                    .or_insert_with(|| WithheldGaps {
+                        reason_code: "soft_criterion_on_hard_disqualified_option".into(),
+                        explanation: "The option already fails a hard criterion on a verified comparison, so no soft-criterion result can change its disposition or Pareto status. Measuring it is not recommended.".into(),
+                        option_ref,
+                        determining_refs,
+                        gap_count: 0,
+                        filter: GapFilter {
+                            rule_ids: [SOFT_CELL_MISSING.to_owned()].into(),
+                            read_ids: [option_ref.id].into(),
+                            ..GapFilter::default()
+                        },
+                    })
+                    .gap_count += 1;
+            }
+            Outcome::Ranked(item) => {
+                is_ranked[index] = true;
+                ranked.push(item);
+            }
         }
-        ranked.push((analysis.key(gap), gap, analysis));
     }
-    ranked.sort_by(|a, b| a.0.cmp(&b.0));
+    // The key ends with the gap ID, so ties keep the order a sort of full
+    // analyses had.
+    ranked.sort_by(|a, b| a.key.cmp(&b.key));
 
     let mut seen_groups = BTreeSet::new();
     let mut representatives = Vec::new();
-    for (_, gap, analysis) in &ranked {
+    for item in &ranked {
+        let gap = item.gap;
         if let Some(criterion) = group_criterion(gap)
-            && !seen_groups.insert((gap.rule_id.as_str(), criterion.id))
+            && !seen_groups.insert((criterion.id, gap.rule_id.as_str()))
         {
             continue;
         }
-        representatives.push((*gap, analysis));
+        representatives.push(item);
     }
+    let context = Context::new(&facts);
     let recommendations = representatives
         .iter()
         .take(limit)
         .enumerate()
-        .map(|(index, (gap, analysis))| {
+        .map(|(index, item)| {
+            let gap = item.gap;
+            let (analysis, value) = context.explain(gap);
+            debug_assert!(analysis.key(gap) == item.key, "explained key differs");
             let group = group_criterion(gap)
-                .map(|criterion| context.group(inventory, gap, criterion, &ranked, &withheld_ids))
+                .map(|criterion| {
+                    context.group(inventory, gap, criterion, &is_ranked, &withheld_ids)
+                })
                 .filter(|group| group.gap_count > 1);
-            recommendation(gap, analysis, group, index + 1)
+            recommendation(gap, &analysis, value, group, index + 1)
         })
         .collect();
 
-    let ranked_effects: Vec<&str> = ranked
-        .iter()
-        .map(|(_, _, analysis)| analysis.value.decision_effect.as_str())
-        .collect();
+    let ranked_effects: Vec<&str> = ranked.iter().map(|item| item.effect).collect();
     let stalls: Vec<&str> = ranked
         .iter()
-        .filter(|(_, _, analysis)| analysis.stall)
-        .map(|(_, gap, _)| gap.gap_id.as_str())
+        .filter(|item| item.stall)
+        .map(|item| item.gap.gap_id.as_str())
         .collect();
     let stop_or_defer = stop_or_defer(&ranked_effects, withheld_ids.len(), &stalls);
     NextResponse {
@@ -488,21 +520,46 @@ fn count_gaps(gaps: &[Gap]) -> GapCounts {
     }
 }
 
-type ParetoTable = Result<BTreeMap<Id, ParetoOption>, String>;
+/// The Pareto status of every eligible option of one question, by option.
+struct ParetoTable {
+    options: BTreeMap<Id, ParetoOption>,
+    /// How many options are not disqualified_hard: each is a rival of every
+    /// other option of the question.
+    not_disqualified: usize,
+}
 
-/// A value class, rewritten outcome branches if any, and the option and
-/// determining cells when the gap is withheld.
-type Valued = (
-    DecisionValue,
-    Option<Vec<OutcomeBranch>>,
-    Option<(RevisionRef, Vec<RevisionRef>)>,
-);
+/// One ranked gap: its key, its value class and whether it is a stall.
+struct Ranked<'a> {
+    key: RankKey<'a>,
+    gap: &'a Gap,
+    effect: &'a str,
+    stall: bool,
+}
 
-/// Everything the ranking reads from one replay, gathered in one pass.
-struct Context<'a> {
+/// The analysis of one gap, as the fold in `rank_next` takes it.
+enum Outcome<'a> {
+    NotEligible,
+    /// The option and its determining cells.
+    Withheld(RevisionRef, Vec<RevisionRef>),
+    Ranked(Ranked<'a>),
+}
+
+/// The elementary steps the analysis of one gap takes, for
+/// `parallel::map_chunks`.
+const RANK_WORK_PER_GAP: usize = 4;
+
+/// A Pareto table shared by the threads of one ranking: computed by the
+/// first that needs it, read by the others.
+type SharedTable = Arc<Result<ParetoTable, String>>;
+
+/// Everything the ranking reads from one replay, gathered in one pass, and
+/// shared by the threads that analyze its gaps.
+struct Facts<'a> {
     state: &'a State,
-    /// Pareto status by question, computed only for questions with cell gaps.
-    pareto: BTreeMap<Id, ParetoTable>,
+    case_id: Id,
+    /// Pareto status by question, computed once for each question that a
+    /// cell gap reads, whichever thread reads it first.
+    pareto: Mutex<BTreeMap<Id, Arc<OnceLock<SharedTable>>>>,
     /// Unknown or retracted comparisons by (option, criterion).
     prior_cells: BTreeMap<(Id, Id), Vec<RevisionRef>>,
     /// Inconclusive or non-diagnostic assessments by subject hypothesis.
@@ -513,26 +570,119 @@ struct Context<'a> {
     live_hypotheses: BTreeMap<Id, Vec<RevisionRef>>,
 }
 
-struct Analysis {
-    value: DecisionValue,
+/// The analysis of gaps on one thread: the shared facts, and memos of what
+/// every gap of a criterion or question reads again. The memos live as long
+/// as this one ranking of one replay.
+struct Context<'f, 'a> {
+    facts: &'f Facts<'a>,
+    /// This thread's handles on the shared Pareto tables.
+    tables: RefCell<BTreeMap<Id, SharedTable>>,
+    /// Memo of `question_ref` of the current record with an ID. Every gap of
+    /// a criterion reads the same records; the memo lives as long as this
+    /// one ranking of one replay.
+    question_refs: RefCell<BTreeMap<Id, Option<RevisionRef>>>,
+    /// Memo of what a cell value reads of a criterion.
+    criteria: RefCell<BTreeMap<Id, CriterionFacts<'a>>>,
+    /// Memo of `question_of(id, 3)`, the question a gap subject serves.
+    subject_questions: RefCell<BTreeMap<Id, Option<&'a Record>>>,
+}
+
+/// The rank of one gap, and with `Context::explain` the words and example
+/// references of its factors.
+struct Analysis<'a> {
+    /// The value class: `value.decision_effect` when explained.
+    effect: &'a str,
     branches: Option<Vec<OutcomeBranch>>,
+    /// The option and its determining cells when the gap is withheld.
     withhold: Option<(RevisionRef, Vec<RevisionRef>)>,
     /// Advisory gaps are never consequential blockers.
     advisory: bool,
     /// Stall gaps rank as consequential: repeating the step that stalled is
     /// unlikely to change the picture.
     stall: bool,
-    applicability: (u8, OrdinalPriority, String, Vec<RevisionRef>),
-    novelty: (u8, OrdinalPriority, String, Vec<RevisionRef>),
+    applicability: Factor,
+    novelty: Factor,
 }
 
-type RankKey = (u8, u8, u8, u8, u8, u8, u8, u64, String);
+/// One ordinal factor: its key, its priority, and when explained its source
+/// and the records it read (empty otherwise).
+struct Factor {
+    key: u8,
+    priority: OrdinalPriority,
+    source: String,
+    refs: Vec<RevisionRef>,
+}
 
-impl Analysis {
-    fn key(&self, gap: &Gap) -> RankKey {
+impl Factor {
+    fn new(
+        key: u8,
+        priority: OrdinalPriority,
+        explain: bool,
+        words: impl FnOnce() -> (String, Vec<RevisionRef>),
+    ) -> Self {
+        let (source, refs) = if explain {
+            words()
+        } else {
+            (String::new(), Vec::new())
+        };
+        Self {
+            key,
+            priority,
+            source,
+            refs,
+        }
+    }
+}
+
+/// What a cell value reads of the criterion of the cell.
+#[derive(Clone, Copy)]
+struct CriterionFacts<'a> {
+    /// The current criterion record.
+    record: Option<&'a Record>,
+    /// Whether it is a hard criterion.
+    hard: bool,
+    /// The question it names.
+    question: Option<RevisionRef>,
+}
+
+/// A value class, and when explained its value and rewritten outcome
+/// branches, if any.
+struct Valued<'a> {
+    effect: &'a str,
+    explained: Option<(DecisionValue, Option<Vec<OutcomeBranch>>)>,
+    withhold: Option<(RevisionRef, Vec<RevisionRef>)>,
+}
+
+impl<'a> Valued<'a> {
+    /// `effect`, with the value `write` gives it when explained.
+    fn new(
+        effect: &'a str,
+        explain: bool,
+        write: impl FnOnce(&str) -> (DecisionValue, Option<Vec<OutcomeBranch>>),
+    ) -> Self {
+        Self {
+            effect,
+            explained: explain.then(|| write(effect)),
+            withhold: None,
+        }
+    }
+
+    /// The emitting rule's own class, with an optional note on why nothing
+    /// narrowed it.
+    fn fixed(gap: &'a Gap, explain: bool, note: impl FnOnce() -> Option<String>) -> Self {
+        Self::new(&gap.decision_effect, explain, |_| {
+            (static_value(gap, note().as_deref()), None)
+        })
+    }
+}
+
+type RankKey<'a> = (u8, u8, u8, u8, u8, u8, u8, u64, &'a str);
+
+impl<'a> Analysis<'a> {
+    fn key(&self, gap: &'a Gap) -> RankKey<'a> {
         let integrity = u8::from(!gap.rule_id.starts_with("store.integrity."));
         let preservation = u8::from(!gap.time_sensitive);
-        let effect = self.value.decision_effect.as_str();
+        let effect = self.effect;
         let consequential =
             u8::from(!self.stall && (self.advisory || !matches!(effect, FLIP | DISCRIMINATE)));
         let decision_value = match effect {
@@ -548,20 +698,21 @@ impl Analysis {
             preservation,
             consequential,
             decision_value,
-            self.applicability.0,
+            self.applicability.key,
             cost,
-            self.novelty.0,
+            self.novelty.key,
             gap.creation_sequence,
-            gap.gap_id.clone(),
+            gap.gap_id.as_str(),
         )
     }
 }
 
-impl<'a> Context<'a> {
+impl<'a> Facts<'a> {
     fn build(state: &'a State, inventory: &GapInventory) -> Self {
         let mut context = Self {
             state,
-            pareto: BTreeMap::new(),
+            case_id: inventory.case_id,
+            pareto: Mutex::default(),
             prior_cells: BTreeMap::new(),
             inconclusive_assessments: BTreeMap::new(),
             failed_runs: BTreeMap::new(),
@@ -626,30 +777,98 @@ impl<'a> Context<'a> {
                 _ => {}
             }
         }
-        let questions: BTreeSet<Id> = inventory
-            .gaps
-            .iter()
-            .filter(|gap| eligible(gap.status))
-            .filter_map(|gap| context.cell_of(gap))
-            .filter_map(|(option, criterion)| context.cell_question(option, criterion))
-            .map(|question| question.id)
-            .collect();
-        for question in questions {
-            let table = pareto(state, case_id, question)
-                .map(|options| {
-                    options
+        context
+    }
+
+    /// The Pareto table of a question.
+    fn table(&self, question: Id) -> Result<ParetoTable, String> {
+        pareto(self.state, self.case_id, question)
+            .map(|options| {
+                let not_disqualified = options
+                    .iter()
+                    .filter(|option| option.status != ParetoStatus::DisqualifiedHard)
+                    .count();
+                ParetoTable {
+                    options: options
                         .into_iter()
                         .map(|option| (option.option_ref.id, option))
-                        .collect()
-                })
-                .map_err(|failure| failure.error.message);
-            context.pareto.insert(question, table);
+                        .collect(),
+                    not_disqualified,
+                }
+            })
+            .map_err(|failure| failure.error.message)
+    }
+}
+
+impl<'a> Deref for Context<'_, 'a> {
+    type Target = Facts<'a>;
+
+    fn deref(&self) -> &Facts<'a> {
+        self.facts
+    }
+}
+
+impl<'f, 'a> Context<'f, 'a> {
+    fn new(facts: &'f Facts<'a>) -> Self {
+        Self {
+            facts,
+            tables: RefCell::default(),
+            question_refs: RefCell::default(),
+            criteria: RefCell::default(),
+            subject_questions: RefCell::default(),
         }
-        context
+    }
+
+    /// The Pareto table of a question, computed once per ranking.
+    fn table(&self, question: Id) -> SharedTable {
+        if let Some(table) = self.tables.borrow().get(&question) {
+            return Arc::clone(table);
+        }
+        let cell = Arc::clone(
+            self.pareto
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .entry(question)
+                .or_default(),
+        );
+        let table = Arc::clone(cell.get_or_init(|| Arc::new(self.facts.table(question))));
+        self.tables
+            .borrow_mut()
+            .insert(question, Arc::clone(&table));
+        table
+    }
+
+    /// What the fold in `rank_next` takes of one gap.
+    fn outcome<'g>(&self, gap: &'g Gap) -> Outcome<'g> {
+        if !eligible(gap.status) {
+            return Outcome::NotEligible;
+        }
+        let analysis = self.analyze(gap);
+        match analysis.withhold {
+            Some((option_ref, determining)) => Outcome::Withheld(option_ref, determining),
+            None => Outcome::Ranked(Ranked {
+                key: analysis.key(gap),
+                gap,
+                effect: analysis.effect,
+                stall: analysis.stall,
+            }),
+        }
     }
 
     fn current(&self, id: Id) -> Option<&'a Record> {
         self.state.current(id)
+    }
+
+    /// `question_ref` of the current record with this ID, read once.
+    fn record_question(&self, id: Id) -> Option<RevisionRef> {
+        *self
+            .question_refs
+            .borrow_mut()
+            .entry(id)
+            .or_insert_with(|| {
+                self.current(id)
+                    .and_then(|record| question_ref(&record.body))
+            })
     }
 
     /// The (option, criterion) pair a cell gap concerns.
@@ -673,11 +892,31 @@ impl<'a> Context<'a> {
         ))
     }
 
-    fn cell_question(&self, option: Id, criterion: Id) -> Option<RevisionRef> {
-        [criterion, option]
-            .into_iter()
-            .filter_map(|id| self.current(id))
-            .find_map(|record| question_ref(&record.body))
+    /// What a cell value reads of a criterion, read once per criterion.
+    fn criterion(&self, id: Id) -> CriterionFacts<'a> {
+        if let Some(facts) = self.criteria.borrow().get(&id) {
+            return *facts;
+        }
+        let record = self.current(id);
+        let facts = CriterionFacts {
+            record,
+            hard: record.is_some_and(|criterion| {
+                field(content(&criterion.body), "kind").and_then(Value::as_str) == Some("hard")
+            }),
+            question: record.and_then(|record| question_ref(&record.body)),
+        };
+        self.criteria.borrow_mut().insert(id, facts);
+        facts
+    }
+
+    /// The current Question a gap subject serves, read once per subject.
+    fn subject_question(&self, id: Id) -> Option<&'a Record> {
+        if let Some(question) = self.subject_questions.borrow().get(&id) {
+            return *question;
+        }
+        let question = self.question_of(id, 3);
+        self.subject_questions.borrow_mut().insert(id, question);
+        question
     }
 
     /// The current Question a record serves, following option, subject and
@@ -701,78 +940,108 @@ impl<'a> Context<'a> {
             .find_map(|reference| self.question_of(reference.id, depth - 1))
     }
 
-    fn analyze(&self, gap: &Gap) -> Analysis {
-        let (mut value, branches, withhold) = match gap.rule_id.as_str() {
-            _ if reads_cell(gap) => self.cell_value(gap),
-            NO_ASSESSMENT => (self.rival_value(gap), None, None),
-            UNFROZEN_PLAN => self.prediction_value(gap),
-            _ => (static_value(gap, None), None, None),
-        };
-        let advisory = is_measurement_flag(gap);
-        if advisory {
-            value.basis.push_str(" Advisory measurement flag: it points at conditions worth recording and never blocks recording or changes validity.");
-        }
-        Analysis {
-            value,
-            branches,
-            withhold,
-            advisory,
-            stall: crate::guidance::STALL_GAP_RULES.contains(&gap.rule_id.as_str()),
-            applicability: self.applicability(gap),
-            novelty: self.novelty(gap),
-        }
+    /// The rank of a gap, without the words that explain it.
+    fn analyze<'g>(&self, gap: &'g Gap) -> Analysis<'g> {
+        self.assess(gap, false).0
     }
 
-    fn cell_value(&self, gap: &Gap) -> Valued {
-        let Some((option_id, criterion_id)) = self.cell_of(gap) else {
-            return (
-                static_value(
-                    gap,
-                    Some("The option and criterion of this cell could not be read."),
-                ),
-                None,
-                None,
-            );
+    /// The rank of a gap and its explained decision value. The same
+    /// analysis as [`Self::analyze`], so the rank is the same.
+    fn explain<'g>(&self, gap: &'g Gap) -> (Analysis<'g>, DecisionValue) {
+        let (analysis, value) = self.assess(gap, true);
+        (
+            analysis,
+            value.expect("an explained analysis writes its decision value"),
+        )
+    }
+
+    fn assess<'g>(&self, gap: &'g Gap, explain: bool) -> (Analysis<'g>, Option<DecisionValue>) {
+        let cell = self.cell_of(gap);
+        let valued = match gap.rule_id.as_str() {
+            _ if reads_cell(gap) => self.cell_value(gap, cell, explain),
+            NO_ASSESSMENT => self.rival_value(gap, explain),
+            UNFROZEN_PLAN => self.prediction_value(gap, explain),
+            _ => Valued::fixed(gap, explain, || None),
         };
-        let Some(question) = self.cell_question(option_id, criterion_id) else {
-            return (
-                static_value(
-                    gap,
-                    Some("The criterion names no question, so no Pareto status was computed."),
-                ),
-                None,
-                None,
-            );
+        let (mut value, branches) = valued.explained.unzip();
+        let advisory = is_measurement_flag(gap);
+        if advisory && let Some(value) = &mut value {
+            value.basis.push_str(" Advisory measurement flag: it points at conditions worth recording and never blocks recording or changes validity.");
+        }
+        let analysis = Analysis {
+            effect: valued.effect,
+            branches: branches.flatten(),
+            withhold: valued.withhold,
+            advisory,
+            stall: crate::guidance::STALL_GAP_RULES.contains(&gap.rule_id.as_str()),
+            applicability: self.applicability(gap, explain),
+            novelty: self.novelty(gap, cell, explain),
         };
-        let table = match self.pareto.get(&question.id) {
-            Some(Ok(table)) => table,
-            Some(Err(message)) => {
-                let note = format!(
-                    "Pareto status for question {} is unavailable: {message}",
-                    question.id
-                );
-                return (static_value(gap, Some(&note)), None, None);
+        (analysis, value)
+    }
+
+    /// `cell` is `self.cell_of(gap)`.
+    fn cell_value<'g>(&self, gap: &'g Gap, cell: Option<(Id, Id)>, explain: bool) -> Valued<'g> {
+        let Some((option_id, criterion_id)) = cell else {
+            return Valued::fixed(gap, explain, || {
+                Some("The option and criterion of this cell could not be read.".into())
+            });
+        };
+        let facts = self.criterion(criterion_id);
+        // The question of the criterion, else of the option.
+        let question = facts.question.or_else(|| self.record_question(option_id));
+        let Some(question) = question else {
+            return Valued::fixed(gap, explain, || {
+                Some("The criterion names no question, so no Pareto status was computed.".into())
+            });
+        };
+        let table = self.table(question.id);
+        let table = match table.as_ref() {
+            Ok(table) => table,
+            Err(message) => {
+                return Valued::fixed(gap, explain, || {
+                    Some(format!(
+                        "Pareto status for question {} is unavailable: {message}",
+                        question.id
+                    ))
+                });
             }
-            None => return (static_value(gap, None), None, None),
         };
-        let Some(standing) = table.get(&option_id) else {
-            let note = format!(
-                "Option {option_id} is not an eligible option of question {}, so it has no Pareto status.",
-                question.id
-            );
-            return (static_value(gap, Some(&note)), None, None);
+        let Some(standing) = table.options.get(&option_id) else {
+            return Valued::fixed(gap, explain, || {
+                Some(format!(
+                    "Option {option_id} is not an eligible option of question {}, so it has no Pareto status.",
+                    question.id
+                ))
+            });
         };
         let option_ref = standing.option_ref;
-        let criterion = self.current(criterion_id);
-        let criterion_ref = criterion.map(Record::reference);
-        let hard = criterion.is_some_and(|criterion| {
-            field(content(&criterion.body), "kind").and_then(Value::as_str) == Some("hard")
-        });
-        let subjects: BTreeSet<Id> = gap.subject_refs.iter().map(|subject| subject.id).collect();
-        let determining: Vec<RevisionRef> = standing.determining_cells.clone();
-        let revises_determining = determining.iter().any(|cell| subjects.contains(&cell.id));
-        let mut refs = vec![option_ref];
-        refs.extend(criterion_ref);
+        let CriterionFacts {
+            record: criterion,
+            hard,
+            ..
+        } = facts;
+        let determining: &[RevisionRef] = &standing.determining_cells;
+        let revises_determining = determining
+            .iter()
+            .any(|cell| gap.subject_refs.iter().any(|subject| subject.id == cell.id));
+        let refs = || {
+            let mut refs = vec![option_ref];
+            refs.extend(criterion.map(Record::reference));
+            refs
+        };
+        let basis_refs = || {
+            let mut basis_refs = refs();
+            basis_refs.extend(determining.iter().copied());
+            basis_refs
+        };
+        let cells = || {
+            determining
+                .iter()
+                .map(|cell| cell.id.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         let rule_effect = gap.decision_effect.clone();
         let value = |effect: &str, basis: String, refs: Vec<RevisionRef>| DecisionValue {
             decision_effect: effect.into(),
@@ -783,122 +1052,133 @@ impl<'a> Context<'a> {
             narrower_value: None,
             pareto_status: Some(standing.status),
         };
-        let status = status_name(standing.status);
+        let status = || status_name(standing.status);
         match standing.status {
             ParetoStatus::DisqualifiedHard if !revises_determining => {
-                let mut basis_refs = refs.clone();
-                basis_refs.extend(determining.iter().copied());
-                let cells = determining
-                    .iter()
-                    .map(|cell| cell.id.to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
                 if gap.rule_id == SOFT_CELL_MISSING {
-                    let mut withheld = value(
-                        CONTEXT,
-                        format!(
-                            "Option {option_id} is disqualified_hard by comparison {cells}; no soft-criterion result can change that."
-                        ),
-                        basis_refs,
-                    );
-                    withheld.every_outcome_unchanged = true;
-                    return (withheld, None, Some((option_ref, determining)));
+                    let mut withheld = Valued::new(CONTEXT, explain, |effect| {
+                        let mut withheld = value(
+                            effect,
+                            format!(
+                                "Option {option_id} is disqualified_hard by comparison {}; no soft-criterion result can change that.",
+                                cells()
+                            ),
+                            basis_refs(),
+                        );
+                        withheld.every_outcome_unchanged = true;
+                        (withheld, None)
+                    });
+                    withheld.withhold = Some((option_ref, determining.to_vec()));
+                    return withheld;
                 }
-                let mut narrowed = value(
-                    CONTEXT,
-                    format!(
-                        "Option {option_id} already fails a hard criterion on verified comparison {cells}. Every outcome of this step leaves it disqualified_hard."
-                    ),
-                    basis_refs,
-                );
-                narrowed.every_outcome_unchanged = true;
-                narrowed.narrower_value = Some("Completes or rechecks the record for an option that is already ruled out; it cannot restore eligibility or change the choice.".into());
-                let branches = gap
-                    .outcome_branches
-                    .iter()
-                    .map(|branch| OutcomeBranch {
-                        outcome: branch.outcome.clone(),
-                        consequence: format!(
-                            "The option stays disqualified_hard by comparison {cells}."
-                        ),
-                        basis: "recorded failed hard criterion".into(),
-                    })
-                    .collect();
-                (narrowed, Some(branches), None)
-            }
-            ParetoStatus::StrictlyDominated if !hard && !revises_determining => {
-                let mut basis_refs = refs.clone();
-                basis_refs.extend(determining.iter().copied());
-                (
-                    value(
-                        CONTEXT,
-                        format!(
-                            "Option {option_id} is strictly dominated on recorded cells; soft-criterion measurement on a dominated option is deprioritized."
-                        ),
-                        basis_refs,
-                    ),
-                    None,
-                    None,
-                )
-            }
-            _ if hard => (
-                value(
-                    FLIP,
-                    format!(
-                        "The result on this hard criterion decides whether option {option_id} stays eligible; a fail rules it out. Current Pareto status: {status}."
-                    ),
-                    refs,
-                ),
-                None,
-                None,
-            ),
-            _ => {
-                let rivals: Vec<RevisionRef> = table
-                    .values()
-                    .filter(|other| {
-                        other.option_ref.id != option_id
-                            && other.status != ParetoStatus::DisqualifiedHard
-                    })
-                    .map(|other| other.option_ref)
-                    .collect();
-                if rivals.is_empty() {
+                Valued::new(CONTEXT, explain, |effect| {
+                    let cells = cells();
                     let mut narrowed = value(
-                        CONTEXT,
+                        effect,
                         format!(
-                            "No other option of question {} is eligible and not disqualified, so no result on this criterion can change which option is on the Pareto frontier.",
-                            question.id
+                            "Option {option_id} already fails a hard criterion on verified comparison {cells}. Every outcome of this step leaves it disqualified_hard."
                         ),
-                        refs,
+                        basis_refs(),
                     );
                     narrowed.every_outcome_unchanged = true;
-                    narrowed.narrower_value = Some("Records the option's standing on this criterion for the decision record and later comparison.".into());
-                    (narrowed, None, None)
-                } else {
-                    let count = rivals.len();
-                    refs.extend(rivals.into_iter().take(BASIS_REF_LIMIT));
+                    narrowed.narrower_value = Some("Completes or rechecks the record for an option that is already ruled out; it cannot restore eligibility or change the choice.".into());
+                    let branches = gap
+                        .outcome_branches
+                        .iter()
+                        .map(|branch| OutcomeBranch {
+                            outcome: branch.outcome.clone(),
+                            consequence: format!(
+                                "The option stays disqualified_hard by comparison {cells}."
+                            ),
+                            basis: "recorded failed hard criterion".into(),
+                        })
+                        .collect();
+                    (narrowed, Some(branches))
+                })
+            }
+            ParetoStatus::StrictlyDominated if !hard && !revises_determining => {
+                Valued::new(CONTEXT, explain, |effect| {
                     (
                         value(
-                            DISCRIMINATE,
+                            effect,
                             format!(
-                                "A recorded result on this criterion could change option {option_id}'s Pareto status ({status}) against {count} other eligible option(s)."
+                                "Option {option_id} is strictly dominated on recorded cells; soft-criterion measurement on a dominated option is deprioritized."
                             ),
-                            refs,
+                            basis_refs(),
                         ),
                         None,
-                        None,
                     )
+                })
+            }
+            _ if hard => Valued::new(FLIP, explain, |effect| {
+                (
+                    value(
+                        effect,
+                        format!(
+                            "The result on this hard criterion decides whether option {option_id} stays eligible; a fail rules it out. Current Pareto status: {}.",
+                            status()
+                        ),
+                        refs(),
+                    ),
+                    None,
+                )
+            }),
+            _ => {
+                // Every option of the question but this one that is not
+                // disqualified_hard is a rival; this option is in the table.
+                let count = table.not_disqualified
+                    - usize::from(standing.status != ParetoStatus::DisqualifiedHard);
+                if count == 0 {
+                    Valued::new(CONTEXT, explain, |effect| {
+                        let mut narrowed = value(
+                            effect,
+                            format!(
+                                "No other option of question {} is eligible and not disqualified, so no result on this criterion can change which option is on the Pareto frontier.",
+                                question.id
+                            ),
+                            refs(),
+                        );
+                        narrowed.every_outcome_unchanged = true;
+                        narrowed.narrower_value = Some("Records the option's standing on this criterion for the decision record and later comparison.".into());
+                        (narrowed, None)
+                    })
+                } else {
+                    Valued::new(DISCRIMINATE, explain, |effect| {
+                        let rivals = table
+                            .options
+                            .values()
+                            .filter(|other| {
+                                other.option_ref.id != option_id
+                                    && other.status != ParetoStatus::DisqualifiedHard
+                            })
+                            .map(|other| other.option_ref)
+                            .take(BASIS_REF_LIMIT);
+                        let mut refs = refs();
+                        refs.extend(rivals);
+                        (
+                            value(
+                                effect,
+                                format!(
+                                    "A recorded result on this criterion could change option {option_id}'s Pareto status ({}) against {count} other eligible option(s).",
+                                    status()
+                                ),
+                                refs,
+                            ),
+                            None,
+                        )
+                    })
                 }
             }
         }
     }
 
-    fn rival_value(&self, gap: &Gap) -> DecisionValue {
+    fn rival_value<'g>(&self, gap: &'g Gap, explain: bool) -> Valued<'g> {
         let Some(hypothesis) = gap
             .subject_refs
             .first()
             .and_then(|subject| self.current(subject.id))
         else {
-            return static_value(gap, None);
+            return Valued::fixed(gap, explain, || None);
         };
         let own = hypothesis.header.id;
         let mut rivals = BTreeSet::new();
@@ -923,93 +1203,109 @@ impl<'a> Context<'a> {
             }
         }
         let count = rivals.len();
-        let mut value = DecisionValue {
-            decision_effect: DISCRIMINATE.into(),
-            rule_decision_effect: gap.decision_effect.clone(),
-            basis: format!(
-                "An assessment could separate this hypothesis from {count} live rival hypothesis(es) recorded for its question or in its rival_refs."
-            ),
-            basis_refs: rivals.into_iter().take(BASIS_REF_LIMIT).collect(),
-            every_outcome_unchanged: false,
-            narrower_value: None,
-            pareto_status: None,
+        let write = |effect: &str, basis: String| {
+            let value = DecisionValue {
+                decision_effect: effect.into(),
+                rule_decision_effect: gap.decision_effect.clone(),
+                basis,
+                basis_refs: rivals.iter().copied().take(BASIS_REF_LIMIT).collect(),
+                every_outcome_unchanged: false,
+                narrower_value: None,
+                pareto_status: None,
+            };
+            (value, None)
         };
         if count == 0 {
-            value.decision_effect = CONTEXT.into();
-            value.basis = "No live rival hypothesis is recorded for this hypothesis's question or in its rival_refs. An assessment can change its standing but cannot discriminate rivals.".into();
+            return Valued::new(CONTEXT, explain, |effect| {
+                write(effect, "No live rival hypothesis is recorded for this hypothesis's question or in its rival_refs. An assessment can change its standing but cannot discriminate rivals.".into())
+            });
         }
-        value
+        Valued::new(DISCRIMINATE, explain, |effect| {
+            write(
+                effect,
+                format!(
+                    "An assessment could separate this hypothesis from {count} live rival hypothesis(es) recorded for its question or in its rival_refs."
+                ),
+            )
+        })
     }
 
-    fn prediction_value(&self, gap: &Gap) -> Valued {
+    fn prediction_value<'g>(&self, gap: &'g Gap, explain: bool) -> Valued<'g> {
         let Some(inquiry) = gap
             .subject_refs
             .first()
             .and_then(|subject| self.current(subject.id))
         else {
-            return (static_value(gap, None), None, None);
+            return Valued::fixed(gap, explain, || None);
         };
         let by_outcome = live_predictions_by_outcome(self.state, inquiry);
         let rivals: BTreeSet<RevisionRef> = by_outcome.values().flatten().copied().collect();
-        let mut value = DecisionValue {
-            decision_effect: UNKNOWN.into(),
+        let value = |effect: &str, basis: String| DecisionValue {
+            decision_effect: effect.into(),
             rule_decision_effect: gap.decision_effect.clone(),
-            basis: "The plan records no prediction for a live rival, so what each outcome would change is unknown. Record a predicted outcome for each live rival.".into(),
+            basis,
             basis_refs: rivals.iter().copied().take(BASIS_REF_LIMIT).collect(),
             every_outcome_unchanged: false,
             narrower_value: None,
             pareto_status: None,
         };
         if rivals.is_empty() {
-            return (value, None, None);
+            return Valued::new(UNKNOWN, explain, |effect| {
+                (value(effect, "The plan records no prediction for a live rival, so what each outcome would change is unknown. Record a predicted outcome for each live rival.".into()), None)
+            });
         }
         if rivals.len() >= 2 && by_outcome.len() >= 2 {
-            value.decision_effect = DISCRIMINATE.into();
-            value.basis = format!(
-                "The plan records {} distinct predicted outcomes across {} live rivals, so the result can discriminate them.",
-                by_outcome.len(),
-                rivals.len()
-            );
-            let branches = by_outcome
-                .into_iter()
-                .map(|(outcome, rivals)| OutcomeBranch {
-                    outcome,
-                    consequence: format!(
-                        "Consistent with the prediction recorded for {}.",
-                        rivals
-                            .iter()
-                            .map(|rival| rival.id.to_string())
-                            .collect::<Vec<_>>()
-                            .join(", ")
+            return Valued::new(DISCRIMINATE, explain, |effect| {
+                let value = value(
+                    effect,
+                    format!(
+                        "The plan records {} distinct predicted outcomes across {} live rivals, so the result can discriminate them.",
+                        by_outcome.len(),
+                        rivals.len()
                     ),
-                    basis: "recorded per-rival prediction (authored text)".into(),
-                })
-                .collect();
-            return (value, Some(branches), None);
+                );
+                let branches = by_outcome
+                    .iter()
+                    .map(|(outcome, rivals)| OutcomeBranch {
+                        outcome: outcome.clone(),
+                        consequence: format!(
+                            "Consistent with the prediction recorded for {}.",
+                            rivals
+                                .iter()
+                                .map(|rival| rival.id.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        ),
+                        basis: "recorded per-rival prediction (authored text)".into(),
+                    })
+                    .collect();
+                (value, Some(branches))
+            });
         }
-        value.decision_effect = CONTEXT.into();
-        value.every_outcome_unchanged = true;
-        value.basis = "The recorded predictions name one live rival, or the same outcome for every live rival, so no recorded outcome discriminates rivals.".into();
-        value.narrower_value = Some(
-            "Freezing still locks the predictions, controls and stop rule before outcomes are seen."
-                .into(),
-        );
-        (value, None, None)
+        Valued::new(CONTEXT, explain, |effect| {
+            let mut value = value(effect, "The recorded predictions name one live rival, or the same outcome for every live rival, so no recorded outcome discriminates rivals.".into());
+            value.every_outcome_unchanged = true;
+            value.narrower_value = Some(
+                "Freezing still locks the predictions, controls and stop rule before outcomes are seen."
+                    .into(),
+            );
+            (value, None)
+        })
     }
 
-    fn applicability(&self, gap: &Gap) -> (u8, OrdinalPriority, String, Vec<RevisionRef>) {
+    fn applicability(&self, gap: &Gap, explain: bool) -> Factor {
         const DEADLINE: &str = "No structured decision deadline is recorded.";
         let Some(question) = gap
             .subject_refs
             .iter()
-            .find_map(|subject| self.question_of(subject.id, 3))
+            .find_map(|subject| self.subject_question(subject.id))
         else {
-            return (
-                2,
-                OrdinalPriority::Unknown,
-                format!("The gap's subjects name no question. {DEADLINE}"),
-                vec![],
-            );
+            return Factor::new(2, OrdinalPriority::Unknown, explain, || {
+                (
+                    format!("The gap's subjects name no question. {DEADLINE}"),
+                    vec![],
+                )
+            });
         };
         let body = content(&question.body);
         let disposition = field(body, "disposition")
@@ -1018,55 +1314,52 @@ impl<'a> Context<'a> {
         let importance = field(body, "importance")
             .and_then(Value::as_str)
             .unwrap_or("normal");
-        let refs = vec![question.reference()];
+        let refs = || vec![question.reference()];
         let id = question.header.id;
         if disposition != "open" {
-            return (
-                3,
-                OrdinalPriority::Low,
-                format!("Question {id} is recorded as {disposition}. {DEADLINE}"),
-                refs,
-            );
+            return Factor::new(3, OrdinalPriority::Low, explain, || {
+                (
+                    format!("Question {id} is recorded as {disposition}. {DEADLINE}"),
+                    refs(),
+                )
+            });
         }
         let (key, priority) = match importance {
             "high" => (0, OrdinalPriority::High),
             "low" => (3, OrdinalPriority::Low),
             _ => (1, OrdinalPriority::Medium),
         };
-        (
-            key,
-            priority,
-            format!("Question {id} is open with recorded importance {importance}. {DEADLINE}"),
-            refs,
-        )
+        Factor::new(key, priority, explain, || {
+            (
+                format!("Question {id} is open with recorded importance {importance}. {DEADLINE}"),
+                refs(),
+            )
+        })
     }
 
-    fn novelty(&self, gap: &Gap) -> (u8, OrdinalPriority, String, Vec<RevisionRef>) {
+    /// `cell` is `self.cell_of(gap)`.
+    fn novelty(&self, gap: &Gap, cell: Option<(Id, Id)>, explain: bool) -> Factor {
         let subject = |kind| {
             gap.subject_refs
                 .iter()
                 .find(|reference| reference.id.kind() == kind)
                 .copied()
         };
-        let attempts: Option<Vec<RevisionRef>> = match gap.rule_id.as_str() {
-            HARD_CELL_MISSING | HARD_CELL_UNKNOWN | SOFT_CELL_MISSING | STALE_COMPARISON => self
-                .cell_of(gap)
-                .map(|cell| self.prior_cells.get(&cell).cloned().unwrap_or_default()),
-            NO_ASSESSMENT => subject(Kind::Hypothesis).map(|hypothesis| {
-                self.inconclusive_assessments
-                    .get(&hypothesis.id)
-                    .cloned()
-                    .unwrap_or_default()
-            }),
-            UNFROZEN_PLAN => subject(Kind::Inquiry).map(|inquiry| {
-                self.failed_runs
-                    .get(&inquiry.id)
-                    .cloned()
-                    .unwrap_or_default()
-            }),
+        fn recorded(attempts: Option<&Vec<RevisionRef>>) -> Cow<'_, [RevisionRef]> {
+            Cow::Borrowed(attempts.map_or(&[][..], Vec::as_slice))
+        }
+        let attempts: Option<Cow<'_, [RevisionRef]>> = match gap.rule_id.as_str() {
+            HARD_CELL_MISSING | HARD_CELL_UNKNOWN | SOFT_CELL_MISSING | STALE_COMPARISON => {
+                cell.map(|cell| recorded(self.prior_cells.get(&cell)))
+            }
+            NO_ASSESSMENT => subject(Kind::Hypothesis)
+                .map(|hypothesis| recorded(self.inconclusive_assessments.get(&hypothesis.id))),
+            UNFROZEN_PLAN => {
+                subject(Kind::Inquiry).map(|inquiry| recorded(self.failed_runs.get(&inquiry.id)))
+            }
             RUN_INCOMPLETE => subject(Kind::Run).and_then(|run| {
                 let plan = run_plan(self.current(run.id)?)?;
-                Some(
+                Some(Cow::Owned(
                     self.failed_runs
                         .get(&plan.id)
                         .into_iter()
@@ -1074,41 +1367,45 @@ impl<'a> Context<'a> {
                         .filter(|other| other.id != run.id)
                         .copied()
                         .collect(),
-                )
+                ))
             }),
             _ => None,
         };
         match attempts {
-            None => (
-                1,
-                OrdinalPriority::Unknown,
-                "This rule's subject has no attempt history that the ranking reads.".into(),
-                vec![],
-            ),
-            Some(attempts) if attempts.is_empty() => (
-                0,
-                OrdinalPriority::High,
-                "No earlier unknown, retracted, failed or inconclusive attempt is recorded on this subject.".into(),
-                vec![],
-            ),
-            Some(attempts) => (
-                2,
-                OrdinalPriority::Low,
-                format!(
-                    "{} earlier attempt(s) on this subject ended unknown, retracted, failed or inconclusive; repeating the same step may add little.",
-                    attempts.len()
-                ),
-                attempts.into_iter().take(BASIS_REF_LIMIT).collect(),
-            ),
+            None => Factor::new(1, OrdinalPriority::Unknown, explain, || {
+                (
+                    "This rule's subject has no attempt history that the ranking reads.".into(),
+                    vec![],
+                )
+            }),
+            Some(attempts) if attempts.is_empty() => {
+                Factor::new(0, OrdinalPriority::High, explain, || {
+                    (
+                        "No earlier unknown, retracted, failed or inconclusive attempt is recorded on this subject.".into(),
+                        vec![],
+                    )
+                })
+            }
+            Some(attempts) => Factor::new(2, OrdinalPriority::Low, explain, || {
+                (
+                    format!(
+                        "{} earlier attempt(s) on this subject ended unknown, retracted, failed or inconclusive; repeating the same step may add little.",
+                        attempts.len()
+                    ),
+                    attempts.iter().copied().take(BASIS_REF_LIMIT).collect(),
+                )
+            }),
         }
     }
 
+    /// The group a shown recommendation stands for. `is_ranked` marks the
+    /// ranked inventory positions; `withheld` names the withheld gaps.
     fn group(
         &self,
         inventory: &GapInventory,
         gap: &Gap,
         criterion: RevisionRef,
-        ranked: &[(RankKey, &Gap, Analysis)],
+        is_ranked: &[bool],
         withheld: &BTreeSet<&str>,
     ) -> GapGroup {
         let filter = GapFilter {
@@ -1116,6 +1413,17 @@ impl<'a> Context<'a> {
             read_ids: [criterion.id].into(),
             ..GapFilter::default()
         };
+        let (mut gap_count, mut ranked_count, mut withheld_count) = (0, 0, 0);
+        for (index, member) in inventory.gaps.iter().enumerate() {
+            // The rule test first: it is the filter's own first test that
+            // most gaps fail, and it is cheap.
+            if member.rule_id != gap.rule_id || !filter.matches(member) {
+                continue;
+            }
+            gap_count += 1;
+            ranked_count += usize::from(is_ranked[index]);
+            withheld_count += usize::from(withheld.contains(member.gap_id.as_str()));
+        }
         GapGroup {
             group_id: format!("group:{}:{}", gap.rule_id, criterion.id),
             rule_id: gap.rule_id.clone(),
@@ -1123,20 +1431,9 @@ impl<'a> Context<'a> {
             question_ref: self
                 .current(criterion.id)
                 .and_then(|record| question_ref(&record.body)),
-            gap_count: inventory
-                .gaps
-                .iter()
-                .filter(|gap| filter.matches(gap))
-                .count(),
-            ranked_count: ranked
-                .iter()
-                .filter(|(_, gap, _)| filter.matches(gap))
-                .count(),
-            withheld_count: inventory
-                .gaps
-                .iter()
-                .filter(|gap| withheld.contains(gap.gap_id.as_str()) && filter.matches(gap))
-                .count(),
+            gap_count,
+            ranked_count,
+            withheld_count,
             filter,
         }
     }
@@ -1184,11 +1481,11 @@ fn static_value(gap: &Gap, note: Option<&str>) -> DecisionValue {
 fn recommendation(
     gap: &Gap,
     analysis: &Analysis,
+    value: DecisionValue,
     group: Option<GapGroup>,
     rank: usize,
 ) -> Recommendation {
     let key = analysis.key(gap);
-    let value = &analysis.value;
     let effect = value.decision_effect.as_str();
     let mut value_source = format!("{effect}: {}", value.basis);
     if let Some(narrower) = &value.narrower_value {
@@ -1265,9 +1562,9 @@ fn recommendation(
         },
         RankReason {
             factor: RankFactor::Applicability,
-            priority: analysis.applicability.1,
-            source: analysis.applicability.2.clone(),
-            source_refs: analysis.applicability.3.clone(),
+            priority: analysis.applicability.priority,
+            source: analysis.applicability.source.clone(),
+            source_refs: analysis.applicability.refs.clone(),
         },
         RankReason {
             factor: RankFactor::BoundedCost,
@@ -1277,9 +1574,9 @@ fn recommendation(
         },
         RankReason {
             factor: RankFactor::Novelty,
-            priority: analysis.novelty.1,
-            source: analysis.novelty.2.clone(),
-            source_refs: analysis.novelty.3.clone(),
+            priority: analysis.novelty.priority,
+            source: analysis.novelty.source.clone(),
+            source_refs: analysis.novelty.refs.clone(),
         },
         RankReason {
             factor: RankFactor::StableIdCreationOrder,
@@ -1320,7 +1617,7 @@ fn recommendation(
         purpose: gap.reason.clone(),
         expected_useful_result,
         rank_reasons: reasons,
-        decision_value: value.clone(),
+        decision_value: value,
         group,
         uncertainty: "Ordinal deterministic heuristic; not a probability, expected-information calculation, or universal ranking.".into(),
         prerequisites: gap.prerequisites.clone(),
@@ -1330,8 +1627,8 @@ fn recommendation(
         schema_operation: gap.suggested_operation.clone(),
         outcome_branches: branches,
         deferral_alternative: "Keep the gap visible as deferred or unknown; this tool does not dispatch work.".into(),
-        stall: gap.stall.clone(),
-        advice: gap.advice.clone(),
+        stall: gap.stall.as_deref().cloned(),
+        advice: gap.advice.as_deref().cloned(),
     }
 }
 
@@ -1858,13 +2155,20 @@ mod tests {
                 ),
             ],
         );
-        let context = Context::build(&state, &inventory);
-        let analyses: Vec<_> = inventory
+        let facts = Facts::build(&state, &inventory);
+        let context = Context::new(&facts);
+        let explained: Vec<_> = inventory
             .gaps
             .iter()
-            .map(|gap| context.analyze(gap))
+            .map(|gap| context.explain(gap))
             .collect();
-        let effect = |index: usize| analyses[index].value.decision_effect.as_str();
+        // The cheap analysis that ranks every gap gives the explained key.
+        for (gap, (analysis, _)) in inventory.gaps.iter().zip(&explained) {
+            assert!(context.analyze(gap).key(gap) == analysis.key(gap));
+        }
+        let analyses: Vec<_> = explained.iter().map(|(analysis, _)| analysis).collect();
+        let values: Vec<_> = explained.iter().map(|(_, value)| value).collect();
+        let effect = |index: usize| values[index].decision_effect.as_str();
         // Two live rivals on one question discriminate; a lone account does not.
         assert_eq!(effect(0), DISCRIMINATE);
         assert_eq!(effect(1), DISCRIMINATE);
@@ -1881,33 +2185,28 @@ mod tests {
         );
         // Identical predictions leave every outcome unchanged.
         assert_eq!(effect(4), CONTEXT);
-        assert!(analyses[4].value.every_outcome_unchanged);
+        assert!(values[4].every_outcome_unchanged);
         // No predictions: the branch effects are unknown and must be asked for.
         assert_eq!(effect(5), UNKNOWN);
-        assert!(
-            analyses[5]
-                .value
-                .basis
-                .contains("Record a predicted outcome")
-        );
+        assert!(values[5].basis.contains("Record a predicted outcome"));
 
         // Novelty: an inconclusive assessment and a failed run are earlier attempts.
-        assert_eq!(analyses[0].novelty.1, OrdinalPriority::Low);
+        assert_eq!(analyses[0].novelty.priority, OrdinalPriority::Low);
         assert_eq!(
-            analyses[0].novelty.3,
+            analyses[0].novelty.refs,
             vec![RevisionRef {
                 id: id("assess", 20),
                 revision: 1
             }]
         );
-        assert_eq!(analyses[1].novelty.1, OrdinalPriority::High);
-        assert_eq!(analyses[3].novelty.1, OrdinalPriority::Low);
-        assert_eq!(analyses[4].novelty.1, OrdinalPriority::High);
+        assert_eq!(analyses[1].novelty.priority, OrdinalPriority::High);
+        assert_eq!(analyses[3].novelty.priority, OrdinalPriority::Low);
+        assert_eq!(analyses[4].novelty.priority, OrdinalPriority::High);
         // Applicability: open/normal question vs an answered question.
-        assert_eq!(analyses[0].applicability.1, OrdinalPriority::Medium);
-        assert_eq!(analyses[2].applicability.1, OrdinalPriority::Low);
-        assert!(analyses[2].applicability.2.contains("answered"));
-        assert_eq!(analyses[3].applicability.1, OrdinalPriority::Unknown);
+        assert_eq!(analyses[0].applicability.priority, OrdinalPriority::Medium);
+        assert_eq!(analyses[2].applicability.priority, OrdinalPriority::Low);
+        assert!(analyses[2].applicability.source.contains("answered"));
+        assert_eq!(analyses[3].applicability.priority, OrdinalPriority::Unknown);
 
         let next = rank_next(&state, &inventory, DEFAULT_NEXT_LIMIT);
         let order: Vec<_> = next
@@ -1947,19 +2246,20 @@ mod tests {
                 ),
             ],
         );
-        let context = Context::build(&table.state, &inventory);
-        let fresh = context.analyze(&inventory.gaps[0]);
-        let flag = context.analyze(&inventory.gaps[1]);
-        assert_eq!(fresh.value.decision_effect, FLIP);
+        let facts = Facts::build(&table.state, &inventory);
+        let context = Context::new(&facts);
+        let (fresh, fresh_value) = context.explain(&inventory.gaps[0]);
+        let (flag, flag_value) = context.explain(&inventory.gaps[1]);
+        assert_eq!(fresh_value.decision_effect, FLIP);
         assert_eq!(
-            fresh.value.pareto_status,
+            fresh_value.pareto_status,
             Some(ParetoStatus::DisqualifiedHard)
         );
-        assert!(fresh.value.basis.contains(&disqualified.to_string()));
+        assert!(fresh_value.basis.contains(&disqualified.to_string()));
         assert!(!fresh.advisory);
-        assert_eq!(flag.value.decision_effect, FLIP);
-        assert!(flag.value.basis.contains(&eligible.to_string()));
-        assert!(flag.advisory && flag.value.basis.contains("Advisory"));
+        assert_eq!(flag_value.decision_effect, FLIP);
+        assert!(flag_value.basis.contains(&eligible.to_string()));
+        assert!(flag.advisory && flag_value.basis.contains("Advisory"));
         // Same decision value, but an advisory flag is never a consequential blocker.
         assert_eq!(fresh.key(&inventory.gaps[0]).2, 0);
         assert_eq!(flag.key(&inventory.gaps[1]).2, 1);

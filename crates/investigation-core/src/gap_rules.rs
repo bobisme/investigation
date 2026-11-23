@@ -3,7 +3,10 @@
 //! These rules inspect recorded fields only. They do not infer a domain test,
 //! calculate a score, execute a process, or treat source text as instructions.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt::Write as _,
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -93,11 +96,13 @@ pub struct Gap {
     pub time_sensitive: bool,
     pub creation_sequence: u64,
     /// The journal items and moves of a stall rule; absent on other rules.
+    /// Boxed, like `advice`, so the hundreds of thousands of gaps of a large
+    /// matrix, which carry neither, stay small.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub stall: Option<crate::stall::StallDetail>,
+    pub stall: Option<Box<crate::stall::StallDetail>>,
     /// The recorded advice feedback that governs this gap, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub advice: Option<crate::advice_feedback::GapAdvice>,
+    pub advice: Option<Box<crate::advice_feedback::GapAdvice>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
@@ -476,51 +481,73 @@ pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure>
             cells.insert((option_ref.id, criterion_ref.id), reference(comparison));
         }
     }
-    for criterion in &criteria {
-        let criterion_body = content(&criterion.body);
-        if field(criterion_body, "lifecycle")
-            .and_then(Value::as_str)
-            .is_some_and(|lifecycle| lifecycle != "active")
-        {
-            continue;
-        }
-        let criterion_question = exact_ref(field(criterion_body, "question_ref"))
-            .map(|reference| reference.id)
-            .or_else(|| {
-                field(criterion_body, "scope")
-                    .and_then(|scope| exact_ref(field(scope, "question_ref")))
-                    .map(|reference| reference.id)
-            });
-        let is_hard = field(criterion_body, "kind").and_then(Value::as_str) == Some("hard");
-        let criterion_ref = reference(criterion);
-        let scoped_options = field(criterion_body, "option_refs").and_then(Value::as_array);
-        for option in &options {
+    // What the cell rule reads of each option, read once rather than once per
+    // criterion: its question and whether its lifecycle takes it out.
+    let option_facts: Vec<(&Record, Option<Id>, bool)> = options
+        .iter()
+        .map(|option| {
             let option_body = content(&option.body);
-            let option_question =
+            let question =
                 exact_ref(field(option_body, "question_ref")).map(|reference| reference.id);
-            if criterion_question.is_some() && option_question != criterion_question {
-                continue;
-            }
-            if scoped_options.is_some_and(|refs| {
-                !refs.iter().any(|reference| {
-                    exact_ref(Some(reference))
-                        .is_some_and(|reference| reference.id == option.header.id)
-                })
-            }) {
-                continue;
-            }
-            if field(option_body, "lifecycle")
+            let withdrawn = field(option_body, "lifecycle")
                 .and_then(Value::as_str)
                 .is_some_and(|lifecycle| {
                     matches!(lifecycle, "ruled_out" | "withdrawn" | "superseded")
-                })
-            {
-                continue;
-            }
-            if !cells.contains_key(&(option.header.id, criterion.header.id)) {
-                let option_ref = reference(option);
-                let status = GapStatus::RequiresSource;
-                gaps.push(make_gap(GapFields {
+                });
+            (*option, question, withdrawn)
+        })
+        .collect();
+    // Each criterion's cells are independent of every other criterion's, so a
+    // large matrix is split across threads by criterion; the gaps come back
+    // in criterion order, as one loop would emit them.
+    let cell_gaps = crate::parallel::map_chunks(
+        &criteria,
+        criteria.len().saturating_mul(option_facts.len()),
+        |criteria| {
+            let mut gaps = Vec::new();
+            for criterion in criteria {
+                let criterion_body = content(&criterion.body);
+                if field(criterion_body, "lifecycle")
+                    .and_then(Value::as_str)
+                    .is_some_and(|lifecycle| lifecycle != "active")
+                {
+                    continue;
+                }
+                let criterion_question = exact_ref(field(criterion_body, "question_ref"))
+                    .map(|reference| reference.id)
+                    .or_else(|| {
+                        field(criterion_body, "scope")
+                            .and_then(|scope| exact_ref(field(scope, "question_ref")))
+                            .map(|reference| reference.id)
+                    });
+                let is_hard = field(criterion_body, "kind").and_then(Value::as_str) == Some("hard");
+                let criterion_ref = reference(criterion);
+                // The IDs of the exact references in `option_refs`, read once.
+                let scoped_options: Option<Vec<Id>> = field(criterion_body, "option_refs")
+                    .and_then(Value::as_array)
+                    .map(|refs| {
+                        refs.iter()
+                            .filter_map(|reference| exact_ref(Some(reference)))
+                            .map(|reference| reference.id)
+                            .collect()
+                    });
+                for (option, option_question, withdrawn) in &option_facts {
+                    if criterion_question.is_some() && *option_question != criterion_question {
+                        continue;
+                    }
+                    if scoped_options
+                        .as_ref()
+                        .is_some_and(|ids| !ids.contains(&option.header.id))
+                    {
+                        continue;
+                    }
+                    if *withdrawn {
+                        continue;
+                    }
+                    if !cells.contains_key(&(option.header.id, criterion.header.id)) {
+                        let option_ref = reference(option);
+                        let status = GapStatus::RequiresSource;
+                        gaps.push(make_gap(GapFields {
                     rule_id: if is_hard {
                         "decision.hard_criterion_cell_missing"
                     } else {
@@ -579,9 +606,13 @@ pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure>
                         .acceptance_sequence
                         .min(criterion.header.acceptance_sequence),
                 }));
+                    }
+                }
             }
-        }
-    }
+            gaps
+        },
+    );
+    gaps.extend(cell_gaps);
 
     for review in &reviews {
         let review_ref = reference(review);
@@ -807,16 +838,27 @@ pub(crate) fn make_gap(fields: GapFields<'_>) -> Gap {
     } = fields;
     subject_refs.sort_by_key(|reference| (reference.id, reference.revision));
     subject_refs.dedup();
-    read_set.extend(subject_refs.iter().copied());
+    // The read set covers the subjects; most rules already list them.
+    for subject in &subject_refs {
+        if !read_set.contains(subject) {
+            read_set.push(*subject);
+        }
+    }
     read_set.sort_by_key(|reference| (reference.id, reference.revision));
     read_set.dedup();
-    let subject_ids = subject_refs
-        .iter()
-        .map(|reference| reference.id.to_string())
-        .collect::<Vec<_>>()
-        .join("+");
+    // gap:{rule_id}:{subject ID}+{subject ID}..., written in one buffer.
+    let mut gap_id = String::with_capacity(5 + rule_id.len() + 48 * subject_refs.len());
+    gap_id.push_str("gap:");
+    gap_id.push_str(rule_id);
+    gap_id.push(':');
+    for (index, reference) in subject_refs.iter().enumerate() {
+        if index > 0 {
+            gap_id.push('+');
+        }
+        write!(gap_id, "{}", reference.id).expect("writing to a String cannot fail");
+    }
     Gap {
-        gap_id: format!("gap:{rule_id}:{subject_ids}"),
+        gap_id,
         rule_id: rule_id.into(),
         rule_version: GAP_RULE_VERSION.into(),
         subject_refs,
@@ -872,8 +914,9 @@ pub(crate) fn field<'a>(body: &'a Value, key: &str) -> Option<&'a Value> {
         .or_else(|| body.get("content").and_then(|content| content.get(key)))
 }
 
+/// An exact revision reference, read from the value in place.
 pub(crate) fn exact_ref(value: Option<&Value>) -> Option<RevisionRef> {
-    value.and_then(|value| serde_json::from_value(value.clone()).ok())
+    value.and_then(|value| RevisionRef::deserialize(value).ok())
 }
 
 fn join_refs(mut refs: Vec<RevisionRef>, extra: Vec<RevisionRef>) -> Vec<RevisionRef> {
@@ -989,15 +1032,57 @@ fn stall_gaps(state: &State, case_id: Id, gaps: &mut Vec<Gap>) {
             time_sensitive: false,
             creation_sequence: stall.creation_sequence,
         });
-        gap.stall = Some(stall.detail);
+        gap.stall = Some(Box::new(stall.detail));
         gaps.push(gap);
     }
 }
 
+/// Keep the first emitted gap of each gap ID, in gap ID order. The order is
+/// worked out on (ID, emission position) pairs: unique keys, so an unstable
+/// sort gives the order a stable sort by ID gives, and equal IDs stay in
+/// emission order. The gaps are then moved into that order in place, the
+/// later duplicates last, and the duplicates dropped.
 fn deduplicate_and_sort(gaps: &mut Vec<Gap>) {
-    let mut seen = BTreeSet::new();
-    gaps.retain(|gap| seen.insert(gap.gap_id.clone()));
-    gaps.sort_by(|a, b| a.gap_id.cmp(&b.gap_id));
+    let mut order: Vec<(&str, usize)> = gaps
+        .iter()
+        .enumerate()
+        .map(|(position, gap)| (gap.gap_id.as_str(), position))
+        .collect();
+    order.sort_unstable();
+    let mut kept = Vec::with_capacity(order.len());
+    let mut later = Vec::new();
+    for (index, &(id, position)) in order.iter().enumerate() {
+        if index > 0 && order[index - 1].0 == id {
+            later.push(position);
+        } else {
+            kept.push(position);
+        }
+    }
+    let unique = kept.len();
+    kept.extend(later);
+    permute(gaps, &kept);
+    gaps.truncate(unique);
+}
+
+/// Reorder `items` in place so that position `i` holds the item that was at
+/// `sources[i]`. `sources` must be a permutation of the positions.
+fn permute<T>(items: &mut [T], sources: &[usize]) {
+    debug_assert_eq!(items.len(), sources.len());
+    let mut placed = vec![false; items.len()];
+    for start in 0..items.len() {
+        // Follow the cycle through `start`: each swap puts one item in its
+        // place, and the item from `start` travels to the cycle's end.
+        let mut target = start;
+        while !placed[target] {
+            placed[target] = true;
+            let source = sources[target];
+            if source == start {
+                break;
+            }
+            items.swap(target, source);
+            target = source;
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1065,6 +1150,78 @@ mod tests {
             sequence: 1,
             head_hash: format!("sha256:{}", "a".repeat(64)).parse().unwrap(),
         }
+    }
+
+    #[test]
+    fn permute_moves_each_item_to_its_target() {
+        // Every permutation of five positions, and a long one made of
+        // several cycles and fixed points.
+        fn permutations(items: Vec<usize>) -> Vec<Vec<usize>> {
+            if items.len() <= 1 {
+                return vec![items];
+            }
+            (0..items.len())
+                .flat_map(|index| {
+                    let mut rest = items.clone();
+                    let first = rest.remove(index);
+                    permutations(rest).into_iter().map(move |mut tail| {
+                        tail.insert(0, first);
+                        tail
+                    })
+                })
+                .collect()
+        }
+        let mut cases = permutations((0..5).collect());
+        cases.push((0..1000).map(|i| (i * 7 + 3) % 1000).collect());
+        for sources in cases {
+            let mut items: Vec<String> = (0..sources.len()).map(|i| format!("item {i}")).collect();
+            let expected: Vec<String> = sources.iter().map(|&i| items[i].clone()).collect();
+            permute(&mut items, &sources);
+            assert_eq!(items, expected, "{sources:?}");
+        }
+    }
+
+    #[test]
+    fn duplicate_gap_ids_keep_the_first_emitted_in_gap_id_order() {
+        let gap = |id: &str, reason: &str| Gap {
+            gap_id: id.into(),
+            rule_id: "r".into(),
+            rule_version: GAP_RULE_VERSION.into(),
+            subject_refs: vec![],
+            read_set: vec![],
+            status: GapStatus::ReadyToAnalyze,
+            reason: reason.into(),
+            prerequisites: vec![],
+            suggested_operation: None,
+            unresolved_fields: vec![],
+            outcome_branches: vec![],
+            decision_effect: "unknown".into(),
+            time_sensitive: false,
+            creation_sequence: 0,
+            stall: None,
+            advice: None,
+        };
+        let mut gaps = vec![
+            gap("gap:c", "first c"),
+            gap("gap:a", "first a"),
+            gap("gap:c", "second c"),
+            gap("gap:b", "only b"),
+            gap("gap:a", "second a"),
+            gap("gap:c", "third c"),
+        ];
+        deduplicate_and_sort(&mut gaps);
+        let kept: Vec<(&str, &str)> = gaps
+            .iter()
+            .map(|gap| (gap.gap_id.as_str(), gap.reason.as_str()))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                ("gap:a", "first a"),
+                ("gap:b", "only b"),
+                ("gap:c", "first c")
+            ]
+        );
     }
 
     #[test]

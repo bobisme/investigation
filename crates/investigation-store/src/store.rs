@@ -810,6 +810,12 @@ impl<T: Send + 'static> std::ops::DerefMut for FreeLater<T> {
     }
 }
 
+/// Free a large value, such as a gap inventory of hundreds of thousands of
+/// gaps, on another thread, so an answer does not wait on deallocating it.
+pub fn free_later<T: Send + 'static>(value: T) {
+    drop(FreeLater::new(value));
+}
+
 impl<T: Send + 'static> Drop for FreeLater<T> {
     fn drop(&mut self) {
         if let Some(value) = self.0.take() {

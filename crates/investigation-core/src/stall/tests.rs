@@ -342,7 +342,7 @@ fn repeated_blocked_runs_of_one_plan_report_a_stall_citing_each_run() {
         .iter()
         .find(|recommendation| recommendation.rule_id == "run.repeated_same_failure")
         .expect("the stall is among the top recommendations");
-    assert_eq!(recommendation.stall.as_ref(), gap.stall.as_ref());
+    assert_eq!(recommendation.stall.as_ref(), gap.stall.as_deref());
     assert_eq!(recommendation.schema_operation, None);
     let stop = next.stop_or_defer.expect("a stall offers a justified stop");
     assert!(stop.basis[0].contains(&gap.gap_id), "{:?}", stop.basis);

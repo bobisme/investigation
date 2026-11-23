@@ -53,6 +53,7 @@ pub mod observation_ops;
 pub mod origin_ops;
 pub mod pack_extensions;
 pub mod pack_policy;
+mod parallel;
 pub mod producer_run;
 pub mod receipt_check;
 pub mod retrospective;
