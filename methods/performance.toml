@@ -1,0 +1,87 @@
+# Optional example pack: performance measurement bookkeeping
+# (inv.method-pack.v1).
+#
+# Not installed or pinned by default. A case adopts it with method_pack.adopt.
+# It is data only. Its cards point at the checks the core already makes on
+# recorded measurement fields (advisory measurement flags, completion-only
+# statistics, trial order) and do not repeat them. Extension properties record
+# workload identity and sample counts; one policy asks for comparability
+# fields at promotion. The core never reads these values.
+schema_version = "inv.method-pack.v1"
+id = "performance"
+version = "1.0.0"
+title = "Performance"
+summary = "Bookkeeping that makes two measurements comparable."
+modes = ["measure"]
+
+[[cards]]
+name = "measure-with-workload"
+title = "Say what was measured, and how"
+stage = "observe"
+summary = "A measured value has no recorded validity context."
+operations = ["observation.add", "measurement.assess"]
+triggers = [{ gap_rule = "observation.validity_context_missing" }]
+
+[cards.body]
+when = "A timing, rate or size is recorded and the setup that produced it is not."
+record = "Fill the measurement block: unit, workload, warm-up, sample count, trial order, load model, environment and tool identity. Add the performance workload_id, environment_id and sample_count fields so a later comparison can match them. Then read the measurement flags on the record and fix or acknowledge each one before assessing it with measurement.assess."
+mistake = "Assuming the flags only matter for comparisons, or that a bare timing is comparable."
+skip = "The value is not a measurement."
+
+[[cards]]
+name = "count-every-attempt"
+title = "Account for every attempt"
+stage = "observe"
+summary = "A timed run has an unknown or incomplete outcome."
+operations = ["run.record", "observation.add"]
+triggers = [{ gap_rule = "run.outcome_incomplete_or_unknown" }]
+
+[cards.body]
+when = "A run reports timings and some attempts were started but never finished, timed out or were dropped."
+record = "Record the started, observed, timed-out and excluded attempt counts in the measurement block, with the performance sample_count of what the statistic covers. Say whether the reported statistic covers completed attempts or all of them. The core flags a completion-only statistic from these counts, so fix the counts rather than the wording."
+mistake = "Reporting a latency that leaves out the attempts that never finished."
+skip = "Every started attempt has an observed outcome."
+
+[[cards]]
+name = "baseline-comparable"
+title = "Check the baseline is comparable"
+stage = "observe"
+summary = "A comparison depends on a measurement that has since changed."
+operations = ["observation.add", "run.record"]
+triggers = [{ gap_rule = "comparison.stale_dependency_revision" }]
+
+[cards.body]
+when = "A before and after, or a candidate against a reference, rests on two measurements."
+record = "Give both sides the same workload_id and environment_id, and record each side's sample_count and repetitions. Read the compared-field and trial-order flags on the comparison and either remove the difference or list it under limitations. State which statistic is compared and whether it covers completed attempts only."
+mistake = "Comparing a run on a warm machine with one on a cold machine, or runs in different order without saying so."
+skip = "Nothing is being compared."
+
+[[properties]]
+name = "workload_id"
+record_kinds = ["observation", "run", "conclusion"]
+description = "A stable name for the workload that was measured."
+schema = { type = "string", max_length = 128 }
+
+[[properties]]
+name = "environment_id"
+record_kinds = ["observation", "run", "conclusion"]
+description = "A stable name for the machine and software setup."
+schema = { type = "string", max_length = 128 }
+
+[[properties]]
+name = "sample_count"
+record_kinds = ["observation", "run", "conclusion"]
+description = "Samples behind the reported value."
+schema = { type = "integer", minimum = 0, maximum = 1000000000 }
+
+[[observation_guidance]]
+name = "same-setup"
+title = "Compare like with like"
+text = "Two measurements compare only when workload, environment and sample count are recorded for both."
+
+[[policies]]
+name = "baseline-comparability"
+input = "required_fields"
+gate = "conclusion.validate"
+fields = ["extensions.performance.workload_id", "extensions.performance.environment_id", "extensions.performance.sample_count"]
+rationale = "A performance claim names the workload, environment and sample count that a baseline must match."

@@ -11,7 +11,8 @@ JSON Pointer of the failing field. Loading returns an immutable pack and the
 SHA-256 digest of the file bytes; it performs no process spawn, network access
 or write.
 
-`general.toml` is the built-in pack and is compiled into the binary.
+`general.toml` is the built-in pack and is compiled into the binary. The other
+files in this directory are optional [example packs](#example-packs).
 
 ## Shape
 
@@ -197,3 +198,21 @@ with no core change and is exercised by a test in `crates/investigation-cli/test
 | [`security-research.toml`](security-research.toml) | `security-research` | Guidance cards only, on handling untrusted evidence and bounding claims. No fields, policies, guardrails, views or reports; it grants no authority and proposes no action. A test scans it for commands, targets and permission claims. |
 
 A card with the same name as a built-in card is read with `guide NAME --pack ID`.
+
+## Debugging and performance example packs
+
+Each file below is an example, not a default. None is built in, installed or
+pinned for a case until someone retains it and adopts it. Each uses only the
+public pack schema, and none needs a change to `investigation-core`. Removing a
+file changes nothing for a case that did not adopt it. A fixture case in
+`crates/investigation-cli/tests/example_packs.rs` loads, pins and uses each
+pack through the CLI.
+
+| Pack | Modes | Cards | Extension properties | Policy |
+|---|---|---|---|---|
+| [`debugging`](debugging.toml) | `explain` | `discriminate-by-reproduction`, `bisect-bookkeeping`, `intervene-and-revert`: they specialize the general `discriminate`, `delta-debug` and `intervene` cards | `reproduction` (k failures in n runs), `bisection` (steps run, steps skipped, endpoints verified again), `intervention_basis` | `required_fields` at `conclusion.validate`: a conclusion carries `intervention_basis`, an intervention or a stated reason |
+| [`performance`](performance.toml) | `measure` | `measure-with-workload`, `count-every-attempt`, `baseline-comparable`: they specialize `measure` and `baseline` and point at the core's measurement flags instead of repeating them | `workload_id`, `environment_id`, `sample_count` | `required_fields` at `conclusion.validate`: the three comparability fields |
+
+A card is shown by `next` only for a ranked gap. The `measure-with-workload`
+trigger, `observation.validity_context_missing`, is blocked by quality, so it
+shows in `method list` and not in `next`.

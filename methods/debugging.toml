@@ -1,0 +1,92 @@
+# Optional example pack: debugging bookkeeping (inv.method-pack.v1).
+#
+# Not installed or pinned by default. A case adopts it with method_pack.adopt.
+# It is data only: cards specialize the general discriminate, delta-debug and
+# intervene cards; extension properties record reproduction rate and
+# bisection counts; one policy asks a causal conclusion to carry an
+# intervention or a stated reason. The core never reads these values.
+schema_version = "inv.method-pack.v1"
+id = "debugging"
+version = "1.0.0"
+title = "Debugging"
+summary = "Bookkeeping for reproducing, bisecting and intervening on a failure."
+modes = ["explain"]
+
+[[cards]]
+name = "discriminate-by-reproduction"
+title = "Pick the test that splits the suspects"
+stage = "collect"
+summary = "Several suspected causes of a failure are open and no test separates them."
+operations = ["inquiry.create", "assessment.add"]
+triggers = [{ gap_rule = "hypothesis.no_assessment" }]
+
+[cards.body]
+when = "A failure has more than one suspected cause and the next run would fail under each of them."
+record = "For each suspect, write what a failing run and a passing run would show if it is the cause, before running anything. Run the test outside Investigation, record it with run.record, and interpret the result per suspect with assessment.add. Record the reproduction rate in the debugging reproduction field as k failures out of n runs."
+mistake = "Reading one failing run as support for every suspect that predicts a failure."
+skip = "Only one suspect remains and an intervention can test it directly."
+
+[[cards]]
+name = "bisect-bookkeeping"
+title = "Keep the bisection ledger"
+stage = "collect"
+summary = "The same failure keeps recurring, or a bisection is under way across many steps."
+operations = ["run.record", "observation.add"]
+triggers = [{ gap_rule = "run.repeated_same_failure" }]
+
+[cards.body]
+when = "You are narrowing a range of commits, builds or settings by halving it and testing each midpoint."
+record = "Record every tested step with run.record, with its run count and outcome. Use the debugging bisection field for steps run, steps skipped and whether both endpoints were verified again. Name each skipped step and say why it could not be tested. Re-run the good and bad endpoints before trusting the answer."
+mistake = "Trusting an endpoint that was verified once, or dropping skipped steps from the result."
+skip = "The range has two steps, or the failure does not reproduce reliably."
+
+[[cards]]
+name = "intervene-and-revert"
+title = "Confirm the cause by changing it"
+stage = "collect"
+summary = "A causal claim rests on a log, trace or correlation and has no recorded rival or intervention."
+operations = ["inquiry.create", "run.record", "observation.add"]
+triggers = [{ gap_rule = "conclusion.causal_claim_without_rival_account" }]
+
+[cards.body]
+when = "A conclusion names a cause of the failure and nobody has changed that cause."
+record = "Change exactly one thing outside Investigation, record the failure rate before and after as k of n runs with run.record, then revert it and record that the failure returns. Cite the runs in the debugging intervention_basis field of the conclusion. If no intervention is possible, write the reason in the same field."
+mistake = "Changing several things at once, or judging an intermittent failure from one run."
+skip = "The failure cannot be triggered on demand and the conclusion states that limit."
+
+[[properties]]
+name = "reproduction"
+record_kinds = ["run", "observation"]
+description = "How often the failure appeared: k failures in n runs."
+schema = { type = "object", required = ["failures", "runs"], fields = [
+  { name = "failures", schema = { type = "integer", minimum = 0, maximum = 100000 } },
+  { name = "runs", schema = { type = "integer", minimum = 1, maximum = 100000 } },
+] }
+
+[[properties]]
+name = "bisection"
+record_kinds = ["run"]
+description = "Bookkeeping for one bisection step or one finished bisection."
+schema = { type = "object", required = ["steps_run"], fields = [
+  { name = "steps_run", schema = { type = "integer", minimum = 0, maximum = 100000 } },
+  { name = "steps_skipped", schema = { type = "integer", minimum = 0, maximum = 100000 } },
+  { name = "endpoints_reverified", schema = { type = "boolean" } },
+] }
+
+[[properties]]
+name = "intervention_basis"
+record_kinds = ["conclusion"]
+description = "The intervention runs behind a causal claim, or the reason none was made."
+schema = { type = "string", max_length = 500 }
+
+[[observation_guidance]]
+name = "rate-not-single-run"
+title = "Report a rate, not one run"
+text = "An intermittent failure is a rate. State it as k of n runs and give n."
+
+[[policies]]
+name = "intervention-or-reason"
+input = "required_fields"
+gate = "conclusion.validate"
+fields = ["extensions.debugging.intervention_basis"]
+rationale = "A causal conclusion needs an intervention on record, or a stated reason none was possible."
