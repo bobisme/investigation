@@ -33,6 +33,7 @@ use investigation_core::{
     identity::{Id, Kind},
     inherited_trust::{self, Resolver},
     state::Record,
+    wire::Snapshot,
 };
 use investigation_store::journal::hash_bytes;
 use serde::Serialize;
@@ -567,12 +568,7 @@ impl<'a> NoteContext<'a> {
                 );
             }
         }
-        let _ = writeln!(
-            out,
-            "| Snapshot | sequence {}, head {} |",
-            head.sequence,
-            table_code(head.head_hash.as_str())
-        );
+        let _ = writeln!(out, "{}", snapshot_row(head));
         Ok(())
     }
 
@@ -815,6 +811,16 @@ impl<'a> NoteContext<'a> {
         }
         Ok(())
     }
+}
+
+/// The basis-table row naming the snapshot a note was rendered at, without
+/// its line break. [`crate::incremental`] restamps exactly this row.
+pub(crate) fn snapshot_row(head: &Snapshot) -> String {
+    format!(
+        "| Snapshot | sequence {}, head {} |",
+        head.sequence,
+        table_code(head.head_hash.as_str())
+    )
 }
 
 /// Whether every record a rule read may be shown in full to the audience.

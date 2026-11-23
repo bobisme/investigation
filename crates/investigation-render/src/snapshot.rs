@@ -3,7 +3,10 @@
 use std::collections::BTreeMap;
 
 use investigation_core::{
-    identity::Id, inherited_trust::SessionLedger, state::State, wire::Snapshot,
+    identity::Id,
+    inherited_trust::SessionLedger,
+    state::State,
+    wire::{Digest, Snapshot},
 };
 use investigation_store::{Store, durable::DurableFs};
 
@@ -26,6 +29,9 @@ pub struct CaseSnapshot {
     state: State,
     /// Evidence reads stamped on the case's journal events, for inherited trust.
     sessions: SessionLedger,
+    /// The verified hash of each journal event, by sequence from 1: the head
+    /// the case had at that sequence.
+    chain: Vec<Digest>,
 }
 
 impl VerifiedSnapshot {
@@ -41,6 +47,11 @@ impl VerifiedSnapshot {
                 let case = CaseSnapshot {
                     case_id,
                     sessions: replay.session_ledger(),
+                    chain: replay
+                        .events
+                        .iter()
+                        .map(|event| event.hash.clone())
+                        .collect(),
                     head: replay.snapshot,
                     state: replay.state,
                 };
@@ -86,6 +97,17 @@ impl CaseSnapshot {
     pub const fn sessions(&self) -> &SessionLedger {
         &self.sessions
     }
+
+    /// The head this case had at `sequence`, from 1 up to its current head;
+    /// `None` outside that range. A snapshot equal to it lies on this case's
+    /// verified chain.
+    pub fn head_at(&self, sequence: u64) -> Option<Snapshot> {
+        let offset = usize::try_from(sequence.checked_sub(1)?).ok()?;
+        self.chain.get(offset).map(|head_hash| Snapshot {
+            sequence,
+            head_hash: head_hash.clone(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -111,6 +133,7 @@ impl VerifiedSnapshot {
                         head,
                         state,
                         sessions: SessionLedger::new(),
+                        chain: Vec::new(),
                     },
                 )
             })

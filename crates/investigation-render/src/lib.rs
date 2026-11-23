@@ -62,8 +62,9 @@
 //!   frontmatter ([`NoteMarker`]): a case note its case head
 //!   (`inv_render_sequence`, `inv_snapshot`), `Start Here.md` the generation
 //!   (`inv_generation`). [`marker::stamp_plan`] adds or verifies them after
-//!   the templates run, so they are the only place a note names its basis
-//!   snapshot, and a commit to one case never changes another case's notes.
+//!   the templates run, and a commit to one case never changes another
+//!   case's notes. A working-vault render lets a note whose bytes did not
+//!   otherwise change keep the earlier head it names ([`incremental`]).
 //! - Generations: the manifest carries the render state
 //!   ([`RenderState`]: complete, updating, partial) and a write-ahead intent
 //!   of planned hashes, stored before the first vault write and again, last,
@@ -150,8 +151,13 @@
 //!   A gap, `next` step or measurement flag whose rule read a withheld record
 //!   names only the rule, since its reason can quote that record's fields.
 //!   `tests/audience_policy.rs` scans every planned byte per audience.
-//! - Incremental render: the planner still produces the full plan;
-//!   [`Ownership`] and the on-disk hash decide what to skip.
+//! - Incremental render ([`incremental`]): the planner still produces the
+//!   full plan, and the publisher skips every file that already holds the
+//!   planned bytes. A case note whose bytes are unchanged apart from the
+//!   basis it names keeps its earlier basis, so a commit rewrites only the
+//!   notes whose content changed. That is proven per note by comparing the
+//!   restamped bytes with the owned hash; nothing about what a note reads is
+//!   tracked or cached. [`PublishMode::Full`] restamps every note instead.
 //! - Exports: implement [`CaseRenderer`] for another layout and publish into a
 //!   fresh destination.
 //!
@@ -163,6 +169,7 @@ pub mod drift;
 pub(crate) mod entry;
 pub mod error;
 pub mod evidence;
+pub mod incremental;
 pub mod layout;
 pub mod lock;
 pub mod manifest;
@@ -186,6 +193,7 @@ use investigation_store::{Store, durable::DurableFs};
 
 pub use drift::{CONFLICTS_DIR, Drift, DriftKind};
 pub use error::RenderError;
+pub use incremental::PublishMode;
 pub use lock::RenderLock;
 pub use manifest::{
     CompletedGeneration, LoadedManifest, MANIFEST_VERSION, Manifest, ManifestStatus, OwnedPath,
@@ -255,25 +263,52 @@ pub struct RenderReport {
 /// note announces the partial render when it can still be written, before
 /// the error is returned. A render killed at any point leaves `updating` (or
 /// the earlier manifest), from which the next render completes.
+///
+/// Notes whose content did not change keep the basis they name
+/// ([`PublishMode::Incremental`]); [`render_vault_with`] chooses the mode.
 pub fn render_vault<F: DurableFs>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
     policy: &ViewPolicy,
     observe: &mut dyn FnMut(&PublishStep<'_>),
 ) -> Result<RenderReport, RenderError> {
+    render_vault_with(store, renderer, policy, PublishMode::Incremental, observe)
+}
+
+/// [`render_vault`] in the given [`PublishMode`]. Before step 1, in
+/// [`PublishMode::Incremental`], every case note the manifest proves
+/// unchanged apart from its basis is restamped to the basis it already names
+/// ([`incremental`]); the publisher then finds its bytes in place.
+pub fn render_vault_with<F: DurableFs>(
+    store: &mut Store<F>,
+    renderer: &impl CaseRenderer,
+    policy: &ViewPolicy,
+    mode: PublishMode,
+    observe: &mut dyn FnMut(&PublishStep<'_>),
+) -> Result<RenderReport, RenderError> {
     let lock = RenderLock::acquire(store.workspace(), RENDER_LOCK_WAIT)?;
     let snapshot = VerifiedSnapshot::read(store)?;
-    let plan = renderer.render(&snapshot, policy)?;
+    let planned = renderer.render(&snapshot, policy)?;
     let workspace = store.workspace();
     let loaded = Manifest::load(workspace, &lock)?;
     let publisher = Publisher::open(workspace, &lock)?;
     // The entry note announces the drift the last render recorded; it is
     // written again below only when this render finds something else.
     let expected = entry::health(None, loaded.manifest.drift());
-    let plan = if expected.is_healthy() {
-        plan
+    let planned = if expected.is_healthy() {
+        planned
     } else {
-        renderer.announce(&plan, &snapshot, policy, &expected)?
+        renderer.announce(&planned, &snapshot, policy, &expected)?
+    };
+    // Announcing re-plans from `planned`, whose notes name their case heads;
+    // only the entry note of an announcement is ever published.
+    let plan = match mode {
+        PublishMode::Incremental => {
+            incremental::carry(&planned, &snapshot, &loaded.manifest, &mut |path| {
+                incremental::read_note(&publisher, path)
+            })?
+        }
+        PublishMode::Full => planned.clone(),
     };
 
     let mut targets = loaded.manifest.known_paths();
@@ -298,7 +333,7 @@ pub fn render_vault<F: DurableFs>(
     let announce_partial = |manifest: Manifest, reason: String| {
         let health = entry::health(Some(reason), manifest.drift());
         renderer
-            .announce(&plan, &snapshot, policy, &health)
+            .announce(&planned, &snapshot, policy, &health)
             .and_then(|announced| {
                 entry::publish(
                     workspace,
@@ -356,7 +391,7 @@ pub fn render_vault<F: DurableFs>(
     let manifest = if actual == expected {
         manifest
     } else {
-        let announced = renderer.announce(&plan, &snapshot, policy, &actual)?;
+        let announced = renderer.announce(&planned, &snapshot, policy, &actual)?;
         match entry::publish(
             workspace,
             &lock,

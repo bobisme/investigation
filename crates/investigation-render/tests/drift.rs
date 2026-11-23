@@ -2,6 +2,11 @@
 //! deleted, moved or copied by a sync client are left exactly as found,
 //! diagnosed, and surfaced; the would-be content is retained in the
 //! conflicts area; the rest of the case keeps rendering.
+//!
+//! These tests render in [`PublishMode::Full`], where a commit restamps
+//! every note of its case, so each commit gives every drifted note a version
+//! to withhold. `incremental.rs` runs every drift kind in both modes and
+//! checks that they diagnose the same drift.
 
 use std::{
     fs,
@@ -13,9 +18,9 @@ use std::{
 use investigation_core::identity::Id;
 use investigation_render::{
     Action, CONFLICTS_DIR, CaseRenderer, Drift, DriftKind, Generation, Manifest, ManifestStatus,
-    Phase, PlanBuilder, PlanPath, RENDER_MANIFEST, Refusal, RenderError, RenderLock, RenderPlan,
-    RenderReport, RenderState, VaultRenderer, VerifiedSnapshot, ViewPolicy, render_vault,
-    vault_status,
+    Phase, PlanBuilder, PlanPath, PublishMode, RENDER_MANIFEST, Refusal, RenderError, RenderLock,
+    RenderPlan, RenderReport, RenderState, VaultRenderer, VerifiedSnapshot, ViewPolicy,
+    render_vault_with, vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -72,7 +77,14 @@ fn note(case_id: Id, id: Id) -> String {
 }
 
 fn render(store: &mut Store) -> RenderReport {
-    render_vault(store, &VaultRenderer, &ViewPolicy::default(), &mut |_| {}).unwrap()
+    render_vault_with(
+        store,
+        &VaultRenderer,
+        &ViewPolicy::default(),
+        PublishMode::Full,
+        &mut |_| {},
+    )
+    .unwrap()
 }
 
 fn plan(store: &mut Store) -> RenderPlan {
@@ -462,7 +474,14 @@ fn fixed(store: &mut Store, files: &[(&str, &str)]) -> Fixed {
 }
 
 fn render_fixed(store: &mut Store, plan: &Fixed) -> RenderReport {
-    render_vault(store, plan, &ViewPolicy::default(), &mut |_| {}).unwrap()
+    render_vault_with(
+        store,
+        plan,
+        &ViewPolicy::default(),
+        PublishMode::Full,
+        &mut |_| {},
+    )
+    .unwrap()
 }
 
 #[test]
@@ -526,10 +545,11 @@ fn after_a_killed_render_a_missing_file_is_recreated_unless_already_drifted() {
     // Kill a render after its first step: the manifest says `updating`.
     question(&mut store, "q4", case_id);
     let killed = catch_unwind(AssertUnwindSafe(|| {
-        render_vault(
+        render_vault_with(
             &mut store,
             &VaultRenderer,
             &ViewPolicy::default(),
+            PublishMode::Full,
             &mut |_| panic!("killed"),
         )
     }));

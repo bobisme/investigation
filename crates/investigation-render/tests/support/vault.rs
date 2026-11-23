@@ -16,8 +16,11 @@ use investigation_core::{
     freshness::dependency_edges,
     identity::{Id, Kind},
     state::Record,
+    wire::Snapshot,
 };
-use investigation_render::{RenderPlan, VerifiedSnapshot, layout};
+use investigation_render::{
+    NoteMarker, PlanEntry, RenderPlan, VerifiedSnapshot, incremental::rebase, layout,
+};
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde_json::Value;
 
@@ -105,6 +108,45 @@ pub fn references(record: &Record) -> BTreeSet<Id> {
     walk(&record.body, None, &mut found);
     found.remove(&record.header.id);
     found
+}
+
+/// How the bytes published at `entry`'s path relate to it: `Ok(None)` when
+/// they are the entry, `Ok(Some(basis))` when they are the entry restamped
+/// to an earlier head of its case (the basis an unchanged note keeps), and
+/// `Err` otherwise. The earlier head must lie on the case's verified chain.
+pub fn up_to_basis(
+    entry: &PlanEntry,
+    bytes: &[u8],
+    snapshot: &VerifiedSnapshot,
+) -> Result<Option<Snapshot>, String> {
+    if bytes == entry.content() {
+        return Ok(None);
+    }
+    let path = entry.path().as_str();
+    let case = path
+        .strip_prefix("Cases/")
+        .and_then(|rest| rest.split('/').next())
+        .and_then(|case_id| case_id.parse().ok())
+        .and_then(|case_id| snapshot.case(case_id))
+        .ok_or_else(|| format!("{path}: differs from the plan outside any case"))?;
+    let Some(NoteMarker::Case(basis)) = NoteMarker::read(bytes) else {
+        return Err(format!(
+            "{path}: differs from the plan and names no case head"
+        ));
+    };
+    let head = case.head();
+    if basis.sequence >= head.sequence || case.head_at(basis.sequence).as_ref() != Some(&basis) {
+        return Err(format!(
+            "{path}: names {basis:?}, not an earlier head of its case (head {head:?})"
+        ));
+    }
+    match rebase(entry.content(), head, &basis) {
+        Some(rebased) if rebased == bytes => Ok(Some(basis)),
+        _ => Err(format!(
+            "{path}: differs from the plan by more than its basis {}",
+            basis.sequence
+        )),
+    }
 }
 
 /// What [`check`] saw: the record kinds rendered, and every problem found.

@@ -15,9 +15,15 @@
 //! its content is computed from that case's state alone (backlinks,
 //! freshness and gaps span the case), so the case head is exactly its basis,
 //! and a commit to one case leaves every other case's notes byte-identical.
-//! A reader compares the marker with the heads of the last complete
-//! generation in `local/render-manifest.json`: a note whose head differs
-//! belongs to another, possibly unfinished, render.
+//!
+//! The plan stamps every case note with its case head. A working-vault render
+//! then lets a note whose bytes are otherwise unchanged keep the earlier head
+//! it already names ([`crate::incremental`]), so the marker reads "the case
+//! head these exact bytes were rendered at". Whether a file belongs to the
+//! last complete generation is answered by `local/render-manifest.json`,
+//! which records for every owned path its hash, its basis and the generation
+//! that last confirmed it; a case note whose head is newer than that
+//! generation's belongs to another, possibly unfinished, render.
 //!
 //! [`stamp_plan`] adds the markers after the templates have run, so it
 //! composes with any template output: it inserts the properties into an

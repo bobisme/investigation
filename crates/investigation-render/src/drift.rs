@@ -508,7 +508,7 @@ fn conflicts_directory(
 
 /// The bytes of a regular file, read without following links; `None` when it
 /// is absent, not a regular file or too large to be a note.
-fn read_regular(
+pub(crate) fn read_regular(
     directory: &OwnedFd,
     name: impl rustix::path::Arg,
     label: &str,

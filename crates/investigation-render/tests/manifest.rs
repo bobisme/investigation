@@ -165,7 +165,13 @@ fn a_foreign_file_inside_a_case_folder_survives_any_number_of_renders() {
         let report = render(&mut store);
         assert_eq!(report.manifest, ManifestStatus::Loaded);
         assert_eq!(report.publish.refused(), 0);
-        assert_eq!(report.publish.written(), report.publish.outcomes.len());
+        // The new question and the Overview change; unchanged notes keep
+        // their bytes. Nothing is refused beside the foreign files.
+        assert!(report.publish.written() >= 2);
+        assert_eq!(
+            report.publish.written() + report.publish.unchanged(),
+            report.publish.outcomes.len()
+        );
         // Unknown files are reported, never adopted; human roots and hidden
         // entries are not reported.
         assert_eq!(report.unknown, foreign.to_vec());
@@ -233,8 +239,12 @@ fn deleting_the_manifest_and_rerendering_destroys_no_file() {
     assert_eq!(report.adopted, planned);
     assert_eq!(tree(&vault), before);
 
-    // New snapshot with the manifest lost: every existing file now differs
-    // from the plan and is foreign; it is refused, never overwritten.
+    // New snapshot with the manifest lost: a file whose content the commit
+    // changed (the Overview, here also edited by hand, and Start Here)
+    // differs from the plan and is foreign; it is refused, never
+    // overwritten. A question note the commit left unchanged is exactly what
+    // an incremental render keeps, naming the earlier head it was rendered
+    // at, so it is adopted as it stands.
     fs::remove_file(manifest_file(&store)).unwrap();
     let edited = format!("Cases/{case_id}/Overview.md");
     fs::write(vault.join(&edited), "edited by hand\n").unwrap();
@@ -243,19 +253,30 @@ fn deleting_the_manifest_and_rerendering_destroys_no_file() {
     let report = render(&mut store);
     assert_eq!(report.publish.written(), 1, "only the new question note");
     assert_eq!(report.publish.removed(), 0);
-    assert_eq!(report.publish.refused(), planned.len());
-    for path in &planned {
+    let (questions, changed): (Vec<&PlanPath>, Vec<&PlanPath>) = planned
+        .iter()
+        .partition(|path| path.as_str().contains("/Questions/"));
+    assert_eq!(questions.len(), 2);
+    assert_eq!(report.publish.refused(), changed.len());
+    for path in &changed {
         assert_eq!(
             action(&report, path.as_str()),
             Action::Refused(Refusal::NotProvenOwned)
         );
     }
+    for path in &questions {
+        assert_eq!(action(&report, path.as_str()), Action::Unchanged);
+    }
+    assert_eq!(
+        report.adopted,
+        questions.into_iter().cloned().collect::<Vec<_>>()
+    );
     let after = tree(&vault);
     for (path, bytes) in &before {
         assert_eq!(after.get(path), Some(bytes), "{path:?} changed");
     }
     assert!(after.contains_key(Path::new(&format!("Cases/{case_id}/Questions/{added}.md"))));
-    let mut unknown: Vec<_> = planned.iter().map(|path| path.to_string()).collect();
+    let mut unknown: Vec<_> = changed.iter().map(|path| path.to_string()).collect();
     unknown.sort();
     assert_eq!(report.unknown, unknown);
 

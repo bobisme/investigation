@@ -106,8 +106,9 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
                 out,
                 "- State: partial. The render of this generation stopped before it \
                  processed every note: {}. Notes may mix generations; each case note names \
-                 its case head in `inv_render_sequence` and `inv_snapshot`. The next render \
-                 completes the vault, and `brief` keeps reading the workspace itself.",
+                 the case head it was rendered at in `inv_render_sequence` and \
+                 `inv_snapshot`. The next render completes the vault, and `brief` keeps \
+                 reading the workspace itself.",
                 prose(reason)
             );
         }
@@ -149,9 +150,11 @@ fn health_section(out: &mut String, generation: &Generation, health: &EntryHealt
         }
     }
     out.push_str(
-        "- While a render runs, notes can briefly mix generations. A note whose \
-         `inv_render_sequence` is older than its case's sequence below is from an earlier \
-         render.\n",
+        "- Each case note names the case head its exact content was rendered at, in \
+         `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose \
+         content changed, so a note that later commits left unchanged keeps an older \
+         sequence than its case's below. While a render runs, notes can briefly mix \
+         generations; once it completes, every note is one that render confirmed.\n",
     );
     // Run in the workspace folder; `vault_scenarios.rs` runs both verbatim.
     let _ = writeln!(

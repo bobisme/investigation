@@ -20,7 +20,14 @@
 //!
 //! Adopting a file whose bytes already equal the plan is how a lost or
 //! unreadable manifest is rebuilt: nothing can be destroyed by claiming bytes
-//! the renderer would write anyway, and every adoption is reported. Any other
+//! the renderer would write anyway, and every adoption is reported. A case
+//! note an earlier render left unchanged, naming an earlier head of its
+//! case, is adopted the same way ([`crate::incremental`]).
+//!
+//! For a case note, the record also keeps the basis its bytes name and the
+//! generation that last confirmed them. A render lets an unchanged note keep
+//! that basis only while the last complete generation used the same renderer
+//! version and view policy; bases recorded under other rules are dropped. Any other
 //! file stays foreign until a human reconciles it, so deleting the manifest
 //! and rendering again destroys no file.
 //!
@@ -85,10 +92,24 @@ const MAX_MANIFEST_BYTES: u64 = 256 << 20;
 pub struct OwnedPath {
     pub path: PlanPath,
     pub sha256: Digest,
-    /// The generation that last wrote or adopted these bytes.
+    /// The generation that last confirmed these bytes: it wrote or adopted
+    /// them, or found them already holding its planned bytes.
     pub generation: String,
     /// The record the file projects, when it projects exactly one.
     pub projects: Option<Id>,
+    /// For a case note, the case head its bytes name as their basis
+    /// ([`crate::NoteMarker::Case`]). It can be older than the confirming
+    /// generation's head when the note did not change (see
+    /// [`crate::incremental`]).
+    pub basis: Option<Snapshot>,
+}
+
+/// The case head a note's bytes name, when they name one.
+fn basis_of(entry: &PlanEntry) -> Option<Snapshot> {
+    match crate::NoteMarker::read(entry.content())? {
+        crate::NoteMarker::Case(head) => Some(head),
+        crate::NoteMarker::Generation(_) => None,
+    }
 }
 
 /// The last generation whose every plan entry was processed.
@@ -320,6 +341,7 @@ impl Manifest {
                 sha256: entry.sha256().clone(),
                 generation: generation.id().to_owned(),
                 projects: entry.projects(),
+                basis: basis_of(entry),
             },
         );
         self
@@ -328,9 +350,10 @@ impl Manifest {
     /// The manifest after a publication, and the paths it adopted.
     ///
     /// Written files are recorded with their new hash. A file that already
-    /// held the plan's bytes is recorded too; when it was not owned before it
-    /// is adopted and listed. Removed retired paths, and retired paths found
-    /// empty, are released. Every other outcome (refused, drifted, unsafe)
+    /// held the plan's bytes is recorded too, as confirmed by this
+    /// generation; when it was not owned before it is adopted and listed.
+    /// Each record keeps the basis a case note names. Removed retired paths,
+    /// and retired paths found empty, are released. Every other outcome (refused, drifted, unsafe)
     /// leaves the previous record as it was, so drift stays visible and
     /// nothing becomes owned without proof. `report` may be partial, from a
     /// render that stopped early; only a report covering every plan entry
@@ -347,7 +370,19 @@ impl Manifest {
             .collect();
         let mut owned = self.owned.clone();
         let mut adopted = Vec::new();
-        let mut planned = 0;
+        let complete = report
+            .outcomes
+            .iter()
+            .filter(|outcome| entries.contains_key(&outcome.path))
+            .count()
+            == plan.entries().len();
+        // A recorded basis vouches that the owned bytes are what the last
+        // complete generation's renderer and policy planned at that basis
+        // ([`crate::incremental`]). Bases recorded under any other renderer
+        // or policy are dropped, so such notes are restamped, never kept.
+        let same_rules = self.generation.as_ref().is_some_and(|last| {
+            last.renderer == generation.renderer() && last.policy == generation.policy()
+        });
         for outcome in &report.outcomes {
             let path = &outcome.path;
             let Some(entry) = entries.get(path) else {
@@ -356,19 +391,18 @@ impl Manifest {
                 }
                 continue;
             };
-            planned += 1;
             let record = || OwnedPath {
                 path: path.clone(),
                 sha256: entry.sha256().clone(),
                 generation: generation.id().to_owned(),
                 projects: entry.projects(),
+                basis: basis_of(entry).filter(|_| complete || same_rules),
             };
             match outcome.action {
                 Action::Written => {
                     owned.insert(path.clone(), record());
                 }
                 Action::Unchanged => match owned.get(path) {
-                    Some(previous) if &previous.sha256 == entry.sha256() => {}
                     Some(_) => {
                         owned.insert(path.clone(), record());
                     }
@@ -386,7 +420,13 @@ impl Manifest {
                 Action::Removed | Action::Refused(_) => {}
             }
         }
-        let complete = planned == plan.entries().len();
+        if complete && !same_rules {
+            for record in owned.values_mut() {
+                if record.generation != generation.id() {
+                    record.basis = None;
+                }
+            }
+        }
         // Drift stays recorded while its path is still refused; the render
         // replaces the records of the paths it reached ([`Self::with_drift`]).
         let reached: BTreeMap<&PlanPath, &Action> = report
@@ -568,6 +608,10 @@ impl Manifest {
                     sha256: record.sha256.clone(),
                     generation: record.generation.clone(),
                     projects: record.projects,
+                    basis: record.basis.as_ref().map(|head| WireBasis {
+                        sequence: head.sequence,
+                        head_hash: head.head_hash.clone(),
+                    }),
                 })
                 .collect(),
             pending: self
@@ -668,6 +712,10 @@ impl Manifest {
                     sha256: record.sha256,
                     generation: record.generation,
                     projects: record.projects,
+                    basis: record.basis.map(|head| Snapshot {
+                        sequence: head.sequence,
+                        head_hash: head.head_hash,
+                    }),
                 },
             );
         }
@@ -895,4 +943,14 @@ struct WireOwned {
     generation: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     projects: Option<Id>,
+    /// Absent in manifests written before incremental rendering.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    basis: Option<WireBasis>,
+}
+
+/// A case note's basis; its path names the case.
+#[derive(Serialize, Deserialize)]
+struct WireBasis {
+    sequence: u64,
+    head_hash: Digest,
 }

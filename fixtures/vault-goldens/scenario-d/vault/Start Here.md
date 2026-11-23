@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_4ae3975947c83a9bfd80cc7abdca9803d805cf002581cc044808e09f1f49328d"
+inv_generation: "gen_5687b88fc4c228c1cc4d66d7062a128cbb330d56d3689dbb462e587ea70069f3"
 ---
 # Start Here
 
@@ -9,15 +9,15 @@ inv_generation: "gen_4ae3975947c83a9bfd80cc7abdca9803d805cf002581cc044808e09f1f4
 
 This vault is a read-only view of the Investigation workspace that contains it. The workspace journal is the record; every note here is projected from one verified snapshot of it, and nothing written in the vault changes it. The notes are plain Markdown with wikilinks, and nothing here needs a community plugin.
 
-- Renderer: `inv.vault-renderer.v15`
+- Renderer: `inv.vault-renderer.v16`
 - View audience: `internal`
 
 ## Projection health
 
-- Generation: `gen_4ae3975947c83a9bfd80cc7abdca9803d805cf002581cc044808e09f1f49328d` (the `inv_generation` property of this note)
+- Generation: `gen_5687b88fc4c228c1cc4d66d7062a128cbb330d56d3689dbb462e587ea70069f3` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
-- While a render runs, notes can briefly mix generations. A note whose `inv_render_sequence` is older than its case's sequence below is from an earlier render.
+- Each case note names the case head its exact content was rendered at, in `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose content changed, so a note that later commits left unchanged keeps an older sequence than its case's below. While a render runs, notes can briefly mix generations; once it completes, every note is one that render confirmed.
 - Check it from the workspace folder: `investigation vault status --format json` says whether this vault matches the workspace's current snapshot and is complete, and `investigation vault conflicts --format json` lists each drifted file with where its withheld version is kept. Neither changes anything.
 
 ## Who owns what

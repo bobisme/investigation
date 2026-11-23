@@ -42,7 +42,9 @@ use crate::{
 /// comparison matrix, reviews, epistemic frontier, timeline and the other
 /// §12.5 views), linked from a `## Views` section of the Overview, and a
 /// matrix cell with no comparison reads `unknown` (W08.07).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v15";
+/// v16: `Start Here.md` says a case note names the head its content was
+/// rendered at and keeps it while unchanged (W08.15).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v16";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

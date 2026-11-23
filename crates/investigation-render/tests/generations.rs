@@ -5,6 +5,9 @@
 #[path = "support/human.rs"]
 mod human;
 
+#[path = "support/vault.rs"]
+mod checks;
+
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -17,9 +20,9 @@ use std::{
 use investigation_core::identity::Id;
 use investigation_render::{
     Action, CaseRenderer, EntryHealth, Generation, Manifest, NoteMarker, Phase, PlanBuilder,
-    PlanPath, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan, RenderReport,
-    RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot, ViewPolicy, layout,
-    render_vault, vault_status,
+    PlanPath, PublishMode, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan,
+    RenderReport, RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot,
+    ViewPolicy, incremental::rebase, layout, render_vault, render_vault_with, vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -115,6 +118,18 @@ fn render(store: &mut Store, extra: bool) -> Result<RenderReport, RenderError> {
     render_vault(store, &Vault { extra }, &ViewPolicy::default(), &mut |_| {})
 }
 
+/// A render in which every note is restamped with its case head, so a commit
+/// rewrites every note of its case.
+fn render_full(store: &mut Store, extra: bool) -> Result<RenderReport, RenderError> {
+    render_vault_with(
+        store,
+        &Vault { extra },
+        &ViewPolicy::default(),
+        PublishMode::Full,
+        &mut |_| {},
+    )
+}
+
 fn current_plan(store: &mut Store) -> RenderPlan {
     let snapshot = VerifiedSnapshot::read(store).unwrap();
     VaultRenderer
@@ -158,8 +173,10 @@ fn in_human_area(path: &Path) -> bool {
     components.next().is_some() && layout::is_human_root(first.to_str().unwrap())
 }
 
-/// The vault is exactly today's plan, the manifest is complete and current,
-/// and nothing a crash left behind remains.
+/// The vault is exactly today's plan, up to notes that keep the earlier head
+/// their unchanged bytes were rendered at; the manifest is complete and
+/// current, owns every file at its bytes and basis; and nothing a crash left
+/// behind remains.
 fn assert_complete(store: &mut Store, report: &RenderReport) {
     assert_eq!(report.publish.refused(), 0, "{:?}", report.publish.outcomes);
     assert!(report.unknown.is_empty(), "{:?}", report.unknown);
@@ -178,11 +195,17 @@ fn assert_complete(store: &mut Store, report: &RenderReport) {
     let mut sorted = planned.clone();
     sorted.sort();
     assert_eq!(on_disk, sorted, "only planned files, no leftovers");
+    let snapshot = VerifiedSnapshot::read(store).unwrap();
+    let manifest = manifest(store);
     for entry in plan.entries() {
         let bytes = fs::read(vault(store).join(entry.path().as_str())).unwrap();
-        assert_eq!(bytes, entry.content(), "{}", entry.path());
+        let kept = checks::up_to_basis(entry, &bytes, &snapshot).unwrap();
+        let record = manifest.get(entry.path()).unwrap();
+        assert_eq!(record.sha256, hash_bytes(&bytes), "{}", entry.path());
+        if kept.is_some() {
+            assert_eq!(record.basis, kept, "{}", entry.path());
+        }
     }
-    let manifest = manifest(store);
     assert_eq!(manifest.state(), &RenderState::Complete);
     assert_eq!(manifest.pending().count(), 0);
     let status = vault_status(store.workspace()).unwrap();
@@ -276,17 +299,23 @@ fn every_note_names_its_snapshot_and_other_cases_never_churn() {
         }
     }
 
-    // A commit to the second case changes only its notes and Start Here.
+    // A commit to the second case plans new bytes only for its notes and
+    // Start Here: each of its notes names the new head.
     question(&mut store, "q4", second);
     let after = current_plan(&mut store);
     assert_ne!(after.generation().id(), before.generation().id());
+    let later_head = after.generation().heads()[1].1.clone();
     for entry in before.entries() {
         let path = entry.path().as_str();
         let later = after.entry(path).unwrap();
         let unchanged = path.starts_with(&format!("Cases/{first}/"));
         assert_eq!(unchanged, later.content() == entry.content(), "{path}");
     }
+    // The render rewrites only the notes whose content changed. A second-case
+    // note that differs from its earlier bytes only in the head it names
+    // keeps those bytes; the rest of the second case is rewritten.
     let report = render(&mut store, false).unwrap();
+    let mut kept = 0;
     for entry in before.entries() {
         let path = entry.path().as_str();
         let written = report
@@ -296,12 +325,40 @@ fn every_note_names_its_snapshot_and_other_cases_never_churn() {
             .find(|outcome| outcome.path.as_str() == path)
             .unwrap()
             .action;
+        let on_disk = fs::read(vault(&store).join(path)).unwrap();
+        let planned = after.entry(path).unwrap().content();
+        let content_changed = if path.starts_with(&format!("Cases/{second}/")) {
+            rebase(planned, &later_head, &head(second)).as_deref() != Some(entry.content())
+        } else {
+            planned != entry.content()
+        };
+        if content_changed {
+            assert_eq!(written, Action::Written, "{path}");
+            assert_eq!(on_disk, planned, "{path}");
+        } else {
+            assert_eq!(written, Action::Unchanged, "{path}");
+            assert_eq!(on_disk, entry.content(), "{path}");
+            kept += usize::from(path.starts_with(&format!("Cases/{second}/")));
+        }
+    }
+    assert!(kept > 0, "an unchanged second-case note keeps its bytes");
+    for outcome in &report.publish.outcomes {
+        if before.entry(outcome.path.as_str()).is_none() {
+            assert_eq!(outcome.action, Action::Written, "{}", outcome.path);
+        }
+    }
+
+    // In full mode the same commit restamps every second-case note.
+    question(&mut store, "q5", second);
+    let report = render_full(&mut store, false).unwrap();
+    for outcome in &report.publish.outcomes {
+        let path = outcome.path.as_str();
         let expected = if path.starts_with(&format!("Cases/{first}/")) {
             Action::Unchanged
         } else {
             Action::Written
         };
-        assert_eq!(written, expected, "{path}");
+        assert_eq!(outcome.action, expected, "{path}");
     }
 }
 
@@ -580,7 +637,8 @@ fn leftovers_of_a_killed_render_are_swept_safely() {
         .join("local/.render-manifest.json.manifest-0.inv-tmp");
     fs::write(&manifest_temp, "{").unwrap();
 
-    let report = render(&mut store, false).unwrap();
+    // Full mode, so the render must write q1 beside the stale temporaries.
+    let report = render_full(&mut store, false).unwrap();
     let action = |path: &Path| {
         let relative = path
             .strip_prefix(store.workspace().root())
