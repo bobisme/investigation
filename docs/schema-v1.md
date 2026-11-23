@@ -52,6 +52,20 @@ An Assessment of a frozen confirmatory InquiryPlan can carry an optional `frozen
 
 The classification never rejects an assessment; it limits how the result is labeled. The view also lists the exclusions, the deviations, `early_stop`, and `stop_rule_differs_without_deviation` when the applied stop rule's text differs from the frozen rule and no stop deviation is recorded. Chronology is a separate axis: `evidence_reuse.chronology.runs` reports each Run behind the inputs with its own recorded `chronology` and `ordering_receipt`, unchanged. A receipt adds a warning for a non-prospective class, for each deviation and for a changed stop rule without a deviation.
 
+## Reference-only imports
+
+Some bytes cannot or should not be copied. An ingest manifest can record them as references instead, but only explicitly:
+
+- `external_refs` names bytes held elsewhere: an opaque `locator` with the expected `digest` and `size_bytes`. The core reads and fetches nothing. The Artifact is `availability: external`, `integrity: not_checked`, with an `external` block that records the locator and `digest_basis: declared`. Use it instead of `paths` or `content`.
+- `retention: "reference"` hashes local `paths` beneath the import roots without copying them, for files too large to retain (up to 1 TiB). The Artifact is `external` with `digest_basis: read_at_ingest` and one attributed verification. The file can change later.
+
+A reference never satisfies an offline-completeness guarantee. `show` lists a `retention` entry for Sources, Artifacts and Observations whose bytes are not retained, with `state: source_unavailable`, a `label` (`external_unverified`, `external_verified` or `external_mismatch`), the locator and the latest verification. `evidence read` on a reference fails with `GATE_FAILED` and `actual.state: source_unavailable`. Selectors and quotes on a reference stay `unavailable`, never `verified`. Promotion gates treat it as unavailable evidence, `check` counts it as `reference_only_artifacts` and never as a verified blob, and an ingest receipt lists only retained bytes in `artifacts`. A failed copy, for example on a full disk, is a failed ingest. Nothing falls back to a reference, and retained bytes never deduplicate into a recorded reference.
+
+To reverify, supply the bytes in a manifest with `case_id`, one path or stdin content, and `reverify: {"artifact_ref": REVISION}` naming the current revision of the reference. The core compares digest and size and appends an attributed verification (outcome, method, observed digest and size, time, actor, command) to the next revision of the Artifact:
+
+- On a match, copied bytes become `retained` and `verified`; in reference mode the Artifact stays `external` and becomes `verified`. Dependents stay current. The item reports `reverified`.
+- On a mismatch, integrity becomes `mismatch`. The recorded digest and size do not change, and the supplied bytes are not retained. The item reports `reverification_failed`, the receipt carries a warning, and records that cite the Artifact become `needs_review` with trigger `external_mismatch`. To keep the changed bytes, ingest them as a separate acquisition.
+
 ## Structural blindspot audit
 
 `investigation blindspots` returns an `inv.audit.v1` object, published as the `audit` wire schema. It reads one committed snapshot of one case and writes nothing. It does not call a model and does not record a Review. The fields are:

@@ -290,6 +290,7 @@ mod tests {
             integrity: ArtifactIntegrity::Unavailable,
             sensitivity: ArtifactSensitivity::Internal,
             derivation: None,
+            external: None,
             status: None,
             withdrawals: Vec::new(),
         })

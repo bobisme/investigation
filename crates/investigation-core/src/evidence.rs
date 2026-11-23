@@ -360,6 +360,11 @@ pub struct ArtifactBody {
     /// How a derivative was produced, beyond its inputs in `transforms`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derivation: Option<crate::derivation::DerivationRecord>,
+    /// Locator and verification log of a reference-only Artifact: its bytes
+    /// are held elsewhere (`availability: external`) or were retained only
+    /// after supplied bytes matched. See [`crate::external_ref`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external: Option<crate::external_ref::ExternalReference>,
 }
 
 impl ArtifactBody {

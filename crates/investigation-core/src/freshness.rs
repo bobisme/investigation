@@ -118,6 +118,9 @@ pub enum Trigger {
         from: MeasurementValidity,
         to: MeasurementValidity,
     },
+    /// Bytes supplied to reverify a cited reference-only Artifact differ
+    /// from its recorded digest or size. The recorded digest is unchanged.
+    ExternalMismatch,
     /// A cited source is newly judged doubtful or not authentic, unreliable,
     /// or outdated or superseded (`source.assess`).
     SourceConcern { dimensions: Vec<String> },
@@ -806,6 +809,12 @@ fn edge_change(
     // basis; each new withdrawal or newly raised concern is its own trigger.
     if !subject && let Some(trigger) = crate::source_ops::use_trigger(cited, current) {
         return Some((trigger, cause));
+    }
+    // Reverifying a reference: a mismatch is its own trigger, and a match
+    // that only records the verification (or retains the same bytes) is not a
+    // change to what dependents cite.
+    if let Some(change) = crate::external_ref::verification_change(cited, current) {
+        return change.map(|trigger| (trigger, cause));
     }
     if let Some(trigger) = end_state(current)
         && end_state(cited).is_none()

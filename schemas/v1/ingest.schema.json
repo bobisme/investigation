@@ -311,6 +311,32 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "ExternalRefRequest": {
+      "additionalProperties": false,
+      "description": "Bytes held at an external location that this ingest does not supply. The\nexpected digest and size are recorded as declared; the Artifact stays\n`external` and unverified until supplied bytes match (`reverify`).",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "locator": {
+          "description": "Opaque locator. It is recorded as text and never fetched.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": "string"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "locator",
+        "digest",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -430,6 +456,27 @@
         "scope",
         "action",
         "rationale"
+      ],
+      "type": "object"
+    },
+    "RetentionMode": {
+      "description": "How local `paths` are kept. `copy` (the default) snapshots the bytes into\nthe workspace. `reference` hashes them without copying: the Artifact is\n`external` and cannot satisfy an offline-completeness guarantee.",
+      "enum": [
+        "copy",
+        "reference"
+      ],
+      "type": "string"
+    },
+    "ReverifyRequest": {
+      "additionalProperties": false,
+      "description": "Compare the supplied bytes (one path or stdin) with an exact reference-only\nArtifact revision. Requires `case_id`; creates no Source.",
+      "properties": {
+        "artifact_ref": {
+          "$ref": "#/$defs/RevisionRef"
+        }
+      },
+      "required": [
+        "artifact_ref"
       ],
       "type": "object"
     },
@@ -965,6 +1012,13 @@
       ],
       "description": "The items are outputs of a transformation of recorded Artifacts. They are\nrecorded as derivatives of those inputs: no Source or acquisition is\ncreated, `source.title` labels the output and `source.format` gives its\nformat."
     },
+    "external_refs": {
+      "description": "Reference-only items: bytes held at an external location, named by an\nopaque locator with their expected digest and size. Nothing is read or\ncopied; each Artifact is `external` and unverified until `reverify`.\nExclusive with `paths` and `content`.",
+      "items": {
+        "$ref": "#/$defs/ExternalRefRequest"
+      },
+      "type": "array"
+    },
     "extract_text": {
       "default": false,
       "type": "boolean"
@@ -984,6 +1038,28 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "retention": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RetentionMode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "`copy` (default) snapshots `paths` into the workspace. `reference`\nhashes them without copying, for large files: the Artifacts are\n`external` and cannot satisfy an offline-completeness guarantee. A\nfailed copy is a failed ingest, never a fallback to `reference`."
+    },
+    "reverify": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReverifyRequest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Compare the supplied bytes (one path or stdin) with an exact\nreference-only Artifact revision. A match records an attributed\nverification in a new revision and, for copied bytes, retains them. A\nmismatch records a failed verification; the recorded digest never\nchanges and records citing the Artifact need review."
     },
     "schema_version": {
       "$ref": "#/$defs/IngestVersion"

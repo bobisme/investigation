@@ -35,6 +35,7 @@ use investigation_core::{
         ArtifactBody, ArtifactRole, ObservationBasis, ObservationBody, SelectorValidation,
         SourceBody, TextQuoteState,
     },
+    external_ref::{self, RetentionState},
     header::{Knowledge, SourceTime},
     identity::Kind,
     source_ops::{self, EvidentiaryUse, SourceJudgment, UseState, WithdrawalScope},
@@ -103,6 +104,9 @@ pub(crate) fn properties(notes: &NoteContext<'_>, record: &Record, front: &mut F
                     .text("inv_artifact_role", body.role().as_str())
                     .text("inv_availability", &wire_word(&body.availability))
                     .text("inv_integrity", &wire_word(&body.integrity));
+                if let Some(retention) = external_ref::artifact_retention(record) {
+                    front.text("inv_retention", &retention.label);
+                }
                 if let Some(lineage) = derivation::lineage(state, record.reference()) {
                     front.integer("inv_lineage_depth", lineage.depth as u64);
                 }
@@ -568,6 +572,22 @@ fn artifact_sections(
         "| Integrity | {} |",
         table_code(&wire_word(&body.integrity))
     );
+    let retention = external_ref::artifact_retention(record);
+    if let Some(retention) = &retention {
+        let _ = writeln!(
+            out,
+            "| Retention | {}: {} |",
+            table_code(&retention.label),
+            retention.reason
+        );
+        if let Some(locator) = &retention.locator {
+            let _ = writeln!(
+                out,
+                "| Locator | {} (recorded text, never fetched) |",
+                table_code(locator)
+            );
+        }
+    }
     let effective = notes.classifier().effective(record);
     let _ = writeln!(
         out,
@@ -583,10 +603,17 @@ fn artifact_sections(
             table_revision_link(notes, stale)?
         );
     }
-    out.push_str(
-        "\nThe retained bytes are not copied into the vault. Selectors on citing notes name exact \
-         spans of them; only recorded quotes appear, as labelled excerpts.\n",
-    );
+    if retention.is_some_and(|retention| retention.state == RetentionState::SourceUnavailable) {
+        out.push_str(
+            "\nThe bytes are not retained in the workspace: this Artifact is a reference. \
+             Selectors on citing notes cannot be verified against it.\n",
+        );
+    } else {
+        out.push_str(
+            "\nThe retained bytes are not copied into the vault. Selectors on citing notes name exact \
+             spans of them; only recorded quotes appear, as labelled excerpts.\n",
+        );
+    }
     if notes.may_show(record, Field::Lineage) {
         lineage_section(notes, out, record, &body)?;
     } else {

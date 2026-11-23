@@ -183,9 +183,26 @@ pub fn effective_state(
         freshness["overview"] = json!(overview);
     }
     let caveat = if !unavailable.is_empty() {
-        Some(
-            json!({"state":"known","reason":"Expected retained bytes are missing or fail integrity verification.","unavailable_artifacts":unavailable}),
-        )
+        // A reference was never retained: say so rather than call it missing.
+        let references: Vec<RevisionRef> = unavailable
+            .iter()
+            .filter(|reference| {
+                replay
+                    .state
+                    .revision(**reference)
+                    .is_some_and(|artifact| artifact.body["availability"] == "external")
+            })
+            .copied()
+            .collect();
+        let mut caveat = if references.len() == unavailable.len() {
+            json!({"state":"known","reason":"The cited bytes are held at an external location and are not retained here (source_unavailable). Selectors on them cannot be verified.","unavailable_artifacts":unavailable})
+        } else {
+            json!({"state":"known","reason":"Expected retained bytes are missing or fail integrity verification.","unavailable_artifacts":unavailable})
+        };
+        if !references.is_empty() {
+            caveat["source_unavailable"] = json!(references);
+        }
+        Some(caveat)
     } else {
         match state.as_str() {
             Some("needs_review") => Some(
@@ -403,6 +420,26 @@ fn project_record(
             "evidentiary_use".into(),
             json!(source_ops::evidentiary_use(&replay.state, record)),
         );
+    }
+    // Bytes the workspace does not retain are labeled where they are read:
+    // `source_unavailable`, with locator and verification standing.
+    if matches!(
+        record.header.id.kind(),
+        Kind::Source | Kind::Artifact | Kind::Observation
+    ) {
+        // An Artifact the audience may not see stays out, locator included.
+        let retention: Vec<_> = investigation_core::external_ref::retention(&replay.state, record)
+            .into_iter()
+            .filter(|entry| {
+                replay
+                    .state
+                    .revision(entry.artifact_ref)
+                    .is_some_and(|artifact| classifier.may_show(artifact, Field::Metadata, &policy))
+            })
+            .collect();
+        if !retention.is_empty() {
+            out.insert("retention".into(), json!(retention));
+        }
     }
     if record.header.id.kind() == Kind::Source {
         out.insert(

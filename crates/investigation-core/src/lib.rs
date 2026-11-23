@@ -20,6 +20,7 @@ pub mod evidence;
 pub mod evidence_reuse;
 pub mod explain;
 mod explain_ops;
+pub mod external_ref;
 pub mod freshness;
 pub mod gap_explain;
 pub mod gap_page;

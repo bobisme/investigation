@@ -896,6 +896,12 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
         report.heads.len(),
         report.verified_blobs,
     );
+    if report.reference_only_artifacts > 0 {
+        text.push_str(&format!(
+            "  {} reference-only artifact(s) not retained or checked",
+            report.reference_only_artifacts
+        ));
+    }
     for issue in &mut report.issues {
         text.push_str(&format!("\n{}  {}", issue.code, issue.reason));
         if let Some(argv) = &mut issue.repair {

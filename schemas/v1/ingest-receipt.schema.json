@@ -63,6 +63,7 @@
         "lineage": true,
         "outcome": true,
         "prior": true,
+        "retention": true,
         "size_bytes": {
           "format": "uint64",
           "minimum": 0,

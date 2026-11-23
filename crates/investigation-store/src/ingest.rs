@@ -30,6 +30,10 @@ use acquisition::{AcquisitionKeyRequest, ItemFacts, ItemOutcome, ItemPlan, Prior
 pub mod derivation;
 use derivation::{DerivedFromRequest, ResolvedDerivation};
 
+#[path = "reference.rs"]
+pub mod reference;
+use reference::{ExternalRefRequest, PreparedReference, RetentionMode, ReverifyRequest};
+
 pub const MAX_IMPORT_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_ITEMS: usize = 32;
 pub const TEXT_PARSER_VERSION: &str = "inv.text.utf8.v1";
@@ -68,6 +72,25 @@ pub struct Manifest {
     /// format.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub derived_from: Option<DerivedFromRequest>,
+    /// Reference-only items: bytes held at an external location, named by an
+    /// opaque locator with their expected digest and size. Nothing is read or
+    /// copied; each Artifact is `external` and unverified until `reverify`.
+    /// Exclusive with `paths` and `content`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external_refs: Vec<ExternalRefRequest>,
+    /// `copy` (default) snapshots `paths` into the workspace. `reference`
+    /// hashes them without copying, for large files: the Artifacts are
+    /// `external` and cannot satisfy an offline-completeness guarantee. A
+    /// failed copy is a failed ingest, never a fallback to `reference`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<RetentionMode>,
+    /// Compare the supplied bytes (one path or stdin) with an exact
+    /// reference-only Artifact revision. A match records an attributed
+    /// verification in a new revision and, for copied bytes, retains them. A
+    /// mismatch records a failed verification; the recorded digest never
+    /// changes and records citing the Artifact need review.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reverify: Option<ReverifyRequest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -128,6 +151,12 @@ pub struct ItemReceipt {
     #[schemars(schema_with = "unconstrained")]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lineage: Option<investigation_core::derivation::Lineage>,
+    // For an Artifact whose bytes are not retained, or that was reverified:
+    // `state` (`source_unavailable` or `retained`), locator, expected digest
+    // and size, and the verification standing. Published unconstrained.
+    #[schemars(schema_with = "unconstrained")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retention: Option<investigation_core::external_ref::Retention>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, JsonSchema)]
@@ -153,6 +182,8 @@ struct PreparedItem {
     channel: AcquisitionChannel,
     text: TextStatus,
     diagnostics: Vec<String>,
+    /// Set when the bytes are not retained.
+    reference: Option<PreparedReference>,
 }
 
 fn unconstrained(_: &mut schemars::SchemaGenerator) -> Schema {
@@ -193,7 +224,10 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
             ));
         }
     }
-    if manifest.paths.is_empty() == manifest.content.is_none() || manifest.paths.len() > MAX_ITEMS {
+    let external = !manifest.external_refs.is_empty();
+    if (!external && manifest.paths.is_empty() == manifest.content.is_none())
+        || manifest.paths.len() > MAX_ITEMS
+    {
         return Err(invalid(
             "Supply a bounded nonempty paths array or one stdin content descriptor.",
             "/paths",
@@ -222,10 +256,11 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
     if let Some(derived_from) = &manifest.derived_from {
         derived_from.validate(&manifest)?;
     }
+    reference::validate(&manifest)?;
     Ok((manifest, raw))
 }
 
-impl Store {
+impl<F: DurableFs> Store<F> {
     /// Snapshot local inputs before acquiring the canonical commit lock.
     pub fn ingest(
         &mut self,
@@ -255,9 +290,30 @@ impl Store {
         stream: Option<&mut dyn Read>,
         stages: &mut Vec<StagedBlob>,
     ) -> Result<IngestReceipt, Failure> {
+        if manifest.reverify.is_some() {
+            return self.reverify(bytes, &manifest, raw, stream, stages);
+        }
         let mut prepared = Vec::new();
         for (index, path) in manifest.paths.iter().enumerate() {
-            let mut opened = self.open_import(path, index)?;
+            if reference::reference_mode(&manifest) {
+                // Hashed where it lies; never copied, so never retained.
+                let (digest, size) = self.read_reference(path, index)?;
+                let label = path.to_string_lossy().into_owned();
+                prepared.push(PreparedItem {
+                    reference: Some(PreparedReference {
+                        locator: label.clone(),
+                        basis: investigation_core::external_ref::DigestBasis::ReadAtIngest,
+                    }),
+                    label,
+                    digest,
+                    size,
+                    channel: AcquisitionChannel::LocalFile,
+                    text: TextStatus::NotRequested,
+                    diagnostics: Vec::new(),
+                });
+                continue;
+            }
+            let mut opened = self.open_import(path, index, MAX_IMPORT_BYTES)?;
             let staged = stage_input(&mut self.fs, &self.gate, Limited::new(&mut opened.file))?;
             stages.push(staged);
             if !opened
@@ -299,7 +355,26 @@ impl Store {
                 manifest.extract_text,
             )?);
         }
-        let attachments = prepared.iter().map(|item| item.digest.clone()).collect();
+        for item in &manifest.external_refs {
+            prepared.push(PreparedItem {
+                label: item.locator.clone(),
+                digest: item.digest.clone(),
+                size: item.size_bytes,
+                channel: AcquisitionChannel::ExternalReference,
+                text: TextStatus::NotRequested,
+                diagnostics: Vec::new(),
+                reference: Some(PreparedReference {
+                    locator: item.locator.clone(),
+                    basis: investigation_core::external_ref::DigestBasis::Declared,
+                }),
+            });
+        }
+        // Only retained bytes are attachments; a reference has no blob.
+        let attachments = prepared
+            .iter()
+            .filter(|item| item.reference.is_none())
+            .map(|item| item.digest.clone())
+            .collect();
         let staged_manifest = stage_input(&mut self.fs, &self.gate, bytes)?;
         let manifest_digest = digest_for(&staged_manifest)?;
         let manifest_size = staged_manifest.size;
@@ -311,6 +386,7 @@ impl Store {
                 label: &item.label,
                 digest: &item.digest,
                 decoded: matches!(item.text, TextStatus::Decoded),
+                retained: item.reference.is_none(),
             })
             .collect();
         let mut plans = None;
@@ -374,7 +450,11 @@ impl Store {
             (Some(_), Some(case_id)) => Some(self.case(case_id)?.state),
             _ => None,
         };
+        let references = prepared.iter().any(|item| item.reference.is_some());
         let mut receipt = ingest_receipt(receipt, prepared, plans, derived.as_ref());
+        if references {
+            self.label_retention(&manifest, &mut receipt)?;
+        }
         if receipt
             .items
             .iter()
@@ -421,10 +501,47 @@ impl Store {
         )
     }
 
+    /// Report the retention of each item whose bytes are not retained, read
+    /// from the committed state so an identical retry answers the same way.
+    fn label_retention(
+        &mut self,
+        manifest: &Manifest,
+        receipt: &mut IngestReceipt,
+    ) -> Result<(), Failure> {
+        let created_case = receipt
+            .receipt
+            .created
+            .iter()
+            .find(|change| change.id.kind() == Kind::Case)
+            .map(|change| change.id);
+        let Some(first) = receipt.items.first() else {
+            return Ok(());
+        };
+        let state = match manifest.case_id.or(created_case) {
+            Some(case_id) => self.case(case_id)?.state,
+            // A deduplicated new_case manifest answers from the acquisition's home case.
+            None => match self
+                .cases()?
+                .into_values()
+                .find(|case| case.state.current(first.artifact_id).is_some())
+            {
+                Some(case) => case.state,
+                None => return Ok(()),
+            },
+        };
+        for item in &mut receipt.items {
+            item.retention = state
+                .current(item.artifact_id)
+                .and_then(investigation_core::external_ref::artifact_retention);
+        }
+        Ok(())
+    }
+
     fn open_import(
         &self,
         path: &Path,
         index: usize,
+        limit: u64,
     ) -> Result<crate::import_paths::OpenedImport, Failure> {
         let mut failure = None;
         for configured in &self.workspace.config().import_roots {
@@ -441,8 +558,7 @@ impl Store {
             } else {
                 path
             };
-            match ImportRoot::open(&root).and_then(|dir| dir.open_file(relative, MAX_IMPORT_BYTES))
-            {
+            match ImportRoot::open(&root).and_then(|dir| dir.open_file(relative, limit)) {
                 Ok(opened) => return Ok(opened),
                 Err(error) => failure = Some(error.to_string()),
             }
@@ -501,6 +617,7 @@ impl Store {
         Ok(PreparedItem {
             label,
             diagnostics,
+            reference: None,
             digest: digest_for(staged)?,
             size: staged.size,
             channel,
@@ -656,6 +773,7 @@ fn create_records(
                 sensitivity: sensitivity(manifest.classification),
                 role: Some(ArtifactRole::Derivative),
                 derivation: Some(derivation.record.clone()),
+                external: None,
                 status: None,
                 withdrawals: Vec::new(),
             };
@@ -671,7 +789,7 @@ fn create_records(
             )?;
             first_source.get_or_insert(derivation.source);
             if matches!(item.text, TextStatus::Decoded) {
-                add_text_derivative(&mut builder, index, artifact_id, &body)?;
+                add_text_derivative(&mut builder, index, first_revision(artifact_id), &body)?;
             }
             continue;
         }
@@ -687,7 +805,18 @@ fn create_records(
             acquisition: SourceAcquisition {
                 channel: item.channel,
                 acquired_at: acquired_at.clone(),
-                method: Some("local byte snapshot".into()),
+                method: Some(
+                    match item.reference.as_ref().map(|reference| reference.basis) {
+                        None => "local byte snapshot",
+                        Some(investigation_core::external_ref::DigestBasis::Declared) => {
+                            "external reference; bytes not retained"
+                        }
+                        Some(investigation_core::external_ref::DigestBasis::ReadAtIngest) => {
+                            "local file hashed in reference mode; bytes not retained"
+                        }
+                    }
+                    .into(),
+                ),
                 context: manifest.source.context.clone(),
                 environment: None,
             },
@@ -702,6 +831,9 @@ fn create_records(
                 .iter()
                 .chain(&item.diagnostics)
                 .cloned()
+                .chain(item.reference.is_some().then(|| {
+                    "Reference only: the bytes are not retained and cannot satisfy an offline-completeness guarantee.".to_owned()
+                }))
                 .collect(),
             metadata: manifest.source.metadata.clone(),
             acquisition_key: plan.key.clone(),
@@ -740,13 +872,29 @@ fn create_records(
             format: manifest.source.format.clone(),
             source: source_ref,
             transforms: Vec::new(),
-            availability: ArtifactAvailability::Retained,
-            integrity: ArtifactIntegrity::Verified,
+            availability: if item.reference.is_some() {
+                ArtifactAvailability::External
+            } else {
+                ArtifactAvailability::Retained
+            },
+            integrity: item
+                .reference
+                .as_ref()
+                .map_or(ArtifactIntegrity::Verified, reference::reference_integrity),
             sensitivity: sensitivity(manifest.classification),
             status: None,
             withdrawals: Vec::new(),
             role: Some(ArtifactRole::Original),
             derivation: None,
+            external: item.reference.as_ref().map(|reference| {
+                reference::external_block(
+                    reference,
+                    &item.digest,
+                    item.size,
+                    manifest,
+                    &builder.timestamp,
+                )
+            }),
         };
         let known_artifact = plan.known.as_ref().and_then(|known| known.artifact);
         let artifact_id = match known_artifact {
@@ -766,7 +914,7 @@ fn create_records(
             .and(plan.known.as_ref())
             .and_then(|known| known.derivative);
         if matches!(item.text, TextStatus::Decoded) && known_derivative.is_none() {
-            add_text_derivative(&mut builder, index, artifact_id, &original)?;
+            add_text_derivative(&mut builder, index, first_revision(artifact_id), &original)?;
         }
     }
     let source = first_source.ok_or_else(|| integrity("Ingest has no source acquisition."))?;
@@ -787,6 +935,7 @@ fn create_records(
             withdrawals: Vec::new(),
             role: Some(ArtifactRole::Manifest),
             derivation: None,
+            external: None,
         },
         vec![source.id],
     )?;
@@ -805,23 +954,22 @@ fn create_records(
 fn add_text_derivative(
     builder: &mut IngestRecords<'_>,
     index: usize,
-    input_id: Id,
+    input_ref: RevisionRef,
     input: &ArtifactBody,
 ) -> Result<(), Failure> {
     let text_id = new_id(builder.ids, Kind::Artifact)?;
+    let input_id = input_ref.id;
     let derivative = ArtifactBody {
         format: Some("text/plain; charset=utf-8".into()),
         transforms: vec![ArtifactTransform {
-            input: RevisionRef {
-                id: input_id,
-                revision: 1,
-            },
+            input: input_ref,
             transformation: "decode_utf8".into(),
             version: TEXT_PARSER_VERSION.into(),
             input_digest: input.digest.clone(),
         }],
         role: Some(ArtifactRole::Derivative),
         derivation: None,
+        external: None,
         ..input.clone()
     };
     builder.add(
@@ -990,6 +1138,7 @@ fn ingest_receipt(
                     prior: None,
                     acquisition_key: None,
                     lineage: Some(lineage),
+                    retention: None,
                 });
             }
             Some(ItemReceipt {
@@ -1011,6 +1160,7 @@ fn ingest_receipt(
                 prior: plan.prior(),
                 acquisition_key: plan.key,
                 lineage: None,
+                retention: None,
             })
         })
         .collect::<Vec<_>>();
@@ -1025,6 +1175,10 @@ fn ingest_receipt(
         items,
         manifest_artifact_id,
     }
+}
+
+fn first_revision(id: Id) -> RevisionRef {
+    RevisionRef { id, revision: 1 }
 }
 
 fn new_id(ids: &mut dyn IdSource, kind: Kind) -> Result<Id, Failure> {

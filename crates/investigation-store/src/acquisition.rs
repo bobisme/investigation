@@ -101,6 +101,12 @@ pub enum ItemOutcome {
     /// The output of a transformation of recorded Artifacts: a new derivative
     /// Artifact linked to its inputs. No Source or acquisition is created.
     Derived,
+    /// Supplied bytes matched a reference-only Artifact's recorded digest and
+    /// size; an attributed verification was recorded in its next revision.
+    Reverified,
+    /// Supplied bytes differ from a reference-only Artifact's recorded digest
+    /// or size. The failed verification is recorded; nothing is replaced.
+    ReverificationFailed,
 }
 
 /// The canonical records an earlier import of the same acquisition produced.
@@ -120,6 +126,9 @@ pub(super) struct ItemFacts<'a> {
     pub label: &'a str,
     pub digest: &'a Digest,
     pub decoded: bool,
+    /// Whether the item's bytes are retained. A recorded reference never
+    /// answers for retained bytes, nor retained bytes for a reference.
+    pub retained: bool,
 }
 
 #[derive(Clone, Default)]
@@ -295,7 +304,12 @@ pub(super) fn resolve(
             let artifact = latest(
                 &mut originals
                     .iter()
-                    .filter(|(_, artifact)| artifact.digest.as_ref() == Some(item.digest))
+                    .filter(|(_, artifact)| {
+                        artifact.digest.as_ref() == Some(item.digest)
+                            && (artifact.availability
+                                == investigation_core::evidence::ArtifactAvailability::Retained)
+                                == item.retained
+                    })
                     .map(|(record, _)| *record),
             );
             let derivative = artifact.and_then(|artifact_id| {

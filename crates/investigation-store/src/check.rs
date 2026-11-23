@@ -30,6 +30,10 @@ pub struct CheckReport {
     pub structurally_valid: bool,
     pub verified_blobs: usize,
     pub unavailable_artifacts: usize,
+    /// Of `unavailable_artifacts`, those recorded as references to bytes held
+    /// elsewhere. They are never counted as verified blobs: `check` reads
+    /// only retained bytes and never fetches a locator.
+    pub reference_only_artifacts: usize,
     pub source_authenticated: Option<bool>,
     pub independently_anchored: Option<bool>,
     pub index: ProjectionStatus,
@@ -60,6 +64,7 @@ impl<F: DurableFs> Store<F> {
             structurally_valid: false,
             verified_blobs: 0,
             unavailable_artifacts: 0,
+            reference_only_artifacts: 0,
             source_authenticated: None,
             independently_anchored: None,
             index: ProjectionStatus::Pending,
@@ -152,6 +157,9 @@ impl<F: DurableFs> Store<F> {
                 match investigation_core::input::decode::<ArtifactBody>(&record.body) {
                     Ok(body) if body.availability != ArtifactAvailability::Retained => {
                         report.unavailable_artifacts += 1;
+                        if body.availability == ArtifactAvailability::External {
+                            report.reference_only_artifacts += 1;
+                        }
                     }
                     Ok(body) => match (body.digest, body.size_bytes) {
                         (Some(digest), Some(length)) => {

@@ -137,6 +137,20 @@ impl<F: DurableFs> Store<F> {
             .at("/artifact"));
         }
         let body = artifact_body(artifact)?;
+        if body.availability != ArtifactAvailability::Retained {
+            // Nothing is substituted for bytes the workspace does not hold.
+            let mut failure = Failure::new(
+                ErrorCode::GateFailed,
+                "The Artifact's bytes are not retained in this workspace (source_unavailable), so nothing can be read or verified from them. Supply the bytes with an ingest manifest that names this Artifact in reverify.",
+            )
+            .at("/artifact")
+            .with_schema("ingest");
+            failure.error.actual = Some(json!({
+                "state": "source_unavailable",
+                "retention": investigation_core::external_ref::artifact_retention(artifact),
+            }));
+            return Err(failure);
+        }
         let bytes = self.read_artifact(&body, &selector)?;
         let text = derivative(&body);
         let selection = selectors::resolve(

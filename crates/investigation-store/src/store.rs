@@ -643,6 +643,11 @@ fn receipt_for(verified: &VerifiedEvent) -> Receipt {
         .filter(|record| record.header.id.kind() == Kind::Artifact)
         .filter_map(|record| {
             let artifact: ArtifactBody = investigation_core::input::decode(&record.body).ok()?;
+            // Only retained bytes are listed: a reference-only digest is a claim.
+            if artifact.availability != investigation_core::evidence::ArtifactAvailability::Retained
+            {
+                return None;
+            }
             Some(ReceiptArtifact {
                 artifact: record.reference(),
                 digest: artifact.digest?,

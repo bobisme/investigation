@@ -607,6 +607,7 @@ impl RunContext<'_> {
                 label,
                 digest,
                 decoded: false,
+                retained: true,
             }];
             let mut plans = match home {
                 None => acquisition::fresh(self.request, &facts),
@@ -716,6 +717,7 @@ impl RunContext<'_> {
                 // The envelope is acquired source content, not an import request.
                 role: Some(ArtifactRole::Original),
                 derivation: None,
+                external: None,
             },
             "envelope",
             level,
@@ -780,6 +782,7 @@ impl RunContext<'_> {
                             withdrawals: Vec::new(),
                             role: Some(ArtifactRole::Original),
                             derivation: None,
+                            external: None,
                         },
                         &format!("artifact:{index}"),
                         artifact.classification,
