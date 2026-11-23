@@ -11,9 +11,14 @@ ALLOWED = {
     "investigation-core": set(),
     "investigation-store": {"investigation-core"},
     "investigation-recording": {"investigation-core", "investigation-store"},
-    "investigation-cli": {"investigation-core", "investigation-store", "investigation-recording"},
+    # The renderer reads verified snapshots; frontends drive it, never the reverse.
+    "investigation-render": {"investigation-core", "investigation-store"},
+    "investigation-cli": {
+        "investigation-core", "investigation-store", "investigation-recording", "investigation-render"
+    },
     "investigation-mcp": {
-        "investigation-core", "investigation-store", "investigation-recording", "investigation-cli"
+        "investigation-core", "investigation-store", "investigation-recording", "investigation-render",
+        "investigation-cli",
     },
 }
 ROOT = Path(__file__).resolve().parent.parent

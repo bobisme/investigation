@@ -597,6 +597,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "investigation-render"
+version = "0.1.0"
+dependencies = [
+ "investigation-core",
+ "investigation-store",
+ "rustix",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "investigation-store"
 version = "0.1.0"
 dependencies = [

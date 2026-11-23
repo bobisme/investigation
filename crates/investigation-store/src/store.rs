@@ -125,6 +125,14 @@ impl<F: DurableFs> Store<F> {
             .ok_or_else(|| missing_case(case_id))
     }
 
+    /// Read every case from one verified journal replay. The commit lock is
+    /// held only while reading, so projections built from the result never
+    /// block later commits.
+    pub fn cases(&mut self) -> Result<BTreeMap<Id, CaseReplay>, Failure> {
+        let _lock = self.coordinate()?;
+        Ok(self.load_verified()?.cases)
+    }
+
     pub fn receipt(&mut self, actor: &Actor, command_id: &str) -> Result<ReceiptLookup, Failure> {
         let _lock = self.coordinate()?;
         let workspace = self.load_verified()?;

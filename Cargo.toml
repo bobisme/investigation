@@ -3,6 +3,7 @@ members = [
   "crates/investigation-cli",
   "crates/investigation-core",
   "crates/investigation-recording",
+  "crates/investigation-render",
   "crates/investigation-store",
 ]
 resolver = "3"
