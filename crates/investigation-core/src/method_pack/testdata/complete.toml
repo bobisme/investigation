@@ -1,0 +1,91 @@
+# Test fixture: a pack that uses every section of inv.method-pack.v1.
+schema_version = "inv.method-pack.v1"
+id = "fixture-complete"
+version = "1.2.3"
+title = "Fixture pack"
+summary = "Exercises every section of the method pack format."
+modes = ["explain", "measure"]
+
+[[cards]]
+name = "discriminate"
+title = "Design a discriminating test"
+stage = "explain"
+summary = "Two or more explanations remain open."
+modes = ["explain"]
+operations = ["hypothesis.create", "observation.add"]
+triggers = [
+  { case_fact = "competing_hypotheses" },
+  { gap_rule = "conclusion.causal_claim_without_rival_account" },
+  { record_kind = "hypothesis" },
+]
+
+[cards.body]
+when = "Several explanations fit the evidence recorded so far."
+record = """
+For each open explanation, the outcome it predicts for one planned check.
+Record the check before looking at its result."""
+mistake = "Choosing a check that every explanation predicts equally."
+skip = "Only one explanation remains after a recorded review."
+
+[[cards]]
+name = "baseline"
+title = "Compare against a baseline"
+stage = "observe"
+summary = "A measured value has no comparable reference."
+
+[cards.body]
+when = "A measurement is interpreted without a reference value."
+record = "The baseline measurement, its environment and known confounds."
+skip = "The question does not involve comparison."
+
+[[properties]]
+name = "reproduction"
+record_kinds = ["observation"]
+description = "How often the failure reproduced, as k of n runs."
+schema = { type = "object", fields = [
+  { name = "failures", schema = { type = "integer", minimum = 0 } },
+  { name = "runs", schema = { type = "integer", minimum = 1, maximum = 100000 } },
+  { name = "note", schema = { type = "string", max_length = 200 } },
+], required = ["failures", "runs"] }
+
+[[properties]]
+name = "phase"
+record_kinds = ["observation", "hypothesis"]
+description = "The phase in which the effect was seen."
+schema = { type = "string", max_length = 32, enum = ["setup", "steady", "teardown"] }
+
+[[properties]]
+name = "samples"
+record_kinds = ["observation"]
+description = "Measured samples."
+schema = { type = "array", max_items = 64, items = { type = "decimal" } }
+
+[[observation_guidance]]
+name = "measurement-context"
+title = "Measurement context"
+text = "State the unit, workload, environment and capture window."
+modes = ["measure"]
+
+[[policies]]
+name = "fields-before-review"
+input = "required_fields"
+gate = "conclusion.request_review"
+fields = ["limitations", "extensions.fixture-complete.reproduction"]
+rationale = "A review needs the stated limitations and reproduction rate."
+
+[[policies]]
+name = "challenge-before-accept"
+input = "blindspot_review"
+gate = "decision.accept"
+rationale = "Consequential choices get a recorded challenge first."
+
+[[views]]
+name = "open-explanations"
+title = "Open explanations"
+view = "record-table"
+record_kinds = ["hypothesis"]
+
+[[reports]]
+name = "summary"
+title = "Case summary"
+template = "case.summary"

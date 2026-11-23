@@ -1,0 +1,11 @@
+# Built-in general method pack (inv.method-pack.v1).
+#
+# Declarative data only. The loader parses and validates this file before use;
+# nothing here runs, loads code or contacts a service. Guidance cards are added
+# in later revisions of this pack.
+schema_version = "inv.method-pack.v1"
+id = "general"
+version = "0.1.0"
+title = "General investigation methods"
+summary = "Domain-neutral guidance for framing, observing, explaining, evaluating, reviewing and closing a case."
+modes = ["explain", "measure", "evaluate", "explore", "record"]

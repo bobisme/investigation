@@ -98,7 +98,7 @@ fn root_error(kind: InputErrorKind, message: &'static str) -> InputError {
     }
 }
 
-fn pointer(segments: impl IntoIterator<Item = impl AsRef<str>>) -> String {
+pub(crate) fn pointer(segments: impl IntoIterator<Item = impl AsRef<str>>) -> String {
     let mut path = String::new();
     for segment in segments {
         path.push('/');
