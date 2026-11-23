@@ -81,6 +81,9 @@ def neutral_surfaces():
     for path in sorted(paths):
         if path.is_file() and path.suffix.lower() != ".md":
             yield str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")
+    # Pages embedded in the binary and printed by `investigation docs`.
+    for path in sorted((ROOT / "docs/agent").glob("*.md")):
+        yield str(path.relative_to(ROOT)), path.read_text(encoding="utf-8")
 
     # Exercise the normal entry point once init is part of the public command.
     if re.search(r"(?m)^\s+init(?:\s|$)", help_text):

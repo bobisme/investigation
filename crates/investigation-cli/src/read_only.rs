@@ -45,6 +45,7 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("capture recover", Effect::Read),
     ("schema", Effect::Read),
     ("onboard", Effect::Read),
+    ("docs", Effect::Read),
     ("next", Effect::Read),
     ("frontier", Effect::Read),
     ("blindspots", Effect::Read),

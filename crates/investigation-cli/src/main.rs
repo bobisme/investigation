@@ -6,6 +6,7 @@ mod brief_delta;
 mod calibration;
 mod capture;
 mod capture_schema;
+mod docs;
 mod doctor;
 mod evidence;
 mod explain;
@@ -74,6 +75,7 @@ Start a case from a local file in the working directory:
 
 Continue, record and hand off:
   investigation onboard --format json
+  investigation docs agents
   investigation --workspace ./casework brief --format json
   investigation --workspace ./casework next --format json
   investigation case new 'Request latency' --format json
@@ -216,6 +218,9 @@ enum Commands {
     Schema(schema::Args),
     /// Learn the model and inspect the next valid local action.
     Onboard,
+    /// Print embedded offline docs: the agent instructions or the optional skill.
+    #[command(after_help = docs::AFTER_HELP)]
+    Docs(docs::Args),
     /// Rank up to three snapshot-bound investigative gaps.
     Next {
         #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=3))]
@@ -381,6 +386,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
             import_roots,
         } => init(&path, !no_vault, &import_roots, global.workspace.as_deref()),
         Commands::Onboard => onboard::run(&global),
+        Commands::Docs(args) => docs::run(args),
         Commands::Guide(args) => guide::show(args, &global),
         Commands::Method(command) => guide::method(command, &global),
         Commands::Doctor(args) => doctor::run(args, &global),
@@ -435,6 +441,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Schema(_)
                 | Commands::Init { .. }
                 | Commands::Onboard
+                | Commands::Docs(_)
                 | Commands::Guide(_)
                 | Commands::Method(_)
                 | Commands::Doctor(_) => {

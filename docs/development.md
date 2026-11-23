@@ -23,8 +23,18 @@ change to generated vault bytes needs a `RENDERER_VERSION` bump and
 `--rebuild-workspaces` reruns the scenario proofs and replaces the workspaces
 too.
 
-The neutrality check reads the actual CLI help, published schemas, and
-`methods/general.toml` or files under `methods/general/`. Once `init` appears
+`docs/agent/` holds the pages that `investigation docs` prints: the agent
+instructions (`agents`) and the optional skill (`skill`). They are compiled
+into the binary, so they work offline. To add a page, add one line to `PAGES`
+in `crates/investigation-cli/src/docs.rs`. The unit tests there parse every
+command line in the pages and `README.md` with the live command tree, and
+they check every operation name against the catalog. A page whose text
+changes needs a new version marker and a new row in `RELEASED`. Then
+`onboard` reports the new version.
+
+The neutrality check reads the actual CLI help, published schemas, the
+`docs/agent/` pages, and `methods/general.toml` or files under
+`methods/general/`. Once `init` appears
 in command help, the check invokes it in a temporary workspace and scans the
 files it creates. Register any new default surface in the same change that
 introduces it. Update the allowed crate edges and reviewed deny-list alongside

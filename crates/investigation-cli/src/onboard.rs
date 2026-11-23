@@ -9,7 +9,7 @@ use investigation_store::{Store, Workspace};
 use serde_json::json;
 
 use crate::{
-    Global, Output, first_use,
+    Global, Output, docs, first_use,
     selection::{open_workspace, select_case, workspace_argv},
 };
 
@@ -37,7 +37,7 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
                 let names: Vec<_> = nearby.iter().map(|(_, display)| display.as_str()).collect();
                 return Ok(Output::success(
                     "onboarding",
-                    json!({"state":"workspace_selection_required","mental_model":MODEL,"nearby_workspaces":names,"next":next}),
+                    json!({"state":"workspace_selection_required","mental_model":MODEL,"nearby_workspaces":names,"next":next,"agent_instructions":docs::onboard_pointer()}),
                     format!(
                         "investigation — preserve evidence, test explanations, and evaluate options.\nWorkspaces in this directory: {}\nNext: {PROGRAM_NAME} --workspace {} onboard",
                         names.join(", "),
@@ -51,10 +51,12 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
                     "state":"no_workspace", "mental_model":MODEL,
                     "when_to_use":"Use for questions needing multiple observations, a meaningful comparison, or a handoff; use a shell or notebook for one-shot facts and ordinary implementation work.",
                     "next":[first_use::init_step(), first_use::start_step("./casework")],
-                    "supported_flows":["init","schema","start","ingest","record","receipt","check"]
+                    "supported_flows":["init","schema","start","ingest","record","receipt","check"],
+                    "agent_instructions":docs::onboard_pointer()
                 }),
                 format!(
-                    "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\nNo workspace here. {}",
+                    "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\n{}\nNo workspace here. {}",
+                    docs::onboard_line(),
                     first_use::start_text("./casework", true)
                 ),
             ));
@@ -125,7 +127,8 @@ fn onboard_workspace(
         "state":state, "workspace_id":store.workspace().id(), "mental_model":MODEL,
         "when_to_use":"Use for multi-step evidence, explanations, option comparisons, and handoffs; use a shell or notebook for one-shot facts and ordinary implementation work.",
         "active_operations":active_ops, "next":next,
-        "limits":["Use the active catalog and keep uncertain results explicit.","External work remains user-managed."]
+        "limits":["Use the active catalog and keep uncertain results explicit.","External work remains user-managed."],
+        "agent_instructions":docs::onboard_pointer()
     });
     let mut text = format!(
         "investigation — preserve evidence, test explanations, and evaluate options.\nState: {state}\n"
@@ -137,7 +140,8 @@ fn onboard_workspace(
         ));
     }
     text.push_str(&format!(
-        "{MODEL}\nActive operations: {}\n",
+        "{MODEL}\n{}\nActive operations: {}\n",
+        docs::onboard_line(),
         active_ops.join(", ")
     ));
     if heads.is_empty() {
