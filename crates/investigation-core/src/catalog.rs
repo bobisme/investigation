@@ -514,12 +514,14 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::source_ops::operations())
         .chain(crate::origin_ops::operations())
         .chain(crate::likelihood::operations())
+        .chain(crate::coverage_ops::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")
 }
 
-const RESERVED_OPERATIONS: &[&str] = &["coverage.define", "coverage.link", "coverage.revise"];
+/// Names reserved for a later contract. None remain reserved at present.
+const RESERVED_OPERATIONS: &[&str] = &[];
 
 fn record_body(payload: impl Serialize) -> Result<Value, Failure> {
     serde_json::to_value(payload).map_err(|error| {
@@ -580,16 +582,22 @@ mod tests {
         );
         assert_eq!(
             catalog.get("coverage.define").unwrap().status(),
+            Status::Active
+        );
+        // A reserved name is listed but has no handler.
+        let reserved = Catalog::new([OperationDescriptor::reserved("later.operation")]).unwrap();
+        assert_eq!(
+            reserved.get("later.operation").unwrap().status(),
             Status::Deferred
         );
         assert!(
-            catalog
+            reserved
                 .available()
-                .all(|descriptor| descriptor.info().name != "coverage.define")
+                .all(|descriptor| descriptor.info().name != "later.operation")
         );
         assert!(
-            catalog
-                .available_operation("coverage.define")
+            reserved
+                .available_operation("later.operation")
                 .err()
                 .unwrap()
                 .error

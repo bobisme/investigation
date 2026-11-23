@@ -368,6 +368,9 @@
       },
       {
         "operations": [
+          "coverage.define",
+          "coverage.link",
+          "coverage.revise",
           "inquiry.amend",
           "inquiry.create",
           "inquiry.freeze",

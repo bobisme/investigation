@@ -482,6 +482,18 @@ pub(crate) fn project_record(
     {
         out.insert("review_independence".into(), view);
     }
+    // Coverage only where a plan exists: on the plan and on its case. A
+    // percentage always carries its plan revision and denominator.
+    if depth != ViewDepth::Title
+        && let Some(view) = investigation_core::coverage::projection(
+            &replay.state,
+            record,
+            depth == ViewDepth::Full,
+            &|plan| !hidden(plan),
+        )
+    {
+        out.insert("coverage".into(), view);
+    }
     // Withdrawal is labeled wherever evidence material is read; it is not erasure.
     if matches!(
         record.header.id.kind(),

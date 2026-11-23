@@ -1,0 +1,263 @@
+{
+  "$defs": {
+    "CellOverride": {
+      "additionalProperties": false,
+      "description": "A cell with its own predicate or polarity. `at` names every dimension.",
+      "properties": {
+        "at": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "polarity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Polarity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "predicate": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "at"
+      ],
+      "type": "object"
+    },
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "Dimension": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "$ref": "#/$defs/DimensionValue"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "values"
+      ],
+      "type": "object"
+    },
+    "DimensionValue": {
+      "additionalProperties": false,
+      "description": "One value of a dimension. `record_ref` names the exact current record the\nvalue stands for, such as an Option, a Criterion or a component's Source.",
+      "properties": {
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "record_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "type": "object"
+    },
+    "Exclusion": {
+      "additionalProperties": false,
+      "description": "Cells outside the plan's applicability. `matching` names some dimensions;\nevery cell with those values is excluded and leaves the denominator.",
+      "properties": {
+        "matching": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "matching",
+        "reason"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "PlanDefinition": {
+      "additionalProperties": false,
+      "description": "The declared space. The core never adds a dimension, value or default.",
+      "properties": {
+        "applicability": {
+          "description": "Exactly where the plan applies, stated once for every cell.",
+          "type": "string"
+        },
+        "cells": {
+          "items": {
+            "$ref": "#/$defs/CellOverride"
+          },
+          "type": "array"
+        },
+        "dimensions": {
+          "items": {
+            "$ref": "#/$defs/Dimension"
+          },
+          "type": "array"
+        },
+        "exclusions": {
+          "items": {
+            "$ref": "#/$defs/Exclusion"
+          },
+          "type": "array"
+        },
+        "plan_kind": {
+          "$ref": "#/$defs/PlanKind"
+        },
+        "polarity": {
+          "$ref": "#/$defs/Polarity"
+        },
+        "predicate": {
+          "description": "The default exact predicate each cell assesses at its coordinates.",
+          "type": "string"
+        },
+        "question_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The Question an evaluation plan compares options for. Required for\n`evaluation`, optional otherwise."
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "plan_kind",
+        "applicability",
+        "dimensions",
+        "predicate",
+        "polarity"
+      ],
+      "type": "object"
+    },
+    "PlanKind": {
+      "description": "How cells are presented. `evaluation` is eligible options × active\ncriteria of one question and reads as assessed, unknown, excluded or stale.",
+      "enum": [
+        "general",
+        "evaluation"
+      ],
+      "type": "string"
+    },
+    "Polarity": {
+      "additionalProperties": false,
+      "description": "What each recorded result means for a cell's predicate.",
+      "properties": {
+        "negative": {
+          "description": "What `observed_negative_within_scope` states about the cell.",
+          "type": "string"
+        },
+        "positive": {
+          "description": "What `observed_positive` states about the cell.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "positive",
+        "negative"
+      ],
+      "type": "object"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:coverage.revise",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A new definition for an existing plan. Links are kept; a cell whose\ndefinition changed reads `needs_retest` until it is linked again.",
+  "properties": {
+    "definition": {
+      "$ref": "#/$defs/PlanDefinition"
+    },
+    "plan_ref": {
+      "$ref": "#/$defs/Reference",
+      "description": "The exact current revision of the plan."
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "plan_ref",
+    "definition",
+    "reason"
+  ],
+  "title": "CoverageRevise",
+  "type": "object"
+}

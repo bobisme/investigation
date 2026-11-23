@@ -340,8 +340,9 @@ fn references_outside_the_closed_vocabulary_are_rejected() {
             "/cards/0/operations/1",
         ),
         (
-            // Any operation still reserved in the catalog; pick another when this one activates.
-            "operations = [\"coverage.define\"]",
+            // A plausible name outside the catalog. No operation is reserved
+            // at present; a reserved one would be rejected the same way.
+            "operations = [\"coverage.retire\"]",
             PackErrorKind::UnknownReference,
             "/cards/0/operations/0",
         ),

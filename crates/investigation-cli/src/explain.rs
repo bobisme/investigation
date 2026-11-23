@@ -495,6 +495,7 @@ const PROJECTED: &[&str] = &[
     "material_caveat",
     "contradiction",
     "confidence",
+    "coverage",
     "measurement_validity",
     "observation_validity",
     "measurement_flags",

@@ -1,0 +1,116 @@
+{
+  "$defs": {
+    "ClientRef": {
+      "additionalProperties": false,
+      "description": "An alias of a record created by an earlier operation in this transaction.",
+      "properties": {
+        "client_ref": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "client_ref"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "LinkInput": {
+      "additionalProperties": false,
+      "description": "One recorded result for one cell.",
+      "properties": {
+        "cell": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The cell, naming every dimension of the current plan revision.",
+          "type": "object"
+        },
+        "rationale": {
+          "type": "string"
+        },
+        "record_refs": {
+          "default": [],
+          "description": "Exact current Runs, Observations or Comparisons. Required except for\n`blocked`.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/LinkState"
+        }
+      },
+      "required": [
+        "cell",
+        "state",
+        "rationale"
+      ],
+      "type": "object"
+    },
+    "LinkState": {
+      "description": "A recorded result for one cell. `untested`, `not_applicable_with_reason`\nand `needs_retest` are computed, never recorded.",
+      "enum": [
+        "blocked",
+        "attempted_inconclusive",
+        "observed_negative_within_scope",
+        "observed_positive"
+      ],
+      "type": "string"
+    },
+    "Reference": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        {
+          "$ref": "#/$defs/ClientRef"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:coverage.link",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "links": {
+      "items": {
+        "$ref": "#/$defs/LinkInput"
+      },
+      "type": "array"
+    },
+    "plan_ref": {
+      "$ref": "#/$defs/Reference",
+      "description": "The exact current revision of the plan."
+    }
+  },
+  "required": [
+    "plan_ref",
+    "links"
+  ],
+  "title": "CoverageLink",
+  "type": "object"
+}

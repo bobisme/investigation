@@ -16,6 +16,8 @@ pub mod classification;
 mod classification_ops;
 pub mod command;
 pub mod confidence;
+pub mod coverage;
+mod coverage_ops;
 pub mod decision_ops;
 pub mod derivation;
 pub mod evaluate;

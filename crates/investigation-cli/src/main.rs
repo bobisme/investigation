@@ -544,6 +544,7 @@ fn show(
     text.push_str(&investigation_core::confidence::text(&view));
     text.push_str(&investigation_core::likelihood::text(&view));
     text.push_str(&investigation_core::review_independence::text(&view));
+    text.push_str(&investigation_core::coverage::text(&view));
     Ok(Output::success("record_shown", view, text))
 }
 

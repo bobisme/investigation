@@ -22,6 +22,9 @@
     "conclusion.disposition": "operations/conclusion.disposition.schema.json",
     "conclusion.request_review": "operations/conclusion.request_review.schema.json",
     "conclusion.validate": "operations/conclusion.validate.schema.json",
+    "coverage.define": "operations/coverage.define.schema.json",
+    "coverage.link": "operations/coverage.link.schema.json",
+    "coverage.revise": "operations/coverage.revise.schema.json",
     "criterion.amend": "operations/criterion.amend.schema.json",
     "criterion.create": "operations/criterion.create.schema.json",
     "criterion.retire": "operations/criterion.retire.schema.json",
@@ -64,11 +67,7 @@
     "source.assess": "operations/source.assess.schema.json",
     "source.withdraw": "operations/source.withdraw.schema.json"
   },
-  "reserved_operations": [
-    "coverage.define",
-    "coverage.link",
-    "coverage.revise"
-  ],
+  "reserved_operations": [],
   "reserved_wire_schemas": [],
   "schema_version": "inv.catalog.v1",
   "stages": [
@@ -98,6 +97,9 @@
     },
     {
       "operations": [
+        "coverage.define",
+        "coverage.link",
+        "coverage.revise",
         "inquiry.amend",
         "inquiry.create",
         "inquiry.freeze",
