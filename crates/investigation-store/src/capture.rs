@@ -283,6 +283,11 @@ impl<F: DurableFs> Store<F> {
             let _lock = self.coordinate()?;
             self.load_verified()?
         };
+        self.declared_handles(&replay)
+    }
+
+    /// Every declared handle in a verified replay, with its staging state.
+    fn declared_handles(&self, replay: &WorkspaceReplay) -> Result<Vec<DeclaredHandle>, Failure> {
         let mut handles = Vec::new();
         for (&case_id, case) in &replay.cases {
             for record in case.state.records() {
@@ -519,6 +524,20 @@ pub(crate) fn binding_of(state: &State, run_id: Id) -> Result<CaptureBinding, Fa
         .map_err(|_| integrity("The declared Run has no valid capture binding."))
 }
 
+/// The read that reports what a handle accepted, for repair guidance on a
+/// refused capture call.
+pub fn recover_argv(handle: Id) -> Vec<String> {
+    vec![
+        PROGRAM_NAME.into(),
+        "capture".into(),
+        "recover".into(),
+        "--handle".into(),
+        handle.to_string(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
 fn created(receipt: &Receipt, kind: Kind) -> Result<Id, Failure> {
     receipt
         .created
@@ -545,6 +564,9 @@ pub mod attach;
 
 #[path = "capture_finalize.rs"]
 pub mod finalize;
+
+#[path = "capture_recover.rs"]
+pub mod recover;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

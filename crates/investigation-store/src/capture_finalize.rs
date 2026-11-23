@@ -183,6 +183,19 @@ pub struct FinalizedCapture {
     pub section: Value,
 }
 
+/// The finalize request that sealed a handle, as its seal binds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CaptureSeal {
+    /// The sealing request's key: its journal command ID.
+    pub command_id: String,
+    /// Digest of the sealing request; only the identical request completes it.
+    pub request_digest: Digest,
+    /// Last accepted position when the handle was sealed.
+    pub sealed_position: Option<u64>,
+    /// Digest of the manifest the sealing request plans.
+    pub manifest_digest: Digest,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct SealFile {
@@ -409,6 +422,20 @@ impl<F: DurableFs> Store<F> {
             case_id,
         )?
         .snapshot)
+    }
+
+    /// The seal of a resolved handle, if finalize has sealed it. A read.
+    pub(crate) fn capture_seal(
+        &self,
+        handle: &ResolvedHandle,
+    ) -> Result<Option<CaptureSeal>, Failure> {
+        let seal = self.read_seal(handle, &handle.directory.join(SEAL_FILE))?;
+        Ok(seal.map(|seal| CaptureSeal {
+            command_id: seal.command_id,
+            request_digest: seal.request_digest,
+            sealed_position: seal.sealed_position,
+            manifest_digest: seal.manifest_digest,
+        }))
     }
 
     fn read_seal(&self, handle: &ResolvedHandle, path: &Path) -> Result<Option<SealFile>, Failure> {
@@ -871,7 +898,7 @@ impl FinalizationRecords<'_> {
 
 /// The finalization section a committed event set on the Run, when the event
 /// is the Run's `capture.finalize`.
-fn finalization_of(event: &Event, run_id: Id) -> Option<Value> {
+pub(crate) fn finalization_of(event: &Event, run_id: Id) -> Option<Value> {
     let request: CaptureRequest = investigation_core::input::decode(&event.request.input).ok()?;
     if request.operation != FINALIZE_OPERATION {
         return None;
@@ -918,7 +945,7 @@ fn sealed_by_another(seal: &SealFile, submission: &FinalizeSubmission, digest: &
         "request_digest": digest,
     }));
     failure.error.retry = Some("resend the sealing finalize request".into());
-    failure
+    failure.with_argv(recover_argv(submission.handle))
 }
 
 #[cfg(test)]

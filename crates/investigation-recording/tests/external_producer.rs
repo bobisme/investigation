@@ -18,9 +18,10 @@ use investigation_recording::{
     ArtifactRef, ArtifactRole, BeginCapture, BeginReceipt, CaptureCompletion, CaptureEvent,
     CaptureHandle, CaptureIntent, CaseTarget, ChannelEvent, ChannelInventory, CommitStatus,
     Derivation, ErrorCode, EvidenceCompleteness, ExecutionReport, ExecutionStatus, ExternalReceipt,
-    ExternalRunId, FinalizeCapture, FinalizeReceipt, IdempotencyKey, ItemReceipt, LifecycleFact,
-    LocalRecorder, Operation, Position, ProducerAssertion, ProducerControl, ProducerIdentity,
-    ProducerName, Recorder, RecordingError, RecoverScope, RecoveryState, SealState, StableArtifact,
+    ExternalRunId, Failure, Finalization, FinalizeCapture, FinalizeReceipt, IdempotencyKey,
+    ItemReceipt, LifecycleFact, LocalRecorder, Position, ProducerAssertion, ProducerControl,
+    ProducerIdentity, ProducerName, Recorder, RecordingError, RecoverScope, RecoveryState,
+    SealState, StableArtifact,
 };
 use serde_json::{Value, json};
 
@@ -62,50 +63,54 @@ fn record_synthetic<R: Recorder + ?Sized>(
 
     // A restarted producer asks where to resume instead of repeating its action.
     let state = recorder.recover(&RecoverScope::Handle { handle })?;
-    let resume_after = state
-        .handles
-        .first()
-        .filter(|handle| handle.seal == SealState::Open)
-        .and_then(|handle| handle.last_position);
-    let mut position = resume_after.map_or(Some(Position::FIRST), Position::next);
-    let mut next = || {
-        let current = position.expect("position overflow");
-        position = current.next();
-        current
-    };
+    let recovered = state.handles.first().expect("the declared handle");
+    if let Some(finalized) = &recovered.finalized {
+        return Ok(finalized.clone());
+    }
+    // Step `n` takes position `n`; steps at or before the last accepted
+    // position were recorded already and are skipped, never repeated.
+    let done = recovered.last_position.map_or(0, Position::get);
+    let at = |step: u64| Position::new(step).expect("nonzero");
 
-    let started = CaptureEvent::new(handle, key("started"), next(), LifecycleFact::Started);
-    let _: ItemReceipt = recorder.append(&started)?;
-    let channel = CaptureEvent::new(
-        handle,
-        key("log-open"),
-        next(),
-        LifecycleFact::Channel {
-            channel: "log".into(),
-            state: ChannelEvent::Opened,
-        },
-    );
-    recorder.append(&channel)?;
-
-    let mut original = StableArtifact::file(
-        handle,
-        key("result"),
-        next(),
-        ArtifactRole::OriginalOutput,
-        output,
-    );
-    original.media_type = Some("application/json".into());
-    let attached: ArtifactRef = recorder.attach(&original)?;
-    let mut summary_artifact = StableArtifact::missing(
-        handle,
-        key("summary"),
-        next(),
-        ArtifactRole::Derivative,
-        "the summarizer did not run",
-    );
-    summary_artifact.derived_from = Some(Derivation::new(key("result"), "summary/1"));
-    let last = attached.receipt.position.max(summary_artifact.position);
-    recorder.attach(&summary_artifact)?;
+    if done < 1 {
+        let started = CaptureEvent::new(handle, key("started"), at(1), LifecycleFact::Started);
+        let _: ItemReceipt = recorder.append(&started)?;
+    }
+    if done < 2 {
+        let channel = CaptureEvent::new(
+            handle,
+            key("log-open"),
+            at(2),
+            LifecycleFact::Channel {
+                channel: "log".into(),
+                state: ChannelEvent::Opened,
+            },
+        );
+        recorder.append(&channel)?;
+    }
+    if done < 3 {
+        let mut original = StableArtifact::file(
+            handle,
+            key("result"),
+            at(3),
+            ArtifactRole::OriginalOutput,
+            output,
+        );
+        original.media_type = Some("application/json".into());
+        let _: ArtifactRef = recorder.attach(&original)?;
+    }
+    if done < 4 {
+        let mut summary_artifact = StableArtifact::missing(
+            handle,
+            key("summary"),
+            at(4),
+            ArtifactRole::Derivative,
+            "the summarizer did not run",
+        );
+        summary_artifact.derived_from = Some(Derivation::new(key("result"), "summary/1"));
+        recorder.attach(&summary_artifact)?;
+    }
+    let last = at(4);
 
     let mut execution = ExecutionReport::new(ExecutionStatus::Completed);
     execution.exit_code = Some(0);
@@ -162,11 +167,35 @@ impl<R: Recorder> Recorder for Counting<R> {
     }
 }
 
+/// A workspace whose import root is the producer's output directory, outside
+/// the workspace, as `attach` requires.
 fn workspace() -> (tempfile::TempDir, PathBuf) {
     let temporary = tempfile::tempdir().unwrap();
     let root = temporary.path().join("workspace");
+    let outputs = temporary.path().join("outputs");
+    fs::create_dir(&outputs).unwrap();
     investigation_store::Workspace::init(&root, false).unwrap();
+    let config = root.join("investigation.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        contents.replace(
+            "import_roots = []",
+            &format!("import_roots = [{:?}]", outputs.display().to_string()),
+        ),
+    )
+    .unwrap();
     (temporary, root)
+}
+
+fn output(root: &Path) -> PathBuf {
+    let output = root.parent().unwrap().join("outputs/result.json");
+    fs::write(
+        &output,
+        b"{\"metric\":\"latency.p99\",\"value\":18.7,\"unit\":\"ms\"}\n",
+    )
+    .unwrap();
+    output
 }
 
 fn tree(root: &Path) -> Vec<(PathBuf, u64)> {
@@ -201,17 +230,10 @@ fn tree_without_index_of(entries: Vec<(PathBuf, u64)>) -> Vec<(PathBuf, u64)> {
         .collect()
 }
 
-fn assert_unsupported<T: std::fmt::Debug>(result: Result<T, RecordingError>, operation: Operation) {
-    let error = result.unwrap_err();
-    assert_eq!(error, RecordingError::Unsupported { operation });
-    assert_eq!(error.commit_status(), CommitStatus::NotCommitted);
-    assert!(error.to_string().contains(operation.wire_name()));
-}
-
 #[test]
 fn external_producer_runs_against_every_recorder_form() {
     let (_temporary, root) = workspace();
-    let output = root.join("result.json");
+    let output = output(&root);
     let before = tree(&root);
     let local = LocalRecorder::open(&root).unwrap();
     assert_eq!(local.workspace_root(), root.as_path());
@@ -224,20 +246,32 @@ fn external_producer_runs_against_every_recorder_form() {
     let shared = Arc::new(local.clone());
     let as_dyn: &dyn Recorder = &local;
 
-    // `begin` is durable, and `append` once a handle is resumed; the later
-    // operations land separately. Until then the
-    // honest outcome is a declared Run followed by an unsupported `recover`, for
-    // every way of holding a recorder. Each later flow resends the identical
-    // begin, so it resumes the same Run instead of declaring another.
-    assert_unsupported(record_synthetic(&local, &output), Operation::Recover);
-    let declared = tree(&root);
-    assert_ne!(declared, before);
-    assert_unsupported(record_synthetic(as_dyn, &output), Operation::Recover);
-    assert_unsupported(record_synthetic(&boxed, &output), Operation::Recover);
-    assert_unsupported(record_synthetic(&shared, &output), Operation::Recover);
-    assert_unsupported(record_synthetic(&counting, &output), Operation::Recover);
+    // The first flow records the whole run. Every later flow resends the
+    // identical begin, recovers the finalized handle and returns its original
+    // receipt without repeating a step, for every way of holding a recorder.
+    let first = record_synthetic(&local, &output).unwrap();
+    assert_eq!(first.finalization, Finalization::Finalized);
+    assert_eq!(first.execution, ExecutionStatus::Completed);
+    assert_eq!(first.sealed_position, Position::new(4));
+    let finalized = tree(&root);
+    assert_ne!(finalized, before);
+    for receipt in [
+        record_synthetic(as_dyn, &output).unwrap(),
+        record_synthetic(&boxed, &output).unwrap(),
+        record_synthetic(&shared, &output).unwrap(),
+        record_synthetic(&counting, &output).unwrap(),
+    ] {
+        assert_eq!(receipt.run_id, first.run_id);
+        assert_eq!(receipt.manifest_digest, first.manifest_digest);
+        assert_eq!(receipt.commit.transaction_id, first.commit.transaction_id);
+        assert_eq!(
+            serde_json::to_value(receipt.commit.result).unwrap(),
+            "already_committed"
+        );
+    }
+    // Begin and recover only.
     assert_eq!(counting.calls.load(Ordering::Relaxed), 2);
-    assert_eq!(tree_without_index(&root), tree_without_index_of(declared));
+    assert_eq!(tree_without_index(&root), tree_without_index_of(finalized));
     let mut store =
         investigation_store::Store::open(investigation_store::Workspace::open(&root).unwrap());
     assert_eq!(store.list_cases().unwrap().len(), 1);
@@ -245,12 +279,88 @@ fn external_producer_runs_against_every_recorder_form() {
 }
 
 #[test]
-fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing() {
+fn a_restarted_producer_resumes_after_the_last_accepted_position() {
+    let (_temporary, root) = workspace();
+    let output = output(&root);
+    let local = LocalRecorder::open(&root).unwrap();
+    // The first attempt crashes after its first step.
+    let crashing = CrashAfter {
+        inner: local.clone(),
+        appends: AtomicUsize::new(0),
+    };
+    let error = record_synthetic(&crashing, &output).unwrap_err();
+    assert_eq!(error.code(), Some(ErrorCode::IoFailure));
+    let unsettled = local.recover(&RecoverScope::Unsettled).unwrap().handles;
+    assert_eq!(unsettled.len(), 1);
+    assert_eq!(unsettled[0].seal, SealState::Open);
+    assert_eq!(unsettled[0].last_position, Some(Position::FIRST));
+
+    // The restart continues at position 2 and never resends the first step.
+    let counting = Counting {
+        inner: local.clone(),
+        calls: AtomicUsize::new(0),
+    };
+    let receipt = record_synthetic(&counting, &output).unwrap();
+    assert_eq!(receipt.finalization, Finalization::Finalized);
+    // Begin, recover, three items and finalize.
+    assert_eq!(counting.calls.load(Ordering::Relaxed), 6);
+    let recovered = local
+        .recover(&RecoverScope::Handle {
+            handle: receipt.handle,
+        })
+        .unwrap();
+    let keys: Vec<_> = recovered.handles[0]
+        .items
+        .iter()
+        .map(|item| item.key.as_str().to_owned())
+        .collect();
+    assert_eq!(keys, ["started", "log-open"]);
+    assert!(
+        local
+            .recover(&RecoverScope::Unsettled)
+            .unwrap()
+            .handles
+            .is_empty()
+    );
+}
+
+/// A producer whose process dies after its first appended fact.
+struct CrashAfter<R> {
+    inner: R,
+    appends: AtomicUsize,
+}
+
+impl<R: Recorder> Recorder for CrashAfter<R> {
+    fn begin(&self, request: &BeginCapture) -> Result<BeginReceipt, RecordingError> {
+        self.inner.begin(request)
+    }
+    fn append(&self, event: &CaptureEvent) -> Result<ItemReceipt, RecordingError> {
+        if self.appends.fetch_add(1, Ordering::Relaxed) >= 1 {
+            return Err(RecordingError::Rejected(Failure::new(
+                ErrorCode::IoFailure,
+                "the producer stopped",
+            )));
+        }
+        self.inner.append(event)
+    }
+    fn attach(&self, artifact: &StableArtifact) -> Result<ArtifactRef, RecordingError> {
+        self.inner.attach(artifact)
+    }
+    fn finalize(&self, summary: &FinalizeCapture) -> Result<FinalizeReceipt, RecordingError> {
+        self.inner.finalize(summary)
+    }
+    fn recover(&self, scope: &RecoverScope) -> Result<RecoveryState, RecordingError> {
+        self.inner.recover(scope)
+    }
+}
+
+#[test]
+fn every_local_operation_on_an_undeclared_handle_records_nothing() {
     let (_temporary, root) = workspace();
     let before = tree(&root);
     let recorder = LocalRecorder::open(&root).unwrap();
     let handle: CaptureHandle = HANDLE.parse().unwrap();
-    // `append` is durable; on an undeclared handle it is refused and stages nothing.
+    // `append` on an undeclared handle is refused and stages nothing.
     let event = CaptureEvent::new(handle, key("e1"), Position::FIRST, LifecycleFact::Started);
     let error = recorder.append(&event).unwrap_err();
     assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
@@ -277,10 +387,13 @@ fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing()
     let error = recorder.finalize(&summary).unwrap_err();
     assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
     assert_eq!(error.commit_status(), CommitStatus::NotCommitted);
-    assert_unsupported(
-        recorder.recover(&RecoverScope::Unsettled),
-        Operation::Recover,
-    );
+    // `recover` of that handle too; with nothing declared, nothing is unsettled.
+    let error = recorder
+        .recover(&RecoverScope::Handle { handle })
+        .unwrap_err();
+    assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
+    let state = recorder.recover(&RecoverScope::Unsettled).unwrap();
+    assert!(state.handles.is_empty());
     assert_eq!(tree(&root), before);
 }
 
@@ -451,10 +564,51 @@ fn receipt_wire_shapes_are_pinned() {
             "last_position": 4,
             "items": [],
             "artifacts": [serde_json::to_value(&artifact).unwrap()],
-            "finalized": finalized
+            "finalized": finalized,
+            "staging": "retired",
+            "execution": "failed",
+            "next": [{
+                "action": "lookup_receipt",
+                "argv": ["investigation", "receipt", "run-0001/finalize", "--actor", "agent:example-producer", "--format", "json"],
+                "key": "run-0001/finalize"
+            }]
+        }, {
+            "handle": HANDLE,
+            "run_id": "run_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+            "case_id": "case_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+            "producer": {"name": "example-producer"},
+            "external_run_id": "run-0001",
+            "seal": "sealed",
+            "last_position": 4,
+            "items": [],
+            "artifacts": [],
+            "staging_dir": "state/staging/run_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+            "staging": "present",
+            "execution": "unknown",
+            "next": [{
+                "action": "resend_finalize",
+                "argv": ["investigation", "capture", "finalize", "--input", "-", "--format", "json"],
+                "key": "run-0001/finalize",
+                "request_digest": digest
+            }]
         }]
     }));
     assert_eq!(state.handles[0].seal, SealState::Finalized);
+    assert_eq!(state.handles[1].execution, ExecutionStatus::Unknown);
+    // Fields added after the first shape are optional on input.
+    let minimal: RecoveryState = serde_json::from_value(json!({"handles": [{
+        "handle": HANDLE,
+        "run_id": "run_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+        "case_id": "case_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+        "producer": {"name": "example-producer"},
+        "external_run_id": "run-0001",
+        "seal": "open",
+        "last_position": null,
+        "items": [],
+        "artifacts": []
+    }]}))
+    .unwrap();
+    assert_eq!(minimal.handles[0].execution, ExecutionStatus::Unknown);
 }
 
 #[test]

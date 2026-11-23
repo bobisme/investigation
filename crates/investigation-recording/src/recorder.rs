@@ -14,7 +14,6 @@ use crate::{
     begin::{BeginCapture, BeginReceipt},
     error::RecordingError,
     finalize::{FinalizeCapture, FinalizeReceipt},
-    key::Operation,
     recover::{RecoverScope, RecoveryState},
 };
 
@@ -174,8 +173,6 @@ impl LocalRecorder {
     }
 }
 
-// Each operation lands with its own durable implementation. Until then the
-// call reports `Unsupported` and records nothing, rather than pretending.
 impl Recorder for LocalRecorder {
     fn begin(&self, request: &BeginCapture) -> Result<BeginReceipt, RecordingError> {
         crate::begin::declare(&self.workspace, request)
@@ -193,13 +190,9 @@ impl Recorder for LocalRecorder {
         crate::finalize::finalize(&self.workspace, summary)
     }
 
-    fn recover(&self, _scope: &RecoverScope) -> Result<RecoveryState, RecordingError> {
-        Err(unsupported(Operation::Recover))
+    fn recover(&self, scope: &RecoverScope) -> Result<RecoveryState, RecordingError> {
+        crate::recover::recover(&self.workspace, scope)
     }
-}
-
-const fn unsupported(operation: Operation) -> RecordingError {
-    RecordingError::Unsupported { operation }
 }
 
 fn workspace_failure(root: &Path, error: WorkspaceError) -> Failure {

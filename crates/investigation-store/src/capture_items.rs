@@ -251,9 +251,10 @@ impl<F: DurableFs> Store<F> {
         if self.exists(&handle.directory.join(SEAL_FILE))? {
             return Err(Failure::new(
                 ErrorCode::RevisionConflict,
-                "This capture handle is sealed and accepts no new items. Preserve late evidence through an explicit linked reconciliation.",
+                "This capture handle is sealed and accepts no new items. Call recover for its seal state, and preserve late evidence through an explicit linked reconciliation.",
             )
-            .at("/handle"));
+            .at("/handle")
+            .with_argv(recover_argv(submission.handle)));
         }
         if u64::try_from(request.len()).unwrap_or(u64::MAX) > limits.max_event_bytes {
             let mut failure = Failure::new(
@@ -283,7 +284,7 @@ impl<F: DurableFs> Store<F> {
             return Err(failure);
         }
         if submission.position != next {
-            return Err(position_conflict(submission.position, next, last));
+            return Err(position_conflict(submission, next, last));
         }
         let outcome = outcome(self, &handle)?;
         let encoded = outcome
@@ -466,6 +467,39 @@ impl<F: DurableFs> Store<F> {
             )
             .at("/handle")),
         }
+    }
+
+    /// Resolve a declared handle whose staging is present, against the state
+    /// of its verified case, without scanning staging or replaying again.
+    pub(crate) fn resolve_declared(
+        &self,
+        declared: &DeclaredHandle,
+        state: &State,
+    ) -> Result<ResolvedHandle, Failure> {
+        let directory = PathBuf::from(&declared.binding.staging);
+        let path = directory.join(BINDING_FILE);
+        let bytes = read_bounded(&self.fs, &path, 64 * 1024).map_err(io_failure)?;
+        let binding: BindingFile = serde_json::from_slice(&bytes)
+            .ok()
+            .filter(|binding: &BindingFile| {
+                binding.schema_version == STAGING_VERSION
+                    && binding.handle == declared.binding.handle
+                    && binding.run_id == declared.run_id
+                    && binding.case_id == declared.case_id
+            })
+            .ok_or_else(|| {
+                integrity("The staging binding disagrees with the declared capture handle.")
+            })?;
+        let run = state
+            .current(binding.run_id)
+            .ok_or_else(|| integrity("The declared Run is missing."))?;
+        Ok(ResolvedHandle {
+            case_id: binding.case_id,
+            run_id: binding.run_id,
+            binding: declared.binding.clone(),
+            directory,
+            classification: effective_classification(state, run).level,
+        })
     }
 
     /// Check the staged binding against the declaring transaction and take the
@@ -712,7 +746,8 @@ fn key_reused(item: &StagedItem, submission: &ItemSubmission, digest: &Digest) -
             item.key, item.position
         ),
     )
-    .at("/key");
+    .at("/key")
+    .with_argv(recover_argv(submission.handle));
     failure.error.expected = Some(json!({
         "position": item.position,
         "operation": item.operation,
@@ -726,7 +761,8 @@ fn key_reused(item: &StagedItem, submission: &ItemSubmission, digest: &Digest) -
     failure
 }
 
-fn position_conflict(sent: u64, next: u64, last: Option<u64>) -> Failure {
+fn position_conflict(submission: &ItemSubmission, next: u64, last: Option<u64>) -> Failure {
+    let sent = submission.position;
     let message = if sent < next {
         format!(
             "Position {sent} already holds another item. The next position on this handle is {next}."
@@ -739,7 +775,9 @@ fn position_conflict(sent: u64, next: u64, last: Option<u64>) -> Failure {
             sent - 1
         )
     };
-    let mut failure = Failure::new(ErrorCode::RevisionConflict, message).at("/position");
+    let mut failure = Failure::new(ErrorCode::RevisionConflict, message)
+        .at("/position")
+        .with_argv(recover_argv(submission.handle));
     failure.error.expected = Some(json!({"position": next, "last_position": last}));
     failure.error.actual = Some(json!({"position": sent}));
     failure.error.retry = Some("resume at the expected position".into());

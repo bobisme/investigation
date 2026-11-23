@@ -19,6 +19,7 @@ use investigation_store::{
             PlannedRole, RecordedRefs,
         },
         items::ItemOperation,
+        recover_argv,
     },
 };
 use schemars::JsonSchema;
@@ -283,7 +284,7 @@ pub(crate) fn finalize(
 }
 
 /// The receipt of a committed finalization, from the Run's section.
-fn receipt(finalized: FinalizedCapture) -> Result<FinalizeReceipt, Failure> {
+pub(crate) fn receipt(finalized: FinalizedCapture) -> Result<FinalizeReceipt, Failure> {
     let record: FinalizationRecord = serde_json::from_value(finalized.section).map_err(|_| {
         Failure::new(
             ErrorCode::IntegrityFailure,
@@ -805,7 +806,7 @@ fn cursor(
         failure.error.expected = Some(json!({"last_position": last}));
         failure.error.actual = Some(json!({"expected_last_position": expected}));
         failure.error.retry = Some("finalize with the accepted last position".into());
-        return Err(failure);
+        return Err(failure.with_argv(recover_argv(summary.handle.id())));
     }
     let after = last.map_or(0, Position::get);
     Ok(match expected {

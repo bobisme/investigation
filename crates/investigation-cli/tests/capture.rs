@@ -697,3 +697,227 @@ fn capture_finalize_seals_the_handle_and_commits_the_manifest_once() {
     );
     assert_eq!(check["ok"], true);
 }
+
+#[test]
+fn capture_recover_reports_accepted_state_through_the_same_recorder_and_writes_nothing() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let begun = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "begin",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&begin_request()).unwrap()),
+        0,
+    );
+    let handle = begun["handle"].as_str().unwrap();
+    json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "append",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(
+            &serde_json::to_vec(&json!({
+                "handle": handle, "key": "started", "position": 1, "fact": {"kind": "started"}
+            }))
+            .unwrap(),
+        ),
+        0,
+    );
+    // A gap is refused with the command that reports where to resume.
+    let gap = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "append",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(
+            &serde_json::to_vec(&json!({
+                "handle": handle, "key": "late", "position": 3, "fact": {"kind": "started"}
+            }))
+            .unwrap(),
+        ),
+        4,
+    );
+    let repair: Vec<String> =
+        serde_json::from_value(gap["error"]["repair"]["argv"].clone()).unwrap();
+    let workspace = root.join("ws").canonicalize().unwrap();
+    assert_eq!(
+        repair,
+        [
+            "investigation",
+            "--workspace",
+            workspace.to_str().unwrap(),
+            "capture",
+            "recover",
+            "--handle",
+            handle,
+            "--format",
+            "json"
+        ]
+    );
+
+    let journal = |root: &Path| {
+        let mut entries: Vec<_> = walk(&root.join("ws/state"));
+        entries.sort();
+        entries
+    };
+    let before = journal(root);
+    // The repair argv runs as given, also read-only.
+    let mut args = vec!["--read-only"];
+    args.extend(repair[1..].iter().map(String::as_str));
+    let by_handle = json_run(root, &args, None, 0);
+    let unsettled = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--format",
+            "json",
+        ],
+        None,
+        0,
+    );
+    let scoped = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&json!({"kind": "unsettled"})).unwrap()),
+        0,
+    );
+    assert_eq!(journal(root), before, "recover writes nothing");
+    assert_eq!(unsettled, scoped);
+    assert_eq!(unsettled, by_handle);
+    let reported = &by_handle["handles"][0];
+    assert_eq!(reported["handle"], handle);
+    assert_eq!(reported["seal"], "open");
+    assert_eq!(reported["staging"], "present");
+    assert_eq!(reported["execution"], "unknown");
+    assert_eq!(reported["last_position"], 1);
+    assert_eq!(reported["next_position"], 2);
+    assert_eq!(reported["items"][0]["key"], "started");
+
+    // The CLI prints what the Rust recorder returns, with each next step
+    // scoped to the workspace.
+    let native = LocalRecorder::open(root.join("ws"))
+        .unwrap()
+        .recover(&serde_json::from_value(json!({"kind": "handle", "handle": handle})).unwrap())
+        .unwrap();
+    let mut native = serde_json::to_value(&native).unwrap();
+    for step in native["handles"][0]["next"].as_array_mut().unwrap() {
+        let argv = step["argv"].as_array_mut().unwrap();
+        assert_eq!(argv[1], "capture");
+        argv.splice(
+            1..1,
+            [json!("--workspace"), json!(workspace.to_str().unwrap())],
+        );
+    }
+    assert_eq!(native, by_handle);
+
+    let output = invoke(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--handle",
+            handle,
+        ],
+        None,
+    );
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("open  present"), "{text}");
+    assert!(text.contains("execution unknown"), "{text}");
+    assert!(
+        text.contains("next      finalize: investigation --workspace"),
+        "{text}"
+    );
+    assert!(text.contains("nothing was rerun"), "{text}");
+
+    let unknown = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--handle",
+            "handle_01936f0e-7c6a-7d3e-8a1b-0123456789ab",
+            "--format",
+            "json",
+        ],
+        None,
+        3,
+    );
+    assert_eq!(unknown["error"]["code"], "UNKNOWN_REFERENCE");
+    assert_eq!(unknown["error"]["path"], "/handle");
+    let malformed = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "recover",
+            "--handle",
+            "run_x",
+            "--format",
+            "json",
+        ],
+        None,
+        2,
+    );
+    assert_eq!(malformed["error"]["path"], "--handle");
+}
+
+/// Every file beneath `directory` with its bytes.
+fn walk(directory: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut entries = Vec::new();
+    for entry in fs::read_dir(directory).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            entries.extend(walk(&path));
+        } else {
+            let bytes = fs::read(&path).unwrap();
+            entries.push((path, bytes));
+        }
+    }
+    entries
+}

@@ -959,7 +959,7 @@ fn with_workspace_repair(workspace: &Workspace, mut failure: Failure) -> Failure
     failure
 }
 
-fn scope_argv(workspace: &Workspace, argv: &mut Vec<String>) {
+pub(crate) fn scope_argv(workspace: &Workspace, argv: &mut Vec<String>) {
     if argv.first().is_some_and(|program| program == PROGRAM_NAME)
         && !argv.get(1).is_some_and(|arg| arg == "--workspace")
     {

@@ -10,11 +10,11 @@ A producer is an external program that runs something under its own authority an
 | `capture.append` | `Recorder::append(&CaptureEvent)` → `ItemReceipt` | Accepts one bounded lifecycle or collection fact at the next position, durably, with distinct reported and accepted times. | Start, cancel or rerun anything; reorder items or fill gaps. |
 | `capture.attach` | `Recorder::attach(&StableArtifact)` → `ArtifactRef` | Copies a closed file into staging and verifies digest, size and role, or records a declared artifact as missing. | Run a parser or command; accept mutable bytes as final; hardlink producer files; replace a missing artifact with an empty one. |
 | `capture.finalize` | `Recorder::finalize(&FinalizeCapture)` → `FinalizeReceipt` | Seals the handle and commits the immutable manifest: artifacts, execution state, assertions, controls, receipts, per-channel completeness. | Create an Assessment or a validated Conclusion; equate `finalized` with `execution_completed`. |
-| `capture.recover` | `Recorder::recover(&RecoverScope)` → `RecoveryState` | Reads unsettled handles, or one handle: seal state, last accepted position and receipts. | Rerun or resume an external action; delete staged bytes; change a handle's state. |
+| `capture.recover` | `Recorder::recover(&RecoverScope)` → `RecoveryState` | Reads unsettled handles, or one handle: seal state, staging state, last accepted position, receipts, the original finalize receipt, and the exact commands that continue the recording. | Rerun or resume an external action; delete staged bytes; change a handle's state; infer an execution outcome. |
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
-**Status.** The types and signatures are fixed. `begin`, `append`, `attach` and `finalize` are durable and have their CLI commands, `capture begin`, `capture append`, `capture attach` and `capture finalize`. `recover` returns `RecordingError::Unsupported` and records nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+**Status.** The types and signatures are fixed. Every operation is implemented and has its CLI command: `capture begin`, `capture append`, `capture attach`, `capture finalize` and `capture recover`.
 
 ## `capture begin`
 
@@ -229,6 +229,44 @@ The seal is `sealed.json` in staging. It binds the key, the request digest, the 
 
 After the seal, finalize removes `blobs/*.tmp` and any staged blob that no item references. It never removes an item, a key entry or a referenced blob.
 
+## `capture recover`
+
+```sh
+investigation --workspace ./cases capture recover --format json
+investigation --workspace ./cases capture recover --handle handle_… --format json
+```
+
+Without arguments, recover reports every handle that is not finalized. With `--handle` it reports that handle in any state. `--input` (a file, or `-` for stdin) takes the JSON form of `RecoverScope` instead: `{"kind": "unsettled"}` or `{"kind": "handle", "handle": …}`. Stdout is the `RecoveryState`, the same value `Recorder::recover` returns, except that the CLI adds `--workspace` to each next step's `argv`, as it does for repair guidance. `--read-only` allows it.
+
+Each entry in `handles` holds:
+
+| Field | Meaning |
+|---|---|
+| `handle`, `run_id`, `case_id`, `producer`, `external_run_id` | The declaration, from the begin request. |
+| `seal` | `open` (accepting items), `sealed` (`sealed.json` is published and no `capture.finalize` is committed), or `finalized`. |
+| `staging` | `present`, `unallocated` (a crash after the declaration left no staging; resend the identical `begin`), or `retired` (finalized and the directory is gone). `staging_dir` is set while staging is present. |
+| `last_position` | The last accepted position. After finalization it is the receipt's `sealed_position`, also when staging is retired. |
+| `items`, `artifacts` | The receipt of every staged fact and every staged artifact, in position order, with its original position, key, request digest and acceptance time. `result` is `already_accepted`: an earlier call made the item durable. Each artifact reports `availability` `staged`, with its digest and size, or `missing`. Read from staging; empty once staging is retired, when the manifest Artifact holds every item. |
+| `finalized` | The original finalize receipt, read from the journal, as an identical retry returns it (`commit.result` `already_committed`). Present also after staging is retired. |
+| `execution` | The external execution state as recorded: `unknown` until a finalize commits the producer's report, then that report. Recover never infers it from lifecycle facts or from the absence of a record. |
+| `next_position` | The position the next item must take, while the handle is open. |
+| `next` | Each next step: `action`, the exact `argv` (a request is read from stdin), and `key` and `request_digest` when only one request fits. |
+
+The next steps by state:
+
+| State | `next` |
+|---|---|
+| Open, staging unallocated | `resend_begin` with the begin `key`. |
+| Open, staging present | `append` and `attach` at `next_position`, and `finalize`. |
+| Sealed | `resend_finalize` with the sealing `key` and `request_digest`. Only that identical request completes the handle; it commits the manifest the seal names. |
+| Finalized | `lookup_receipt`: `investigation receipt KEY --actor ACTOR`. |
+
+Every step records, reads or resends a recording call. No step reruns, resumes or schedules the producer's action, and recover cannot tell whether that action happened: a missing record is not proof that no external effect occurred. A producer that cannot vouch for every step it took finalizes with completion `interrupted` and execution state `unknown`. The Run then records what survived, `finalized_partial`, and keeps every staged byte.
+
+Recover is a read. It takes no handle lock and creates, changes or removes nothing: no seal, item, key entry, lock file, staged blob or temporary, and no index refresh. It reads the journal, then the seal, then the items, so a sealed handle's items are final and an open handle's items are a durable prefix. An item accepted during the read appears in the next one.
+
+A handle that was never declared is refused with `UNKNOWN_REFERENCE` at `/handle`. Refusals that depend on what a handle accepted carry `capture recover --handle …` as their repair argv: a position conflict (`/position`), a reused item key (`/key`), a sealed handle (`/handle`), a stale finalize cursor (`/expected_last_position`), and a handle sealed by another finalize request.
+
 ## Staging
 
 ```text
@@ -247,13 +285,13 @@ Later capture operations add their own entries beside `handle.json` and never re
 
 An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. An attachment item's `outcome` holds `availability` (`staged` or `missing`), `classification`, and either `digest`, `size_bytes` and `blob` (the path relative to the staging directory) or `missing` (`declared` or `not_found`). A derivative's outcome adds `derived_from` with the original's key and position. A blob is durable before the item that names it. A crash between the two leaves an unreferenced blob, which a retry reuses after checking its bytes. Finalization copies referenced blobs into the canonical blob store. Transient `*.tmp` files exist only while one entry is published or one copy is verified. `sealed.json` is the seal that finalize publishes; see [`capture finalize`](#capture-finalize). Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
 
-Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. Recovery reports that state, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
+Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. `capture recover` reports it as `unallocated`, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
 
 ## Rules every producer follows
 
 - **Keys.** Every mutating call carries an idempotency key. `begin` and `finalize` keys are journal command IDs. `append` and `attach` keys are item keys, unique within the handle. Derive keys from your own run state, never from the clock or a random source at retry time.
 - **Retries.** After a timeout, a crash, or a failure whose `commit_status` is `unknown`, resend the identical request with the same key. You get the original receipt. The same key with different content is a conflict.
-- **Positions.** Appended facts and attachments share one sequence per handle, starting at 1. The recorder accepts only the next position, and refuses any other with the expected position. After a restart, resend the identical `begin` to get the same handle, call `recover`, and continue after `last_position`.
+- **Positions.** Appended facts and attachments share one sequence per handle, starting at 1. The recorder accepts only the next position, and refuses any other with the expected position. After a restart, resend the identical `begin` to get the same handle, call `recover`, and continue after `last_position`. Do not repeat an external action that a recorded step describes. If you cannot vouch for a step that did not finish, finalize with completion `interrupted` and execution state `unknown`.
 - **Stable bytes.** Close and flush a file before you attach it, and keep it beneath an import root. Do not write into the staging directory.
 - **Assertions.** Your results are recorded as your assertions. An exit code of 0 or a `reported_pass` control sets no measurement validity.
 - **Readiness.** If your policy requires durable recording and `begin` fails, do not start a new effectful unit. If the recorder fails midrun, keep a bounded local spool and reconcile later. These are producer obligations; Investigation does not enforce them.

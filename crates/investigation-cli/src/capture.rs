@@ -12,12 +12,12 @@ use investigation_core::{
 };
 use investigation_recording::{
     BeginCapture, CaptureEvent, CaseTarget, Finalization, FinalizeCapture, LocalRecorder,
-    ReceiptResult, Recorder, RecordingError, StableArtifact, StagedAvailability,
+    ReceiptResult, Recorder, RecordingError, RecoverScope, StableArtifact, StagedAvailability,
 };
 use investigation_store::Store;
 
 use crate::{
-    Global, Output, read_input,
+    Global, Output, display_argv, read_input, scope_argv,
     selection::{require_case_agreement, select_actor},
     with_workspace_repair,
 };
@@ -91,6 +91,26 @@ Conclusion, and an exit code of 0 sets no measurement validity.
 
 Example: investigation capture finalize --input finalize.json --format json";
 
+const RECOVER_HELP: &str = "\
+Reports what the recorder durably accepted, so a producer that crashed or lost
+a response can continue its recording. With --handle, reports that handle in
+any state. With --input, reads one inv.capture.v1 recover scope:
+{\"kind\": \"unsettled\"} or {\"kind\": \"handle\", \"handle\": ...}. With
+neither, reports every handle that is not finalized.
+
+Each handle reports its seal state (open, sealed or finalized), staging state,
+last accepted position, the original receipt of every accepted fact and
+artifact (staged or missing), the original finalize receipt once finalized,
+and the exact commands that continue or settle the recording. Execution stays
+unknown until a finalize records the producer's report.
+
+Recover is a read. It never reruns, resumes or schedules an external action,
+never deletes staged bytes and never changes a handle's state. A producer that
+cannot vouch for an unfinished step finalizes with completion interrupted and
+execution state unknown.
+
+Example: investigation capture recover --handle handle_... --format json";
+
 #[derive(clap::Subcommand)]
 pub(crate) enum CaptureCommand {
     /// Declare one Run before an external action and allocate its staging.
@@ -121,6 +141,16 @@ pub(crate) enum CaptureCommand {
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
     },
+    /// Report accepted positions, receipts and seal state; never reruns anything.
+    #[command(after_help = RECOVER_HELP)]
+    Recover {
+        /// Report this handle, in any state.
+        #[arg(long, value_name = "HANDLE", conflicts_with = "input")]
+        handle: Option<String>,
+        /// Read the recover scope from FILE, or - for stdin.
+        #[arg(long, value_name = "FILE|-")]
+        input: Option<PathBuf>,
+    },
 }
 
 pub(crate) fn run(
@@ -133,6 +163,9 @@ pub(crate) fn run(
         CaptureCommand::Append { input } => append(store, &input),
         CaptureCommand::Attach { input } => attach(store, &input),
         CaptureCommand::Finalize { input } => finalize(store, &input),
+        CaptureCommand::Recover { handle, input } => {
+            recover(store, handle.as_deref(), input.as_deref())
+        }
     }
 }
 
@@ -261,6 +294,89 @@ fn finalize(store: &mut Store, path: &Path) -> Result<Output, Failure> {
         receipt.manifest_digest,
     );
     Ok(Output::new(receipt, text))
+}
+
+/// A read: the handle names its Run, case and actor, so `--case` and
+/// `--actor` play no part.
+fn recover(
+    store: &mut Store,
+    handle: Option<&str>,
+    path: Option<&Path>,
+) -> Result<Output, Failure> {
+    let scope = match (handle, path) {
+        (Some(handle), _) => RecoverScope::Handle {
+            handle: handle.parse().map_err(|_| {
+                Failure::new(
+                    ErrorCode::InvalidInput,
+                    "Use the handle from the begin receipt, such as handle_<uuid>.",
+                )
+                .at("--handle")
+            })?,
+        },
+        (None, Some(path)) => input::parse_request(&read_input(path)?)
+            .and_then(|value| input::decode(&value))
+            .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?,
+        (None, None) => RecoverScope::Unsettled,
+    };
+    let mut state = LocalRecorder::open(store.workspace().root())
+        .and_then(|recorder| recorder.recover(&scope))
+        .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
+    // The next steps name this workspace, like repair guidance does.
+    for handle in &mut state.handles {
+        for step in &mut handle.next {
+            scope_argv(store.workspace(), &mut step.argv);
+        }
+    }
+    let mut lines = Vec::new();
+    if state.handles.is_empty() {
+        lines.push("No unsettled capture handles.".to_owned());
+    }
+    for handle in &state.handles {
+        let word = |value: serde_json::Result<serde_json::Value>| {
+            value
+                .ok()
+                .and_then(|value| value.as_str().map(str::to_owned))
+                .unwrap_or_default()
+        };
+        let staged = handle
+            .artifacts
+            .iter()
+            .filter(|artifact| artifact.availability == StagedAvailability::Staged)
+            .count();
+        lines.push(format!(
+            "{}  {}  {}
+run       {}
+producer  {} run {}
+last      {}
+items     {} facts, {} artifacts ({staged} staged, {} missing)
+execution {}",
+            handle.handle,
+            word(serde_json::to_value(handle.seal)),
+            handle
+                .staging
+                .map(|staging| word(serde_json::to_value(staging)))
+                .unwrap_or_default(),
+            handle.run_id,
+            handle.producer.name,
+            handle.external_run_id,
+            handle
+                .last_position
+                .map_or_else(|| "none".to_owned(), |position| position.to_string()),
+            handle.items.len(),
+            handle.artifacts.len(),
+            handle.artifacts.len() - staged,
+            word(serde_json::to_value(handle.execution)),
+        ));
+        for step in &handle.next {
+            lines.push(format!(
+                "next      {}: {}",
+                word(serde_json::to_value(step.action)),
+                display_argv(&step.argv)
+            ));
+        }
+    }
+    lines.push("Read only: nothing was rerun, resumed, deleted or changed.".to_owned());
+    Ok(Output::new(state, lines.join("\n")))
 }
 
 fn rejection(error: RecordingError) -> Failure {

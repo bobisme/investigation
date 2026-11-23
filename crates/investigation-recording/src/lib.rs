@@ -50,13 +50,9 @@
 //!
 //! # Implementation status
 //!
-//! This build fixes the public types and signatures. [`Recorder::begin`],
-//! [`Recorder::append`], [`Recorder::attach`] and [`Recorder::finalize`] are
-//! durable on [`LocalRecorder`] and are also the `capture begin`,
-//! `capture append`, `capture attach` and `capture finalize` CLI commands.
-//! [`Recorder::recover`] returns [`RecordingError::Unsupported`] and records
-//! nothing; its durable behaviour lands separately without changing these
-//! signatures.
+//! Every [`Recorder`] method is durable on [`LocalRecorder`] and is also a CLI
+//! command: `capture begin`, `capture append`, `capture attach`,
+//! `capture finalize` and `capture recover`.
 //! `docs/recording.md` documents the staging layout.
 //!
 //! # Compatibility policy
@@ -153,7 +149,10 @@ pub use key::{
     Operation, Position, ProducerIdentity, ProducerName, ReceiptResult,
 };
 pub use recorder::{LocalRecorder, Recorder};
-pub use recover::{HandleRecovery, RecoverScope, RecoveryState, SealState};
+pub use recover::{
+    HandleRecovery, RecoverScope, RecoveryAction, RecoveryState, RecoveryStep, SealState,
+    StagingState,
+};
 
 // Core contract types that appear in this crate's signatures. Producers need no
 // direct dependency on `investigation-core`.

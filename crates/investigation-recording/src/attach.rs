@@ -269,7 +269,7 @@ pub(crate) fn attach(
 }
 
 /// The receipt of a staged attachment, from what was durably accepted.
-fn artifact_ref(accepted: &ItemAcceptance) -> Result<ArtifactRef, Failure> {
+pub(crate) fn artifact_ref(accepted: &ItemAcceptance) -> Result<ArtifactRef, Failure> {
     let receipt = item_receipt(accepted)?;
     let invalid = || {
         Failure::new(
