@@ -109,6 +109,26 @@ impl NoteMarker {
     }
 }
 
+/// The value of the frontmatter property `key` in `content`, unquoted when
+/// it is a double-quoted string, or `None` when the note has no frontmatter
+/// or no such property. Only flat `key: value` lines are read.
+pub fn property(content: &[u8], key: &str) -> Option<String> {
+    let text = std::str::from_utf8(content).ok()?;
+    let (block, _) = frontmatter(text)?;
+    let value = block.iter().find_map(|line| {
+        line.strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix(':'))
+            .map(str::trim)
+    })?;
+    Some(
+        value
+            .strip_prefix('"')
+            .and_then(|value| value.strip_suffix('"'))
+            .unwrap_or(value)
+            .to_owned(),
+    )
+}
+
 /// Lines of the leading frontmatter block (between the fences) and the byte
 /// offset of the closing fence line. `None` when the text has no block.
 fn frontmatter(text: &str) -> Option<(Vec<&str>, usize)> {

@@ -28,7 +28,7 @@
 
 use std::{
     collections::BTreeSet,
-    ffi::CString,
+    ffi::{CStr, CString},
     fs::File,
     io::{Read, Write},
     os::fd::{AsFd, OwnedFd},
@@ -51,6 +51,11 @@ const DIRECTORY: OFlags = OFlags::DIRECTORY
     .union(OFlags::NOFOLLOW)
     .union(OFlags::CLOEXEC);
 pub(crate) const TEMP_ATTEMPTS: usize = 8;
+
+/// Called by [`Publisher::visit`] with a vault-relative path, its directory,
+/// its name and its type.
+pub(crate) type VisitFile<'a> =
+    dyn FnMut(&str, &OwnedFd, &CStr, FileType) -> Result<(), RenderError> + 'a;
 
 /// What is at a plan path before publication. Links are never followed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -285,6 +290,26 @@ impl<'lock> Publisher<'lock> {
     /// never followed, and nothing is changed. Sorted.
     pub fn unknown_files(&self, owned: &dyn Fn(&str) -> bool) -> Result<Vec<String>, RenderError> {
         let mut found = Vec::new();
+        self.visit(false, &mut |relative, _, _, _| {
+            if !owned(relative) {
+                found.push(relative.to_owned());
+            }
+            Ok(())
+        })?;
+        found.sort();
+        Ok(found)
+    }
+
+    /// Call `visit` with every non-directory entry of the vault: its
+    /// vault-relative path, its directory, its name and its type. Hidden
+    /// entries are skipped, the human-owned roots unless `human_roots`, and
+    /// links are reported, never followed. Nothing is changed. In no
+    /// particular order.
+    pub(crate) fn visit(
+        &self,
+        human_roots: bool,
+        visit: &mut VisitFile<'_>,
+    ) -> Result<(), RenderError> {
         let mut pending: Vec<(String, Vec<CString>)> = vec![(String::new(), Vec::new())];
         while let Some((prefix, components)) = pending.pop() {
             let Some(directory) = self.open_directory(&components, &prefix)? else {
@@ -299,7 +324,8 @@ impl<'lock> Publisher<'lock> {
                 if name.starts_with('.') {
                     continue;
                 }
-                if prefix.is_empty()
+                if !human_roots
+                    && prefix.is_empty()
                     && layout::HUMAN_OWNED_ROOTS
                         .iter()
                         .any(|root| root.eq_ignore_ascii_case(&name))
@@ -323,13 +349,12 @@ impl<'lock> Publisher<'lock> {
                     let mut child = components.clone();
                     child.push(raw.to_owned());
                     pending.push((relative, child));
-                } else if !owned(&relative) {
-                    found.push(relative);
+                } else {
+                    visit(&relative, &directory, raw, kind)?;
                 }
             }
         }
-        found.sort();
-        Ok(found)
+        Ok(())
     }
 
     /// Open a vault directory by components without following links; `None`

@@ -6,11 +6,17 @@
 //!
 //! | On disk                         | Owned, hash matches | Owned, hash differs | Not owned           |
 //! |---------------------------------|---------------------|---------------------|---------------------|
-//! | absent                          | create              | create              | create (no-replace) |
+//! | absent                          | refuse: drifted     | refuse: drifted     | create (no-replace) |
 //! | bytes equal the plan            | keep                | keep                | keep, then adopt    |
 //! | other bytes                     | replace             | refuse: drifted     | refuse: foreign     |
 //! | retired path (not in the plan)  | delete              | refuse: drifted     | never considered    |
 //! | link, folder or special file    | refuse              | refuse              | refuse              |
+//!
+//! An owned file that is absent was deleted or moved by someone else; it is
+//! drift (see [`crate::drift`]) and is not recreated, except right after a
+//! killed render (state `updating`), which may have removed it itself.
+//! Drifted paths stay owned at their last generated hash, and the manifest
+//! keeps one [`Drift`] record for each, so drift is visible without a render.
 //!
 //! Adopting a file whose bytes already equal the plan is how a lost or
 //! unreadable manifest is rebuilt: nothing can be destroyed by claiming bytes
@@ -61,8 +67,9 @@ use rustix::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Action, Decision, Generation, OnDisk, Ownership, PlanEntry, PlanPath, PublishReport, Refusal,
-    RenderError, RenderLock, RenderPlan, layout, lock::open_local, publish::write_bytes_atomically,
+    Action, Decision, Drift, DriftKind, Generation, OnDisk, Ownership, PlanEntry, PlanPath,
+    PublishReport, Refusal, RenderError, RenderLock, RenderPlan, drift::CONFLICTS_DIR, layout,
+    lock::open_local, publish::write_bytes_atomically,
 };
 
 /// Workspace-relative path of the manifest.
@@ -128,6 +135,8 @@ pub struct Manifest {
     owned: BTreeMap<PlanPath, OwnedPath>,
     /// Hashes an unfinished render may have written, per path.
     pending: BTreeMap<PlanPath, BTreeSet<Digest>>,
+    /// Owned paths diagnosed as drifted by the last render that reached them.
+    drifted: BTreeMap<PlanPath, Drift>,
 }
 
 /// How [`Manifest::load`] found the manifest.
@@ -179,6 +188,33 @@ impl Manifest {
 
     pub const fn state(&self) -> &RenderState {
         &self.state
+    }
+
+    /// Drifted owned paths in path order, as the last render that reached
+    /// each one diagnosed it.
+    pub fn drift(&self) -> impl Iterator<Item = &Drift> {
+        self.drifted.values()
+    }
+
+    /// The drift record for `path`, when it is drifted.
+    pub fn drifted(&self, path: &PlanPath) -> Option<&Drift> {
+        self.drifted.get(path)
+    }
+
+    /// The same record with the drift `drifts` diagnosed for the paths
+    /// `report` reached. Records for paths the report did not reach are
+    /// kept; a reached path without a new record is no longer drifted.
+    /// Records for paths that are not owned are dropped.
+    pub(crate) fn with_drift(mut self, report: &PublishReport, drifts: Vec<Drift>) -> Self {
+        for outcome in &report.outcomes {
+            self.drifted.remove(&outcome.path);
+        }
+        for drift in drifts {
+            self.drifted.insert(drift.path.clone(), drift);
+        }
+        let owned = &self.owned;
+        self.drifted.retain(|path, _| owned.contains_key(path));
+        self
     }
 
     /// Paths an unfinished render may have written, with the hashes it
@@ -311,6 +347,24 @@ impl Manifest {
             }
         }
         let complete = planned == plan.entries().len();
+        // Drift stays recorded while its path is still refused; the render
+        // replaces the records of the paths it reached ([`Self::with_drift`]).
+        let reached: BTreeMap<&PlanPath, &Action> = report
+            .outcomes
+            .iter()
+            .map(|outcome| (&outcome.path, &outcome.action))
+            .collect();
+        let drifted = self
+            .drifted
+            .iter()
+            .filter(|(path, _)| owned.contains_key(*path))
+            .filter(|(path, _)| {
+                reached
+                    .get(path)
+                    .is_none_or(|action| matches!(action, Action::Refused(_)))
+            })
+            .map(|(path, drift)| (path.clone(), drift.clone()))
+            .collect();
         let mut manifest = Self {
             workspace_id: Some(generation.workspace_id()),
             generation: if complete {
@@ -321,6 +375,7 @@ impl Manifest {
             state: RenderState::Complete,
             owned,
             pending: BTreeMap::new(),
+            drifted,
         };
         if !complete {
             let reached: BTreeSet<&PlanPath> = report
@@ -483,6 +538,22 @@ impl Manifest {
                     sha256: hashes.iter().cloned().collect(),
                 })
                 .collect(),
+            drifted: self
+                .drifted
+                .values()
+                .map(|drift| WireDrift {
+                    path: drift.path.as_str().to_owned(),
+                    kind: drift.kind.as_str().to_owned(),
+                    expected: drift.expected.clone(),
+                    observed: drift.observed.clone(),
+                    projects: drift.projects,
+                    generated: drift.generated.clone(),
+                    conflict: drift.conflict.clone(),
+                    renamed_to: drift.renamed_to.clone(),
+                    copies: drift.copies.clone(),
+                    since: drift.since.clone(),
+                })
+                .collect(),
         };
         let mut bytes = serde_json::to_vec_pretty(&wire).expect("manifest serializes");
         bytes.push(b'\n');
@@ -560,6 +631,15 @@ impl Manifest {
                 },
             );
         }
+        let mut drifted = BTreeMap::new();
+        for record in wire.drifted {
+            let drift = checked_drift(record, &owned)?;
+            if drifted.insert(drift.path.clone(), drift).is_some() {
+                return Err(Problem::Invalid(
+                    "the manifest lists a drifted path twice".to_owned(),
+                ));
+            }
+        }
         Ok(Self {
             workspace_id: wire.workspace_id,
             generation: wire.generation.map(|generation| CompletedGeneration {
@@ -581,13 +661,72 @@ impl Manifest {
             state,
             owned,
             pending,
+            drifted,
         })
     }
+}
+
+/// A drift record from the wire: an owned path, a known kind, a conflict file
+/// inside the conflicts area, and relative vault paths.
+fn checked_drift(
+    record: WireDrift,
+    owned: &BTreeMap<PlanPath, OwnedPath>,
+) -> Result<Drift, Problem> {
+    let invalid = |what: &str| Problem::Invalid(format!("the manifest lists {what}"));
+    let path = PlanPath::new(record.path).map_err(|_| invalid("an invalid drifted path"))?;
+    if !owned.contains_key(&path) {
+        return Err(invalid("a drifted path it does not own"));
+    }
+    let kind = DriftKind::parse(&record.kind).ok_or_else(|| invalid("an unknown drift kind"))?;
+    if let Some(conflict) = &record.conflict {
+        let inside = conflict
+            .strip_prefix(CONFLICTS_DIR)
+            .and_then(|rest| rest.strip_prefix('/'))
+            .and_then(|rest| rest.split_once('/'));
+        let valid = inside.is_some_and(|(generation, rest)| {
+            PlanPath::new(generation).is_ok() && PlanPath::new(rest).is_ok()
+        });
+        if !valid {
+            return Err(invalid("a conflict file outside the conflicts area"));
+        }
+    }
+    let relative = |path: &String| {
+        !path.is_empty()
+            && !path.starts_with('/')
+            && path
+                .split('/')
+                .all(|component| !component.is_empty() && component != "." && component != "..")
+    };
+    if !record.renamed_to.iter().all(relative) || !record.copies.iter().all(relative) {
+        return Err(invalid("a drift location outside the vault"));
+    }
+    Ok(Drift {
+        path,
+        kind,
+        expected: record.expected,
+        observed: record.observed,
+        projects: record.projects,
+        generated: record.generated,
+        conflict: record.conflict,
+        renamed_to: record.renamed_to,
+        copies: record.copies,
+        since: record.since,
+    })
 }
 
 impl Ownership for Manifest {
     fn decide(&self, entry: &PlanEntry, on_disk: &OnDisk) -> Decision {
         match on_disk {
+            // An owned file someone deleted or moved is drift; it is not
+            // recreated. A killed render may have removed it itself, so
+            // after one it is, unless it was already known drifted.
+            OnDisk::Absent
+                if self.owned.contains_key(entry.path())
+                    && (self.drifted.contains_key(entry.path())
+                        || !matches!(self.state, RenderState::Updating { .. })) =>
+            {
+                Decision::Refuse(Refusal::Drifted)
+            }
             OnDisk::Absent => Decision::Write,
             OnDisk::Regular { sha256 } if sha256 == entry.sha256() => Decision::Keep,
             OnDisk::Regular { sha256 } if self.accepts(entry.path(), sha256) => Decision::Write,
@@ -654,6 +793,29 @@ struct Wire {
     owned: Vec<WireOwned>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pending: Vec<WirePending>,
+    /// Absent in manifests written before drift was recorded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    drifted: Vec<WireDrift>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WireDrift {
+    path: String,
+    kind: String,
+    expected: Digest,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    observed: Option<Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    projects: Option<Id>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    generated: Option<Digest>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    conflict: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    renamed_to: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    copies: Vec<String>,
+    since: String,
 }
 
 #[derive(Serialize, Deserialize, Default)]

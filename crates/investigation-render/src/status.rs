@@ -9,7 +9,7 @@
 use investigation_store::Workspace;
 
 use crate::{
-    CompletedGeneration, Generation, Manifest, ManifestStatus, RenderError, RenderState,
+    CompletedGeneration, Drift, Generation, Manifest, ManifestStatus, RenderError, RenderState,
     lock::{self, Probe},
 };
 
@@ -49,6 +49,10 @@ pub struct VaultStatus {
     pub last_complete: Option<CompletedGeneration>,
     /// How the manifest was found. A rebuilt manifest reports `Unrendered`.
     pub manifest: ManifestStatus,
+    /// Drifted owned paths as the last render diagnosed them, in path order.
+    /// Read from the manifest; the vault is not inspected, so drift that
+    /// happened since the last render shows up after the next one.
+    pub drift: Vec<Drift>,
 }
 
 impl VaultStatus {
@@ -101,6 +105,7 @@ pub fn vault_status(workspace: &Workspace) -> Result<VaultStatus, RenderError> {
     Ok(VaultStatus {
         state,
         last_complete,
+        drift: manifest.drift().cloned().collect(),
         manifest: loaded.status,
     })
 }

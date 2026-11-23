@@ -70,10 +70,18 @@
 //!   complete generation from the manifest and the lock alone;
 //!   [`VaultStatus::is_current`] compares it with the generation of today's
 //!   snapshot. [`RenderReport::swept`] lists cleaned leftovers.
-//! - Drift: [`Refusal::Drifted`] marks an owned file whose bytes differ from
-//!   the manifest hash; it is left in place and stays owned at the old hash,
-//!   so it is refused again on every render until reconciled. Drift handling
-//!   records the would-be content from the plan entry.
+//! - Drift ([`drift`]): an owned file that was edited (its body, or a
+//!   property a viewer's table rewrote), deleted, moved, or that has a sync
+//!   client's conflict copy beside it is refused ([`Refusal::Drifted`]) and
+//!   left exactly as found; nothing is recreated, replaced or deleted. It
+//!   stays owned at the old hash, so it is diagnosed again on every render
+//!   until reconciled. The would-be content is retained under
+//!   `local/conflicts/<generation>/<path>`, and a [`Drift`] record per path
+//!   is stored in the manifest and reported in [`RenderReport::drift`] and
+//!   [`VaultStatus::drift`] (for `vault status` and `vault conflicts`).
+//!   Reconciling dispositions are a separate seam: they read those records
+//!   and act on one path at a time. The supported contract stays: do not edit
+//!   generated notes directly; use `Notes/` or controlled mutations.
 //! - Classification-aware projection: notes ask the core `Classifier` per
 //!   field through [`note::NoteContext`]; extend [`ViewPolicy`] (and its
 //!   fingerprint) for further rules.
@@ -85,6 +93,7 @@
 //! Rendering works with any viewer application absent or closed. The
 //! filesystem is the only interface.
 
+pub mod drift;
 pub mod error;
 pub mod layout;
 pub mod lock;
@@ -105,6 +114,7 @@ use std::time::Duration;
 
 use investigation_store::{Store, durable::DurableFs};
 
+pub use drift::{CONFLICTS_DIR, Drift, DriftKind};
 pub use error::RenderError;
 pub use lock::RenderLock;
 pub use manifest::{
@@ -141,6 +151,10 @@ pub struct RenderReport {
     pub unknown: Vec<String>,
     /// Temporary files a killed render had left, cleaned before publishing.
     pub swept: Vec<Swept>,
+    /// Every drifted owned path after this render, in path order: the ones
+    /// it diagnosed and, after an early stop, earlier records for paths it
+    /// did not reach. Drift does not fail a render.
+    pub drift: Vec<Drift>,
 }
 
 /// Lock, read one verified snapshot, plan it and publish it into `vault/`
@@ -154,9 +168,13 @@ pub struct RenderReport {
 /// 2. the manifest is stored as `updating`, with the planned hashes as a
 ///    write-ahead intent ([`Manifest::begin`]); no vault file has changed yet;
 /// 3. the plan is published: records, then views, then the entry note, then
-///    retired paths are removed;
-/// 4. the manifest is stored with the outcomes, `complete` or `partial`
-///    ([`Manifest::updated`]). It is the last file the render writes.
+///    retired paths are removed. Paths with a conflict copy beside them are
+///    held, and drifted paths are refused; the rest render ([`drift`]);
+/// 4. drift is diagnosed, and the content withheld from drifted paths is
+///    retained under `local/conflicts/<generation>/`;
+/// 5. the manifest is stored with the outcomes and the drift records,
+///    `complete` or `partial` ([`Manifest::updated`]). It is the last file
+///    the render writes.
 ///
 /// When a file operation fails, the outcomes reached so far are still
 /// recorded, with state `partial` and the error as its reason, before the
@@ -182,9 +200,14 @@ pub fn render_vault<F: DurableFs>(
         loaded.manifest.accepts(path, sha256)
     })?);
 
+    let survey = drift::survey(&publisher, &loaded.manifest, &plan)?;
+    let ownership = drift::Guard {
+        manifest: &loaded.manifest,
+        survey: &survey,
+    };
     loaded.manifest.begin(&plan).store(workspace, &lock)?;
     let mut reached = Vec::new();
-    let published = publisher.publish(&plan, &loaded.manifest, &mut |step| {
+    let published = publisher.publish(&plan, &ownership, &mut |step| {
         reached.push(step.outcome.clone());
         observe(step);
     });
@@ -206,6 +229,23 @@ pub fn render_vault<F: DurableFs>(
         }
     };
     let (manifest, adopted) = loaded.manifest.updated(&plan, &publish);
+    let diagnosed = drift::diagnose(&publisher, &loaded.manifest, &plan, &publish, &survey)
+        .and_then(|mut drifts| {
+            drift::retain(workspace, &loaded.manifest, &plan, &mut drifts)?;
+            Ok(drifts)
+        });
+    let drifts = match diagnosed {
+        Ok(drifts) => drifts,
+        Err(error) => {
+            // Every vault file was processed; only the drift record is
+            // incomplete. Earlier drift records are kept.
+            let _ = manifest
+                .failed(plan.generation(), error.to_string())
+                .store(workspace, &lock);
+            return Err(error);
+        }
+    };
+    let manifest = manifest.with_drift(&publish, drifts);
     manifest.store(workspace, &lock)?;
     let unknown = publisher.unknown_files(&|path| manifest.owns(path))?;
     Ok(RenderReport {
@@ -214,5 +254,6 @@ pub fn render_vault<F: DurableFs>(
         adopted,
         unknown,
         swept,
+        drift: manifest.drift().cloned().collect(),
     })
 }

@@ -581,6 +581,7 @@ fn no_publisher_code_path_deletes_recursively() {
         include_str!("../src/lib.rs"),
         include_str!("../src/sweep.rs"),
         include_str!("../src/status.rs"),
+        include_str!("../src/drift.rs"),
     ];
     let mut directory_removals = 0;
     for source in sources {
