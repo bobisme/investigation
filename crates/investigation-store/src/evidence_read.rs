@@ -13,7 +13,10 @@ use investigation_core::{
 };
 use std::io::Read;
 
-use crate::selectors::{self, QuoteResult, Selection, SelectorError, TextDerivative};
+use crate::{
+    durable::FileIdentity,
+    selectors::{self, QuoteResult, Selection, SelectorError, TextDerivative},
+};
 
 pub const MAX_EXCERPT_BYTES: usize = 32 * 1024;
 /// Largest retained artifact a native selector reads. Selectors resolve over
@@ -51,6 +54,80 @@ pub struct EvidenceRead {
     pub excerpt: Excerpt,
 }
 
+/// How many commit attempts may end to hash promotion evidence outside the
+/// commit lock. Each needs another writer to change the evidence a promotion
+/// reads, or a blob to change, between two attempts. The attempt after the
+/// last of them hashes what it still needs under the lock, so a command
+/// always finishes.
+const DEFERRED_ATTEMPTS: usize = 3;
+
+/// One retained blob a promotion reads: its path and recorded digest and size.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RetainedBlob {
+    path: PathBuf,
+    hex: String,
+    size: u64,
+}
+
+/// One hash of a retained blob, with the file's identity seen just before
+/// the read. While the identity is unchanged, so is the result.
+struct Hashed {
+    identity: Option<FileIdentity>,
+    intact: bool,
+}
+
+/// Retained promotion evidence one command hashed outside the commit lock.
+///
+/// Blobs are immutable and named by their digest, so a hash taken before the
+/// lock holds under it unless the file changed in between. Under the lock
+/// only the file's identity is compared (`DurableFs::identity`: device,
+/// inode, size, modification and change times). A blob that is missing there
+/// is unavailable at once; one with no hash yet, or a changed identity, is
+/// pending, and the attempt ends without writing so it can be hashed again.
+#[derive(Default)]
+pub(super) struct PromotionBlobs {
+    hashed: BTreeMap<(String, u64), Hashed>,
+    attempts: usize,
+    /// Whether a blob without a current hash is left pending. Otherwise it
+    /// is hashed under the lock.
+    defer: bool,
+    /// What the last locked attempt needed and could not use a hash for.
+    pub(super) pending: Vec<RetainedBlob>,
+}
+
+impl PromotionBlobs {
+    /// Hash every needed blob under the lock, for commit paths that cannot
+    /// retry.
+    pub(super) fn under_lock() -> Self {
+        Self::default()
+    }
+
+    /// Start an attempt. The first [`DEFERRED_ATTEMPTS`] attempts defer.
+    pub(super) fn next_attempt(&mut self) {
+        self.attempts += 1;
+        self.defer = self.attempts <= DEFERRED_ATTEMPTS;
+        self.pending.clear();
+    }
+}
+
+/// Where the retained bytes of `reference` are, or `None` when the state
+/// expects none that can be verified.
+fn retained_blob(state: &State, reference: RevisionRef) -> Option<RetainedBlob> {
+    let body = artifact_body(state.revision(reference)?).ok()?;
+    if body.availability != ArtifactAvailability::Retained {
+        return None;
+    }
+    let (Some(digest), Some(size)) = (body.digest, body.size_bytes) else {
+        return None;
+    };
+    let hex = digest.as_str().strip_prefix("sha256:")?;
+    Some(RetainedBlob {
+        path: Path::new(BLOBS).join(hex.get(..2)?).join(hex),
+        hex: hex.to_owned(),
+        size,
+    })
+}
+
 impl<F: DurableFs> Store<F> {
     /// Return exact references whose expected retained bytes cannot be verified.
     pub fn unavailable_artifacts(
@@ -63,30 +140,46 @@ impl<F: DurableFs> Store<F> {
             .copied()
             .filter(|reference| {
                 reference.id.kind() == Kind::Artifact
-                    && state.revision(*reference).is_none_or(|record| {
-                        let Ok(body) = artifact_body(record) else {
-                            return true;
-                        };
-                        if body.availability != ArtifactAvailability::Retained {
-                            return true;
-                        }
-                        let (Some(digest), Some(size)) = (body.digest, body.size_bytes) else {
-                            return true;
-                        };
-                        let Some(hex) = digest.as_str().strip_prefix("sha256:") else {
-                            return true;
-                        };
-                        let path = Path::new(BLOBS).join(&hex[..2]).join(hex);
-                        crate::blob::verify_blob(&self.fs, &path, hex, size).is_err()
-                    })
+                    && retained_blob(state, *reference).is_none_or(|blob| !self.hash(&blob).intact)
             })
             .collect()
+    }
+
+    /// Read the whole blob. Never call this under the commit lock on a path
+    /// that can defer instead.
+    fn hash(&self, blob: &RetainedBlob) -> Hashed {
+        let identity = self.fs.identity(&blob.path).ok();
+        let intact = identity.is_some()
+            && crate::blob::verify_blob(&self.fs, &blob.path, &blob.hex, blob.size).is_ok();
+        Hashed { identity, intact }
+    }
+
+    /// Hash, without the commit lock, what the last attempt left pending.
+    pub(super) fn hash_pending(&self, promotion: &mut PromotionBlobs) {
+        for blob in std::mem::take(&mut promotion.pending) {
+            let hashed = self.hash(&blob);
+            promotion.hashed.insert((blob.hex, blob.size), hashed);
+        }
+    }
+
+    /// Under the commit lock: whether the blob is intact, or `None` when it
+    /// is left pending.
+    fn locked_intact(&self, blob: &RetainedBlob, promotion: &PromotionBlobs) -> Option<bool> {
+        let Ok(current) = self.fs.identity(&blob.path) else {
+            return Some(false);
+        };
+        match promotion.hashed.get(&(blob.hex.clone(), blob.size)) {
+            Some(hashed) if hashed.identity == Some(current) => Some(hashed.intact),
+            _ if promotion.defer => None,
+            _ => Some(self.hash(blob).intact),
+        }
     }
 
     pub(super) fn verify_promotion_artifacts(
         &self,
         state: &State,
         accepted: &AcceptedTransaction,
+        promotion: &mut PromotionBlobs,
     ) -> Result<(), Failure> {
         for record in &accepted.records {
             let targets = match record.header.id.kind() {
@@ -110,7 +203,28 @@ impl<F: DurableFs> Store<F> {
                 }
                 _ => continue,
             };
-            let missing = self.unavailable_artifacts(state, &targets);
+            let mut missing = Vec::new();
+            for reference in targets
+                .into_iter()
+                .filter(|reference| reference.id.kind() == Kind::Artifact)
+            {
+                let available = match retained_blob(state, reference) {
+                    None => false,
+                    Some(blob) => match self.locked_intact(&blob, promotion) {
+                        Some(intact) => intact,
+                        // Not missing: the next attempt decides.
+                        None => {
+                            if !promotion.pending.contains(&blob) {
+                                promotion.pending.push(blob);
+                            }
+                            true
+                        }
+                    },
+                };
+                if !available {
+                    missing.push(reference);
+                }
+            }
             if !missing.is_empty() {
                 let mut failure = integrity(
                     "This promotion requires retained evidence that is missing or corrupt.",
@@ -414,3 +528,7 @@ fn selection_failure(error: SelectorError) -> Failure {
     }
     failure
 }
+
+#[cfg(test)]
+#[path = "evidence_read_lock_tests.rs"]
+mod lock_tests;

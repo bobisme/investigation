@@ -36,7 +36,7 @@ use reference::{ExternalRefRequest, PreparedReference, RetentionMode, ReverifyRe
 
 #[cfg(test)]
 #[path = "ingest_streaming_tests.rs"]
-mod streaming_tests;
+pub(crate) mod streaming_tests;
 
 /// Largest copied import: a local file, standard input or a producer-run
 /// artifact. Every copy streams through one fixed buffer, so this bounds the

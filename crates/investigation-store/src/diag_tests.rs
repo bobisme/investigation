@@ -57,7 +57,7 @@ impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for ThreadSink {
 /// to a per-thread buffer. Scoped `with_default` subscribers were flaky: tests
 /// running at once with different levels race on tracing's global callsite
 /// interest cache, and an event could be dropped.
-fn capture(level: tracing::Level, body: impl FnOnce()) -> String {
+pub(super) fn capture(level: tracing::Level, body: impl FnOnce()) -> String {
     static INSTALL: Once = Once::new();
     INSTALL.call_once(|| {
         let subscriber = tracing_subscriber::fmt()
@@ -78,7 +78,7 @@ fn capture(level: tracing::Level, body: impl FnOnce()) -> String {
     String::from_utf8(bytes).unwrap()
 }
 
-fn field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
+pub(super) fn field<'a>(line: &'a str, name: &str) -> Option<&'a str> {
     let rest = line.split(&format!("{name}=\"")).nth(1)?;
     rest.split('"').next()
 }

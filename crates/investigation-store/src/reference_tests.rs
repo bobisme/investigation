@@ -90,6 +90,9 @@ impl DurableFs for FullDisk {
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError> {
         self.0.lock(path, timeout)
     }
+    fn identity(&self, path: &Path) -> io::Result<crate::durable::FileIdentity> {
+        self.0.identity(path)
+    }
 }
 
 #[test]

@@ -51,6 +51,7 @@ pub mod capture;
 
 #[path = "evidence_read.rs"]
 pub mod evidence_read;
+use evidence_read::PromotionBlobs;
 
 #[path = "method_packs.rs"]
 mod method_packs;
@@ -209,42 +210,69 @@ impl<F: DurableFs> Store<F> {
         // Write-side guardrails see the same reads commit stamps, and those
         // stamped on the case's earlier events; only a guarded write needs them.
         let current_reads = guardrails::guards_any(command).then(|| session_reads.clone());
-        self.commit_plan(
-            CommitPlan {
-                case_id: command.case_id,
-                event: EventInput {
-                    actor: &command.actor,
-                    command_id: &command.command_id,
-                    preconditions: &command.preconditions,
-                    manifest_digest: None,
-                    session_reads,
+        let mut trace = CommitTrace::new(&command.command_id);
+        let mut promotion = PromotionBlobs::default();
+        // A promotion's retained evidence is known only from the locked
+        // state. An attempt that needs a blob not yet hashed by this command
+        // writes nothing and releases the lock; the blob is hashed and the
+        // command validated again from a fresh replay.
+        let result = loop {
+            promotion.next_attempt();
+            let attempt = self.commit_plan_traced(
+                CommitPlan {
+                    case_id: command.case_id,
+                    event: EventInput {
+                        actor: &command.actor,
+                        command_id: &command.command_id,
+                        preconditions: &command.preconditions,
+                        manifest_digest: None,
+                        session_reads: session_reads.clone(),
+                    },
+                    request: request.clone(),
+                    blobs,
                 },
-                request,
-                blobs,
+                clock,
+                ids,
+                |state, catalog, acceptance, visible| {
+                    let sessions = current_reads.clone().map(|current| SessionEvidence {
+                        current,
+                        ledger: visible
+                            .target
+                            .map(CaseReplay::session_ledger)
+                            .unwrap_or_default(),
+                    });
+                    validate_and_apply_guarded(
+                        state,
+                        command,
+                        catalog,
+                        acceptance,
+                        &observations,
+                        visible.packs,
+                        sessions.as_ref(),
+                    )
+                    .map(Prepared::Accept)
+                },
+                &mut promotion,
+                &mut trace,
+            );
+            match attempt {
+                Ok(Some(receipt)) => break Ok(receipt),
+                Ok(None) => {
+                    trace.enter(Stage::VerifyArtifacts);
+                    self.hash_pending(&mut promotion);
+                }
+                Err(failure) => break Err(failure),
+            }
+        };
+        trace.finish(
+            &command.command_id,
+            command.case_id,
+            match &result {
+                Ok(_) => Outcome::Committed,
+                Err(failure) => Outcome::Failed(failure),
             },
-            clock,
-            ids,
-            |state, catalog, acceptance, visible| {
-                let sessions = current_reads.map(|current| SessionEvidence {
-                    current,
-                    ledger: visible
-                        .target
-                        .map(CaseReplay::session_ledger)
-                        .unwrap_or_default(),
-                });
-                validate_and_apply_guarded(
-                    state,
-                    command,
-                    catalog,
-                    acceptance,
-                    &observations,
-                    visible.packs,
-                    sessions.as_ref(),
-                )
-                .map(Prepared::Accept)
-            },
-        )
-        .map_err(|failure| {
+        );
+        result.map_err(|failure| {
             if failure.error.code == ErrorCode::DurabilityUnknown {
                 failure.with_argv(receipt_argv(&command.actor, &command.command_id))
             } else {
@@ -263,7 +291,20 @@ impl<F: DurableFs> Store<F> {
         let command_id = plan.event.command_id.to_owned();
         let case_id = plan.case_id;
         let mut trace = CommitTrace::new(&command_id);
-        let result = self.commit_plan_traced(plan, clock, ids, prepare, &mut trace);
+        // These commands make no promotion of their own; any retained bytes
+        // one needed would be hashed under the lock, as before.
+        let result = self
+            .commit_plan_traced(
+                plan,
+                clock,
+                ids,
+                prepare,
+                &mut PromotionBlobs::under_lock(),
+                &mut trace,
+            )
+            .and_then(|receipt| {
+                receipt.ok_or_else(|| integrity("A commit was deferred without a retry."))
+            });
         trace.finish(
             &command_id,
             case_id,
@@ -281,8 +322,9 @@ impl<F: DurableFs> Store<F> {
         clock: &mut dyn Clock,
         ids: &mut dyn IdSource,
         prepare: impl FnOnce(&State, &Catalog, Acceptance<'_>, Visible<'_>) -> Result<Prepared, Failure>,
+        promotion: &mut PromotionBlobs,
         trace: &mut CommitTrace,
-    ) -> Result<Receipt, Failure> {
+    ) -> Result<Option<Receipt>, Failure> {
         let CommitPlan {
             case_id,
             event: meta,
@@ -313,7 +355,7 @@ impl<F: DurableFs> Store<F> {
             }
             let mut receipt = receipt_for(existing).as_retry();
             self.apply_projection_health(&replay, &mut receipt);
-            return Ok(receipt);
+            return Ok(Some(receipt));
         }
 
         trace.enter(Stage::Lock);
@@ -376,16 +418,21 @@ impl<F: DurableFs> Store<F> {
                     replay.cases.insert(id, loaded);
                 }
                 self.apply_projection_health(&replay, &mut receipt);
-                return Ok(receipt);
+                return Ok(Some(receipt));
             }
         };
 
         // Exercise the same replay checks before touching canonical bytes.
         let mut projected = original.clone();
         projected.apply(&accepted)?;
-        self.verify_promotion_artifacts(&projected, &accepted)?;
+        self.verify_promotion_artifacts(&projected, &accepted, promotion)?;
         self.verify_method_pack_adoptions(&accepted)?;
         lessons::verify_consultations(&replay.cases, &accepted)?;
+        if !promotion.pending.is_empty() {
+            // Nothing is written yet: the caller hashes these blobs after
+            // the lock is released and retries.
+            return Ok(None);
+        }
         let case_id = accepted.case_id;
         let transaction_id = ids
             .next_id(Kind::Transaction)
@@ -444,7 +491,7 @@ impl<F: DurableFs> Store<F> {
         trace.enter(Stage::IndexUpdate);
         self.apply_projection_health(&replay, &mut receipt);
         trace.enter(Stage::Receipt);
-        Ok(receipt)
+        Ok(Some(receipt))
     }
 
     fn persist(

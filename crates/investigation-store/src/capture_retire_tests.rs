@@ -612,6 +612,10 @@ impl DurableFs for KillFs {
         self.step().map_err(LockError::Io)?;
         self.fs.lock(path, timeout)
     }
+    fn identity(&self, path: &Path) -> io::Result<crate::durable::FileIdentity> {
+        self.step()?;
+        self.fs.identity(path)
+    }
 }
 
 /// Kill the retiring process at every filesystem call. The staging is then

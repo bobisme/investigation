@@ -11,6 +11,19 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// What can be seen of one file without reading it. Two equal identities of
+/// a path mean the same file, not written, truncated, replaced or changed in
+/// mode between the two looks, to the filesystem's timestamp granularity: a
+/// change within one timestamp tick of the first look can go unnoticed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileIdentity {
+    device: u64,
+    inode: u64,
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+
 pub trait DurableFile: Write {
     fn sync_all(&mut self) -> io::Result<()>;
     fn set_readonly(&mut self) -> io::Result<()>;
@@ -30,6 +43,8 @@ pub trait DurableFs {
     /// Remove one empty directory. Never recursive.
     fn remove_dir(&mut self, path: &Path) -> io::Result<()>;
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError>;
+    /// The identity of the file a [`Self::read`] of `path` would open.
+    fn identity(&self, path: &Path) -> io::Result<FileIdentity>;
     /// Called after journal verification while the workspace commit lock is held.
     fn reclaim_publication_temporaries(&mut self) {}
 }
@@ -115,6 +130,19 @@ impl DurableFs for LocalFs {
     }
     fn lock(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
         CommitLock::acquire(&self.path(p).map_err(LockError::Io)?, timeout)
+    }
+    fn identity(&self, p: &Path) -> io::Result<FileIdentity> {
+        use std::os::unix::fs::MetadataExt;
+        // Follows a final symlink, as `read` does. The change time moves on
+        // every write, truncation, mode change or link, and no caller sets it.
+        let metadata = fs::metadata(self.path(p)?)?;
+        Ok(FileIdentity {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            size: metadata.size(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        })
     }
 
     fn reclaim_publication_temporaries(&mut self) {
@@ -644,6 +672,20 @@ impl DurableFs for MemoryFs {
         Ok(MemoryLock {
             fs: self.clone(),
             path: p.to_owned(),
+        })
+    }
+    fn identity(&self, p: &Path) -> io::Result<FileIdentity> {
+        self.step()?;
+        let s = self.0.borrow();
+        let i = *s.entries.get(p).ok_or(io::ErrorKind::NotFound)?;
+        // Writes only append, and a read-only file takes none.
+        let (data, _, readonly) = &s.files[i];
+        Ok(FileIdentity {
+            device: 0,
+            inode: i as u64,
+            size: data.len() as u64,
+            modified: (0, 0),
+            changed: (i64::from(*readonly), 0),
         })
     }
 }

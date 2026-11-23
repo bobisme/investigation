@@ -19,6 +19,8 @@ pub const TARGET: &str = "investigation::commit";
 /// Persistence stage, named after the numbered steps of the commit algorithm.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Stage {
+    /// Step 1: hash retained promotion evidence before the lock is retaken.
+    VerifyArtifacts,
     /// Step 2: coordination and case locks.
     Lock,
     /// Step 3: replay and verify the journal tail.
@@ -44,6 +46,7 @@ pub(crate) enum Stage {
 impl Stage {
     pub(crate) const fn name(self) -> &'static str {
         match self {
+            Self::VerifyArtifacts => "verify_artifacts",
             Self::Lock => "lock",
             Self::VerifyTail => "verify_tail",
             Self::Idempotency => "idempotency",
@@ -59,6 +62,7 @@ impl Stage {
 
     pub(crate) const fn step(self) -> u8 {
         match self {
+            Self::VerifyArtifacts => 1,
             Self::Lock => 2,
             Self::VerifyTail => 3,
             Self::Idempotency => 4,

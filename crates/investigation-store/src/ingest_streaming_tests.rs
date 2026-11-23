@@ -22,7 +22,7 @@ use serde_json::{Value, json};
 
 use super::{Limited, Store, stage_input};
 use crate::{
-    durable::{CommitLock, DurableFs, LocalFs, LockError, MemoryFs, WriteGate},
+    durable::{CommitLock, DurableFs, FileIdentity, LocalFs, LockError, MemoryFs, WriteGate},
     store::crash_tests::setup,
     workspace::Workspace,
 };
@@ -173,16 +173,49 @@ fn a_full_disk_mid_stream_leaves_no_blob_no_reference_and_no_copy() {
 
 /// The local filesystem, except that each read of a blob or of an import copy
 /// first checks that the commit lock is free, as another process would see it.
-struct Probing {
+/// The promotion tests in `evidence_read_lock_tests.rs` share it.
+pub(crate) struct Probing {
     local: LocalFs,
     lock: PathBuf,
     reads: Rc<Cell<usize>>,
+    /// Runs before each probed read, once the lock is found free.
+    on_read: Rc<dyn Fn()>,
+    /// Runs each time the commit lock is taken, while it is held.
+    on_lock: Box<dyn FnMut()>,
+}
+
+impl Probing {
+    /// Probe the workspace at `root`, counting probed reads in `reads`.
+    pub(crate) fn new(root: &Path, reads: Rc<Cell<usize>>) -> Self {
+        Self {
+            local: LocalFs::new(root),
+            lock: root.join(COMMIT_LOCK),
+            reads,
+            on_read: Rc::new(|| {}),
+            on_lock: Box::new(|| {}),
+        }
+    }
+
+    pub(crate) fn on_read(self, hook: impl Fn() + 'static) -> Self {
+        Self {
+            on_read: Rc::new(hook),
+            ..self
+        }
+    }
+
+    pub(crate) fn on_lock(self, hook: impl FnMut() + 'static) -> Self {
+        Self {
+            on_lock: Box::new(hook),
+            ..self
+        }
+    }
 }
 
 struct ProbedRead {
     input: Box<dyn Read>,
     lock: PathBuf,
     reads: Rc<Cell<usize>>,
+    on_read: Rc<dyn Fn()>,
 }
 
 impl Read for ProbedRead {
@@ -191,6 +224,7 @@ impl Read for ProbedRead {
             CommitLock::acquire(&self.lock, Duration::ZERO).is_ok(),
             "the commit lock is held while bytes are hashed"
         );
+        (self.on_read)();
         self.reads.set(self.reads.get() + 1);
         self.input.read(buffer)
     }
@@ -213,6 +247,7 @@ impl DurableFs for Probing {
                 input,
                 lock: self.lock.clone(),
                 reads: self.reads.clone(),
+                on_read: self.on_read.clone(),
             }));
         }
         Ok(input)
@@ -239,7 +274,14 @@ impl DurableFs for Probing {
         self.local.remove_dir(path)
     }
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError> {
-        self.local.lock(path, timeout)
+        let guard = self.local.lock(path, timeout)?;
+        if path == Path::new(COMMIT_LOCK) {
+            (self.on_lock)();
+        }
+        Ok(guard)
+    }
+    fn identity(&self, path: &Path) -> io::Result<FileIdentity> {
+        self.local.identity(path)
     }
     fn reclaim_publication_temporaries(&mut self) {
         self.local.reclaim_publication_temporaries();
@@ -272,11 +314,7 @@ fn another_writer_commits_while_a_large_ingest_streams() {
     let reads = Rc::new(Cell::new(0));
     let mut store = Store {
         workspace: workspace.clone(),
-        fs: Probing {
-            local: LocalFs::new(workspace.root()),
-            lock: lock.clone(),
-            reads: reads.clone(),
-        },
+        fs: Probing::new(workspace.root(), reads.clone()),
         gate: WriteGate::isolated(),
         catalog: standard_catalog(),
     };

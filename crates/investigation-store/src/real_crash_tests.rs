@@ -217,6 +217,9 @@ impl DurableFs for QualifiedFs {
     fn list(&self, path: &Path) -> io::Result<Vec<PathBuf>> {
         self.fs.list(path)
     }
+    fn identity(&self, path: &Path) -> io::Result<crate::durable::FileIdentity> {
+        self.fs.identity(path)
+    }
     fn rename_no_replace(&mut self, source: &Path, target: &Path) -> io::Result<()> {
         self.fs.rename_no_replace(source, target)
     }
