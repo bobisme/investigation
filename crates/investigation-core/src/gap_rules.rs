@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use schemars::JsonSchema;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
@@ -20,7 +20,9 @@ pub const GAP_RULE_VERSION: &str = "slice-gaps.v1";
 pub const NEXT_RULE_VERSION: &str = "slice-next.v1";
 pub const DEFAULT_NEXT_LIMIT: usize = 3;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, JsonSchema)]
+#[derive(
+    Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize, JsonSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum GapStatus {
     ReadyToAnalyze,

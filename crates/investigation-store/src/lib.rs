@@ -8,6 +8,7 @@ pub mod durable;
 pub mod import_paths;
 pub mod journal;
 pub mod opaque;
+pub mod pinned;
 pub mod projection;
 pub mod selectors;
 pub mod store;
