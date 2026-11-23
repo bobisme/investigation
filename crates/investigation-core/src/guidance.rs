@@ -38,10 +38,9 @@ pub const CONTENT_TRUST: &str = "method_guidance";
 
 /// Gap rules that report repeated inconclusive work. A recommendation from one
 /// of these rules is matched to cards that name the `stalled` case fact, and
-/// an unresolved gap from one of them makes that fact hold. The stalled
-/// investigation detector registers its rule IDs here when it lands; until
-/// then no rule reports a stall and the fact never holds.
-pub const STALL_GAP_RULES: &[&str] = &[];
+/// an unresolved gap from one of them makes that fact hold. These are the
+/// stall rules of [`crate::stall`].
+pub const STALL_GAP_RULES: &[&str] = crate::gap_rules::STALL_RULES;
 
 /// Workflow order used to group cards. Stages not listed sort after these,
 /// alphabetically.

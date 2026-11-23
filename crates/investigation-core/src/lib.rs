@@ -51,6 +51,7 @@ pub mod review_ops;
 pub mod search_coverage;
 pub mod search_text;
 pub mod source_ops;
+pub mod stall;
 pub mod state;
 pub mod synopsis;
 pub mod weighting;

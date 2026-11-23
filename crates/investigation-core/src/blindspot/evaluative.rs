@@ -12,9 +12,11 @@
 //! material assumptions that were never supported.
 //!
 //! Seams, not checks: a reopening trigger is required by `decision.propose`,
-//! so a Decision without one cannot be recorded; a stall pattern of
-//! the gap rules (W05b.03, `guidance::STALL_GAP_RULES`) would be adopted by a
-//! gap-rule check of its own.
+//! so a Decision without one cannot be recorded. The collection
+//! streak and what counts as a consequence are defined once in
+//! [`crate::stall`] and shared with the stall gap rules
+//! (`guidance::STALL_GAP_RULES`); the other stall patterns are not yet adopted
+//! by a gap-rule check of their own.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,6 +34,7 @@ use crate::{
     retrospective_ops::{check_retrospective, material_revisions},
     review::ObjectionSeverity,
     review_ops::required_read_set,
+    stall::{self, Journal},
     state::{Record, State},
     weighting::WeightStatus,
     wire::Failure,
@@ -41,7 +44,7 @@ use super::{AuditContext, CheckSource, CheckSpec, Detection, FindingFact, Severi
 
 /// Collection transactions in a row, with no consequence between them, that
 /// make `case.collection_without_consequence` report. Part of its version.
-pub(crate) const STALL_COLLECTION_TRANSACTIONS: usize = 4;
+pub(crate) use crate::stall::STALL_COLLECTION_TRANSACTIONS;
 
 /// The gap rules `criterion.hard_unmeasured` groups by criterion.
 const HARD_CELL_MISSING: &str = "decision.hard_criterion_cell_missing";
@@ -559,49 +562,8 @@ fn open_material_objection(context: &AuditContext<'_>) -> Result<Vec<Detection>,
     Ok(detections)
 }
 
-/// Whether one revision records a consequence of collected evidence: a
-/// discriminating assessment, a known comparison outcome, a conclusion or
-/// decision, a hypothesis rejected or retired, an option ruled out, withdrawn
-/// or superseded, or an assumption assessed. Activating a hypothesis or making
-/// an option eligible is not a consequence of evidence.
-fn records_consequence(revision: &Record) -> bool {
-    match revision.header.id.kind() {
-        Kind::Assessment => matches!(text(revision, "relation"), Some("supports" | "contradicts")),
-        Kind::Comparison => text(revision, "outcome").is_some_and(|outcome| outcome != "unknown"),
-        Kind::Conclusion | Kind::Decision => true,
-        Kind::Hypothesis => {
-            revision.header.revision.0 > 1
-                && matches!(
-                    text(revision, "lifecycle"),
-                    Some("rejected_within_scope" | "retired")
-                )
-        }
-        Kind::Option => {
-            revision.header.revision.0 > 1
-                && matches!(
-                    text(revision, "lifecycle"),
-                    Some("ruled_out" | "withdrawn" | "superseded")
-                )
-        }
-        Kind::Assumption => {
-            revision.header.revision.0 > 1
-                && matches!(
-                    text(revision, "status"),
-                    Some("supported" | "challenged" | "rejected")
-                )
-        }
-        _ => false,
-    }
-}
-
-fn collects_evidence(revision: &Record) -> bool {
-    revision.header.revision.0 == 1
-        && matches!(
-            revision.header.id.kind(),
-            Kind::Observation | Kind::Run | Kind::Source | Kind::Artifact
-        )
-}
-
+/// The streak and the consequence definition are shared with the
+/// `case.collection_without_consequence` gap rule (see [`crate::stall`]).
 fn collection_without_consequence(context: &AuditContext<'_>) -> Result<Vec<Detection>, Failure> {
     let Some(case) = context.state.current(context.case_id) else {
         return Ok(Vec::new());
@@ -609,57 +571,20 @@ fn collection_without_consequence(context: &AuditContext<'_>) -> Result<Vec<Dete
     if text(case, "lifecycle") == Some("closed") {
         return Ok(Vec::new());
     }
-    #[derive(Default)]
-    struct Transaction {
-        collected: Vec<RevisionRef>,
-        consequences: Vec<RevisionRef>,
-    }
-    let mut transactions = BTreeMap::<u64, Transaction>::new();
-    for record in context
-        .state
-        .records()
-        .filter(|record| record.header.case_id == context.case_id)
-    {
-        for revision in context.state.history(record.header.id) {
-            let collected = collects_evidence(revision);
-            let consequence = records_consequence(revision);
-            if !collected && !consequence {
-                continue;
-            }
-            let transaction = transactions
-                .entry(revision.header.acceptance_sequence)
-                .or_default();
-            if collected {
-                transaction.collected.push(revision.reference());
-            }
-            if consequence {
-                transaction.consequences.push(revision.reference());
-            }
-        }
-    }
-    let mut counted = Vec::new();
-    let mut last = None;
-    for (sequence, transaction) in transactions.iter().rev() {
-        if !transaction.consequences.is_empty() {
-            last = Some((*sequence, transaction.consequences.clone()));
-            break;
-        }
-        counted.push((*sequence, transaction.collected.clone()));
-    }
-    if counted.len() < STALL_COLLECTION_TRANSACTIONS {
+    let journal = Journal::build(context.state, context.case_id);
+    let Some(streak) = stall::collection_without_consequence(&journal) else {
         return Ok(Vec::new());
-    }
-    counted.reverse();
+    };
     let mut facts = vec![
         fact(
-            format!("collection_transactions_counted:{}", counted.len()),
+            format!("collection_transactions_counted:{}", streak.counted.len()),
             Vec::new(),
         ),
         fact(
             format!("stall_threshold:{STALL_COLLECTION_TRANSACTIONS}"),
             Vec::new(),
         ),
-        match last {
+        match streak.last_consequence {
             Some((sequence, refs)) => {
                 fact(format!("last_consequence_transaction:{sequence}"), refs)
             }
@@ -667,7 +592,7 @@ fn collection_without_consequence(context: &AuditContext<'_>) -> Result<Vec<Dete
         },
     ];
     let mut related = Vec::new();
-    for (sequence, collected) in counted {
+    for (sequence, collected) in streak.counted {
         related.extend(collected.iter().copied());
         facts.push(fact(
             format!("collection_transaction:{sequence}"),

@@ -33,6 +33,59 @@ struct RuleSpec {
 /// this table against the rule engine source so the two cannot drift.
 const RULES: &[RuleSpec] = &[
     RuleSpec {
+        rule_id: "artifact.repeated_identical_bytes",
+        subject_kinds: &[Kind::Artifact],
+        status: GapStatus::ReadyToAnalyze,
+        condition: "The case is active, not in record mode, and has an open Question or no Question at all. 3 or more current Artifacts that no Run lists in artifact_refs and that are not withdrawn or retracted share one digest, were first recorded across 3 or more distinct transactions, and no consequence was recorded at or after the last of them. Threshold identical_acquisitions = 3 (stall.v1).",
+        inspected_fields: &[
+            "digest, status and source of each Artifact",
+            "artifact_refs of each Run",
+            "acceptance sequence of every revision in the case",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when a consequence is recorded at or after the last counted transaction (a discriminating Assessment, a known Comparison outcome, any Conclusion or Decision, a Hypothesis rejected or retired, an Option ruled out, withdrawn or superseded, or an Assumption assessed), or when the case is paused, closed or has every Question resolved.",
+    },
+    RuleSpec {
+        rule_id: "case.blockers_unchanged",
+        subject_kinds: &[Kind::Case],
+        status: GapStatus::ReadyToAnalyze,
+        condition: "The case is active, not in record mode, and has an open Question or no Question at all. A blocker stays unchanged while 5 or more transactions are accepted after both its last change and the last consequence. Blockers are Observations emitted by observation.invalid_or_missing_source_match and Runs with execution_status blocked. Threshold unchanged_transactions = 5 (stall.v1).",
+        inspected_fields: &[
+            "observation.invalid_or_missing_source_match gaps and the revisions they read",
+            "execution_status of each Run",
+            "acceptance sequence of every revision in the case",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when every listed blocker is revised, or a consequence is recorded so that fewer than 5 transactions follow it; also when the case is paused, closed or has every Question resolved.",
+    },
+    RuleSpec {
+        rule_id: "case.collection_without_consequence",
+        subject_kinds: &[Kind::Case],
+        status: GapStatus::ReadyToAnalyze,
+        condition: "The case is active, not in record mode, and has an open Question or no Question at all. The most recent 4 or more transactions that created an Observation, Run, Source or Artifact have no transaction after or among them that records a consequence. This is the definition the case.collection_without_consequence blindspot check uses. Threshold collection_transactions = 4 (stall.v1).",
+        inspected_fields: &[
+            "acceptance sequence and revision of every record revision in the case",
+            "relation of each Assessment, outcome of each Comparison, lifecycle of each Hypothesis and Option, status of each Assumption",
+            "lifecycle and mode of the Case, disposition of each Question",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when a consequence is recorded at or after the last counted transaction (a discriminating Assessment, a known Comparison outcome, any Conclusion or Decision, a Hypothesis rejected or retired, an Option ruled out, withdrawn or superseded, or an Assumption assessed), or when the case is paused, closed or has every Question resolved.",
+    },
+    RuleSpec {
+        rule_id: "case.planned_inquiries_exhausted",
+        subject_kinds: &[Kind::Case],
+        status: GapStatus::ReadyToAnalyze,
+        condition: "The case is active, not in record mode, and has an open Question or no Question at all. The case has 2 or more current Inquiry plans (a plan replaced by an amended successor is not counted), and every one is retired or has at least one Run and only Runs that failed, were cancelled or blocked, have missing evidence or invalid evidence validity, or were completed and cited only by inconclusive or non_diagnostic Assessments. No consequence was recorded at or after the last of them. Threshold exhausted_plans = 2 (stall.v1).",
+        inspected_fields: &[
+            "lifecycle and predecessor_ref of each Inquiry",
+            "intent.plan_ref, execution_status, evidence_completeness and evidence_validity of each Run",
+            "run_ref of each Observation",
+            "evidence_refs and relation of each Assessment",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when a consequence is recorded at or after the last counted transaction (a discriminating Assessment, a known Comparison outcome, any Conclusion or Decision, a Hypothesis rejected or retired, an Option ruled out, withdrawn or superseded, or an Assumption assessed), or when the case is paused, closed or has every Question resolved.",
+    },
+    RuleSpec {
         rule_id: "case.preserve_declared_time_sensitive_source",
         subject_kinds: &[Kind::Case],
         status: GapStatus::RequiresSource,
@@ -219,6 +272,20 @@ const RULES: &[RuleSpec] = &[
         inspected_fields: &["execution_status", "evidence_completeness"],
         suggested_operation: Some("run.reconcile"),
         persistence: "Stops when the Run records a terminal status with complete evidence. A process status is never read as evidence validity.",
+    },
+    RuleSpec {
+        rule_id: "run.repeated_same_failure",
+        subject_kinds: &[Kind::Inquiry, Kind::Run],
+        status: GapStatus::ReadyToAnalyze,
+        condition: "The case is active, not in record mode, and has an open Question or no Question at all. The last 3 or more Runs of one plan (intent.plan_ref) or one exploration intent (the same trimmed intent text) each ended with the same failed prerequisite: execution_status failed, cancelled or blocked, evidence_completeness missing, evidence_validity invalid, or completed and cited only by inconclusive or non_diagnostic Assessments. The plan is not retired, and no consequence was recorded at or after the last of them. The subject is the plan, or the first Run of the exploration intent. Threshold consecutive_failed_runs = 3 (stall.v1).",
+        inspected_fields: &[
+            "intent, execution_status, evidence_completeness, evidence_validity and artifact_refs of each Run",
+            "lifecycle of the plan",
+            "run_ref of each Observation",
+            "evidence_refs and relation of each Assessment",
+        ],
+        suggested_operation: None,
+        persistence: "Stops when a consequence is recorded at or after the last counted transaction (a discriminating Assessment, a known Comparison outcome, any Conclusion or Decision, a Hypothesis rejected or retired, an Option ruled out, withdrawn or superseded, or an Assumption assessed), or when the case is paused, closed or has every Question resolved.",
     },
 ];
 

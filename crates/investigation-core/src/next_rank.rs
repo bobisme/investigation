@@ -206,6 +206,9 @@ pub struct Recommendation {
     pub schema_operation: Option<String>,
     pub outcome_branches: Vec<OutcomeBranch>,
     pub deferral_alternative: String,
+    /// What a stall rule counted and the moves it offers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stall: Option<crate::stall::StallDetail>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
@@ -252,7 +255,8 @@ pub struct StopAlternative {
 }
 
 /// Offered when no ranked step is recorded as able to change a choice or
-/// discriminate rivals. It is an alternative, never an automatic closure.
+/// discriminate rivals, or when a stall rule reports repeated work without a
+/// consequence. It is an alternative, never an automatic closure.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct StopOrDefer {
@@ -341,7 +345,12 @@ pub fn rank_next(state: &State, inventory: &GapInventory, requested_limit: usize
         .iter()
         .map(|(_, _, analysis)| analysis.value.decision_effect.as_str())
         .collect();
-    let stop_or_defer = stop_or_defer(&ranked_effects, withheld_ids.len());
+    let stalls: Vec<&str> = ranked
+        .iter()
+        .filter(|(_, _, analysis)| analysis.stall)
+        .map(|(_, gap, _)| gap.gap_id.as_str())
+        .collect();
+    let stop_or_defer = stop_or_defer(&ranked_effects, withheld_ids.len(), &stalls);
     NextResponse {
         schema_version: "inv.next.v1".into(),
         snapshot: inventory.snapshot.clone(),
@@ -408,26 +417,43 @@ fn not_ranked(gaps: &[Gap]) -> Vec<NotRanked> {
     .collect()
 }
 
-fn stop_or_defer(ranked_effects: &[&str], withheld: usize) -> Option<StopOrDefer> {
-    if ranked_effects.is_empty() && withheld == 0 {
-        return None;
+fn stop_or_defer(ranked_effects: &[&str], withheld: usize, stalls: &[&str]) -> Option<StopOrDefer> {
+    // A stall is itself the reason to offer a stop, whatever else is ranked.
+    if stalls.is_empty() {
+        if ranked_effects.is_empty() && withheld == 0 {
+            return None;
+        }
+        // A step whose effect is unknown might still matter, so it blocks the offer.
+        if ranked_effects.iter().any(|effect| *effect != CONTEXT) {
+            return None;
+        }
     }
-    // A step whose effect is unknown might still matter, so it blocks the offer.
-    if ranked_effects.iter().any(|effect| *effect != CONTEXT) {
-        return None;
+    let mut basis = Vec::new();
+    if !stalls.is_empty() {
+        basis.push(format!(
+            "Stall gap(s) {} report repeated work with no recorded consequence.",
+            stalls.join(", ")
+        ));
     }
-    let mut basis = vec![format!(
-        "{} ranked gap(s) are context_only: no recorded outcome changes a hard-criterion disposition or an option's Pareto status, or discriminates live rivals.",
-        ranked_effects.len()
-    )];
+    if ranked_effects.iter().all(|effect| *effect == CONTEXT) {
+        basis.push(format!(
+            "{} ranked gap(s) are context_only: no recorded outcome changes a hard-criterion disposition or an option's Pareto status, or discriminates live rivals.",
+            ranked_effects.len()
+        ));
+    }
     if withheld > 0 {
         basis.push(format!(
             "{withheld} soft-criterion gap(s) concern options already disqualified by a hard criterion and are withheld."
         ));
     }
     basis.push("This is a statement about recorded structure under this rule version, not proof that the investigation is complete.".into());
+    let reason = if stalls.is_empty() {
+        "No ranked step is recorded as able to change the choice or discriminate rivals; a justified stop or deferral is an alternative to further measurement."
+    } else {
+        "Recorded work has repeated without changing a recorded judgment; a justified stop or deferral is an alternative to more of the same work."
+    };
     Some(StopOrDefer {
-        reason: "No ranked step is recorded as able to change the choice or discriminate rivals; a justified stop or deferral is an alternative to further measurement.".into(),
+        reason: reason.into(),
         basis,
         alternatives: vec![
             StopAlternative {
@@ -490,6 +516,9 @@ struct Analysis {
     withhold: Option<(RevisionRef, Vec<RevisionRef>)>,
     /// Advisory gaps are never consequential blockers.
     advisory: bool,
+    /// Stall gaps rank as consequential: repeating the step that stalled is
+    /// unlikely to change the picture.
+    stall: bool,
     applicability: (u8, OrdinalPriority, String, Vec<RevisionRef>),
     novelty: (u8, OrdinalPriority, String, Vec<RevisionRef>),
 }
@@ -501,7 +530,8 @@ impl Analysis {
         let integrity = u8::from(!gap.rule_id.starts_with("store.integrity."));
         let preservation = u8::from(!gap.time_sensitive);
         let effect = self.value.decision_effect.as_str();
-        let consequential = u8::from(self.advisory || !matches!(effect, FLIP | DISCRIMINATE));
+        let consequential =
+            u8::from(!self.stall && (self.advisory || !matches!(effect, FLIP | DISCRIMINATE)));
         let decision_value = match effect {
             FLIP => 0,
             DISCRIMINATE => 1,
@@ -684,6 +714,7 @@ impl<'a> Context<'a> {
             branches,
             withhold,
             advisory,
+            stall: crate::guidance::STALL_GAP_RULES.contains(&gap.rule_id.as_str()),
             applicability: self.applicability(gap),
             novelty: self.novelty(gap),
         }
@@ -1202,10 +1233,17 @@ fn recommendation(
                     "rule {} is an advisory measurement flag, never a blocker",
                     gap.rule_id
                 )
+            } else if analysis.stall {
+                format!(
+                    "stall rule {}: recorded work repeated with no consequence, so more of the same step is unlikely to change the picture",
+                    gap.rule_id
+                )
             } else {
                 format!("rule {} with decision effect {effect}", gap.rule_id)
             },
-            source_refs: if key.2 == 0 {
+            source_refs: if analysis.stall {
+                gap.subject_refs.clone()
+            } else if key.2 == 0 {
                 value.basis_refs.clone()
             } else {
                 vec![]
@@ -1254,7 +1292,9 @@ fn recommendation(
         .branches
         .clone()
         .unwrap_or_else(|| gap.outcome_branches.clone());
-    let expected_useful_result = if let Some(narrower) = &value.narrower_value {
+    let expected_useful_result = if gap.stall.is_some() {
+        "Record one of the offered moves and why, or a justified stop; none of the moves invents a hypothesis, test or evidence.".into()
+    } else if let Some(narrower) = &value.narrower_value {
         format!("Every recorded outcome leaves the disposition unchanged. {narrower}")
     } else if branches.is_empty() {
         "Resolve the named prerequisite or keep its unknown state explicit.".into()
@@ -1287,6 +1327,7 @@ fn recommendation(
         schema_operation: gap.suggested_operation.clone(),
         outcome_branches: branches,
         deferral_alternative: "Keep the gap visible as deferred or unknown; this tool does not dispatch work.".into(),
+        stall: gap.stall.clone(),
     }
 }
 

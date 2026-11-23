@@ -104,6 +104,30 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
             ]);
             item["schema_argv"] = json!(schema_argv);
         }
+        // Each stall move that records names its schema; a read names `show`.
+        for stall_move in item
+            .get_mut("stall")
+            .and_then(|stall| stall.get_mut("moves"))
+            .and_then(Value::as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            let mut argv = workspace.clone();
+            if let Some(operation) = stall_move["operation"].as_str() {
+                if catalog.available_operation(operation).is_err() {
+                    continue;
+                }
+                argv.extend(["schema".into(), operation.into()]);
+                argv.extend(["--format".into(), "json".into()]);
+                stall_move["schema_argv"] = json!(argv);
+            } else if stall_move["kind"] == "inspect_raw_data"
+                && let Some(target) = stall_move["target_refs"][0]["id"].as_str()
+            {
+                argv.extend(["show".into(), target.into(), "--case".into()]);
+                argv.extend([case_id.to_string(), "--format".into(), "json".into()]);
+                stall_move["inspect_argv"] = json!(argv);
+            }
+        }
         // At most one card per recommendation, chosen by the rule that produced it.
         if let Some(card) = item["rule_id"]
             .as_str()
@@ -191,6 +215,39 @@ fn render_text(value: &Value, response: &NextResponse) -> String {
             "   Value: {}  {}\n",
             decision_value.decision_effect, decision_value.basis
         ));
+        if let Some(stall) = &recommendation.stall {
+            let thresholds = stall
+                .thresholds
+                .iter()
+                .map(|threshold| format!("{} {}", threshold.name, threshold.value))
+                .collect::<Vec<_>>()
+                .join(", ");
+            text.push_str(&format!(
+                "   Stall: {} at sequences {} (threshold {thresholds})\n",
+                stall.pattern,
+                stall
+                    .journal_items
+                    .iter()
+                    .map(|item| item.sequence.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            for stall_move in &stall.moves {
+                let kind = serde_json::to_value(stall_move.kind)
+                    .ok()
+                    .and_then(|kind| kind.as_str().map(str::to_owned))
+                    .unwrap_or_default();
+                text.push_str(&format!(
+                    "   Move {kind}{}: {}\n",
+                    stall_move
+                        .operation
+                        .as_deref()
+                        .map(|operation| format!(" ({operation})"))
+                        .unwrap_or_default(),
+                    stall_move.purpose
+                ));
+            }
+        }
         if let Some(narrower) = &decision_value.narrower_value {
             text.push_str(&format!(
                 "   Every recorded outcome leaves the disposition unchanged; ranked by its narrower value: {narrower}\n"

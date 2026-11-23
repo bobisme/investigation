@@ -18,6 +18,17 @@ use crate::{
 
 pub const GAP_RULE_VERSION: &str = "slice-gaps.v1";
 
+/// Gap rules that report a stalled investigation (plan §7.4), in rule ID
+/// order. `stall::StallPattern` indexes this table; the patterns, thresholds
+/// and moves live in [`crate::stall`].
+pub const STALL_RULES: &[&str] = &[
+    "artifact.repeated_identical_bytes",
+    "case.blockers_unchanged",
+    "case.collection_without_consequence",
+    "case.planned_inquiries_exhausted",
+    "run.repeated_same_failure",
+];
+
 // Ranking lives in `next_rank`; these re-exports keep older import paths.
 pub use crate::next_rank::{
     DEFAULT_NEXT_LIMIT, GapCounts, NEXT_RULE_VERSION, NextResponse, OrdinalPriority, RankFactor,
@@ -81,6 +92,9 @@ pub struct Gap {
     pub decision_effect: String,
     pub time_sensitive: bool,
     pub creation_sequence: u64,
+    /// The journal items and moves of a stall rule; absent on other rules.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stall: Option<crate::stall::StallDetail>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, JsonSchema)]
@@ -647,6 +661,7 @@ pub fn enumerate_gaps(
     }
 
     measurement_flag_gaps(state, case_id, &mut gaps);
+    stall_gaps(state, case_id, &mut gaps);
     deduplicate_and_sort(&mut gaps);
     Ok(GapInventory {
         schema_version: "inv.gaps.v1".into(),
@@ -797,6 +812,7 @@ pub(crate) fn make_gap(fields: GapFields<'_>) -> Gap {
         decision_effect: decision_effect.into(),
         time_sensitive,
         creation_sequence,
+        stall: None,
     }
 }
 
@@ -927,6 +943,35 @@ fn measurement_flag_gaps(state: &State, case_id: Id, gaps: &mut Vec<Gap>) {
                 .revision(subject)
                 .map_or(0, |record| record.header.acceptance_sequence),
         }));
+    }
+}
+
+/// One gap per detected stall pattern. A stall gap proposes no single
+/// operation: its moves name the exact records and operations to choose from,
+/// and a justified stop is always among them.
+fn stall_gaps(state: &State, case_id: Id, gaps: &mut Vec<Gap>) {
+    for stall in crate::stall::detect(state, case_id, gaps) {
+        let mut gap = make_gap(GapFields {
+            rule_id: stall.pattern.rule_id(),
+            subject_refs: stall.subject_refs.clone(),
+            read_set: stall.read_set,
+            status: GapStatus::ReadyToAnalyze,
+            reason: &stall.reason,
+            prerequisites: vec![prerequisite(
+                "stall_response",
+                PrerequisiteState::Unknown,
+                "Choose one of the offered moves and record why; stopping with an inconclusive result is a legitimate choice.",
+                stall.subject_refs,
+            )],
+            suggested_operation: None,
+            unresolved_fields: vec!["chosen_move".into(), "rationale".into()],
+            outcome_branches: vec![],
+            decision_effect: "context_only",
+            time_sensitive: false,
+            creation_sequence: stall.creation_sequence,
+        });
+        gap.stall = Some(stall.detail);
+        gaps.push(gap);
     }
 }
 

@@ -53,6 +53,10 @@ pub const GENERAL_PACK_SOURCE: &[u8] = include_bytes!("../../../methods/general.
 /// Gap-rule IDs a card trigger may reference. Packs cannot define predicates;
 /// they can only point at rules the core already evaluates deterministically.
 pub const GAP_RULE_TRIGGERS: &[&str] = &[
+    "artifact.repeated_identical_bytes",
+    "case.blockers_unchanged",
+    "case.collection_without_consequence",
+    "case.planned_inquiries_exhausted",
     "case.preserve_declared_time_sensitive_source",
     "case.ready_to_close_without_retrospective",
     "comparison.stale_dependency_revision",
@@ -69,6 +73,7 @@ pub const GAP_RULE_TRIGGERS: &[&str] = &[
     "observation.validity_context_missing",
     "review.stale_read_set",
     "run.outcome_incomplete_or_unknown",
+    "run.repeated_same_failure",
 ];
 
 /// Operations a policy proposal may attach requirements to. Policies only add

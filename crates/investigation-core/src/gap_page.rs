@@ -456,6 +456,7 @@ mod tests {
             decision_effect: "unknown".into(),
             time_sensitive: false,
             creation_sequence: 1,
+            stall: None,
         }
     }
 

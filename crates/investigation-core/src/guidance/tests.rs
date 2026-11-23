@@ -159,7 +159,13 @@ fn each_gap_rule_maps_to_at_most_one_built_in_card_deterministically() {
             assert_eq!(card.pack_id, "general");
             assert_eq!(card.origin, PackOrigin::BuiltIn);
             assert_eq!(card.content_trust, CONTENT_TRUST);
-            assert_eq!(card.matched_trigger.gap_rule.as_deref(), Some(*rule));
+            if STALL_GAP_RULES.contains(rule) {
+                // No built-in card names a stall rule; the stalled fact picks.
+                assert_eq!(card.matched_trigger.case_fact, Some(CaseFact::Stalled));
+                assert_eq!(card.card, "stalled");
+            } else {
+                assert_eq!(card.matched_trigger.gap_rule.as_deref(), Some(*rule));
+            }
             assert_ne!(card.card, "handoff");
         }
     }
