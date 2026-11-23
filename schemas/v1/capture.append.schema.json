@@ -1,0 +1,294 @@
+{
+  "$defs": {
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "ChannelEvent": {
+      "description": "A collection channel change.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Collection started.",
+          "properties": {
+            "kind": {
+              "const": "opened",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Collection ended normally.",
+          "properties": {
+            "kind": {
+              "const": "closed",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The producer knows collection lost data.",
+          "properties": {
+            "detail": {
+              "description": "What was lost, as reported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "gap",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "IdempotencyKey": {
+      "description": "1 to 128 characters without control characters",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "LifecycleFact": {
+      "description": "Typed lifecycle or collection fact reported by a producer.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "The producer reports that its external action started.",
+          "properties": {
+            "kind": {
+              "const": "started",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The producer reports a named phase change.",
+          "properties": {
+            "kind": {
+              "const": "phase_changed",
+              "type": "string"
+            },
+            "phase": {
+              "description": "Phase name.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "phase"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The producer reports an error, preserved verbatim.",
+          "properties": {
+            "external_code": {
+              "description": "The producer's own error code, if any.",
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "kind": {
+              "const": "error",
+              "type": "string"
+            },
+            "message": {
+              "description": "Error text as reported.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "message"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The producer reports cancellation of its action.",
+          "properties": {
+            "kind": {
+              "const": "cancelled",
+              "type": "string"
+            },
+            "reason": {
+              "description": "Reason as reported.",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "A change in one collection channel, such as a log or trace stream.",
+          "properties": {
+            "channel": {
+              "description": "Channel name, matched against the inventory at finalization.",
+              "type": "string"
+            },
+            "kind": {
+              "const": "channel",
+              "type": "string"
+            },
+            "state": {
+              "$ref": "#/$defs/ChannelEvent",
+              "description": "What happened to the channel."
+            }
+          },
+          "required": [
+            "kind",
+            "channel",
+            "state"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Position": {
+      "description": "One-based position of an accepted item within a capture handle.\n\nAppended facts and attachment descriptors share one sequence. The recorder\naccepts only the next expected position, so a lost middle item is detectable.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "SourceTime": {
+      "additionalProperties": false,
+      "description": "The original time and offset are source claims and must not determine ordering.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality"
+        },
+        "offset": {
+          "$ref": "#/$defs/Knowledge"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "timestamp",
+        "offset",
+        "clock_quality"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.append",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One typed fact at the next position of a handle.\n\nHigh-frequency samples belong in an attached artifact, not in individual facts.",
+  "properties": {
+    "fact": {
+      "$ref": "#/$defs/LifecycleFact",
+      "description": "The fact itself."
+    },
+    "handle": {
+      "$ref": "#/$defs/CaptureHandle",
+      "description": "Handle returned by `begin`."
+    },
+    "key": {
+      "$ref": "#/$defs/IdempotencyKey",
+      "description": "Producer event ID, unique within the handle."
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Inert namespaced producer metadata.",
+      "type": "object"
+    },
+    "position": {
+      "$ref": "#/$defs/Position",
+      "description": "The position the producer expects this item to take."
+    },
+    "reported_at": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourceTime"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Time reported by the producer. It is a claim; the receipt carries the\nseparately recorded acceptance time."
+    }
+  },
+  "required": [
+    "handle",
+    "key",
+    "position",
+    "fact"
+  ],
+  "title": "CaptureEvent",
+  "type": "object"
+}

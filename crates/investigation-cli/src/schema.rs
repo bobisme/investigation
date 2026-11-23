@@ -27,7 +27,15 @@ const WIRE_SCHEMAS: &[&str] = &[
     "producer-run-receipt",
     "audit",
 ];
-const RESERVED_WIRE_SCHEMAS: &[&str] = &["capture"];
+const RESERVED_WIRE_SCHEMAS: &[&str] = &[];
+
+fn wire_names() -> Vec<&'static str> {
+    WIRE_SCHEMAS
+        .iter()
+        .chain(crate::capture_schema::NAMES)
+        .copied()
+        .collect()
+}
 
 #[derive(clap::Args)]
 #[command(group(ArgGroup::new("selection").required(true).args(["operation", "list"])))]
@@ -54,6 +62,13 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
         .operation
         .as_deref()
         .expect("clap requires an operation or --list");
+    if let Some(schema) = crate::capture_schema::schema(name) {
+        return Ok(if args.schema_only {
+            raw(schema)
+        } else {
+            crate::capture_schema::describe(name)
+        });
+    }
     let wire = match name {
         "ingest" => Some(investigation_store::store::ingest::manifest_schema()),
         "ingest-receipt" => Some(investigation_store::store::ingest::receipt_schema()),
@@ -184,13 +199,14 @@ fn list(catalog: &Catalog, include_deferred: bool) -> Output {
         .iter()
         .map(|(stage, names)| format!("{stage}  {}", names.join(", ")))
         .collect();
-    text.push(format!("wire  {}", WIRE_SCHEMAS.join(", ")));
+    let wire_schemas = wire_names();
+    text.push(format!("wire  {}", wire_schemas.join(", ")));
     text.push("Inspect: investigation schema OPERATION --format json".into());
     let stages: Vec<_> = groups
         .into_iter()
         .map(|(stage, operations)| json!({"stage": stage, "operations": operations}))
         .collect();
-    let mut value = json!({"stages": stages, "wire_schemas": WIRE_SCHEMAS});
+    let mut value = json!({"stages": stages, "wire_schemas": wire_schemas});
     if include_deferred {
         let reserved: Vec<_> = catalog
             .operations()
@@ -257,7 +273,7 @@ fn unknown(name: &str, catalog: &Catalog) -> Failure {
     let mut suggestions: Vec<_> = catalog
         .available()
         .map(|operation| operation.info().name)
-        .chain(WIRE_SCHEMAS.iter().copied())
+        .chain(wire_names())
         .map(|candidate| (edit_distance(name, candidate), candidate))
         .filter(|(distance, _)| *distance <= 3)
         .collect();

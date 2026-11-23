@@ -465,7 +465,18 @@
       "evidence-selector",
       "producer-run",
       "producer-run-receipt",
-      "audit"
+      "audit",
+      "capture",
+      "capture.begin",
+      "capture.begin.receipt",
+      "capture.append",
+      "capture.append.receipt",
+      "capture.attach",
+      "capture.attach.receipt",
+      "capture.finalize",
+      "capture.finalize.receipt",
+      "capture.recover",
+      "capture.recover.receipt"
     ]
   }
 }

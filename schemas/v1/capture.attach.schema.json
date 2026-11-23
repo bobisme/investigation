@@ -1,0 +1,215 @@
+{
+  "$defs": {
+    "ArtifactRole": {
+      "description": "Role of an artifact within the Run.",
+      "oneOf": [
+        {
+          "const": "original-output",
+          "description": "Original output of the external action.",
+          "type": "string"
+        },
+        {
+          "const": "derivative",
+          "description": "Derived from another item; set [`StableArtifact::derived_from`].",
+          "type": "string"
+        },
+        {
+          "const": "log",
+          "description": "A log of the producer or the action.",
+          "type": "string"
+        },
+        {
+          "const": "receipt",
+          "description": "An external receipt, such as a signed execution statement.",
+          "type": "string"
+        }
+      ]
+    },
+    "ArtifactSource": {
+      "description": "Where an artifact's bytes come from.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "A closed file the recorder copies and verifies.",
+          "properties": {
+            "kind": {
+              "const": "file",
+              "type": "string"
+            },
+            "path": {
+              "description": "Path to the file. The implementation defines which roots it may read.\n[`LocalRecorder`](crate::LocalRecorder) reads only beneath the\nworkspace's configured `import_roots`: a relative path is tried\nbeneath each root in order, and an absolute path must lie beneath\none. No symlink is followed, and a file with more than one hard link\nis refused. A path that no root holds is recorded as missing.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "path"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "The artifact was declared but is absent.",
+          "properties": {
+            "kind": {
+              "const": "missing",
+              "type": "string"
+            },
+            "reason": {
+              "description": "Why it is absent, as reported.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "reason"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "Derivation": {
+      "additionalProperties": false,
+      "description": "Lineage of a derived artifact.",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/IdempotencyKey",
+          "description": "Item key of the original on the same handle."
+        },
+        "transform": {
+          "description": "Transform name and version, such as `text-extract/1`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "transform"
+      ],
+      "type": "object"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "IdempotencyKey": {
+      "description": "1 to 128 characters without control characters",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "Position": {
+      "description": "One-based position of an accepted item within a capture handle.\n\nAppended facts and attachment descriptors share one sequence. The recorder\naccepts only the next expected position, so a lost middle item is detectable.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.attach",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Descriptor of one completed artifact at the next position of a handle.\n\n\"Stable\" is a producer obligation: the writer has closed and flushed the file.\nThe recorder still copies and verifies the bytes and rejects a file that\nchanges during the copy.",
+  "properties": {
+    "channel": {
+      "description": "Channel the artifact belongs to, if any.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "classification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ClassificationLevel"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Classification; it may be stricter than the handle default, never looser."
+    },
+    "derived_from": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Derivation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Earlier item this artifact derives from, for derivatives."
+    },
+    "expected_digest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Digest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Digest the producer expects; a mismatch rejects the item."
+    },
+    "expected_size_bytes": {
+      "description": "Size the producer expects; a mismatch rejects the item.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "handle": {
+      "$ref": "#/$defs/CaptureHandle",
+      "description": "Handle returned by `begin`."
+    },
+    "key": {
+      "$ref": "#/$defs/IdempotencyKey",
+      "description": "Producer item key, unique within the handle."
+    },
+    "media_type": {
+      "description": "Media type hint. It is never used to choose a parser automatically.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Inert namespaced producer metadata.",
+      "type": "object"
+    },
+    "position": {
+      "$ref": "#/$defs/Position",
+      "description": "The position the producer expects this item to take."
+    },
+    "role": {
+      "$ref": "#/$defs/ArtifactRole",
+      "description": "What the artifact is to the Run."
+    },
+    "source": {
+      "$ref": "#/$defs/ArtifactSource",
+      "description": "Where the bytes are, or why they are absent."
+    }
+  },
+  "required": [
+    "handle",
+    "key",
+    "position",
+    "role",
+    "source"
+  ],
+  "title": "StableArtifact",
+  "type": "object"
+}

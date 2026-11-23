@@ -1,0 +1,7 @@
+{
+  "handle": "handle_00000000-0000-4000-8000-000000000000",
+  "key": "run-0001/finalize",
+  "expected_last_position": 2,
+  "completion": "complete",
+  "execution": {"state": "completed", "exit_code": 0}
+}

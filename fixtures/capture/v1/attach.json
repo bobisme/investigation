@@ -1,0 +1,8 @@
+{
+  "handle": "handle_00000000-0000-4000-8000-000000000000",
+  "key": "result",
+  "position": 2,
+  "role": "original-output",
+  "source": {"kind": "file", "path": "result.json"},
+  "media_type": "application/json"
+}

@@ -1,0 +1,375 @@
+{
+  "$defs": {
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "CommitResult": {
+      "enum": [
+        "committed",
+        "already_committed"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Finalization": {
+      "description": "Finalization status, independent of execution success.",
+      "oneOf": [
+        {
+          "const": "finalized",
+          "description": "Every claimed item is present.",
+          "type": "string"
+        },
+        {
+          "const": "finalized_partial",
+          "description": "Finalized with known gaps; see [`FinalizeReceipt::missing_positions`].",
+          "type": "string"
+        }
+      ]
+    },
+    "Guidance": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/GuidanceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "argv"
+      ],
+      "type": "object"
+    },
+    "GuidanceKind": {
+      "enum": [
+        "local_read"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Position": {
+      "description": "One-based position of an accepted item within a capture handle.\n\nAppended facts and attachment descriptors share one sequence. The recorder\naccepts only the next expected position, so a lost middle item is detectable.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "Projection": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "$ref": "#/$defs/ProjectionStatus"
+        },
+        "vault": {
+          "$ref": "#/$defs/ProjectionStatus"
+        }
+      },
+      "required": [
+        "index",
+        "vault"
+      ],
+      "type": "object"
+    },
+    "ProjectionStatus": {
+      "enum": [
+        "current",
+        "pending",
+        "degraded",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "Receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/ReceiptArtifact"
+          },
+          "type": "array"
+        },
+        "command_id": {
+          "type": "string"
+        },
+        "created": {
+          "items": {
+            "$ref": "#/$defs/RecordChange"
+          },
+          "type": "array"
+        },
+        "next": {
+          "items": {
+            "$ref": "#/$defs/Guidance"
+          },
+          "type": "array"
+        },
+        "observation_checks": {
+          "items": {
+            "$ref": "#/$defs/ReceiptObservation"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "projection": {
+          "$ref": "#/$defs/Projection"
+        },
+        "result": {
+          "$ref": "#/$defs/CommitResult"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/ResponseVersion"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/Snapshot"
+        },
+        "transaction_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/RecordChange"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "ok",
+        "result",
+        "command_id",
+        "transaction_id",
+        "snapshot",
+        "created",
+        "updated",
+        "projection",
+        "warnings",
+        "next"
+      ],
+      "type": "object"
+    },
+    "ReceiptArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact",
+        "digest",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "ReceiptObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "quote_state": {
+          "$ref": "#/$defs/TextQuoteState"
+        },
+        "selector_validation": {
+          "$ref": "#/$defs/SelectorValidation"
+        }
+      },
+      "required": [
+        "observation",
+        "selector_validation",
+        "quote_state"
+      ],
+      "type": "object"
+    },
+    "RecordChange": {
+      "additionalProperties": false,
+      "properties": {
+        "client_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorValidation": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "TextQuoteState": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable",
+        "not_applicable"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.finalize.receipt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Durable receipt for a sealed capture.",
+  "properties": {
+    "case_id": {
+      "$ref": "#/$defs/Id",
+      "description": "The case holding the Run."
+    },
+    "commit": {
+      "$ref": "#/$defs/Receipt",
+      "description": "Journal receipt of the finalizing transaction."
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionStatus",
+      "description": "Execution state as recorded. `completed` here does not mean `finalized`,\nand `failed` does not prevent finalization."
+    },
+    "finalization": {
+      "$ref": "#/$defs/Finalization",
+      "description": "Finalization status."
+    },
+    "handle": {
+      "$ref": "#/$defs/CaptureHandle",
+      "description": "Sealed handle."
+    },
+    "manifest_digest": {
+      "$ref": "#/$defs/Digest",
+      "description": "Digest of the immutable manifest artifact."
+    },
+    "missing_positions": {
+      "description": "Positions known to be missing.",
+      "items": {
+        "$ref": "#/$defs/Position"
+      },
+      "type": "array"
+    },
+    "run_id": {
+      "$ref": "#/$defs/Id",
+      "description": "The Run."
+    },
+    "sealed_position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Position"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Last accepted position when the handle was sealed."
+    }
+  },
+  "required": [
+    "handle",
+    "run_id",
+    "case_id",
+    "finalization",
+    "execution",
+    "manifest_digest",
+    "commit"
+  ],
+  "title": "FinalizeReceipt",
+  "type": "object"
+}

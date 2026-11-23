@@ -64,9 +64,7 @@
     "coverage.link",
     "coverage.revise"
   ],
-  "reserved_wire_schemas": [
-    "capture"
-  ],
+  "reserved_wire_schemas": [],
   "schema_version": "inv.catalog.v1",
   "stages": [
     {
@@ -185,6 +183,17 @@
   ],
   "wire_schemas": {
     "audit": "audit.schema.json",
+    "capture": "capture.schema.json",
+    "capture.append": "capture.append.schema.json",
+    "capture.append.receipt": "capture.append.receipt.schema.json",
+    "capture.attach": "capture.attach.schema.json",
+    "capture.attach.receipt": "capture.attach.receipt.schema.json",
+    "capture.begin": "capture.begin.schema.json",
+    "capture.begin.receipt": "capture.begin.receipt.schema.json",
+    "capture.finalize": "capture.finalize.schema.json",
+    "capture.finalize.receipt": "capture.finalize.receipt.schema.json",
+    "capture.recover": "capture.recover.schema.json",
+    "capture.recover.receipt": "capture.recover.receipt.schema.json",
     "error": "error.schema.json",
     "evidence-selector": "evidence-selector.schema.json",
     "ingest": "ingest.schema.json",

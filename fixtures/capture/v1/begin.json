@@ -1,0 +1,9 @@
+{
+  "key": "run-0001/begin",
+  "actor": "agent:example-producer",
+  "producer": {"name": "example-producer", "version": "0.1.0"},
+  "external_run_id": "run-0001",
+  "intent": {"label": "synthetic run"},
+  "case": {"kind": "new_record_case", "title": "Synthetic runs"},
+  "protocol": "inv.capture.v1"
+}

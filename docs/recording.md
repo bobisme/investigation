@@ -16,6 +16,10 @@ The crate documentation states the same limits on each method. Run `cargo doc -p
 
 **Status.** The types and signatures are fixed. Every operation is implemented and has its CLI command: `capture begin`, `capture append`, `capture attach`, `capture finalize` and `capture recover`.
 
+## Discovery
+
+`investigation schema capture --format json` returns the lifecycle, the operations with their commands, and `capabilities`: the protocol versions this build accepts, the default, the operation names, the per-handle limits (event size, attachment size, positions) and the accepted `producer-run` versions. Every value comes from the code that enforces it. `investigation schema capture.begin` (and `.append`, `.attach`, `.finalize`, `.recover`) returns the request schema and an example; the `.receipt` name returns the receipt schema. The examples are the files in [fixtures/capture/v1](../fixtures/capture/v1), which the test suite runs against the CLI. Add `--schema-only` for the bare JSON Schema.
+
 ## `capture begin`
 
 ```sh
@@ -39,6 +43,7 @@ investigation --workspace ./cases capture begin --input begin.json --format json
 
 - `case` is `{"kind": "new_record_case", "title": …}` or `{"kind": "existing", "case_id": …}`. A new case has mode `record` and is created in the same transaction as the Run.
 - `intent.inquiry_plan` pins an exact frozen InquiryPlan revision in an existing case. The Run then records the plan digest and its chronology. `intent.external_plan_digest` records the digest of a plan held outside Investigation.
+- `protocol` is optional. Omit it to accept the version this build speaks, or name the version you require, such as `inv.capture.v1`. An unsupported version is refused with `INVALID_INPUT` at `/protocol`, with the supported list in `error.expected`, and nothing is declared.
 - `classification` defaults to `internal`. `restricted` also applies to the Run record.
 
 Stdout is the `BeginReceipt` (`handle`, `run_id`, `case_id`, `protocol`, `limits`, `staging_dir`, `commit`), the same value `Recorder::begin` returns. A rejection prints the structured `inv.response.v1` error with `ok: false`. The Run is `declared`, with evidence completeness and measurement validity `unknown`. Begin records a declaration only: it does not authorize, approve or start anything.

@@ -128,6 +128,7 @@
 mod append;
 mod attach;
 mod begin;
+mod capabilities;
 mod error;
 mod finalize;
 mod key;
@@ -139,6 +140,7 @@ pub use attach::{
     ArtifactRef, ArtifactRole, ArtifactSource, Derivation, StableArtifact, StagedAvailability,
 };
 pub use begin::{BeginCapture, BeginReceipt, CaptureIntent, CaptureLimits, CaseTarget};
+pub use capabilities::{CAPABILITIES_VERSION, CaptureCapabilities};
 pub use error::RecordingError;
 pub use finalize::{
     CaptureCompletion, ChannelInventory, ExecutionReport, ExternalReceipt, Finalization,

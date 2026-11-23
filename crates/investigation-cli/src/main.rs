@@ -4,6 +4,7 @@ mod blindspots;
 mod brief;
 mod brief_delta;
 mod capture;
+mod capture_schema;
 mod evidence;
 mod explain;
 mod first_use;

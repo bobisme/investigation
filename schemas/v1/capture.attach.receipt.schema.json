@@ -1,0 +1,177 @@
+{
+  "$defs": {
+    "ArtifactRole": {
+      "description": "Role of an artifact within the Run.",
+      "oneOf": [
+        {
+          "const": "original-output",
+          "description": "Original output of the external action.",
+          "type": "string"
+        },
+        {
+          "const": "derivative",
+          "description": "Derived from another item; set [`StableArtifact::derived_from`].",
+          "type": "string"
+        },
+        {
+          "const": "log",
+          "description": "A log of the producer or the action.",
+          "type": "string"
+        },
+        {
+          "const": "receipt",
+          "description": "An external receipt, such as a signed execution statement.",
+          "type": "string"
+        }
+      ]
+    },
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "IdempotencyKey": {
+      "description": "1 to 128 characters without control characters",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "ItemReceipt": {
+      "additionalProperties": false,
+      "description": "Durable receipt for one accepted item on a handle.\n\nThe recorder persists the item, this receipt and the handle cursor before\nreturning it.",
+      "properties": {
+        "accepted_at": {
+          "$ref": "#/$defs/UtcTimestamp",
+          "description": "Local acceptance time, distinct from any producer-reported time."
+        },
+        "handle": {
+          "$ref": "#/$defs/CaptureHandle",
+          "description": "Handle holding the item."
+        },
+        "key": {
+          "$ref": "#/$defs/IdempotencyKey",
+          "description": "Producer item key."
+        },
+        "position": {
+          "$ref": "#/$defs/Position",
+          "description": "Accepted position."
+        },
+        "request_digest": {
+          "$ref": "#/$defs/Digest",
+          "description": "Digest of the parsed request, used to detect conflicting retries."
+        },
+        "result": {
+          "$ref": "#/$defs/ReceiptResult",
+          "description": "First acceptance or replay."
+        },
+        "run_id": {
+          "$ref": "#/$defs/Id",
+          "description": "Run declared by the handle."
+        }
+      },
+      "required": [
+        "result",
+        "handle",
+        "run_id",
+        "position",
+        "key",
+        "request_digest",
+        "accepted_at"
+      ],
+      "type": "object"
+    },
+    "Position": {
+      "description": "One-based position of an accepted item within a capture handle.\n\nAppended facts and attachment descriptors share one sequence. The recorder\naccepts only the next expected position, so a lost middle item is detectable.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ReceiptResult": {
+      "description": "Whether a receipt reports a first acceptance or a replay of an earlier one.",
+      "oneOf": [
+        {
+          "const": "accepted",
+          "description": "This call made the item durable.",
+          "type": "string"
+        },
+        {
+          "const": "already_accepted",
+          "description": "An identical earlier call made it durable; this is that call's receipt.",
+          "type": "string"
+        }
+      ]
+    },
+    "StagedAvailability": {
+      "description": "Whether staged bytes exist for an accepted artifact.",
+      "oneOf": [
+        {
+          "const": "staged",
+          "description": "The verified bytes are durable in staging.",
+          "type": "string"
+        },
+        {
+          "const": "missing",
+          "description": "The artifact is recorded as missing.",
+          "type": "string"
+        }
+      ]
+    },
+    "UtcTimestamp": {
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{1,9}Z$",
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.attach.receipt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Durable receipt for an accepted artifact descriptor.",
+  "properties": {
+    "availability": {
+      "$ref": "#/$defs/StagedAvailability",
+      "description": "Staged or missing."
+    },
+    "digest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Digest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Digest of the retained bytes, when staged."
+    },
+    "receipt": {
+      "$ref": "#/$defs/ItemReceipt",
+      "description": "Item receipt at the artifact's position."
+    },
+    "role": {
+      "$ref": "#/$defs/ArtifactRole",
+      "description": "Accepted role."
+    },
+    "size_bytes": {
+      "description": "Size of the retained bytes, when staged.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "receipt",
+    "role",
+    "availability"
+  ],
+  "title": "ArtifactRef",
+  "type": "object"
+}

@@ -1,0 +1,364 @@
+{
+  "$defs": {
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "CaptureLimits": {
+      "additionalProperties": false,
+      "description": "Limits the recorder enforces on one handle.",
+      "properties": {
+        "max_attachment_bytes": {
+          "description": "Largest accepted attachment, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_event_bytes": {
+          "description": "Largest accepted serialized `append` request, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_items": {
+          "description": "Largest accepted position on one handle.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_event_bytes",
+        "max_attachment_bytes",
+        "max_items"
+      ],
+      "type": "object"
+    },
+    "CaptureVersion": {
+      "description": "Version tag of the capture protocol that the Rust API and the JSON-CLI share.",
+      "oneOf": [
+        {
+          "const": "inv.capture.v1",
+          "description": "`inv.capture.v1`.",
+          "type": "string"
+        }
+      ]
+    },
+    "CommitResult": {
+      "enum": [
+        "committed",
+        "already_committed"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "Guidance": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/GuidanceKind"
+        }
+      },
+      "required": [
+        "kind",
+        "argv"
+      ],
+      "type": "object"
+    },
+    "GuidanceKind": {
+      "enum": [
+        "local_read"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Projection": {
+      "additionalProperties": false,
+      "properties": {
+        "index": {
+          "$ref": "#/$defs/ProjectionStatus"
+        },
+        "vault": {
+          "$ref": "#/$defs/ProjectionStatus"
+        }
+      },
+      "required": [
+        "index",
+        "vault"
+      ],
+      "type": "object"
+    },
+    "ProjectionStatus": {
+      "enum": [
+        "current",
+        "pending",
+        "degraded",
+        "disabled"
+      ],
+      "type": "string"
+    },
+    "Receipt": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/ReceiptArtifact"
+          },
+          "type": "array"
+        },
+        "command_id": {
+          "type": "string"
+        },
+        "created": {
+          "items": {
+            "$ref": "#/$defs/RecordChange"
+          },
+          "type": "array"
+        },
+        "next": {
+          "items": {
+            "$ref": "#/$defs/Guidance"
+          },
+          "type": "array"
+        },
+        "observation_checks": {
+          "items": {
+            "$ref": "#/$defs/ReceiptObservation"
+          },
+          "type": "array"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "projection": {
+          "$ref": "#/$defs/Projection"
+        },
+        "result": {
+          "$ref": "#/$defs/CommitResult"
+        },
+        "schema_version": {
+          "$ref": "#/$defs/ResponseVersion"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/Snapshot"
+        },
+        "transaction_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "updated": {
+          "items": {
+            "$ref": "#/$defs/RecordChange"
+          },
+          "type": "array"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "ok",
+        "result",
+        "command_id",
+        "transaction_id",
+        "snapshot",
+        "created",
+        "updated",
+        "projection",
+        "warnings",
+        "next"
+      ],
+      "type": "object"
+    },
+    "ReceiptArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "digest": {
+          "$ref": "#/$defs/Digest"
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "artifact",
+        "digest",
+        "size_bytes"
+      ],
+      "type": "object"
+    },
+    "ReceiptObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "observation": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "quote_state": {
+          "$ref": "#/$defs/TextQuoteState"
+        },
+        "selector_validation": {
+          "$ref": "#/$defs/SelectorValidation"
+        }
+      },
+      "required": [
+        "observation",
+        "selector_validation",
+        "quote_state"
+      ],
+      "type": "object"
+    },
+    "RecordChange": {
+      "additionalProperties": false,
+      "properties": {
+        "client_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "ResponseVersion": {
+      "enum": [
+        "inv.response.v1"
+      ],
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SelectorValidation": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable"
+      ],
+      "type": "string"
+    },
+    "Snapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "TextQuoteState": {
+      "enum": [
+        "unverified",
+        "verified",
+        "ambiguous",
+        "not_found",
+        "unavailable",
+        "not_applicable"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.begin.receipt",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Durable receipt for a declared Run.\n\nThe receipt records a declaration only. It does not authorize, approve or\nstart the producer's action; the producer decides that under its own policy.",
+  "properties": {
+    "case_id": {
+      "$ref": "#/$defs/Id",
+      "description": "The case holding the Run."
+    },
+    "commit": {
+      "$ref": "#/$defs/Receipt",
+      "description": "Journal receipt of the declaring transaction. On a retry its result is\n`already_committed` and every identifier is unchanged."
+    },
+    "handle": {
+      "$ref": "#/$defs/CaptureHandle",
+      "description": "Handle for every later call on this capture."
+    },
+    "limits": {
+      "$ref": "#/$defs/CaptureLimits",
+      "description": "Limits for this handle."
+    },
+    "protocol": {
+      "$ref": "#/$defs/CaptureVersion",
+      "description": "Negotiated protocol version."
+    },
+    "run_id": {
+      "$ref": "#/$defs/Id",
+      "description": "The declared Run."
+    },
+    "staging_dir": {
+      "description": "Private durable staging directory owned by the recorder for this handle,\nrelative to the workspace root (`state/staging/<run-id>`).\n\nThe recorder copies attachments into it. Producers must not write into it or\nlink files from it; it is recovery material, not a cache.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "handle",
+    "run_id",
+    "case_id",
+    "protocol",
+    "limits",
+    "staging_dir",
+    "commit"
+  ],
+  "title": "BeginReceipt",
+  "type": "object"
+}

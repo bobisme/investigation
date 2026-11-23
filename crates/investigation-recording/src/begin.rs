@@ -54,6 +54,11 @@ pub struct BeginCapture {
     /// Inert namespaced producer metadata.
     #[serde(default, skip_serializing_if = "Metadata::is_empty")]
     pub metadata: Metadata,
+    /// Protocol version the producer requires, such as `inv.capture.v1`. Omit it
+    /// to accept the version this build speaks. A version this build does not
+    /// support is refused at `/protocol` with the supported list.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<String>,
 }
 
 impl BeginCapture {
@@ -75,6 +80,7 @@ impl BeginCapture {
             case,
             classification: ClassificationLevel::default(),
             metadata: Metadata::new(),
+            protocol: None,
         }
     }
 }
@@ -138,6 +144,16 @@ pub struct CaptureLimits {
 }
 
 impl CaptureLimits {
+    /// The limits every handle declared by this build receives.
+    pub const fn current() -> Self {
+        let defaults = HandleLimits::DEFAULT;
+        Self::new(
+            defaults.max_event_bytes,
+            defaults.max_attachment_bytes,
+            defaults.max_items,
+        )
+    }
+
     /// Limits with the given values.
     pub const fn new(max_event_bytes: u64, max_attachment_bytes: u64, max_items: u64) -> Self {
         Self {
@@ -202,11 +218,22 @@ pub(crate) fn declare(
         max_attachment_bytes,
         max_items,
     } = declared.binding.limits;
+    // The only supported version is the one a producer may require.
+    let protocol = CaptureVersion::SUPPORTED
+        .iter()
+        .copied()
+        .find(|version| {
+            request
+                .protocol
+                .as_deref()
+                .is_none_or(|p| p == version.as_str())
+        })
+        .unwrap_or(CaptureVersion::V1);
     Ok(BeginReceipt {
         handle: CaptureHandle::from_id(declared.binding.handle).map_err(|_| invalid_handle())?,
         run_id: declared.run_id,
         case_id: declared.case_id,
-        protocol: CaptureVersion::V1,
+        protocol,
         limits: CaptureLimits::new(max_event_bytes, max_attachment_bytes, max_items),
         staging_dir: PathBuf::from(declared.binding.staging),
         commit: declared.receipt,
@@ -259,6 +286,25 @@ fn validate(request: &BeginCapture) -> Result<(), Failure> {
     let invalid = |path: &str, message: String| {
         Failure::new(ErrorCode::InvalidInput, message).at(path.to_owned())
     };
+    if let Some(required) = &request.protocol
+        && !CaptureVersion::SUPPORTED
+            .iter()
+            .any(|version| version.as_str() == required)
+    {
+        let supported: Vec<_> = CaptureVersion::SUPPORTED
+            .iter()
+            .map(|version| version.as_str())
+            .collect();
+        let mut failure = invalid(
+            "/protocol",
+            format!(
+                "This build does not support capture protocol {required:?}. Supported: {}.",
+                supported.join(", ")
+            ),
+        );
+        failure.error.expected = Some(json!(supported));
+        return Err(failure);
+    }
     let label = &request.intent.label;
     if label.trim().is_empty() || label.chars().count() > MAX_LABEL_CHARS {
         return Err(invalid(

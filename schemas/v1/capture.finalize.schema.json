@@ -1,0 +1,397 @@
+{
+  "$defs": {
+    "CaptureCompletion": {
+      "description": "The producer's claim about the items it sent on a handle.",
+      "oneOf": [
+        {
+          "const": "complete",
+          "description": "Every item was sent; the cursor must match.",
+          "type": "string"
+        },
+        {
+          "const": "partial",
+          "description": "Some items are known to be absent; the recorder names missing positions.",
+          "type": "string"
+        },
+        {
+          "const": "interrupted",
+          "description": "The producer stopped or restarted and cannot vouch for its stream.",
+          "type": "string"
+        }
+      ]
+    },
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "ChannelInventory": {
+      "additionalProperties": false,
+      "description": "Declared completeness of one collection channel.",
+      "properties": {
+        "channel": {
+          "description": "Channel name.",
+          "type": "string"
+        },
+        "completeness": {
+          "$ref": "#/$defs/EvidenceCompleteness",
+          "description": "Completeness the producer claims for the channel."
+        }
+      },
+      "required": [
+        "channel",
+        "completeness"
+      ],
+      "type": "object"
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "EvidenceCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ExecutionReport": {
+      "additionalProperties": false,
+      "description": "Execution outcome as reported by the producer.",
+      "properties": {
+        "ended_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Reported end time."
+        },
+        "error": {
+          "description": "Original error text, preserved verbatim.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "description": "Exit code, when the action had one. It implies no measurement validity.",
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceTime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Reported start time."
+        },
+        "state": {
+          "$ref": "#/$defs/ExecutionStatus",
+          "description": "Reported state; `unknown` when the producer cannot tell what happened."
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ExternalReceipt": {
+      "additionalProperties": false,
+      "description": "Reference to an external receipt about the action.\n\nThe capture form of the envelope's `ProducerReceipt`: the same fields, with\nthe receipt bytes named by an attached item key instead of an artifact path.",
+      "properties": {
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/IdempotencyKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Item key of an attached artifact holding the receipt bytes."
+        },
+        "kind": {
+          "description": "Receipt format, as named by the producer.",
+          "type": "string"
+        },
+        "reference": {
+          "description": "External locator, retained as an unverified reference.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "IdempotencyKey": {
+      "description": "1 to 128 characters without control characters",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "Knowledge": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Position": {
+      "description": "One-based position of an accepted item within a capture handle.\n\nAppended facts and attachment descriptors share one sequence. The recorder\naccepts only the next expected position, so a lost middle item is detectable.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "ProducerAssertion": {
+      "additionalProperties": false,
+      "description": "A producer-reported result, such as a metric.\n\nIt is retained as the producer's assertion. Only an attributed Assessment or\nConclusion can promote it to an investigative interpretation.",
+      "properties": {
+        "kind": {
+          "description": "Assertion kind, such as `reported_metric`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Name, such as `latency.p99`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "unit": {
+          "description": "Unit, when meaningful.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validity_claim": {
+          "$ref": "#/$defs/ValidityClaim",
+          "default": "producer_reported",
+          "description": "Always `producer_reported`."
+        },
+        "value": {
+          "description": "Reported value, retained verbatim."
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ProducerControl": {
+      "additionalProperties": false,
+      "description": "A control the producer reports with its own result.",
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Control name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "producer_result": {
+          "description": "Producer's result, such as `reported_pass`. It is not proof of method.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "producer_result"
+      ],
+      "type": "object"
+    },
+    "SourceTime": {
+      "additionalProperties": false,
+      "description": "The original time and offset are source claims and must not determine ordering.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality"
+        },
+        "offset": {
+          "$ref": "#/$defs/Knowledge"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/Knowledge"
+        }
+      },
+      "required": [
+        "timestamp",
+        "offset",
+        "clock_quality"
+      ],
+      "type": "object"
+    },
+    "ValidityClaim": {
+      "description": "How valid the producer says an assertion is. The only accepted claim is\n`producer_reported`: a producer cannot declare its own result verified.",
+      "enum": [
+        "producer_reported"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.finalize",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Final summary of a capture.\n\nRecording completeness, execution outcome and the producer's own assertions\nstay separate: a failed execution can be finalized completely, and a\nsuccessful one can be finalized as partial.",
+  "properties": {
+    "assertions": {
+      "description": "Producer results, retained as attributed producer assertions.",
+      "items": {
+        "$ref": "#/$defs/ProducerAssertion"
+      },
+      "type": "array"
+    },
+    "channels": {
+      "description": "Declared per-channel inventory.",
+      "items": {
+        "$ref": "#/$defs/ChannelInventory"
+      },
+      "type": "array"
+    },
+    "completion": {
+      "$ref": "#/$defs/CaptureCompletion",
+      "description": "The producer's claim about its own stream of items."
+    },
+    "controls": {
+      "description": "Controls the producer reports, retained as its claims.",
+      "items": {
+        "$ref": "#/$defs/ProducerControl"
+      },
+      "type": "array"
+    },
+    "declared_artifacts": {
+      "description": "Item keys of every artifact the producer meant to attach, so absent ones\nare recorded as missing.",
+      "items": {
+        "$ref": "#/$defs/IdempotencyKey"
+      },
+      "type": "array"
+    },
+    "execution": {
+      "$ref": "#/$defs/ExecutionReport",
+      "description": "Execution outcome as the producer reports it."
+    },
+    "expected_last_position": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Position"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Last position the producer believes was accepted; `None` if it sent no items.\n\nA `complete` claim with a stale cursor is rejected."
+    },
+    "handle": {
+      "$ref": "#/$defs/CaptureHandle",
+      "description": "Handle returned by `begin`."
+    },
+    "key": {
+      "$ref": "#/$defs/IdempotencyKey",
+      "description": "Journal command ID for the finalizing transaction."
+    },
+    "limitations": {
+      "description": "Limitations the producer states.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Inert namespaced producer metadata.",
+      "type": "object"
+    },
+    "receipts": {
+      "description": "References to external receipts about the action.",
+      "items": {
+        "$ref": "#/$defs/ExternalReceipt"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "handle",
+    "key",
+    "completion",
+    "execution"
+  ],
+  "title": "FinalizeCapture",
+  "type": "object"
+}

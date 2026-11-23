@@ -1,0 +1,227 @@
+{
+  "$defs": {
+    "Actor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9:_.-]+$",
+      "type": "string"
+    },
+    "CaptureIntent": {
+      "additionalProperties": false,
+      "description": "The producer's stated intent. It is recorded, never executed or approved.",
+      "properties": {
+        "external_plan_digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Digest of a plan held outside Investigation, when the producer has one."
+        },
+        "inquiry_plan": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Exact revision of an InquiryPlan in the target case, when the Run follows one."
+        },
+        "label": {
+          "description": "Short human-readable purpose.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "type": "object"
+    },
+    "CaseTarget": {
+      "description": "Case that receives the Run.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Record into an existing case.",
+          "properties": {
+            "case_id": {
+              "$ref": "#/$defs/Id",
+              "description": "The case identifier."
+            },
+            "kind": {
+              "const": "existing",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "case_id"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Create a minimal `record`-mode case in the same transaction as the Run.\n\nThe case has no question, hypothesis or decision, and needs no vault.",
+          "properties": {
+            "kind": {
+              "const": "new_record_case",
+              "type": "string"
+            },
+            "title": {
+              "description": "Case title.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "title"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "ExternalRunId": {
+      "description": "1 to 256 characters without control characters",
+      "maxLength": 256,
+      "minLength": 1,
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "IdempotencyKey": {
+      "description": "1 to 128 characters without control characters",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "ProducerIdentity": {
+      "additionalProperties": false,
+      "description": "Self-reported producer identity. It is attribution, not authentication.",
+      "properties": {
+        "instance": {
+          "description": "Producer instance, such as a host-local label, when reported.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "$ref": "#/$defs/ProducerName",
+          "description": "Producer namespace."
+        },
+        "version": {
+          "description": "Producer version, when the producer reports one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProducerName": {
+      "description": "1 to 128 ASCII letters, digits, '.', '_', '-', ':' or '/', starting with a letter or digit",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.begin",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Request to declare one Run before the producer acts.\n\nIdempotent on the producer name, external run ID and key: a retry after a lost\nresponse returns the same Run and handle. A different key or actor for an\nalready declared producer name and external run ID is refused with\n`IDEMPOTENCY_KEY_REUSED`, naming the original command ID.\n\nDeclaring a Run records the producer's intent. It does not authorize, approve\nor start anything.",
+  "properties": {
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "Actor attributed with the declaration and every later call on the handle."
+    },
+    "case": {
+      "$ref": "#/$defs/CaseTarget",
+      "description": "Case that receives the Run."
+    },
+    "classification": {
+      "$ref": "#/$defs/ClassificationLevel",
+      "default": "internal",
+      "description": "Default classification for retained items; an item may request a stricter one."
+    },
+    "external_run_id": {
+      "$ref": "#/$defs/ExternalRunId",
+      "description": "The producer's identifier for this logical attempt."
+    },
+    "intent": {
+      "$ref": "#/$defs/CaptureIntent",
+      "description": "What the producer intends the Run to do."
+    },
+    "key": {
+      "$ref": "#/$defs/IdempotencyKey",
+      "description": "Journal command ID for the declaring transaction."
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "description": "Inert namespaced producer metadata.",
+      "type": "object"
+    },
+    "producer": {
+      "$ref": "#/$defs/ProducerIdentity",
+      "description": "Self-reported producer identity."
+    },
+    "protocol": {
+      "description": "Protocol version the producer requires, such as `inv.capture.v1`. Omit it\nto accept the version this build speaks. A version this build does not\nsupport is refused at `/protocol` with the supported list.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "key",
+    "actor",
+    "producer",
+    "external_run_id",
+    "intent",
+    "case"
+  ],
+  "title": "BeginCapture",
+  "type": "object"
+}

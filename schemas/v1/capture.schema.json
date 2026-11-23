@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "CaptureLimits": {
+      "additionalProperties": false,
+      "description": "Limits the recorder enforces on one handle.",
+      "properties": {
+        "max_attachment_bytes": {
+          "description": "Largest accepted attachment, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_event_bytes": {
+          "description": "Largest accepted serialized `append` request, in bytes.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "max_items": {
+          "description": "Largest accepted position on one handle.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_event_bytes",
+        "max_attachment_bytes",
+        "max_items"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The capture protocol versions, operations and limits this build supports.\n\nEvery value comes from the code that enforces it, so the document cannot\nadvertise anything the build lacks.",
+  "properties": {
+    "default_protocol": {
+      "description": "Version a `begin` without `protocol` negotiates.",
+      "type": "string"
+    },
+    "limits": {
+      "$ref": "#/$defs/CaptureLimits",
+      "description": "Limits every handle declared by this build receives, fixed at `begin`."
+    },
+    "operations": {
+      "description": "Wire names of the capture operations, in lifecycle order.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "producer_run_versions": {
+      "description": "Versions of the one-document completed-run envelope this build accepts.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "protocols": {
+      "description": "Protocol versions this build accepts, newest first.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "description": "`inv.capture-capabilities.v1`.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "protocols",
+    "default_protocol",
+    "operations",
+    "limits",
+    "producer_run_versions"
+  ],
+  "title": "CaptureCapabilities",
+  "type": "object"
+}

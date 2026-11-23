@@ -1,0 +1,47 @@
+{
+  "$defs": {
+    "CaptureHandle": {
+      "pattern": "^handle_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:capture.recover",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Which handles to report.",
+  "oneOf": [
+    {
+      "additionalProperties": false,
+      "description": "Every handle that is not finalized.",
+      "properties": {
+        "kind": {
+          "const": "unsettled",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "description": "One handle, in any state, including finalized.",
+      "properties": {
+        "handle": {
+          "$ref": "#/$defs/CaptureHandle",
+          "description": "The handle."
+        },
+        "kind": {
+          "const": "handle",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "handle"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "RecoverScope"
+}
