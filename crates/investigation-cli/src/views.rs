@@ -453,6 +453,16 @@ pub(crate) fn project_record(
     if let Some(reuse) = evidence_reuse::evidence_reuse(&replay.state, record) {
         out.insert("evidence_reuse".into(), json!(reuse));
     }
+    // Confidence beside its named downgrade reasons: a label, never a number.
+    if depth != ViewDepth::Title
+        && let Some(view) = investigation_core::confidence::projection(
+            &replay.state,
+            record,
+            depth == ViewDepth::Full,
+        )
+    {
+        out.insert("confidence".into(), json!(view));
+    }
     // Withdrawal is labeled wherever evidence material is read; it is not erasure.
     if matches!(
         record.header.id.kind(),

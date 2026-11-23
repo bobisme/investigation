@@ -954,6 +954,7 @@ fn conclusion_request_review(
     }
     let reads = ready(ctx.state(), record)
         .map_err(|failure| failure.with_argv(review_argv(record.header.id)))?;
+    crate::confidence::require_named_reasons(record, "/conclusion_ref")?;
     let basis = basis_digest(record)?;
     let sets = promotion_memberships(ctx.state(), record)?;
     let mut expected = reads.clone();
@@ -1384,6 +1385,7 @@ fn conclusion_validate(
         ));
     }
     let reads = ready(ctx.state(), record)?;
+    crate::confidence::require_named_reasons(record, "/conclusion_ref")?;
     enforce_no_critical(ctx.state(), record, &reads)?;
     let record = record.clone();
     warn_open_challenges(ctx, &record, &reads)?;

@@ -492,6 +492,7 @@ fn show(
     );
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
+    text.push_str(&investigation_core::confidence::text(&view));
     Ok(Output::success("record_shown", view, text))
 }
 

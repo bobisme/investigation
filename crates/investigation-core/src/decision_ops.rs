@@ -963,6 +963,11 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 let r = pin(c, &p.review_ref, Kind::Review, "/review_ref")?;
                 current_review(c.state(), &target, r)?;
                 check_cells(c.state(), case, &b)?;
+                crate::confidence::require_cited_reasons(
+                    c.state(),
+                    &b.evidence_refs,
+                    "/decision_ref",
+                )?;
                 let acknowledgments = p
                     .acknowledgments
                     .iter()

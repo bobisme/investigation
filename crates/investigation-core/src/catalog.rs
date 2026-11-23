@@ -422,8 +422,10 @@ fn decode<P: DeserializeOwned>(
     operation: &str,
     validate: fn(&P) -> Result<(), Failure>,
 ) -> Result<P, Failure> {
-    let payload =
-        input::decode(value).map_err(|error| input_failure(error).with_schema(operation))?;
+    let payload = input::decode(value).map_err(|error| {
+        crate::confidence::explain_decode_failure(operation, value, input_failure(error))
+            .with_schema(operation)
+    })?;
     validate(&payload).map_err(|error| error.with_schema(operation))?;
     Ok(payload)
 }

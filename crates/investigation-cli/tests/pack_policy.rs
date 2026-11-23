@@ -524,7 +524,8 @@ fn pack_policy_gates_conclusion_promotion_and_closure_but_never_recording() {
     );
     let candidate = conclusion(
         "claim",
-        json!({"level":"moderate","rationale":"One calibrated reading.","limitations":[],"what_would_change_it":null,"downgrade_reasons":null}),
+        json!({"level":"moderate","rationale":"One calibrated reading.","limitations":[],"what_would_change_it":null,
+            "downgrade_reasons":{"validity":"ok","consistency":"concern","directness":"ok","precision":"not_assessed","completeness":"not_assessed"}}),
     );
     request(&candidate, "ready", 0);
     let ready = json!({"id":candidate["id"],"revision":2});
