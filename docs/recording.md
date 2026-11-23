@@ -198,7 +198,8 @@ investigation --workspace ./cases capture finalize --input finalize.json --forma
 | `completion` | `complete` (every item was sent), `partial` (some are known to be absent) or `interrupted` (the producer cannot vouch for its stream). |
 | `execution` | `state` (`declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`), optional `exit_code`, `started_at`, `ended_at` and `error`. The error has 1–16384 characters and is kept verbatim. |
 | `channels` | The producer's completeness claim per channel, each channel once, at most 256. |
-| `declared_artifacts` | Item keys of every artifact the producer meant to attach. A key that was never attached is recorded as missing. A key of an appended fact is refused. |
+| `declared_artifacts` | Item keys of every artifact the producer meant to attach, each listed once. By default, an unattached key is recorded as missing, and a key of an appended fact is refused. |
+| `strict_artifact_inventory` | Optional boolean, default `false`. Set to `true` with `completion: complete` to require an exact match between declared keys and acknowledged attachment keys. |
 | `assertions`, `controls` | The envelope's types and bounds. `validity_claim` may only be `producer_reported`. |
 | `receipts` | At most 32. `kind`, plus `artifact` (the key of an attached or declared artifact), `reference`, or both. An optional `format` (`in_toto_dsse` or `rfc3161`) asks for a structure check of the attached bytes; see [Executor receipts and chronology](#executor-receipts-and-chronology). |
 | `limitations`, `metadata` | As in the envelope. The serialized request is at most 512 KiB. |
@@ -211,7 +212,20 @@ The cursor:
 - `partial` refuses a cursor behind the last accepted position the same way. A cursor ahead of it names the positions that never arrived in `missing_positions`.
 - `interrupted` accepts any cursor and names missing positions the same way.
 
-`finalization` is `finalized` for a complete claim, otherwise `finalized_partial`. It says how the stream was sealed, not how the action ended: a failed execution can be `finalized`, and a completed one `finalized_partial`.
+`finalization` is `finalized` for a complete claim and `finalized_partial` otherwise. It describes how the stream was sealed. A failed execution can be `finalized`, and a completed one can be `finalized_partial`.
+
+### Strict artifact inventory
+
+Set `"strict_artifact_inventory": true` in a complete finalize request to compare `declared_artifacts` with all acknowledged attachment keys under the handle lock. List keys in any order. Include attachments acknowledged with `availability: missing`. Appended facts are outside the artifact inventory. The regular cursor check still applies.
+
+A mismatch returns exit status 4 with `REVISION_CONFLICT` at `/declared_artifacts` and `commit_status: not_committed`. Both arrays in `error.actual` are sorted by key.
+
+- `missing` lists declared keys without an acknowledged attachment.
+- `unexpected` lists acknowledged attachment keys absent from the declaration.
+
+The handle stays open with its original receipts. Run the provided `capture recover` repair command to inspect them, then correct the inventory and retry with the same finalize key. After a lost response, resend the identical request, including the strict flag.
+
+Omitting the flag or setting it to `false` keeps the usual inventory rules for all completion values. Finalize retains undeclared attachments and records unattached declarations as missing. Setting the flag to `true` with `partial` or `interrupted` returns `INVALID_INPUT` at `/strict_artifact_inventory`.
 
 ### What finalize records
 
@@ -239,7 +253,7 @@ Execution and evidence are independent. The Run's `evidence_validity` stays `unk
 
 The seal is `sealed.json` in staging. It binds the key, the request digest, the sealed position, the case snapshot and the manifest digest, and its presence closes the handle to new items. Finalize writes it before the transaction:
 
-- A refused request (a stale cursor, an unknown key, an invalid field) seals nothing.
+- A stale cursor, a strict inventory mismatch, an unknown key or an invalid field seals nothing.
 - A crash after the seal and before the transaction leaves a sealed handle. The identical request completes it with the same manifest. Any other request is refused with `REVISION_CONFLICT` at `/handle` (or `IDEMPOTENCY_KEY_REUSED` at `/key` for the same key); `expected` names the sealing `command_id` and `request_digest`.
 - After the transaction, the identical request returns the original receipt with `commit.result` `already_committed`, even after staging is retired. The same key with a different request is refused with `IDEMPOTENCY_KEY_REUSED` at `/key`. Another key is refused with `REVISION_CONFLICT` at `/handle`; the repair argv looks up the original receipt. A key that names another transaction of the declaring actor, such as the begin key, is refused before sealing.
 

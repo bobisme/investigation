@@ -73,16 +73,20 @@ Example: investigation capture attach --input artifact.json --format json";
 const FINALIZE_HELP: &str = "\
 Reads one inv.capture.v1 finalize request: handle, key, expected_last_position,
 completion (complete, partial or interrupted), execution, and optional
-channels, declared_artifacts, assertions, controls, receipts, limitations and
-metadata. Prints the finalize receipt: finalization, execution, sealed
-position, missing positions, manifest digest and the journal receipt.
+channels, declared_artifacts, strict_artifact_inventory, assertions, controls,
+receipts, limitations and metadata. The receipt gives the finalization,
+execution, sealed position, missing positions, manifest digest and journal
+receipt.
 
 Finalize seals the handle, then commits one transaction: the retained bytes,
 an immutable manifest of every item, and the Run's execution state, retained
 and missing artifacts and per-channel completeness. A complete claim whose
 expected_last_position is not the last accepted position is refused and seals
-nothing. Resend the identical request after a lost response to get the
-original receipt.
+nothing. With completion complete, set strict_artifact_inventory to true to
+require declared_artifacts to match the acknowledged attachment keys. A
+mismatch leaves the handle open and returns error.actual.missing and
+error.actual.unexpected. Correct the inventory and retry with the same key.
+Resend the identical request after a lost response to get the original receipt.
 
 Recording completeness and execution are independent: a failed run can be
 finalized, and its original error is kept verbatim. Producer results stay

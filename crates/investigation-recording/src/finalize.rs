@@ -57,13 +57,17 @@ pub struct FinalizeCapture {
     pub expected_last_position: Option<Position>,
     /// The producer's claim about its own stream of items.
     pub completion: CaptureCompletion,
+    /// Require declared artifact keys to match acknowledged attachment keys
+    /// before sealing. Only valid with `completion: complete`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict_artifact_inventory: bool,
     /// Execution outcome as the producer reports it.
     pub execution: ExecutionReport,
     /// Declared per-channel inventory.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub channels: Vec<ChannelInventory>,
-    /// Item keys of every artifact the producer meant to attach, so absent ones
-    /// are recorded as missing.
+    /// Item keys of every artifact the producer meant to attach. Without
+    /// strict inventory, absent attachments are recorded as missing.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub declared_artifacts: Vec<IdempotencyKey>,
     /// Producer results, retained as attributed producer assertions.
@@ -97,6 +101,7 @@ impl FinalizeCapture {
             key,
             expected_last_position,
             completion,
+            strict_artifact_inventory: false,
             execution,
             channels: Vec::new(),
             declared_artifacts: Vec::new(),
@@ -519,16 +524,37 @@ fn plan(summary: &FinalizeCapture, context: &FinalizeContext<'_>) -> Result<Fina
                 "Declare each artifact key once.",
             ));
         }
-        let fact = context
-            .items
-            .iter()
-            .zip(&items)
-            .any(|(staged, item)| staged.key == key.as_str() && matches!(item, Item::Fact(_)));
-        if fact {
+        if !summary.strict_artifact_inventory
+            && context
+                .items
+                .iter()
+                .any(|item| item.key == key.as_str() && item.operation == ItemOperation::Append)
+        {
             return Err(invalid(
                 format!("/declared_artifacts/{index}"),
                 "This key names an appended fact, not an attached artifact. Declare the keys of attachments only.",
             ));
+        }
+    }
+    if summary.strict_artifact_inventory {
+        let attached: BTreeSet<_> = context
+            .items
+            .iter()
+            .filter(|item| item.operation == ItemOperation::Attach)
+            .map(|item| item.key.as_str())
+            .collect();
+        if attached != declared {
+            let missing: Vec<_> = declared.difference(&attached).copied().collect();
+            let unexpected: Vec<_> = attached.difference(&declared).copied().collect();
+            let mut failure = Failure::new(
+                ErrorCode::RevisionConflict,
+                "Strict finalization requires declared artifact keys to match the acknowledged attachments.",
+            )
+            .at("/declared_artifacts")
+            .with_argv(recover_argv(summary.handle.id()));
+            failure.error.actual = Some(json!({"missing": missing, "unexpected": unexpected}));
+            failure.error.retry = Some("correct the inventory and retry with the same key".into());
+            return Err(failure);
         }
     }
 
@@ -1012,6 +1038,12 @@ fn validate(summary: &FinalizeCapture) -> Result<(), Failure> {
     let invalid = |path: &str, message: String| {
         Failure::new(ErrorCode::InvalidInput, message).at(path.to_owned())
     };
+    if summary.strict_artifact_inventory && summary.completion != CaptureCompletion::Complete {
+        return Err(invalid(
+            "/strict_artifact_inventory",
+            "Strict artifact inventory requires completion complete.".into(),
+        ));
+    }
     let name = |path: &str, value: &str, max: usize| {
         if value.trim().is_empty()
             || value.chars().count() > max

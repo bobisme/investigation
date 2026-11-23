@@ -698,6 +698,250 @@ fn capture_finalize_seals_the_handle_and_commits_the_manifest_once() {
     assert_eq!(check["ok"], true);
 }
 
+fn capture_request(root: &Path, verb: &str, request: &Value, exit: i32) -> Value {
+    json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            verb,
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(request.to_string().as_bytes()),
+        exit,
+    )
+}
+
+fn stage_capture_inventory(root: &Path) -> Value {
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let outputs = root.join("outputs");
+    fs::create_dir(&outputs).unwrap();
+    let config = root.join("ws/investigation.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        contents.replace(
+            "import_roots = []",
+            &format!("import_roots = [{:?}]", outputs.display().to_string()),
+        ),
+    )
+    .unwrap();
+    fs::write(outputs.join("body.json"), b"{\"value\": 42}\n").unwrap();
+    fs::write(outputs.join("run.log"), b"Finished\n").unwrap();
+    let begun = capture_request(root, "begin", &begin_request(), 0);
+    let handle = &begun["handle"];
+    for (key, position, role, source) in [
+        (
+            "body",
+            1,
+            "original-output",
+            json!({"kind": "file", "path": "body.json"}),
+        ),
+        ("log", 2, "log", json!({"kind": "file", "path": "run.log"})),
+        (
+            "trace",
+            3,
+            "log",
+            json!({"kind": "missing", "reason": "Tracing was disabled"}),
+        ),
+    ] {
+        let receipt = capture_request(
+            root,
+            "attach",
+            &json!({"handle": handle, "key": key, "position": position, "role": role, "source": source}),
+            0,
+        );
+        assert_eq!(receipt["receipt"]["result"], "accepted");
+        assert_eq!(
+            receipt["availability"],
+            if key == "trace" { "missing" } else { "staged" },
+        );
+    }
+    capture_request(
+        root,
+        "append",
+        &json!({"handle": handle, "key": "started", "position": 4, "fact": {"kind": "started"}}),
+        0,
+    );
+    begun
+}
+
+#[test]
+fn strict_finalize_rejects_inventory_atomically_and_replays_the_corrected_request() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    let begun = stage_capture_inventory(root);
+    let handle = begun["handle"].as_str().unwrap();
+    let recover = || {
+        json_run(
+            root,
+            &[
+                "--workspace",
+                "ws",
+                "capture",
+                "recover",
+                "--handle",
+                handle,
+                "--format",
+                "json",
+            ],
+            None,
+            0,
+        )
+    };
+    let before = recover();
+    assert_eq!(before["handles"][0]["seal"], "open");
+    assert_eq!(before["handles"][0]["next_position"], 5);
+    assert_eq!(before["handles"][0]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        before["handles"][0]["artifacts"].as_array().unwrap().len(),
+        3
+    );
+    let state = || {
+        let mut files = walk(&root.join("ws/state"));
+        files.sort_by(|left, right| left.0.cmp(&right.0));
+        files
+    };
+    let before_state = state();
+    let mut request = json!({
+        "handle": handle,
+        "key": "run-0001/finalize",
+        "expected_last_position": 4,
+        "completion": "complete",
+        "execution": {"state": "completed"},
+        "strict_artifact_inventory": true,
+        "declared_artifacts": ["body", "started", "other"],
+    });
+    let refused = capture_request(root, "finalize", &request, 4);
+    assert_eq!(refused["commit_status"], "not_committed");
+    assert_eq!(refused["error"]["code"], "REVISION_CONFLICT");
+    assert_eq!(refused["error"]["path"], "/declared_artifacts");
+    assert_eq!(
+        refused["error"]["actual"],
+        json!({"missing": ["other", "started"], "unexpected": ["log", "trace"]})
+    );
+    let repair: Vec<&str> = refused["error"]["repair"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|part| part.as_str().unwrap())
+        .collect();
+    assert_eq!(
+        &repair[3..],
+        ["capture", "recover", "--handle", handle, "--format", "json"]
+    );
+    assert_eq!(
+        json_run(root, &repair[1..], None, 0),
+        before,
+        "the open handle keeps its original receipts"
+    );
+    assert_eq!(
+        state(),
+        before_state,
+        "refusal writes no seal, blobs or journal event"
+    );
+
+    // The acknowledged missing attachment belongs in the inventory too.
+    request["declared_artifacts"] = json!(["trace", "body", "log"]);
+    let committed = capture_request(root, "finalize", &request, 0);
+    assert_eq!(committed["commit"]["result"], "committed");
+    assert_eq!(committed["finalization"], "finalized");
+
+    // Model a lost stdout response by retrying the original request.
+    let mut replay = committed;
+    replay["commit"]["result"] = json!("already_committed");
+    assert_eq!(capture_request(root, "finalize", &request, 0), replay);
+    assert_eq!(recover()["handles"][0]["finalized"], replay);
+
+    let mut changed = request.clone();
+    changed["strict_artifact_inventory"] = json!(false);
+    let reused = capture_request(root, "finalize", &changed, 4);
+    assert_eq!(reused["error"]["code"], "IDEMPOTENCY_KEY_REUSED");
+    assert_eq!(reused["error"]["path"], "/key");
+
+    let retired = json_run(
+        root,
+        &["--workspace", "ws", "repair", "staging", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(retired["handles"][0]["result"], "retired");
+    assert_eq!(capture_request(root, "finalize", &request, 0), replay);
+    assert_eq!(recover()["handles"][0]["finalized"], replay);
+}
+
+#[test]
+fn permissive_finalize_preserves_omissions_and_default_key_equivalence() {
+    for (completion, cursor, finalization, missing_positions) in [
+        ("complete", 4, "finalized", json!(null)),
+        ("partial", 6, "finalized_partial", json!([5, 6])),
+        ("interrupted", 3, "finalized_partial", json!(null)),
+    ] {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        let begun = stage_capture_inventory(root);
+        let mut request = json!({
+            "handle": begun["handle"],
+            "key": "run-0001/finalize",
+            "expected_last_position": cursor,
+            "completion": completion,
+            "execution": {"state": "completed"},
+            "declared_artifacts": ["body", "other"],
+        });
+        if completion != "complete" {
+            let mut invalid = request.clone();
+            invalid["strict_artifact_inventory"] = json!(true);
+            let refused = capture_request(root, "finalize", &invalid, 2);
+            assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+            assert_eq!(refused["error"]["path"], "/strict_artifact_inventory");
+        }
+        let mut receipt = capture_request(root, "finalize", &request, 0);
+        assert_eq!(receipt["commit"]["result"], "committed");
+        assert_eq!(receipt["finalization"], finalization);
+        assert_eq!(receipt["sealed_position"], 4);
+        assert_eq!(receipt["missing_positions"], missing_positions);
+        let run_id = begun["run_id"].as_str().unwrap();
+        let run = json_run(
+            root,
+            &[
+                "--workspace",
+                "ws",
+                "show",
+                run_id,
+                "--depth",
+                "full",
+                "--format",
+                "json",
+            ],
+            None,
+            0,
+        );
+        let body = &run["record"]["body"];
+        assert_eq!(body["evidence_completeness"], "partial");
+        let artifacts = body["capture_finalization"]["artifacts"]
+            .as_array()
+            .unwrap();
+        assert_eq!(artifacts[1]["key"], "log");
+        assert_eq!(artifacts[1]["declared"], false);
+        assert_eq!(artifacts[1]["retention"]["state"], "retained");
+        assert_eq!(artifacts[3]["key"], "other");
+        assert_eq!(artifacts[3]["retention"]["cause"], "not_attached");
+
+        request["strict_artifact_inventory"] = json!(false);
+        receipt["commit"]["result"] = json!("already_committed");
+        assert_eq!(capture_request(root, "finalize", &request, 0), receipt);
+    }
+}
+
 #[test]
 fn capture_recover_reports_accepted_state_through_the_same_recorder_and_writes_nothing() {
     let temporary = tempfile::tempdir().unwrap();

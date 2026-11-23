@@ -24,7 +24,7 @@ use crate::Output;
 pub(crate) const AGENT_INSTRUCTIONS_VERSION: &str = "inv.agent-instructions.v1";
 
 /// Version of the producer onboarding page.
-pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v1";
+pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v2";
 
 /// Version of the consumer migration recipe.
 pub(crate) const MIGRATION_GUIDANCE_VERSION: &str = "inv.migration-guidance.v1";
@@ -206,6 +206,11 @@ mod tests {
             "producer",
             "inv.producer-onboarding.v1",
             "sha256:e8905b26d3f6247306d381b42e0e6f020e3f3809ff270daab75c4d7377196ce1",
+        ),
+        (
+            "producer",
+            "inv.producer-onboarding.v2",
+            "sha256:5f06006909b0ccdf915e1a0441285faaadf499bc5e9dfb57a5d990dd4ca6c946",
         ),
         (
             "migration",

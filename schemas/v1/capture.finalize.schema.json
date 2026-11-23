@@ -363,7 +363,7 @@
       "type": "array"
     },
     "declared_artifacts": {
-      "description": "Item keys of every artifact the producer meant to attach, so absent ones\nare recorded as missing.",
+      "description": "Item keys of every artifact the producer meant to attach. Without\nstrict inventory, absent attachments are recorded as missing.",
       "items": {
         "$ref": "#/$defs/IdempotencyKey"
       },
@@ -410,6 +410,10 @@
         "$ref": "#/$defs/ExternalReceipt"
       },
       "type": "array"
+    },
+    "strict_artifact_inventory": {
+      "description": "Require declared artifact keys to match acknowledged attachment keys\nbefore sealing. Only valid with `completion: complete`.",
+      "type": "boolean"
     }
   },
   "required": [

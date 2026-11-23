@@ -3,5 +3,7 @@
   "key": "run-0001/finalize",
   "expected_last_position": 2,
   "completion": "complete",
+  "strict_artifact_inventory": true,
+  "declared_artifacts": ["result"],
   "execution": {"state": "completed", "exit_code": 0}
 }

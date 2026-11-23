@@ -1,4 +1,4 @@
-<!-- inv.producer-onboarding.v1 -->
+<!-- inv.producer-onboarding.v2 -->
 # Record a program run (producer onboarding)
 
 Read this if you write a program that runs something and want its run recorded. You need no investigation method, case or hypothesis. You send JSON to the `investigation` command and read JSON back. The protocol is `inv.capture.v1`. Any language works; use an argument array, never a shell string. The complete contract is in the repository file `docs/recording.md`. This page is enough to build a working producer.
@@ -70,6 +70,7 @@ investigation --workspace ./cases capture finalize --input - --format json
 ```json
 {"handle": "HANDLE", "key": "run-0001/finalize", "expected_last_position": 3,
  "completion": "complete", "execution": {"state": "completed", "exit_code": 0},
+ "strict_artifact_inventory": true,
  "channels": [{"channel": "results", "completeness": "complete"}],
  "declared_artifacts": ["result", "summary"],
  "assertions": [{"kind": "reported_metric", "name": "latency.p99", "value": 18.7, "unit": "ms"}],
@@ -79,7 +80,9 @@ investigation --workspace ./cases capture finalize --input - --format json
  "limitations": ["Single synthetic workload"], "metadata": {"example-org.fixture": {"seed": 7}}}
 ```
 
-`expected_last_position` is the last position you believe was accepted (`null` if none). `completion` is `complete` (you sent everything), `partial` (some items are known to be absent) or `interrupted` (you cannot vouch for your stream). The `state` of `execution` is one of `declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`, with optional `exit_code`, `error`, `started_at` and `ended_at`. List in `declared_artifacts` the key of every artifact you meant to attach: a key never attached is recorded as missing. Finalize seals the handle and writes an immutable manifest. It creates no verdict, and `finalized` does not mean the action completed.
+`expected_last_position` is the last position you believe was accepted (`null` if none). `completion` is `complete` (you sent everything), `partial` (some items are known to be absent) or `interrupted` (you cannot vouch for your stream). The `state` of `execution` is one of `declared`, `running`, `completed`, `failed`, `cancelled`, `blocked`, `unknown`, with optional `exit_code`, `error`, `started_at` and `ended_at`. Finalize seals the handle and writes an immutable manifest. Execution state is recorded separately.
+
+With `completion: complete`, opt in with `"strict_artifact_inventory": true` and list all acknowledged attachment keys in `declared_artifacts`, including attachments acknowledged as missing. If the lists differ, check `error.actual.missing` for declarations without an attachment and `error.actual.unexpected` for attachments absent from the declaration. The handle stays open. Recover the inventory, then send a corrected request with the same finalize key. With the flag omitted or `false`, unattached declarations are recorded as missing and undeclared attachments remain in the manifest. [Recording guide](../recording.md#strict-artifact-inventory)
 
 ### recover (read only)
 
