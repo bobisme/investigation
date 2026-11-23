@@ -295,7 +295,7 @@ fn result_value(context: &Context<'_>, hit: &Hit, position: usize, terms: &[Stri
         "--format".into(),
         "json".into(),
     ]);
-    json!({
+    let mut value = json!({
         "type":kind.to_string(),
         "id":record.header.id,
         "case_id":hit.case_id,
@@ -323,7 +323,9 @@ fn result_value(context: &Context<'_>, hit: &Hit, position: usize, terms: &[Stri
             ),
         },
         "next":[{"kind":"local_read","argv":show}],
-    })
+    });
+    crate::synopsis::search_fields(&mut value, &replay.state, index, record, classifier, policy);
+    value
 }
 
 /// Original-source lineage of evidence records: the artifact and source an

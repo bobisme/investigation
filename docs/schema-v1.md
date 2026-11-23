@@ -4,7 +4,7 @@ The public transaction envelope is `inv.command.v1`. Writes and structured error
 
 ## Using the contract
 
-`investigation schema --list --include-deferred --format json` lists active and reserved names. `investigation schema OPERATION --schema-only --format json` emits the exact payload shape. With `--schema-only` omitted, discovery includes examples, lifecycle and repair guidance. A reserved name has no active write handler. The `capture` wire name stays reserved until its schemas are published. `capture begin` and `capture append` already accept the requests in the [recording guide](recording.md). The journal keeps a begin request under the tag `inv.capture.v1`; appended items are staged per handle and are not journal transactions. The synopsis role remains part of the annotation schema, and record extensions remain namespaced separately.
+`investigation schema --list --include-deferred --format json` lists active and reserved names. `investigation schema OPERATION --schema-only --format json` emits the exact payload shape. With `--schema-only` omitted, discovery includes examples, lifecycle and repair guidance. A reserved name has no active write handler. The `capture` wire name stays reserved until its schemas are published. `capture begin` and `capture append` already accept the requests in the [recording guide](recording.md). The journal keeps a begin request under the tag `inv.capture.v1`; appended items are staged per handle and are not journal transactions. Record extensions remain namespaced separately.
 
 Put optional producer metadata in `source.metadata` on an ingest manifest. The Source record retains that object as opaque JSON and identifies the original bytes separately. Its contents carry neither additional authority nor effects. Required unsupported envelope versions produce a structured rejection before a transaction is committed.
 
@@ -88,6 +88,12 @@ A Run that searched a corpus records an optional `search_coverage` block with `r
 Every `related_refs` entry must be the current revision and must also be in `read_set`. A verdict of no gap cannot be combined with gaps, novel gaps or accepted audit gaps. There is no field that asserts exhaustive coverage, and unknown fields are rejected. The review creates only itself. It never validates, accepts or changes a Conclusion or Decision, and it cannot be the review that validates or accepts one.
 
 A blindspot review goes stale through the freshness index when a record it read or reviewed changes materially, for example when a Source in its read-set is withdrawn. It also goes stale (`check_set_changed`) when its audit's check set is no longer the registered one. A write that does not touch what it read leaves it current. A pack policy `blindspot_review` input counts only reviews that the freshness index shows as current.
+
+## Authored synopses
+
+`annotation.add` with `role: synopsis` records an attributed summary of one subject. It names exactly one subject at its current revision, holds text of at most 700 UTF-8 bytes, and cannot summarize another annotation. It has no evidentiary standing: evidence fields reject it, search labels its text `editorial_summary` and never counts it as a source hit, and its text is authored data, never instructions. A synopsis is not edited. A later synopsis of the same subject replaces it, and history keeps both.
+
+A synopsis is `current`, `stale` or `replaced`. It reads its freshness from the dependency index through its subject: a material revision of the subject, or anything that makes the subject need review, such as a withdrawn source or a revised criterion, makes it `stale` with the same reasons. `show` keeps the generated `summary`, caveat and freshness fields and adds `authored_synopsis`. At summary depth the text appears only while the synopsis is current; a stale one reports `fallback: deterministic_projection`, and `--depth full` shows its text and history. `show` on the synopsis itself and `search` report `synopsis_binding`. `brief` never carries synopsis text; it lists a count of current, stale and replaced synopses under `omissions` with a command to read one.
 
 ## Classification
 

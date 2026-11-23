@@ -915,17 +915,15 @@ mod tests {
             json!([{"op":"question.create", "payload":{"wording":"Why did the pool stall?", "importance":"normal"}}]),
         );
         let question_ref = question.records[0].reference();
-        let mut synopsis = append(
+        let synopsis = append(
             &mut state,
             Some(case_id),
             json!([{"op":"annotation.add", "payload":{
-                "subject_refs":[question_ref],
+                "subject_refs":[question_ref],"role":"synopsis",
                 "content":{"kind":"text","text":"Pool exhaustion is the leading account."}
             }}]),
         );
-        // The synopsis role is reserved for a later write path; the index
-        // must already label such text as editorial.
-        synopsis.records[0].body["role"] = json!("synopsis");
+        assert_eq!(synopsis.records[0].body["role"], "synopsis");
         let mut amended = question.clone();
         amended.sequence = 4;
         amended.records[0].header.revision = investigation_core::header::Revision(2);

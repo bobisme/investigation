@@ -636,7 +636,9 @@ pub(crate) fn record_title(record: &Record) -> String {
         Kind::Import => &["title", "source", "name"],
         Kind::Workspace => &["title", "name", "description"],
     };
-    for key in fields {
+    // A synopsis is titled by its own text; other annotations keep their fields.
+    let synopsis = investigation_core::synopsis::text(record).map(|_| "content.text");
+    for key in synopsis.iter().copied().chain(fields.iter().copied()) {
         if let Some(text) = value_at(&record.body, key).and_then(Value::as_str) {
             let safe = display_title(text, 160);
             if !safe.is_empty() {
@@ -690,6 +692,7 @@ pub(crate) fn record_summary(record: &Record) -> String {
         ],
         Kind::Review => &["scope", "method", "summary"],
         Kind::Objection => &["statement", "basis", "impact"],
+        Kind::Annotation if investigation_core::synopsis::is_synopsis(record) => &["content.text"],
         Kind::Annotation => &["text", "content", "role"],
         Kind::Retrospective => &["summary", "lessons", "follow_ups"],
         Kind::Inquiry => &["question", "method", "predicted_outcomes"],

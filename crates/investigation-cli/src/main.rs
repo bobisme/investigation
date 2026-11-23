@@ -13,6 +13,7 @@ mod schema;
 mod search;
 mod selection;
 mod shortcuts;
+mod synopsis;
 mod views;
 
 use std::{
@@ -431,6 +432,12 @@ fn show(
     {
         view[key] = origins;
     }
+    if view["content_state"] != "restricted"
+        && at.is_none()
+        && let Some(record) = record
+    {
+        synopsis::show_fields(&mut view, &replay.state, &index, record, depth);
+    }
     if depth == ViewDepth::Full
         && at.is_none()
         && let Some(record) = record
@@ -462,6 +469,7 @@ fn show(
         view["summary"].as_str().unwrap_or("")
     );
     text.push_str(&views::challenges_text(&view));
+    text.push_str(&synopsis::text_line(&view));
     Ok(Output::success("record_shown", view, text))
 }
 
@@ -550,6 +558,13 @@ fn brief(
         effective,
         next_actions: vec![json!({"kind":"local_read","argv":argv,"snapshot":replay.snapshot})],
         record_effective,
+        omissions: synopsis::brief_omission(
+            &replay.state,
+            &index,
+            &workspace_argv(store.workspace()),
+        )
+        .into_iter()
+        .collect(),
         ..BriefInputs::default()
     };
     let view =

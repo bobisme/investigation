@@ -18,6 +18,7 @@ use crate::{
         RetrospectiveSupersede,
     },
     state::{OperationContext, Record, State},
+    synopsis::{SYNOPSIS_MAX_BYTES, SYNOPSIS_ROLE},
     wire::{ErrorCode, Failure, Snapshot},
 };
 
@@ -460,10 +461,7 @@ pub(crate) fn check_retrospective(
 }
 
 fn annotation_shape(payload: &AnnotationInput) -> Result<(), Failure> {
-    if matches!(
-        payload.role,
-        Some(AnnotationRole::Synopsis | AnnotationRole::AdviceFeedback)
-    ) {
+    if matches!(payload.role, Some(AnnotationRole::AdviceFeedback)) {
         return Err(Failure::new(
             ErrorCode::InvalidInput,
             "This annotation role is deferred. Record an ordinary note for now.",
@@ -480,10 +478,38 @@ fn annotation_shape(payload: &AnnotationInput) -> Result<(), Failure> {
     if let AnnotationContent::Text { text: content } = &payload.content.content {
         text(content, "/content/text")?;
     }
+    if matches!(payload.role, Some(AnnotationRole::Synopsis)) {
+        synopsis_shape(&payload.content)?;
+    }
     Ok(())
 }
 
+/// A synopsis is bounded text about exactly one subject revision.
+fn synopsis_shape(payload: &AnnotationAdd) -> Result<(), Failure> {
+    if payload.subject_refs.len() != 1 {
+        return Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "A synopsis summarizes exactly one subject revision.",
+        )
+        .at("/subject_refs"));
+    }
+    match &payload.content {
+        AnnotationContent::Text { text } if text.len() > SYNOPSIS_MAX_BYTES => Err(Failure::new(
+            ErrorCode::InvalidInput,
+            format!("Keep a synopsis within {SYNOPSIS_MAX_BYTES} UTF-8 bytes."),
+        )
+        .at("/content/text")),
+        AnnotationContent::Text { .. } => Ok(()),
+        AnnotationContent::Artifact { .. } => Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "A synopsis is text. Attach a note snapshot as an ordinary note.",
+        )
+        .at("/content")),
+    }
+}
+
 fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
+    let synopsis = matches!(payload.role, Some(AnnotationRole::Synopsis));
     let AnnotationAdd {
         subject_refs,
         mut content,
@@ -500,6 +526,9 @@ fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> R
                 "List one revision per annotation subject.",
             )
             .at(path));
+        }
+        if synopsis {
+            synopsis_subject(ctx, exact, &path)?;
         }
         subjects.push(exact);
     }
@@ -546,11 +575,42 @@ fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> R
         json!({
             "subject_refs": subjects,
             "content": content,
-            "role": "note",
+            "role": if synopsis { SYNOPSIS_ROLE } else { "note" },
             "evidentiary_status": "none",
         }),
         classification,
     )?;
+    Ok(())
+}
+
+/// A synopsis binds the subject's current revision, so it is never written
+/// already stale, and it summarizes a record rather than another annotation.
+fn synopsis_subject(
+    ctx: &OperationContext<'_>,
+    exact: RevisionRef,
+    path: &str,
+) -> Result<(), Failure> {
+    if exact.id.kind() == Kind::Annotation {
+        return Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "A synopsis summarizes a record, not another annotation.",
+        )
+        .at(path));
+    }
+    if ctx
+        .current(exact.id)
+        .is_none_or(|current| current.reference() != exact)
+    {
+        let mut failure = Failure::new(
+            ErrorCode::InvalidInput,
+            "A synopsis must bind the subject's current revision. Read the subject again.",
+        )
+        .at(path);
+        failure.error.actual = ctx
+            .current(exact.id)
+            .map(|current| json!(current.reference()));
+        return Err(failure);
+    }
     Ok(())
 }
 
@@ -623,9 +683,9 @@ pub(crate) fn operations() -> [OperationDescriptor; 3] {
             info(
                 "annotation.add",
                 "record",
-                "Attach an attributed narrative note.",
-                "Record context or a note snapshot for a subject without asserting evidence.",
-                "Create a classified annotation with exact subjects and no evidentiary standing.",
+                "Attach an attributed narrative note or authored synopsis.",
+                "Record context, a note snapshot or, with role synopsis, a bounded summary of one subject revision without asserting evidence.",
+                "Create a classified annotation with exact subjects and no evidentiary standing. A synopsis turns stale when its subject changes materially.",
                 "Annotation ID and revision 1.",
                 "Use exact revisions or aliases of subjects created earlier in this transaction.",
                 "Use an exact subject and either text or a verified artifact with its digest.",
@@ -897,12 +957,10 @@ mod tests {
             Some("/operations/0/payload/invalid_or_misleading_steps/0/support_refs/0")
         );
 
-        for role in ["synopsis", "advice_feedback"] {
-            let deferred = case.transact(vec![json!({"op":"annotation.add","payload":{
-                "subject_refs":[expected],"content":{"kind":"text","text":"A reserved annotation."},"role":role
-            }})], &[]).unwrap_err();
-            assert!(deferred.error.message.contains("deferred"));
-        }
+        let deferred = case.transact(vec![json!({"op":"annotation.add","payload":{
+            "subject_refs":[expected],"content":{"kind":"text","text":"A reserved annotation."},"role":"advice_feedback"
+        }})], &[]).unwrap_err();
+        assert!(deferred.error.message.contains("deferred"));
     }
 
     #[test]
