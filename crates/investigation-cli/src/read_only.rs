@@ -83,6 +83,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("integration inspect", Effect::Read),
     ("integration apply", Effect::WriteUnlessFlag("dry_run")),
     ("integration remove", Effect::WriteUnlessFlag("dry_run")),
+    // Hidden spelling of --version.
+    ("version", Effect::Read),
 ];
 
 fn effect_of(path: &str) -> Option<Effect> {

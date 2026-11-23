@@ -55,7 +55,10 @@ use investigation_core::{
     header::Actor,
     identity::{ResolveError, resolve_prefix},
     input::MAX_REQUEST_BYTES,
-    wire::{CommitStatus, ErrorCode, Failure, Guidance, GuidanceKind, Receipt, ResponseVersion},
+    wire::{
+        CommitResult, CommitStatus, ErrorCode, Failure, Guidance, GuidanceKind, Receipt,
+        ResponseVersion,
+    },
 };
 use investigation_store::{Store, Workspace, store::ReceiptLookup, workspace::WorkspaceError};
 use serde::Serialize;
@@ -123,7 +126,7 @@ pub(crate) struct Global {
     /// Self-reported session label for evidence reads and writes, or INVESTIGATION_SESSION.
     #[arg(long, global = true, value_name = "LABEL")]
     pub(crate) session: Option<investigation_core::inherited_trust::Session>,
-    /// Select text or a single machine-readable JSON object.
+    /// Select text or a single machine-readable JSON object; pretty prints the text form.
     #[arg(
         long,
         global = true,
@@ -159,6 +162,8 @@ pub(crate) struct Global {
 enum Format {
     Text,
     Json,
+    // Renders as text: it is already the human-readable form and carries no color.
+    Pretty,
 }
 
 #[derive(Subcommand)]
@@ -297,6 +302,10 @@ enum Commands {
     /// Show, apply or remove the agent instructions in a file you name; never implicit.
     #[command(subcommand, after_help = integration::AFTER_HELP)]
     Integration(integration::IntegrationCommand),
+    /// Print the program version; the same as --version.
+    // Hidden: agents guess `version` before `--version`, so accept it quietly.
+    #[command(hide = true)]
+    Version,
 }
 
 #[derive(Subcommand)]
@@ -359,6 +368,8 @@ impl Output {
 /// Read presentation switches before clap validates the rest of the command.
 /// Stop at the positional separator so an operand named --json stays an operand.
 fn requested_format(args: &[OsString]) -> Format {
+    // `pretty` renders as text: there is no separate terminal rendering, and
+    // a terminal and a pipe therefore receive the same output.
     let mut format = match env::var("FORMAT").as_deref() {
         Ok("json") => Format::Json,
         _ => Format::Text,
@@ -368,13 +379,13 @@ fn requested_format(args: &[OsString]) -> Format {
         match arg.to_str() {
             Some("--") => break,
             Some("--json" | "--format=json") => format = Format::Json,
-            Some("--format=text") => format = Format::Text,
+            Some("--format=text" | "--format=pretty") => format = Format::Text,
             Some("--format") => match args.peek().and_then(|arg| arg.to_str()) {
                 Some("json") => {
                     args.next();
                     format = Format::Json;
                 }
-                Some("text") => {
+                Some("text" | "pretty") => {
                     args.next();
                     format = Format::Text;
                 }
@@ -401,6 +412,10 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Method(command) => guide::method(command, &global),
         Commands::Doctor(args) => doctor::run(args, &global),
         Commands::Integration(command) => integration::run(command),
+        Commands::Version => Ok(version_output(format!(
+            "{PROGRAM_NAME} {}",
+            env!("CARGO_PKG_VERSION")
+        ))),
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
@@ -456,7 +471,8 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Guide(_)
                 | Commands::Method(_)
                 | Commands::Doctor(_)
-                | Commands::Integration(_) => {
+                | Commands::Integration(_)
+                | Commands::Version => {
                     unreachable!("workspace-independent command")
                 }
             }
@@ -485,6 +501,9 @@ fn show(
     let pinned = snapshot::resolve(store.case(case)?, pin, retry)?;
     let replay = pinned.read();
     let today = pinned.today();
+    let mut prefix = workspace_argv(store.workspace());
+    prefix.extend(["--case".into(), case.to_string()]);
+    let records = brief::follow_up(&prefix, &["brief"]);
     let id = resolve_prefix(
         selector,
         replay.state.records().map(|record| record.header.id),
@@ -494,12 +513,14 @@ fn show(
             ErrorCode::InvalidInput,
             "Supply an ID or unique typed prefix.",
         )
-        .at("/id"),
+        .at("/id")
+        .with_argv(records),
         ResolveError::NotFound => Failure::new(
             ErrorCode::UnknownReference,
             "No record in this case matches that ID.",
         )
-        .at("/id"),
+        .at("/id")
+        .with_argv(records),
         ResolveError::Ambiguous(candidates) => {
             let mut failure = Failure::new(
                 ErrorCode::AmbiguousReference,
@@ -1020,6 +1041,10 @@ pub(crate) fn receipt_output(workspace: &Workspace, mut receipt: Receipt) -> Out
         scope_argv(workspace, &mut next.argv);
     }
     let mut text = receipt.transaction_id.to_string();
+    // A retry says so: its lines are otherwise those of the first commit.
+    if receipt.result == CommitResult::AlreadyCommitted {
+        text.push_str("  already_committed");
+    }
     for change in receipt.created.iter().chain(&receipt.updated) {
         text.push_str(&format!("\n{}  revision {}", change.id, change.revision));
     }
@@ -1117,6 +1142,7 @@ fn main() -> ExitCode {
     logging::init(&args);
     let format = requested_format(&args);
     let parser = help_teach::command_tree();
+    let help = help_argv(&parser, &args);
     let parsed = parser.try_get_matches_from(args);
     let output = match parsed {
         Ok(mut matches) => {
@@ -1127,11 +1153,11 @@ fn main() -> ExitCode {
             } else {
                 match Cli::from_arg_matches_mut(&mut matches) {
                     Ok(cli) => dispatch(cli).unwrap_or_else(Output::failure),
-                    Err(error) => parse_error(error),
+                    Err(error) => parse_error(error, help),
                 }
             }
         }
-        Err(error) => parse_error(error),
+        Err(error) => parse_error(error, help),
     };
 
     // Authored and recorded text never reaches a terminal with a literal
@@ -1143,10 +1169,12 @@ fn main() -> ExitCode {
             "{}",
             escape_for_terminal(&output.value.to_string())
         ),
-        Format::Text if output.exit != 0 && output.value.get("error").is_some() => {
+        Format::Text | Format::Pretty
+            if output.exit != 0 && output.value.get("error").is_some() =>
+        {
             writeln!(io::stderr().lock(), "{text}")
         }
-        Format::Text => writeln!(io::stdout().lock(), "{text}"),
+        Format::Text | Format::Pretty => writeln!(io::stdout().lock(), "{text}"),
     };
     match result {
         Ok(()) => ExitCode::from(output.exit),
@@ -1155,25 +1183,58 @@ fn main() -> ExitCode {
     }
 }
 
-fn parse_error(error: clap::Error) -> Output {
+/// The help argv for the deepest subcommand named on the command line, so a
+/// refused flag points at the help that lists the flags of that subcommand.
+fn help_argv(root: &clap::Command, args: &[OsString]) -> Vec<String> {
+    let takes_value = |command: &clap::Command, long: &str| {
+        command
+            .get_arguments()
+            .chain(root.get_arguments())
+            .find(|arg| arg.get_long() == Some(long))
+            .is_some_and(|arg| arg.get_action().takes_values())
+    };
+    let mut argv = vec![PROGRAM_NAME.to_owned()];
+    let mut command = root;
+    let mut args = args.iter().skip(1);
+    while let Some(arg) = args.next().and_then(|arg| arg.to_str()) {
+        if arg == "--" {
+            break;
+        } else if let Some(long) = arg.strip_prefix("--") {
+            if !long.contains('=') && takes_value(command, long) {
+                args.next();
+            }
+        } else if arg.starts_with('-') {
+            continue;
+        } else if let Some(subcommand) = command.find_subcommand(arg) {
+            argv.push(subcommand.get_name().to_owned());
+            command = subcommand;
+        } else {
+            break;
+        }
+    }
+    argv.extend(["--help", "--format", "json"].map(str::to_owned));
+    argv
+}
+
+fn parse_error(error: clap::Error, help: Vec<String>) -> Output {
     match error.kind() {
         ErrorKind::DisplayHelp | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand => {
             let text = error.to_string();
             Output::success("help", json!({ "help": text }), text)
         }
-        ErrorKind::DisplayVersion => Output::success(
-            "version",
-            json!({ "program": PROGRAM_NAME, "version": env!("CARGO_PKG_VERSION") }),
-            error.to_string(),
-        ),
+        ErrorKind::DisplayVersion => version_output(error.to_string()),
         _ => Output::failure(
-            Failure::new(ErrorCode::InvalidInput, error.to_string()).with_argv(
-                [PROGRAM_NAME, "--help", "--format", "json"]
-                    .map(str::to_owned)
-                    .to_vec(),
-            ),
+            Failure::new(ErrorCode::InvalidInput, error.to_string()).with_argv(help),
         ),
     }
+}
+
+fn version_output(text: String) -> Output {
+    Output::success(
+        "version",
+        json!({ "program": PROGRAM_NAME, "version": env!("CARGO_PKG_VERSION") }),
+        text,
+    )
 }
 
 fn dispatch_shortcut(shortcut: shortcuts::ParsedShortcut) -> Result<Output, Failure> {

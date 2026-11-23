@@ -898,7 +898,7 @@ fn quoted(record: &Record) -> (Vec<Value>, usize) {
     (shown, omitted)
 }
 
-fn resolve(replay: &CaseReplay, selector: &str) -> Result<Id, Failure> {
+fn resolve(replay: &CaseReplay, selector: &str, records: Vec<String>) -> Result<Id, Failure> {
     resolve_prefix(
         selector,
         replay.state.records().map(|record| record.header.id),
@@ -908,12 +908,14 @@ fn resolve(replay: &CaseReplay, selector: &str) -> Result<Id, Failure> {
             ErrorCode::InvalidInput,
             "Supply an ID or unique typed prefix.",
         )
-        .at("/id"),
+        .at("/id")
+        .with_argv(records),
         ResolveError::NotFound => Failure::new(
             ErrorCode::UnknownReference,
             "No record in this case matches that ID.",
         )
-        .at("/id"),
+        .at("/id")
+        .with_argv(records),
         ResolveError::Ambiguous(candidates) => {
             let mut failure = Failure::new(
                 ErrorCode::AmbiguousReference,
@@ -934,7 +936,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     let pinned = snapshot::resolve(store.case(case)?, &args.snapshot, retry)?;
     let replay = pinned.read();
     let today = pinned.today();
-    let root = resolve(replay, &args.id)?;
+    let root = resolve(replay, &args.id, brief::follow_up(&prefix, &["brief"]))?;
     let context = Context {
         store,
         replay,

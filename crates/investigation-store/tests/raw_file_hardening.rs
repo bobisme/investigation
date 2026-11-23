@@ -280,10 +280,10 @@ fn ingest_paths_cannot_leave_the_import_root() {
         (secret.to_str().unwrap(), "outside configured import roots"),
         ("link.txt", ""),
         ("linked-dir/secret.txt", ""),
-        ("hard.txt", "MultipleLinks"),
-        ("inside", "NotRegular"),
+        ("hard.txt", "more than one hard link"),
+        ("inside", "not a regular file"),
         // Opened non-blocking and refused as not regular: no hang on a FIFO.
-        ("pipe", "NotRegular"),
+        ("pipe", "not a regular file"),
     ];
     for (index, (path, reason)) in cases.into_iter().enumerate() {
         let started = Instant::now();
@@ -292,7 +292,7 @@ fn ingest_paths_cannot_leave_the_import_root() {
         assert_eq!(failure.error.path.as_deref(), Some("/paths/0"), "{path}");
         let message = &failure.error.message;
         assert!(
-            message.contains(reason) || (reason == ".." && message.contains("InvalidPath")),
+            message.contains(reason) || (reason == ".." && message.contains("invalid path")),
             "{path}: {message}"
         );
         assert!(!message.contains("outside the import root\""));
@@ -319,7 +319,7 @@ fn a_file_over_the_import_limit_is_refused_before_it_is_read() {
     drop(file);
     let (failure, most) = peak(|| fixture.refused("huge", "huge.bin"));
     assert!(
-        failure.error.message.contains("TooLarge"),
+        failure.error.message.contains("the limit is"),
         "{}",
         failure.error.message
     );

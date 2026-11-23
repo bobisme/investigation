@@ -19,11 +19,12 @@
 use clap::Command as Cmd;
 use investigation_core::PROGRAM_NAME;
 
-/// Every command path in the live tree, root first, excluding `help`.
+/// Every command path in the live tree, root first, excluding `help` and
+/// hidden commands, which `--help` never shows and so cannot teach.
 fn paths(command: &clap::Command, prefix: &[String], out: &mut Vec<Vec<String>>) {
     out.push(prefix.to_vec());
     for sub in command.get_subcommands() {
-        if sub.get_name() == "help" {
+        if sub.get_name() == "help" || sub.is_hide_set() {
             continue;
         }
         let mut path = prefix.to_vec();

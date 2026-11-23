@@ -322,7 +322,8 @@ impl Failure {
 
 impl fmt::Display for Failure {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(path) = &self.error.path {
+        // An empty path is the document root: no ": " prefix without a name.
+        if let Some(path) = self.error.path.as_deref().filter(|path| !path.is_empty()) {
             write!(formatter, "{path}: ")?;
         }
         formatter.write_str(&self.error.message)

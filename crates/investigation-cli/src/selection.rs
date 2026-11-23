@@ -68,7 +68,11 @@ pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {
         }
         _ => "",
     };
-    let failure = Failure::new(code, format!("{error}{advice}"));
+    let mut message = error.to_string();
+    if !advice.is_empty() && !message.ends_with(['.', '!', '?']) {
+        message.push('.');
+    }
+    let failure = Failure::new(code, format!("{message}{advice}"));
     if code == ErrorCode::WorkspaceRequired {
         failure.with_argv(
             [PROGRAM_NAME, "onboard", "--format", "json"]

@@ -28,9 +28,30 @@ impl fmt::Display for ImportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "import root {:?}, path {:?}: {:?}",
+            "import root {:?}, path {:?}: {}",
             self.root, self.path, self.reason
         )
+    }
+}
+impl fmt::Display for ImportErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InvalidPath => f.write_str(
+                "invalid path: name a file beneath the import root without `.` or `..` components",
+            ),
+            Self::Unsupported => f.write_str("this kernel lacks openat2"),
+            Self::Io(error) => write!(f, "{error}"),
+            Self::NotRegular => f.write_str("not a regular file"),
+            Self::MultipleLinks => f.write_str(
+                "the file has more than one hard link; import a copy with a single link",
+            ),
+            Self::TooLarge { size, limit } => {
+                write!(f, "the file is {size} bytes; the limit is {limit} bytes")
+            }
+            Self::Changed => {
+                f.write_str("the file changed while it was read; retry the identical request")
+            }
+        }
     }
 }
 impl std::error::Error for ImportError {}
