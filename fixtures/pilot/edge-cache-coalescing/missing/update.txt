@@ -1,0 +1,4 @@
+Clock alignment correction for the catalog experiment.
+The span ID match is unreliable because proxy and worker clocks were not mapped.
+No raw upstream counter survived for the coalescing-on window. The surviving off windows each counted eight.
+A same-worker off/on/off renewal with upstream counters could show whether duplicate requests fall only when coalescing is on.

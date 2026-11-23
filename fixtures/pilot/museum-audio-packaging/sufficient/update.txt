@@ -1,0 +1,4 @@
+Exhibit operations addendum. A new hard requirement sets a peak of 95 MB during installation while the previous copy stays readable.
+Whole-bundle's measured installation peak was 159 MB. Delta-pack peaked at 91 MB with the prior copy readable.
+An interruption at 30 seconds left the old Delta-pack copy playable. Installation speed has no effect on eligibility under the peak requirement.
+A measurement showing Delta-pack above 95 MB would eliminate it. A Whole-bundle redesign meeting both the peak and rollback conditions could restore its speed preference.

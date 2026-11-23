@@ -1,0 +1,4 @@
+Localization governance addendum, effective before acceptance.
+A new hard requirement prohibits another department's extracts from being readable when the index is offline.
+In a machine-offline review of both snapshots, Central-index (lookup hub) presented raw neighbor extracts while Local-shard exposed only its own team's text.
+The same search and indexing tests still apply. Changing search latency alone cannot restore Central-index eligibility. A demonstrated isolation change under the same offline test could.

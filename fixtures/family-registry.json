@@ -34,6 +34,240 @@
       "variants": [
         {"id": "default", "split": "development", "directory": "development/w01-handoff"}
       ]
+    },
+    {
+      "id": "edge-cache-coalescing",
+      "split": "pilot",
+      "domain": "debugging",
+      "key": "pilot/edge-cache-coalescing.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/edge-cache-coalescing/sufficient",
+          "objective": "Determine what explains duplicate catalog origin requests at cache expiration. State what another run would have to show to change the answer.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "81bc4e798df47f409ef302ff4a96f24dd3ebd4029e1e0c6e09f38128b3ad76d1"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "ba00818df51d30e91d2542aee396454a2daa3b91f902fa51526dbacc57273d5e"
+          }
+        },
+        {
+          "id": "missing",
+          "split": "pilot",
+          "directory": "pilot/edge-cache-coalescing/missing",
+          "objective": "Determine what explains duplicate catalog origin requests at cache expiration. State what another run would have to show to change the answer.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "81bc4e798df47f409ef302ff4a96f24dd3ebd4029e1e0c6e09f38128b3ad76d1"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "3f021079b30dbbb97ab404f409386d75f1b76935a3fd31cd5866f3430e3f3a72"
+          }
+        }
+      ]
+    },
+    {
+      "id": "digest-window-fold",
+      "split": "pilot",
+      "domain": "debugging",
+      "key": "pilot/digest-window-fold.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/digest-window-fold/sufficient",
+          "objective": "Explain why a daily digest was delivered twice in the test feed, including what would distinguish two producer windows from a delivery retry.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "95358b199c901e836cb1c5ce18f5903fd24f05106a1641984ed350e51325a3f7"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "09580c3bc082fc641df19f6043035732435c6e07b7ba75f0bf11beb5b0c78e36"
+          }
+        },
+        {
+          "id": "cosmetic",
+          "split": "pilot",
+          "directory": "pilot/digest-window-fold/cosmetic",
+          "objective": "Explain why a daily digest was delivered twice in the test feed, including what would distinguish two producer windows from a delivery retry.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "95358b199c901e836cb1c5ce18f5903fd24f05106a1641984ed350e51325a3f7"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "5f90ee475edc1961cab04d508fe5bfb60d9184a13c75e038e26d6817d9d00d14"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sprite-linear-export",
+      "split": "pilot",
+      "domain": "debugging",
+      "key": "pilot/sprite-linear-export.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/sprite-linear-export/sufficient",
+          "objective": "Explain what the sprite test establishes about desaturation. Distinguish the export conversion from a rendering-profile effect.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "7157637695ad4c9c79a0662780af18c7bd70b39f85e329f0157d6e59cf138bdd"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "5b63edca9f67f9df31c05305f33af73ce4604a826c75ff6fb2b8285ed05c7157"
+          }
+        },
+        {
+          "id": "missing",
+          "split": "pilot",
+          "directory": "pilot/sprite-linear-export/missing",
+          "objective": "Explain what the sprite test establishes about desaturation. Distinguish the export conversion from a rendering-profile effect.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "7157637695ad4c9c79a0662780af18c7bd70b39f85e329f0157d6e59cf138bdd"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "22bedf7600969459f52868a456aebf738b4a969d7a216a6c989c7d4864e0d8d3"
+          }
+        }
+      ]
+    },
+    {
+      "id": "field-logger-autonomy",
+      "split": "pilot",
+      "domain": "architecture",
+      "key": "pilot/field-logger-autonomy.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/field-logger-autonomy/sufficient",
+          "objective": "Choose a logging arrangement for the isolated field station under the stated preferences and hard requirements. Explain whether further measurement could change the choice.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "f123fe043badcc19ffeee12833dd33b69a876f317fef2df7afe63ae587780bc7"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "a7fb1157a05737ee6b8f5df4d253e9043aaa1100c8b36355c38b30c3eb247f91"
+          }
+        },
+        {
+          "id": "missing",
+          "split": "pilot",
+          "directory": "pilot/field-logger-autonomy/missing",
+          "objective": "Choose a logging arrangement for the isolated field station under the stated preferences and hard requirements. Explain whether further measurement could change the choice.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "f123fe043badcc19ffeee12833dd33b69a876f317fef2df7afe63ae587780bc7"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "a687345cea510782c00863af300e8e1106b74bfdd195a0e5e00c6d0912cce355"
+          }
+        }
+      ]
+    },
+    {
+      "id": "lexicon-workspace-index",
+      "split": "pilot",
+      "domain": "architecture",
+      "key": "pilot/lexicon-workspace-index.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/lexicon-workspace-index/sufficient",
+          "objective": "Select the translation index architecture for the test organization using its current hard requirements and stated preference. Identify what could change the selection.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "325bcb2c841a684d7a5f24c9c98a77592301c02315a69969b7462d781c48baf0"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "ca799e47a389babe46e71d0f4730b9c99a8dbd36b0988f2992255709ef059de2"
+          }
+        },
+        {
+          "id": "cosmetic",
+          "split": "pilot",
+          "directory": "pilot/lexicon-workspace-index/cosmetic",
+          "objective": "Select the translation index architecture for the test organization using its current hard requirements and stated preference. Identify what could change the selection.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "325bcb2c841a684d7a5f24c9c98a77592301c02315a69969b7462d781c48baf0"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "ba99384e0a1a63a5964d1e276c5eae9ac80955be85dc3f2cfa63d3592c52dd3f"
+          }
+        }
+      ]
+    },
+    {
+      "id": "museum-audio-packaging",
+      "split": "pilot",
+      "domain": "architecture",
+      "key": "pilot/museum-audio-packaging.json",
+      "variants": [
+        {
+          "id": "sufficient",
+          "split": "pilot",
+          "directory": "pilot/museum-audio-packaging/sufficient",
+          "objective": "Recommend an exhibit audio update format that respects the current constraints. Explain if a further measurement can affect the selection.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "5ab979886e4cc5126a335fa3cfdb9e02716fc0c78e3fb3c21abd19fabfe80261"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "dd840412fdfcbaa725343cb6be5ddb2f534623523721387ff466d01292d77fa4"
+          }
+        },
+        {
+          "id": "missing",
+          "split": "pilot",
+          "directory": "pilot/museum-audio-packaging/missing",
+          "objective": "Recommend an exhibit audio update format that respects the current constraints. Explain if a further measurement can affect the selection.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "5ab979886e4cc5126a335fa3cfdb9e02716fc0c78e3fb3c21abd19fabfe80261"
+          },
+          "update": {
+            "file": "update.txt",
+            "sha256": "f7da72f804b0f8c8e76aa194235ed93881aef8afb7bcf86045f2b8eed28ffebd"
+          }
+        }
+      ]
+    },
+    {
+      "id": "gallery-crate-lookup",
+      "split": "pilot",
+      "domain": "lookup",
+      "key": "pilot/gallery-crate-lookup.json",
+      "variants": [
+        {
+          "id": "lookup",
+          "split": "pilot",
+          "directory": "pilot/gallery-crate-lookup/lookup",
+          "objective": "Find the accession code of the crate assigned to the east gallery. Cite the exact record and state any limitation.",
+          "initial": {
+            "file": "source.txt",
+            "sha256": "c258b3162631ec19d68b209c3c0592c773c64fd8cbc852c24b93f656a322630e"
+          }
+        }
+      ]
     }
   ]
 }

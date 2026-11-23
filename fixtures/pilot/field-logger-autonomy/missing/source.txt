@@ -1,0 +1,5 @@
+The field station must keep sensor logs for at least 48 hours without mains power at the specified workload.
+Depot-sync lasts 96 hours on the field battery and costs $240 per season. Relay-stream lasts 62 hours and costs $410 per season.
+Both options verify record checksums in the same workload. Prefer the lower seasonal cost among eligible options.
+The battery numbers are from a temperature-matched test. The two designs use the same sensor rate.
+The pre-review preference is Depot-sync under the 48-hour requirement.

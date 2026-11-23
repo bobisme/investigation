@@ -1,0 +1,5 @@
+A synthetic image export loses saturation on a sprite sheet. Its raw source bytes contain an embedded sRGB ICC profile.
+The work log reports colors matching the source when a double linear-space conversion is disabled.
+The work log attributes the change to export flag linear-twice. Disabling and restoring that flag were recorded as a control and reversal.
+A reader compared RGB from export files rendered on the same test machine.
+One screenshot comes from a separate preview application with an unknown color pipeline.

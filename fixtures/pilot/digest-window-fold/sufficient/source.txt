@@ -1,0 +1,5 @@
+Two mail deliveries in the synthetic branch test have matching recipients and digest-body hashes.
+Two producer ledger rows carry the same local 01:30 label and distinct offsets, -04:00 and -05:00.
+Each ledger row has exactly one complete send acknowledgment. The test sheet groups the rows by message label.
+A UTC-key control uses one canonical subscription-day key and produced one row. Turning the UTC-key rule off restored two rows.
+The delivery harness records acknowledgment counts per ledger row independently from the producers.

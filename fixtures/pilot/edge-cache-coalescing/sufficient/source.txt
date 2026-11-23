@@ -1,0 +1,5 @@
+A synthetic catalog API makes eight upstream requests whenever an otherwise identical eight-client burst reaches an expired cache key.
+A warm-key control sent zero upstream requests. With an expired key, origin health and p95 remained ordinary.
+The experiment sheet reports one upstream request with request coalescing enabled, followed by eight when it is disabled again.
+The comparison uses the same catalog and request pattern. The match was recorded from proxy span IDs.
+A separate upstream-slowdown capture used a different worker build and contains no matched control.

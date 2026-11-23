@@ -1,0 +1,5 @@
+A synthetic translation team needs search p95 under 130 ms and one full re-index per night.
+Central-index reports 72 ms p95 and finishes a re-index in 44 minutes. Local-shard reports 113 ms and finishes in 71 minutes.
+Engineering prefers lower ongoing work among eligible options. Central-index needs one weekly operator-hour, Local-shard three.
+Each test used the same corpus and the same file-set revisions. No option depends on a third-party network provider.
+The pre-review preference is Central-index, with both choices inside the initial timing criteria.

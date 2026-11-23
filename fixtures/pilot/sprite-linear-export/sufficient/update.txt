@@ -1,0 +1,4 @@
+Color test correction. The two preview screenshots used different display profiles and do not establish an export change.
+Retained file-level pixel values from the same embedded profile are (155,82,60), (211,69,44), (155,82,60) with the flag on, off, and restored.
+The source swatch is (211,69,44). The paired file-byte test supports a double conversion in this export path.
+An export with unchanged embedded profile and the flag off that still has the dull file pixels would weaken the explanation.

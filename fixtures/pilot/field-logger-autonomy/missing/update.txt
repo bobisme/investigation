@@ -1,0 +1,4 @@
+Field station charter addendum, effective before acceptance.
+A new hard requirement mandates retrieval by the next shift within 4 hours when the access road is closed.
+Depot-sync requires a road pickup and took 18 hours. No relevant relay retrieval time was retained from the road-closure rehearsal.
+An end-to-end road-closure timing at the target workload would decide whether Relay-stream can be selected. Depot-sync costs less but remains ineligible.

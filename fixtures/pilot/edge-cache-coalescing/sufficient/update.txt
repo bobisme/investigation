@@ -1,0 +1,4 @@
+Clock alignment correction for the catalog experiment.
+The span ID match is unreliable because proxy and worker clocks were not mapped.
+Raw same-worker upstream counters independently show 8, 1, and 8 for off, on, and off after reversal.
+Both counter windows close after all eight clients complete. This supports the coalescing mechanism for this exact load; origin latency elsewhere remains untested.

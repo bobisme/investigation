@@ -1,0 +1,4 @@
+Color test correction. The two preview screenshots used different display profiles and do not establish an export change.
+The measurement extractor discarded the exported images. There are no file-level pixel values for the candidate flag.
+The observations establish a preview difference, with the export conversion and display profiles still unseparated.
+Retain file bytes under one embedded profile and compare the pixels with the flag on, off, and restored.

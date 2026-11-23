@@ -1,0 +1,5 @@
+The synthetic museum tour needs updates that install offline and use less than 150 MB on the cart.
+Whole-bundle uses 128 MB and installs in 45 seconds. Delta-pack uses 62 MB and installs in 61 seconds.
+Operations prefers shorter installations when all hard constraints are satisfied. Both installed correctly in the normal tests.
+The same exhibit set and audio decoding were used. Whole-bundle is the provisional recommendation.
+The current installed copy must remain readable after any interrupted update.
