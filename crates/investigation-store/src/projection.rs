@@ -10,6 +10,7 @@ use investigation_core::{
     header::Actor,
     identity::{Id, Kind},
     retrospective::Relation,
+    search_text::{TextLabel, indexed_texts},
     state::AcceptedTransaction,
     wire::{Digest, ErrorCode, Failure, Receipt, Snapshot},
 };
@@ -17,9 +18,12 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, pa
 
 use crate::store::ingest::acquisition::AcquisitionCursor;
 
-// Version 2 added acquisitions; version 3 adds the record dependency index.
-// Older indexes are rebuilt.
-const INDEX_USER_VERSION: u32 = 3;
+// Version 2 added acquisitions; version 3 added the record dependency index;
+// version 4 adds full-text search over labelled record text. Older indexes are
+// rebuilt.
+const INDEX_USER_VERSION: u32 = 4;
+/// Rows read from the full-text index for one query, before canonical checks.
+pub const MAX_SEARCH_CANDIDATES: usize = 5_000;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy)]
@@ -33,6 +37,16 @@ pub struct IndexEvent<'a> {
 
 pub struct Projection {
     database: Connection,
+}
+
+/// One indexed field whose text contains every query term. A pointer for the
+/// caller to verify against canonical state, never a result by itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SearchCandidate {
+    pub case_id: Id,
+    pub record: RevisionRef,
+    pub field: String,
+    pub label: TextLabel,
 }
 
 /// One exact reference from a record revision to the revision it cites.
@@ -118,7 +132,17 @@ impl Projection {
                      PRIMARY KEY (dependent_id, dependent_revision, field, target_id, target_revision)
                  );
                  CREATE INDEX IF NOT EXISTS dependencies_targets
-                     ON dependencies (case_id, target_id, target_revision);",
+                     ON dependencies (case_id, target_id, target_revision);
+                 CREATE TABLE IF NOT EXISTS search_fields (
+                     row INTEGER PRIMARY KEY, case_id TEXT NOT NULL,
+                     record_id TEXT NOT NULL, revision INTEGER NOT NULL,
+                     field TEXT NOT NULL, label TEXT NOT NULL, text TEXT NOT NULL
+                 );
+                 CREATE INDEX IF NOT EXISTS search_fields_record ON search_fields (record_id);
+                 CREATE VIRTUAL TABLE IF NOT EXISTS search_text USING fts5(
+                     text, content='search_fields', content_rowid='row',
+                     tokenize='unicode61 remove_diacritics 0'
+                 );",
             )
             .map_err(db_error)?;
         database
@@ -253,6 +277,7 @@ impl Projection {
                 )
                 .map_err(db_error)?;
             }
+            replace_search_text(&tx, &case_id, record)?;
         }
         for record in &accepted.records {
             if record.header.id.kind() != Kind::Source {
@@ -433,6 +458,79 @@ impl Projection {
         .collect()
     }
 
+    /// Indexed fields whose text holds every term, best match first. Only the
+    /// latest indexed revision of each record is present. Terms come from
+    /// `search_text::query_terms`, so no index query syntax reaches SQLite.
+    pub fn search(
+        &self,
+        terms: &[String],
+        case_id: Option<Id>,
+    ) -> Result<(Vec<SearchCandidate>, bool), Failure> {
+        if terms.is_empty()
+            || terms
+                .iter()
+                .any(|term| term.is_empty() || !term.chars().all(char::is_alphanumeric))
+        {
+            return Err(Failure::new(
+                ErrorCode::InvalidInput,
+                "Supply at least one word or number to search for.",
+            )
+            .at("/query"));
+        }
+        let expression = terms
+            .iter()
+            .map(|term| format!("\"{term}\""))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let mut query = self
+            .database
+            .prepare(
+                "SELECT f.case_id, f.record_id, f.revision, f.field, f.label
+                 FROM search_text JOIN search_fields f ON f.row = search_text.rowid
+                 WHERE search_text MATCH ?1 AND (?2 IS NULL OR f.case_id = ?2)
+                 ORDER BY bm25(search_text), f.case_id, f.record_id, f.field
+                 LIMIT ?3",
+            )
+            .map_err(db_error)?;
+        let limit = sql_counter(MAX_SEARCH_CANDIDATES as u64 + 1)?;
+        let rows = query
+            .query_map(
+                params![expression, case_id.map(|id| id.to_string()), limit],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .map_err(db_error)?;
+        let mut candidates = Vec::new();
+        for row in rows {
+            let (case, record, revision, field, label) = row.map_err(db_error)?;
+            let parse = |value: String| {
+                value
+                    .parse::<Id>()
+                    .map_err(|_| invalid("Index contains an invalid search record ID."))
+            };
+            candidates.push(SearchCandidate {
+                case_id: parse(case)?,
+                record: RevisionRef {
+                    id: parse(record)?,
+                    revision: read_counter(revision)?,
+                },
+                field,
+                label: TextLabel::parse(&label)
+                    .ok_or_else(|| invalid("Index contains an unknown text label."))?,
+            });
+        }
+        let truncated = candidates.len() > MAX_SEARCH_CANDIDATES;
+        candidates.truncate(MAX_SEARCH_CANDIDATES);
+        Ok((candidates, truncated))
+    }
+
     /// Rebuild a fresh index and replace the disposable database only after
     /// every frame has been applied. The store holds its coordination lock.
     pub fn rebuild<'a>(
@@ -457,6 +555,58 @@ impl Projection {
             .map_err(|_| index_failure("Could not replace the disposable index."))?;
         Self::open(path, workspace)
     }
+}
+
+/// Keep only the newest revision's text for a record. The index is a
+/// downstream copy of journal text: retention or purge of canonical text must
+/// be followed by `repair index`, which rebuilds it from what remains.
+fn replace_search_text(
+    tx: &Connection,
+    case_id: &str,
+    record: &investigation_core::state::Record,
+) -> Result<(), Failure> {
+    let id = record.header.id.to_string();
+    let stale: Vec<(i64, String)> = {
+        let mut query = tx
+            .prepare("SELECT row, text FROM search_fields WHERE record_id = ?1")
+            .map_err(db_error)?;
+        query
+            .query_map([&id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(db_error)?
+            .collect::<Result<_, _>>()
+            .map_err(db_error)?
+    };
+    for (row, text) in stale {
+        tx.execute(
+            "INSERT INTO search_text (search_text, rowid, text) VALUES ('delete', ?1, ?2)",
+            params![row, text],
+        )
+        .map_err(db_error)?;
+        tx.execute("DELETE FROM search_fields WHERE row = ?1", [row])
+            .map_err(db_error)?;
+    }
+    let revision = sql_counter(record.header.revision.0)?;
+    for text in indexed_texts(record) {
+        tx.execute(
+            "INSERT INTO search_fields (case_id, record_id, revision, field, label, text)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                case_id,
+                id,
+                revision,
+                text.field,
+                text.label.as_str(),
+                text.text
+            ],
+        )
+        .map_err(db_error)?;
+        tx.execute(
+            "INSERT INTO search_text (rowid, text) VALUES (?1, ?2)",
+            params![tx.last_insert_rowid(), text.text],
+        )
+        .map_err(db_error)?;
+    }
+    Ok(())
 }
 
 fn load_head(database: &Connection, case_id: Id) -> Result<Option<Snapshot>, Failure> {
@@ -751,17 +901,131 @@ mod tests {
     }
 
     #[test]
-    fn version_one_indexes_are_not_reused() {
+    fn search_index_holds_labelled_current_text_and_is_rebuilt() {
+        let mut state = State::default();
+        let genesis = append(
+            &mut state,
+            None,
+            json!([{"op":"case.create", "payload":{"title":"Search fixture", "mode":"record"}}]),
+        );
+        let case_id = genesis.case_id;
+        let question = append(
+            &mut state,
+            Some(case_id),
+            json!([{"op":"question.create", "payload":{"wording":"Why did the pool stall?", "importance":"normal"}}]),
+        );
+        let question_ref = question.records[0].reference();
+        let mut synopsis = append(
+            &mut state,
+            Some(case_id),
+            json!([{"op":"annotation.add", "payload":{
+                "subject_refs":[question_ref],
+                "content":{"kind":"text","text":"Pool exhaustion is the leading account."}
+            }}]),
+        );
+        // The synopsis role is reserved for a later write path; the index
+        // must already label such text as editorial.
+        synopsis.records[0].body["role"] = json!("synopsis");
+        let mut amended = question.clone();
+        amended.sequence = 4;
+        amended.records[0].header.revision = investigation_core::header::Revision(2);
+        amended.records[0].body["wording"] = json!("Why did the queue stall?");
+        let accepted = [&genesis, &question, &synopsis, &amended];
+        let receipts: Vec<_> = accepted
+            .iter()
+            .enumerate()
+            .map(|(i, accepted)| {
+                receipt(
+                    accepted,
+                    &format!("search-{i}"),
+                    digest(char::from(b'2' + i as u8)),
+                )
+            })
+            .collect();
+        let genesis_hash = digest('1');
+        let actor = "agent:test".parse().unwrap();
+        let events: Vec<_> = (0..accepted.len())
+            .map(|i| IndexEvent {
+                previous_hash: if i == 0 {
+                    &genesis_hash
+                } else {
+                    &receipts[i - 1].snapshot.head_hash
+                },
+                actor: &actor,
+                accepted: accepted[i],
+                receipt: &receipts[i],
+                relations: &[],
+            })
+            .collect();
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("index.sqlite");
-        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000097".parse().unwrap();
-        drop(Projection::open(&path, workspace_id).unwrap());
-        Connection::open(&path)
-            .unwrap()
-            .pragma_update(None, "user_version", 1)
-            .unwrap();
-        assert!(Projection::open(&path, workspace_id).is_err());
-        assert!(Projection::inspect(&path, workspace_id).is_err());
+        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000096".parse().unwrap();
+        let mut index = Projection::open(&path, workspace_id).unwrap();
+        for event in &events[..3] {
+            index.apply(*event).unwrap();
+        }
+        let terms = |words: &[&str]| words.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>();
+        let (pool, truncated) = index.search(&terms(&["pool"]), Some(case_id)).unwrap();
+        assert!(!truncated);
+        let mut labels: Vec<_> = pool
+            .iter()
+            .map(|hit| (hit.record.id.kind(), hit.field.as_str(), hit.label))
+            .collect();
+        labels.sort();
+        let mut expected = vec![
+            (Kind::Question, "wording", TextLabel::AuthoredText),
+            (
+                Kind::Annotation,
+                "content.text",
+                TextLabel::EditorialSummary,
+            ),
+        ];
+        expected.sort();
+        assert_eq!(labels, expected);
+        assert!(pool.iter().all(|hit| !hit.label.counts_as_source_hit()));
+
+        // A new revision replaces the old text: no stale pointer remains.
+        index.apply(events[3]).unwrap();
+        let (pool, _) = index.search(&terms(&["pool"]), Some(case_id)).unwrap();
+        assert_eq!(pool.len(), 1);
+        assert_eq!(pool[0].label, TextLabel::EditorialSummary);
+        let (queue, _) = index.search(&terms(&["queue", "stall"]), None).unwrap();
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0].record.revision, 2);
+        let other = "case_018d87fc-5234-7000-8000-000000000095".parse().unwrap();
+        assert!(
+            index
+                .search(&terms(&["queue"]), Some(other))
+                .unwrap()
+                .0
+                .is_empty()
+        );
+        assert!(index.search(&terms(&["\"queue\" OR x"]), None).is_err());
+
+        drop(index);
+        let rebuilt = Projection::rebuild(&path, workspace_id, events.clone()).unwrap();
+        assert_eq!(
+            rebuilt.search(&terms(&["queue", "stall"]), None).unwrap().0,
+            queue
+        );
+        assert_eq!(rebuilt.search(&terms(&["pool"]), None).unwrap().0.len(), 1);
+    }
+
+    #[test]
+    fn older_index_versions_are_not_reused() {
+        // Version 3 lacks the search tables, so it must be rebuilt too.
+        for version in [1, 3] {
+            let directory = tempfile::tempdir().unwrap();
+            let path = directory.path().join("index.sqlite");
+            let workspace_id = "ws_018d87fc-5234-7000-8000-000000000097".parse().unwrap();
+            drop(Projection::open(&path, workspace_id).unwrap());
+            Connection::open(&path)
+                .unwrap()
+                .pragma_update(None, "user_version", version)
+                .unwrap();
+            assert!(Projection::open(&path, workspace_id).is_err());
+            assert!(Projection::inspect(&path, workspace_id).is_err());
+        }
     }
 
     #[test]

@@ -53,6 +53,9 @@ pub mod evidence_read;
 #[path = "method_packs.rs"]
 mod method_packs;
 
+#[path = "search.rs"]
+pub mod search;
+
 #[cfg(test)]
 #[path = "crash_tests.rs"]
 mod crash_tests;

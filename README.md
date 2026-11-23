@@ -38,6 +38,8 @@ Run `investigation onboard` from an existing workspace or an empty directory. `i
 
 A recommendation from `next` can carry one method card, chosen by the rule that produced it. `investigation guide NAME` prints one card with its pack ID, version and digest, and `investigation method list` lists the packs and their cards by stage. Both work outside a workspace with the built-in `general` pack. Inside a case, a pack pinned with `method_pack.adopt` can also supply cards. A pack file that is not pinned is never used.
 
+`investigation search WORDS --format json` finds records whose recorded text contains every word, in the selected case unless you pass `--all-cases`. Results are pointers, not evidence. Each match is labelled `editorial_summary`, `authored_text` or `recorded_evidence`, and only `recorded_evidence` counts as a source hit. Excerpts are quoted data. Records above the default audience stay out of results unless you pass `--include-restricted`. Verify a claim with `show --depth full` or `evidence read` with a selector.
+
 ## Worked cases
 
 ```sh

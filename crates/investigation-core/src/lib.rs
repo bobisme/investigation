@@ -35,6 +35,7 @@ pub mod retrospective;
 mod retrospective_ops;
 pub mod review;
 pub mod review_ops;
+pub mod search_text;
 pub mod source_ops;
 pub mod state;
 pub mod wire;

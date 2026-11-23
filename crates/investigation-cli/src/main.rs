@@ -8,6 +8,7 @@ mod lineage;
 mod next;
 mod onboard;
 mod schema;
+mod search;
 mod selection;
 mod shortcuts;
 mod views;
@@ -202,6 +203,9 @@ enum Commands {
         #[arg(long, default_value_t = 16_384)]
         max_bytes: usize,
     },
+    /// Find records by text; results are labelled pointers, not evidence.
+    #[command(after_help = search::AFTER_HELP)]
+    Search(search::Args),
     /// Verify the journal, blobs, and index without repairing them.
     #[command(after_help = "Example: investigation check --format json")]
     Check,
@@ -334,6 +338,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 }
                 Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
+                Commands::Search(args) => search::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;

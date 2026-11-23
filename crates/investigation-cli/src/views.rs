@@ -526,7 +526,7 @@ fn objection_view(record: &Record) -> Value {
     view
 }
 
-fn record_title(record: &Record) -> String {
+pub(crate) fn record_title(record: &Record) -> String {
     let kind = record.header.id.kind();
     let fields: &[&str] = match kind {
         Kind::Case => &["title"],
@@ -580,7 +580,7 @@ fn record_title(record: &Record) -> String {
     format!("{} {}", kind, record.header.id)
 }
 
-fn record_summary(record: &Record) -> String {
+pub(crate) fn record_summary(record: &Record) -> String {
     let preferred: &[&str] = match record.header.id.kind() {
         Kind::Case => &["objective", "scope", "decision_relevance"],
         Kind::Question => &["wording", "context", "question", "prompt", "rationale"],
