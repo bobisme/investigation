@@ -75,7 +75,8 @@ SHELL_BYTES = 12_000
 def request(path, payload=None, timeout=15):
     headers = {"Content-Type": "application/json"}
     data = None if payload is None else json.dumps(payload).encode()
-    with urllib.request.urlopen(urllib.request.Request(ENDPOINT + path, data, headers), timeout=timeout) as response:
+    transport = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with transport.open(urllib.request.Request(ENDPOINT + path, data, headers), timeout=timeout) as response:
         return json.load(response)
 
 
@@ -155,7 +156,7 @@ def checkpoint_marker(work, name):
 def answer_fields(text):
     text = text.strip()
     if text.startswith("```") and text.endswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+        text = text.partition("\n")[2].rsplit("```", 1)[0]
     try:
         answer = json.loads(text)
     except ValueError:
@@ -215,7 +216,10 @@ def session(model, phase, variant, work, binary, transcript_path, budget, seed, 
                                                 "stream": False, "think": True, "options": options},
                                    timeout=max(0.01, remaining()))
                 reply = response["message"]
-                counters["input_tokens"] += response["prompt_eval_count"]
+                cached = response.get("prompt_eval_cached_count")
+                counters["input_tokens"] += response["prompt_eval_count"] + (cached or 0)
+                if cached is not None:
+                    counters["cached_input_tokens_reported"] += cached
                 counters["output_tokens"] += response["eval_count"]
             except TimeoutError:
                 record("deadline", seconds=budget["seconds"])
@@ -281,6 +285,7 @@ def session(model, phase, variant, work, binary, transcript_path, budget, seed, 
                 if phase == "investigator":
                     if injected_turn is None and checkpoint_marker(work, "review.ready") and has_review_material(work):
                         boundary["review_status"] = "signaled"
+                        boundary["pre_update_operations"] = operation_counts(work)
                         boundary["review_digest"] = tree_digest(work)
                         shutil.copytree(work, transcript_path.parent / "review", symlinks=True)
                         boundary["update_sha256"] = materialize_update(variant, work)
@@ -322,6 +327,25 @@ def has_review_material(work):
                and file.stat().st_size > 0 for file in work.rglob("*"))
 
 
+def operation_counts(work):
+    operations = Counter()
+    for name in sorted(COST["journal_events"](work)):
+        try:
+            value = json.loads((work / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            operations["unreadable_event"] += 1
+            continue
+        request_input = value.get("request", {}).get("input", {})
+        operations_in_request = request_input.get("operations") if isinstance(request_input, dict) else None
+        if operations_in_request is not None:
+            for operation in operations_in_request:
+                operations[operation["op"]] += 1
+        else:
+            created = value.get("accepted_operations", {}).get("created", [])
+            operations["case.create"] += sum(item["id"].startswith("case_") for item in created)
+    return {name: count for name, count in operations.items() if count}
+
+
 def assignment(block, arm, variant, output, binary, environment, budgets=BUDGETS, backend=request):
     run_id = str(uuid.uuid4())
     run = output / run_id
@@ -330,7 +354,8 @@ def assignment(block, arm, variant, output, binary, environment, budgets=BUDGETS
     FIXTURE["stage_source"](FIXTURES, variant, work, "initial")
     (work / "NOTES.md").touch()
     tool = binary if arm == "inv" else None
-    boundary = {"review_status": "missing", "review_digest": None, "update_sha256": None, "interruption": None}
+    boundary = {"review_status": "missing", "review_digest": None, "update_sha256": None,
+                "interruption": None, "pre_update_operations": {}}
     phases = {}
     model = block["model"]
     seed = block["block_seed"]
@@ -338,11 +363,13 @@ def assignment(block, arm, variant, output, binary, environment, budgets=BUDGETS
                                         run / "investigator.jsonl", budgets["investigator"], seed, boundary, backend)
     boundary["interruption"] = boundary["interruption"] or phases["investigator"]["status"]
     if boundary["review_status"] == "missing":
+        boundary["pre_update_operations"] = operation_counts(work)
         boundary["update_sha256"] = materialize_update(variant, work)
     for name in ("review.ready", "handoff.ready"):
         if checkpoint_marker(work, name):
             (work / name).unlink()
     boundary["work_digest"] = tree_digest(work)
+    boundary["handoff_operations"] = operation_counts(work)
     shutil.copytree(work, run / "handoff", symlinks=True)
     phases["successor"], final_answer = session(model, "successor", variant, work, tool,
                                                  run / "successor.jsonl", budgets["successor"], seed, boundary, backend)
@@ -423,6 +450,7 @@ def main():
         "fixture_commit": fixture_commit, "binary_commit": binary_commit,
         "binary_sha256": sha(binary), "runner_sha256": sha(Path(__file__)),
         "provider": "local-ollama", "models": models, "inference": dict(INFERENCE, think=True),
+        "input_metering": "reported prompt evaluation plus cached tokens when the server reports them",
         "host": {"kernel": platform.release(), "machine": platform.machine()},
         "tools": {"ollama": request("/api/version")["version"], "python": platform.python_version(),
                   "bubblewrap": subprocess.check_output(["bwrap", "--version"], text=True).strip(),

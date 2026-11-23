@@ -1,0 +1,7 @@
+# Evidence arriving after review
+
+An investigator starts with `source.txt`. The runner confirms a durable review checkpoint, hashes and retains that view, and stages the versioned `update.txt` before the next shell turn. Both arms get the same update. The provisional review remains available in the archive. The handoff preserves the updated workspace without readiness markers for a fresh successor.
+
+The debugging rehearsal invalidates the apparent controlled comparison in the connection-hold evidence. The architecture exercise adds a four-hour retrieval requirement during a road closure. Depot-sync exceeds the limit. The missing-evidence twin still needs a relevant Relay-stream measurement. The frozen rubric asks the successor to identify the change, avoid carrying the earlier preference forward, and say whether a new measurement would affect eligibility.
+
+The scripted check uses the same assignment runner for the paired arms. It verifies the absence of update bytes at review, a real source receipt in the treatment workspace, equal injected digests, and access to the exact changed line in fresh successor sessions. Pre-update and handoff operation counts are retained separately. A notes-only review in the treatment arm remains part of the assigned arm, and does not count as a canonical Review. Run the ordinary Milestone A architecture proof to verify the application gate rejects acceptance against a stale reviewed basis. [Paired boundary check](../../scripts/check-a-gate-update.py) · [Architecture proof](../../scripts/scenario_c_proof.py)
