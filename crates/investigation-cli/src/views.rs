@@ -463,6 +463,13 @@ pub(crate) fn project_record(
     {
         out.insert("confidence".into(), json!(view));
     }
+    // Likelihood and its recorded outcome: its own field, never inside the
+    // confidence view.
+    if depth != ViewDepth::Title
+        && let Some(view) = investigation_core::likelihood::projection(&replay.state, record)
+    {
+        out.insert("likelihood".into(), view);
+    }
     // Declared review independence beside the review count: low-independence
     // flags, dependence groups by self-reported model family, pair order.
     if depth != ViewDepth::Title

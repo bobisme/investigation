@@ -34,6 +34,7 @@ pub mod identity;
 pub mod input;
 pub mod lessons;
 pub mod lessons_ops;
+pub mod likelihood;
 pub mod local_path;
 pub mod measurement_fields;
 pub mod measurement_flags;

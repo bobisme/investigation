@@ -212,6 +212,8 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "rationale_for_status",
                 "change_reason",
                 "equivalence_evaluation",
+                crate::likelihood::STATEMENT_KEY,
+                crate::likelihood::RESOLUTION_KEY,
             ],
         ),
         Kind::Conclusion => (
@@ -237,6 +239,8 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "successor_ref",
                 "change_reason",
                 "gate_policy",
+                crate::likelihood::STATEMENT_KEY,
+                crate::likelihood::RESOLUTION_KEY,
             ],
         ),
         Kind::Decision => (
@@ -293,10 +297,16 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
             return Err(failure("Record is missing a substantive basis field."));
         }
     }
-    let selected: BTreeMap<_, _> = substantive
+    let mut selected: BTreeMap<_, _> = substantive
         .iter()
         .filter_map(|key| object.get(*key).map(|v| ((*key).to_owned(), v.clone())))
         .collect();
+    // A stated likelihood never satisfies or blocks a gate (§5.7), so adding,
+    // changing or removing one leaves the reviewed basis as it was. The field
+    // stays hashed as null so digests of records without one are unchanged.
+    if let Some(likelihood) = selected.get_mut("likelihood") {
+        *likelihood = Value::Null;
+    }
     hash(&json!({"version":1,"kind":record.header.id.kind().prefix(),"fields":selected}))
 }
 fn read<T: serde::de::DeserializeOwned>(r: &Record) -> Result<T, Failure> {
@@ -668,6 +678,32 @@ mod tests {
         assert_ne!(original, basis_digest(&r).unwrap());
         r.body["scope"] = json!("test workload");
         r.body["support_refs"] = json!([{"id":id("obs",9),"revision":1}]);
+        assert_ne!(original, basis_digest(&r).unwrap());
+    }
+    #[test]
+    fn likelihood_and_its_outcome_stay_outside_the_review_basis() {
+        let case = id("case", 1);
+        let mut r = record(
+            id("concl", 8),
+            case,
+            1,
+            json!({
+                "statement":"Observed a wait", "scope":"test workload", "significance":"investigate",
+                "support_refs":[], "contradiction_refs":[], "caveats":["one sample"],
+                "causal_factors":[], "confidence":null, "likelihood":null, "status":"candidate"
+            }),
+        );
+        let original = basis_digest(&r).unwrap();
+        r.body["likelihood"] =
+            json!({"estimate":"likely","resolution_condition":"The rerun reproduces it"});
+        r.body["likelihood_statement"] = json!({"stated_by":"agent:a"});
+        assert_eq!(original, basis_digest(&r).unwrap());
+        r.body["likelihood"] = json!({"estimate":0.2,"resolution_condition":"Other"});
+        r.body["likelihood_resolution"] = json!([{"outcome":"holds"}]);
+        assert_eq!(original, basis_digest(&r).unwrap());
+        // Confidence stays substantive: the control that the check is not vacuous.
+        r.body["confidence"] = json!({"level":"low","rationale":"One sample.",
+            "limitations":[],"what_would_change_it":null,"downgrade_reasons":null});
         assert_ne!(original, basis_digest(&r).unwrap());
     }
 }

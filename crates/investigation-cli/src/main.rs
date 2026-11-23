@@ -3,6 +3,7 @@
 mod blindspots;
 mod brief;
 mod brief_delta;
+mod calibration;
 mod capture;
 mod capture_schema;
 mod evidence;
@@ -244,6 +245,9 @@ enum Commands {
     /// Read a case's retrospectives and lessons, its process digest, or admitted lessons.
     #[command(after_help = retrospective::AFTER_HELP)]
     Retrospective(retrospective::Args),
+    /// Brier calibration of resolved likelihoods by self-reported model family.
+    #[command(after_help = calibration::AFTER_HELP)]
+    Calibration(calibration::Args),
     /// Find records by text; results are labelled pointers, not evidence.
     #[command(after_help = search::AFTER_HELP)]
     Search(search::Args),
@@ -401,6 +405,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
                 Commands::Search(args) => search::run(&mut store, &global, args),
                 Commands::Retrospective(args) => retrospective::run(&mut store, &global, args),
+                Commands::Calibration(args) => calibration::run(&mut store, &global, args),
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
@@ -540,6 +545,7 @@ fn show(
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
     text.push_str(&investigation_core::confidence::text(&view));
+    text.push_str(&investigation_core::likelihood::text(&view));
     text.push_str(&investigation_core::review_independence::text(&view));
     Ok(Output::success("record_shown", view, text))
 }

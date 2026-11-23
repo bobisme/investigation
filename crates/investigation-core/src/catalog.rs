@@ -423,8 +423,9 @@ fn decode<P: DeserializeOwned>(
     validate: fn(&P) -> Result<(), Failure>,
 ) -> Result<P, Failure> {
     let payload = input::decode(value).map_err(|error| {
-        crate::confidence::explain_decode_failure(operation, value, input_failure(error))
-            .with_schema(operation)
+        let failure =
+            crate::likelihood::explain_decode_failure(operation, value, input_failure(error));
+        crate::confidence::explain_decode_failure(operation, value, failure).with_schema(operation)
     })?;
     validate(&payload).map_err(|error| error.with_schema(operation))?;
     Ok(payload)
@@ -512,6 +513,7 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::classification_ops::operations())
         .chain(crate::source_ops::operations())
         .chain(crate::origin_ops::operations())
+        .chain(crate::likelihood::operations())
         .chain(RESERVED_OPERATIONS.iter().copied().map(OperationDescriptor::reserved)),
     )
     .expect("standard operation names are unique")

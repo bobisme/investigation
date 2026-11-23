@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "ClaimOutcome": {
+      "description": "What the resolution condition settled.",
+      "oneOf": [
+        {
+          "const": "holds",
+          "description": "The condition settled the claim as holding (scored as 1).",
+          "type": "string"
+        },
+        {
+          "const": "does_not_hold",
+          "description": "The condition settled the claim as not holding (scored as 0).",
+          "type": "string"
+        },
+        {
+          "const": "annulled",
+          "description": "The condition can no longer settle the claim. Counted, never scored.",
+          "type": "string"
+        }
+      ]
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:likelihood.resolve",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Record the outcome of a claim's resolution condition.",
+  "properties": {
+    "claim_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "The exact current revision of an Assessment or Conclusion that records\na likelihood."
+    },
+    "correction_reason": {
+      "description": "Required to correct an outcome already recorded; refused otherwise.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_refs": {
+      "description": "Exact revisions of the records that settle the condition. At least one.",
+      "items": {
+        "$ref": "#/$defs/RevisionRef"
+      },
+      "type": "array"
+    },
+    "outcome": {
+      "$ref": "#/$defs/ClaimOutcome"
+    },
+    "rationale": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_ref",
+    "outcome",
+    "evidence_refs",
+    "rationale"
+  ],
+  "title": "LikelihoodResolve",
+  "type": "object"
+}

@@ -1,0 +1,105 @@
+{
+  "$defs": {
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "Likelihood": {
+      "additionalProperties": false,
+      "properties": {
+        "estimate": {
+          "$ref": "#/$defs/LikelihoodEstimate"
+        },
+        "resolution_condition": {
+          "$ref": "#/$defs/ResolutionCondition"
+        }
+      },
+      "required": [
+        "estimate",
+        "resolution_condition"
+      ],
+      "type": "object"
+    },
+    "LikelihoodEstimate": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Probability"
+        },
+        {
+          "$ref": "#/$defs/LikelihoodTerm"
+        }
+      ]
+    },
+    "LikelihoodTerm": {
+      "description": "Ordinal labels from the first row of ICD 203 §D.6.e(2)(a).",
+      "enum": [
+        "almost_no_chance",
+        "very_unlikely",
+        "unlikely",
+        "roughly_even_chance",
+        "likely",
+        "very_likely",
+        "almost_certain"
+      ],
+      "type": "string"
+    },
+    "Probability": {
+      "maximum": 1,
+      "minimum": 0,
+      "type": "number"
+    },
+    "ResolutionCondition": {
+      "pattern": "\\S",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:likelihood.set",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "State, change or remove the likelihood on an unresolved claim.",
+  "properties": {
+    "claim_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "The exact current revision of an Assessment or Conclusion."
+    },
+    "likelihood": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Likelihood"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The new likelihood with its resolution condition, or null to remove it."
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_ref",
+    "reason"
+  ],
+  "title": "LikelihoodSet",
+  "type": "object"
+}

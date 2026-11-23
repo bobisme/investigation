@@ -272,6 +272,9 @@ fn cited<'a>(
     let successor = match reference.id.kind() {
         Kind::Source | Kind::Artifact => crate::source_ops::use_successor(state, case, reference),
         Kind::Observation => crate::freshness::benign_successor(state, case, reference),
+        Kind::Assessment | Kind::Conclusion => {
+            crate::likelihood::likelihood_only_successor(state, case, reference)
+        }
         _ => None,
     };
     if let Some(record) = successor {

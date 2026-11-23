@@ -604,6 +604,26 @@ impl<'n> Facts<'_, 'n, '_> {
                 or_not_recorded(text_at(body, "likelihood.resolution_condition"))
             );
         }
+        // The recorded outcome of the resolution condition, on its own line.
+        if let Some(view) =
+            investigation_core::likelihood::view(self.notes.case().state(), self.record)
+            && let Some(outcome) = view.resolution
+        {
+            let score = outcome
+                .brier
+                .map_or_else(String::new, |brier| format!(", Brier score {brier}"));
+            let _ = writeln!(
+                self.out,
+                "- Likelihood outcome: {}{score}",
+                inline_code(&token(
+                    serde_json::to_value(outcome.outcome)
+                        .ok()
+                        .as_ref()
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                )),
+            );
+        }
     }
 
     /// `- Strongest outstanding objection:` from the objection policy: open

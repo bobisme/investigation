@@ -251,8 +251,21 @@ fn family_key(family: &str) -> String {
 }
 
 fn group_of(record: &Record) -> (String, GroupBasis) {
-    let actor = &record.header.recorded_by;
-    match &record.header.actor_descriptor_self_reported {
+    dependence_group(
+        &record.header.recorded_by,
+        record.header.actor_descriptor_self_reported.as_ref(),
+    )
+}
+
+/// The dependence group of an actor and its self-reported descriptor:
+/// `model_family:<lowercased family>` for an agent that declares a family,
+/// `human:<actor>` for a declared human, otherwise `actor:<actor>`. Also used
+/// to group likelihood calibration (see `likelihood`).
+pub fn dependence_group(
+    actor: &Actor,
+    descriptor: Option<&ActorDescriptor>,
+) -> (String, GroupBasis) {
+    match descriptor {
         Some(ActorDescriptor {
             kind: ActorKind::Agent,
             model_family: Some(family),
