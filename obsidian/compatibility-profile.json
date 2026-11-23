@@ -1,0 +1,65 @@
+{
+  "schema": "inv.obsidian-compat-profile.v1",
+  "profile_revision": 1,
+  "pinned_release": {
+    "version": "1.15.1",
+    "released": "2026-11-12",
+    "verification": "documentation",
+    "integration_gate": "not yet run; W12.07 records the installed version it actually ran against in its report and may raise this to 'integration'"
+  },
+  "supported_range": {
+    "min": "1.12.7",
+    "max": "1.15.1",
+    "reason": "min is the CLI documentation's recommended installer; max is the newest release this profile has been checked against. A release outside the range gets the baseline."
+  },
+  "documentation": [
+    {
+      "id": "bases-syntax",
+      "url": "https://obsidian.md/help/bases/syntax",
+      "consulted": "2026-11-23",
+      "revision": "page carries no version or date; consulted while 1.15.1 was the newest desktop release",
+      "observed": "filters (and/or/not, global and per view), formulas, properties.displayName, summaries, views[type,name,filters,order,groupBy,groupOrder,summaries]; no documented sort key; no 'from' key (a base covers every file unless filtered); table view type documented, cards and list not described"
+    },
+    {
+      "id": "cli",
+      "url": "https://obsidian.md/help/cli",
+      "consulted": "2026-11-23",
+      "revision": "page carries no date; names the 1.12 installer generation and recommends 1.12.7 or newer",
+      "observed": "'obsidian version' prints the version; bases, base:views, base:create and base:query (formats json, csv, tsv, md, paths) exist"
+    },
+    {
+      "id": "changelog",
+      "url": "https://obsidian.md/changelog",
+      "consulted": "2026-11-23",
+      "revision": "newest desktop release 1.15.1 dated 2026-11-12",
+      "observed": "1.15.0 changed Bases filter editing only (reorder, move between all-views and this-view); no change to the .base file keys relied on"
+    }
+  ],
+  "baseline": "Markdown notes with flat inv_ YAML properties, wikilinks, block anchors and Markdown tables. Used whenever the installed release is absent, unparseable or outside supported_range.",
+  "features": [
+    {"id": "md.frontmatter_properties", "tier": "baseline", "emitted": true, "source": "plan 12.5; properties are flat inv_ keys"},
+    {"id": "md.aliases", "tier": "baseline", "emitted": true, "source": "plan 12.5"},
+    {"id": "md.tags", "tier": "baseline", "emitted": true, "source": "plan 12.5"},
+    {"id": "md.wikilinks", "tier": "baseline", "emitted": true, "source": "plan 12.5"},
+    {"id": "md.block_anchors", "tier": "baseline", "emitted": true, "source": "plan 12.5"},
+    {"id": "md.tables", "tier": "baseline", "emitted": true, "source": "plan 12.3; tables are the baseline"},
+    {"id": "md.fenced_code", "tier": "baseline", "emitted": true, "source": "excerpt blocks"},
+    {"id": "md.callouts", "tier": "baseline", "emitted": true, "source": "blockquote callouts in generated notes; core Markdown rendering"},
+    {"id": "md.embeds", "tier": "baseline", "emitted": false, "source": "never emitted: embeds pull other notes' bytes into a note"},
+    {"id": "base.file", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "plan 12.5"},
+    {"id": "base.filters", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "exact inv_case_id and inv_kind filters"},
+    {"id": "base.property_display_name", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "column header labels only"},
+    {"id": "base.view_table", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "the only view type the syntax page documents"},
+    {"id": "base.view_order", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "column order"},
+    {"id": "base.group_by", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "documented view key"},
+    {"id": "base.formulas", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "documented top-level key"},
+    {"id": "base.summaries", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "bases-syntax", "source": "documented top-level key"},
+    {"id": "base.view_other", "tier": "unsupported", "emitted": false, "doc": "bases-syntax", "source": "cards, list, map and kanban are not described by the syntax page; never emitted"},
+    {"id": "base.row_sort_key", "tier": "unsupported", "emitted": false, "doc": "bases-syntax", "source": "not documented as of the consulted page (plan 12.5: detect by release, never assume); never emitted until a release is recorded that documents it"},
+    {"id": "canvas.file", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6; JSON Canvas"},
+    {"id": "canvas.file_nodes", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6"},
+    {"id": "canvas.labeled_edges", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": null, "source": "plan 12.6; labels carry evidence meaning, not colour"},
+    {"id": "canvas.other_nodes", "tier": "unsupported", "emitted": false, "doc": null, "source": "text, link and group nodes are not emitted: essential evidence must not live in text-only nodes"},
+    {"id": "cli.available", "tier": "optional", "emitted": false, "min_release": "1.12.7", "doc": "cli", "source": "detected at run time; never required"}
+  ]
+}

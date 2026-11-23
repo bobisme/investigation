@@ -165,6 +165,7 @@
 //! filesystem is the only interface.
 
 pub mod attachments;
+pub mod compat;
 pub mod drift;
 pub(crate) mod entry;
 pub mod error;

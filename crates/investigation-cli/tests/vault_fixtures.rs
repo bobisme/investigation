@@ -36,7 +36,12 @@ use investigation_core::{
     identity::{Id, Kind},
     wire::{CommitResult, Receipt},
 };
-use investigation_render::{RENDERER_VERSION, RenderPlan, layout, text::EXCERPT_LANGUAGE};
+use investigation_render::{
+    RENDERER_VERSION, RenderPlan,
+    compat::{Profile, detect},
+    layout,
+    text::EXCERPT_LANGUAGE,
+};
 use investigation_store::Store;
 use pulldown_cmark::{CodeBlockKind, Event, LinkType, Parser, Tag};
 use serde_json::{Value, json};
@@ -529,6 +534,51 @@ fn scenario_vaults_need_no_community_plugin() {
         }
     }
     assert!(notes > 100 && spans > 1000, "{notes} notes, {spans} spans");
+}
+
+/// W12.02: every viewer feature the rendered vaults use is listed in the
+/// compatibility profile as emitted-capable, and the vaults need only the
+/// baseline, so an absent or unknown viewer release changes nothing.
+#[test]
+fn scenario_vaults_use_only_features_the_compatibility_profile_lists() {
+    let profile = Profile::bundled();
+    let mut all = BTreeSet::new();
+    for scenario in SCENARIOS {
+        let golden = fixtures::golden(scenario);
+        let found = detect(golden.iter().map(|(p, b)| (p.as_str(), b.as_slice())));
+        assert_eq!(profile.unlisted(&found), Vec::<String>::new(), "{scenario}");
+        all.extend(found);
+    }
+    // The renderer emits no optional feature yet: the baseline is the vault.
+    for id in &all {
+        let feature = profile.feature(id).unwrap();
+        assert_eq!(
+            feature.tier,
+            investigation_render::compat::Tier::Baseline,
+            "{id}"
+        );
+        assert!(
+            feature.emitted,
+            "{id} is used but the profile says it is not emitted"
+        );
+    }
+    for id in [
+        "md.frontmatter_properties",
+        "md.wikilinks",
+        "md.tables",
+        "md.block_anchors",
+    ] {
+        assert!(all.contains(id), "{id} not detected in {all:?}");
+    }
+    // Nothing the profile calls unemitted shows up in a vault.
+    for feature in profile.features.iter().filter(|f| !f.emitted) {
+        assert!(!all.contains(&feature.id), "{}", feature.id);
+    }
+    // With no viewer installed, or an unknown one, every vault is still fully allowed.
+    for installed in [None, Some("0.0.1"), Some("garbage")] {
+        let resolved = profile.resolve(installed);
+        assert!(profile.gated(&all, &resolved).is_empty());
+    }
 }
 
 #[test]
