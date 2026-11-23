@@ -20,6 +20,9 @@ pub enum RenderError {
     Busy { waited: Duration },
     /// A lock from one workspace was offered to a publisher for another.
     WrongWorkspace,
+    /// `local/render-manifest.json` declares a format this build does not
+    /// know. It is left untouched rather than replaced with an older format.
+    UnsupportedManifest { version: String },
     /// A filesystem operation failed. `path` is relative to the vault or workspace.
     Io { path: String, error: io::Error },
 }
@@ -37,7 +40,9 @@ impl RenderError {
         match self {
             Self::Snapshot(failure) => failure.clone(),
             Self::Busy { .. } => Failure::new(ErrorCode::WorkspaceBusy, self.to_string()),
-            Self::InvalidPath { .. } | Self::DuplicatePath(_) => {
+            Self::InvalidPath { .. }
+            | Self::DuplicatePath(_)
+            | Self::UnsupportedManifest { .. } => {
                 Failure::new(ErrorCode::IntegrityFailure, self.to_string())
             }
             Self::VaultDisabled => Failure::new(ErrorCode::InvalidInput, self.to_string()),
@@ -76,6 +81,10 @@ impl fmt::Display for RenderError {
             Self::WrongWorkspace => {
                 formatter.write_str("The render lock belongs to a different workspace.")
             }
+            Self::UnsupportedManifest { version } => write!(
+                formatter,
+                "local/render-manifest.json has the unsupported format {version:?}; it was left untouched. Render with a build that supports it."
+            ),
             Self::Io { path, error } => write!(formatter, "{path}: {error}"),
         }
     }

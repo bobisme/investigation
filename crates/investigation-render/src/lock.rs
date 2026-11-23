@@ -7,6 +7,7 @@
 
 use std::{
     fs::File,
+    os::fd::OwnedFd,
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
@@ -35,19 +36,7 @@ impl RenderLock {
     /// The lock file is created if absent, never through a symbolic link.
     pub fn acquire(workspace: &Workspace, timeout: Duration) -> Result<Self, RenderError> {
         let root = workspace.root();
-        let directory = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC;
-        let root_fd = openat(CWD, root, directory, Mode::empty())
-            .map_err(|error| RenderError::io(".", error))?;
-        let local = openat(
-            &root_fd,
-            "local",
-            directory | OFlags::NOFOLLOW,
-            Mode::empty(),
-        )
-        .map_err(|error| match error {
-            Errno::LOOP | Errno::NOTDIR => RenderError::UnsafeDirectory("workspace local/"),
-            error => RenderError::io("local", error),
-        })?;
+        let local = open_local(root)?;
         let fd = openat(
             &local,
             "render.lock",
@@ -84,4 +73,21 @@ impl RenderLock {
     pub fn workspace_root(&self) -> &Path {
         &self.root
     }
+}
+
+/// Open the workspace's `local/` directory, refusing a symbolic link.
+pub(crate) fn open_local(root: &Path) -> Result<OwnedFd, RenderError> {
+    let directory = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::CLOEXEC;
+    let root_fd =
+        openat(CWD, root, directory, Mode::empty()).map_err(|error| RenderError::io(".", error))?;
+    openat(
+        &root_fd,
+        "local",
+        directory | OFlags::NOFOLLOW,
+        Mode::empty(),
+    )
+    .map_err(|error| match error {
+        Errno::LOOP | Errno::NOTDIR => RenderError::UnsafeDirectory("workspace local/"),
+        error => RenderError::io("local", error),
+    })
 }

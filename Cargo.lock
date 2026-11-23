@@ -609,6 +609,7 @@ dependencies = [
  "investigation-core",
  "investigation-store",
  "rustix",
+ "serde",
  "serde_json",
  "tempfile",
 ]

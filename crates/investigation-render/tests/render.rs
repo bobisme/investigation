@@ -185,10 +185,10 @@ fn a_commit_succeeds_while_a_render_is_in_progress() {
         &mut store,
         &VaultRenderer,
         &ViewPolicy::default(),
-        &NoManifest,
         &mut observe,
     )
-    .unwrap();
+    .unwrap()
+    .publish;
     assert_eq!(committed.get(), Some(4));
     assert_eq!(report.written(), 4);
     assert_eq!(report.refused(), 0);

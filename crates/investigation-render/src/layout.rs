@@ -15,6 +15,16 @@ pub const OVERVIEW: &str = "Overview.md";
 /// into them.
 pub const HUMAN_OWNED_ROOTS: [&str; 3] = ["Notes", "Boards", "Inbox"];
 
+/// Whether `path` lies inside a human-owned root folder, ignoring case.
+pub fn is_human_owned(path: &PlanPath) -> bool {
+    let mut components = path.components();
+    let first = components.next().unwrap_or_default();
+    components.next().is_some()
+        && HUMAN_OWNED_ROOTS
+            .iter()
+            .any(|root| root.eq_ignore_ascii_case(first))
+}
+
 /// Record kinds with their own note, in display order: folder and singular name.
 pub const RECORD_FOLDERS: &[(Kind, &str, &str)] = &[
     (Kind::Question, "Questions", "question"),
