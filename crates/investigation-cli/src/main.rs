@@ -3,6 +3,7 @@
 mod capture;
 mod evidence;
 mod frontier;
+mod guide;
 mod lineage;
 mod next;
 mod onboard;
@@ -171,6 +172,12 @@ enum Commands {
     /// List every snapshot-bound gap with filters, paging and rule explanations.
     #[command(after_help = frontier::AFTER_HELP)]
     Frontier(frontier::Args),
+    /// Print one method card from the built-in pack or a pinned pack.
+    #[command(after_help = guide::GUIDE_AFTER_HELP)]
+    Guide(guide::GuideArgs),
+    /// List method packs and their cards.
+    #[command(subcommand)]
+    Method(guide::MethodCommand),
     /// Look up a command without resubmitting its original input.
     #[command(
         after_help = "Use the original command ID and actor.\nExample: investigation receipt create-case-1 --actor agent:investigator --format json"
@@ -306,6 +313,8 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Schema(args) => schema::describe(args, &global),
         Commands::Init { path, no_vault } => init(&path, !no_vault, global.workspace.as_deref()),
         Commands::Onboard => onboard::run(&global),
+        Commands::Guide(args) => guide::show(args, &global),
+        Commands::Method(command) => guide::method(command, &global),
         command => {
             let mut store = Store::open(open_workspace(global.workspace.as_deref())?);
             match command {
@@ -335,7 +344,11 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                         text,
                     ))
                 }
-                Commands::Schema(_) | Commands::Init { .. } | Commands::Onboard => {
+                Commands::Schema(_)
+                | Commands::Init { .. }
+                | Commands::Onboard
+                | Commands::Guide(_)
+                | Commands::Method(_) => {
                     unreachable!("workspace-independent command")
                 }
             }

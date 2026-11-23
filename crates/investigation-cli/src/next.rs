@@ -1,6 +1,7 @@
 //! CLI adapter for deterministic, read-only gap ranking.
 
 use investigation_core::gap_rules::{enumerate_gaps, rank_next};
+use investigation_core::guidance::{self, GUIDANCE_RULE_VERSION, TriggerContext};
 use investigation_store::Store;
 use serde_json::{Value, json};
 
@@ -18,6 +19,14 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
     let response = rank_next(&inventory, limit.min(3));
     let mut value = serde_json::to_value(&response).expect("next response serializes");
     let workspace = workspace_argv(store.workspace());
+    // Guidance comes from the built-in pack and the case's available pins only.
+    let packs = store.method_packs(&replay.state, case_id, None)?;
+    let mode = TriggerContext::evaluate(&replay.state, case_id, &inventory).mode;
+    value["guidance_rule_version"] = json!(GUIDANCE_RULE_VERSION);
+    let unavailable: Vec<_> = packs.iter().filter(|pack| !pack.is_available()).collect();
+    if !unavailable.is_empty() {
+        value["unavailable_method_packs"] = json!(unavailable);
+    }
     let catalog = standard_catalog();
     for item in value["recommendations"]
         .as_array_mut()
@@ -54,6 +63,25 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
                 "json".into(),
             ]);
             item["schema_argv"] = json!(schema_argv);
+        }
+        // At most one card per recommendation, chosen by the rule that produced it.
+        if let Some(card) = item["rule_id"]
+            .as_str()
+            .and_then(|rule| guidance::card_for_rule(&packs, mode, rule))
+        {
+            let mut guide_argv = workspace.clone();
+            guide_argv.extend([
+                "--case".into(),
+                case_id.to_string(),
+                "guide".into(),
+                card.card.clone(),
+                "--pack".into(),
+                card.pack_id.clone(),
+                "--format".into(),
+                "json".into(),
+            ]);
+            item["guide"] = json!(card);
+            item["guide"]["argv"] = json!(guide_argv);
         }
         item["result_caveat"] = json!(
             "This route reads recorded state only; it does not execute or validate an external action."
@@ -100,6 +128,14 @@ fn render_text(value: &Value, response: &investigation_core::gap_rules::NextResp
                 .collect::<Vec<_>>();
             text.push_str(&format!("   Schema: {}\n", display_argv(&argv)));
         }
+        let guide = &value["recommendations"][recommendation.rank - 1]["guide"];
+        if let (Some(card), Some(pack), Some(summary)) = (
+            guide["card"].as_str(),
+            guide["pack_id"].as_str(),
+            guide["summary"].as_str(),
+        ) {
+            text.push_str(&format!("   Guide: {card} ({pack})  {summary}\n"));
+        }
         if !recommendation.outcome_branches.is_empty() {
             for branch in &recommendation.outcome_branches {
                 text.push_str(&format!("   {} → {}\n", branch.outcome, branch.consequence));
@@ -114,6 +150,18 @@ fn render_text(value: &Value, response: &investigation_core::gap_rules::NextResp
         response.counts.stale_due_to_revision,
         response.counts.deferred,
     ));
+    for pack in value["unavailable_method_packs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+    {
+        text.push_str(&format!(
+            "Method pack {} {} is pinned but unavailable ({}); its cards are not used.\n",
+            pack["pack_id"].as_str().unwrap_or(""),
+            pack["version"].as_str().unwrap_or(""),
+            pack["unavailable_reason"].as_str().unwrap_or(""),
+        ));
+    }
     text.push_str("No detected gaps means no gap was emitted by this rule version; it does not mean the investigation is complete.");
     text
 }

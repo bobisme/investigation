@@ -36,6 +36,8 @@ Run `investigation onboard` from an existing workspace or an empty directory. `i
 
 `investigation next` ranks up to three open gaps. `investigation frontier --format json` lists every gap at the same committed snapshot, unranked, with `--status`, `--kind` and `--rule` filters and a cursor that stays on the first page's snapshot. `investigation frontier --explain GAP_ID` names the rule and rule version that emits a gap and the fields it reads. A gap is missing or stale recorded information. It is not an assignment, and neither command dispatches work.
 
+A recommendation from `next` can carry one method card, chosen by the rule that produced it. `investigation guide NAME` prints one card with its pack ID, version and digest, and `investigation method list` lists the packs and their cards by stage. Both work outside a workspace with the built-in `general` pack. Inside a case, a pack pinned with `method_pack.adopt` can also supply cards. A pack file that is not pinned is never used.
+
 ## Worked cases
 
 ```sh
