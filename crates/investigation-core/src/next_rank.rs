@@ -50,6 +50,44 @@ fn is_measurement_flag(gap: &Gap) -> bool {
     gap.rule_id.starts_with(MEASUREMENT_FLAG_PREFIX)
 }
 
+/// The per-rival predictions of a confirmatory InquiryPlan, grouped by
+/// predicted outcome text (trimmed): each outcome maps to the current live
+/// rival hypotheses that predict it. Predictions naming a rival that is
+/// absent or no longer live, or with blank outcome text, are left out. An
+/// exploratory plan has none. Shared by `next` ranking and the
+/// `inquiry.non_discriminating_plan` blindspot check.
+pub(crate) fn live_predictions_by_outcome(
+    state: &State,
+    inquiry: &Record,
+) -> BTreeMap<String, BTreeSet<RevisionRef>> {
+    let mut by_outcome = BTreeMap::<String, BTreeSet<RevisionRef>>::new();
+    let predictions = field(content(&inquiry.body), "inquiry")
+        .and_then(|mode| mode.get("confirmatory"))
+        .and_then(|plan| plan.get("predictions"))
+        .and_then(Value::as_array);
+    for prediction in predictions.into_iter().flatten() {
+        let Some(rival) = exact_ref(prediction.get("rival_ref"))
+            .and_then(|reference| state.current(reference.id))
+            .filter(|rival| rival.header.case_id == inquiry.header.case_id && is_live(rival))
+        else {
+            continue;
+        };
+        let Some(outcome) = prediction
+            .get("predicted_outcome")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|outcome| !outcome.is_empty())
+        else {
+            continue;
+        };
+        by_outcome
+            .entry(outcome.to_owned())
+            .or_default()
+            .insert(rival.reference());
+    }
+    by_outcome
+}
+
 /// Cell rules, plus flags and freshness gaps whose subject is a Comparison:
 /// the value of rechecking a comparison depends on the option it describes.
 fn reads_cell(gap: &Gap) -> bool {
@@ -877,36 +915,8 @@ impl<'a> Context<'a> {
         else {
             return (static_value(gap, None), None, None);
         };
-        let predictions = field(content(&inquiry.body), "inquiry")
-            .and_then(|mode| mode.get("confirmatory"))
-            .and_then(|plan| plan.get("predictions"))
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        // Predicted outcome text -> the live rivals that predict it.
-        let mut by_outcome = BTreeMap::<String, BTreeSet<RevisionRef>>::new();
-        let mut rivals = BTreeSet::new();
-        for prediction in &predictions {
-            let Some(rival) = exact_ref(prediction.get("rival_ref"))
-                .and_then(|reference| self.current(reference.id))
-                .filter(|rival| is_live(rival))
-            else {
-                continue;
-            };
-            let Some(outcome) = prediction
-                .get("predicted_outcome")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|outcome| !outcome.is_empty())
-            else {
-                continue;
-            };
-            rivals.insert(rival.reference());
-            by_outcome
-                .entry(outcome.to_owned())
-                .or_default()
-                .insert(rival.reference());
-        }
+        let by_outcome = live_predictions_by_outcome(self.state, inquiry);
+        let rivals: BTreeSet<RevisionRef> = by_outcome.values().flatten().copied().collect();
         let mut value = DecisionValue {
             decision_effect: UNKNOWN.into(),
             rule_decision_effect: gap.decision_effect.clone(),

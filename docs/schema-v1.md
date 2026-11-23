@@ -107,6 +107,16 @@ Checks of `builtin-blindspot.v1`:
 - `case.collection_without_consequence`: in an open case, the last 4 or more transactions that created evidence records have no recorded consequence after or among them. A consequence is a supporting or contradicting Assessment, a known Comparison outcome, a Conclusion or Decision revision, or a disposition that rejects, retires, rules out or assesses. The facts cite each counted transaction by sequence. The check counts transactions and does not use a clock.
 - `case.material_closure_without_current_retrospective`: an open case with material work shows a closure signal, and no Retrospective covers its current state. A closure signal is a declared ready flag, an accepted Decision on every Question, or a recorded Retrospective.
 
+Causal and empirical checks (`blindspot/causal.rs`). They read typed fields only and never quote prediction, statement or environment text:
+
+- `inquiry.non_discriminating_plan`: a draft or frozen confirmatory InquiryPlan without a successor predicts the same outcome for two or more live rivals. It is reported from the plan alone, before any Run; `runs_citing_plan:none` or `runs_citing_plan:recorded` says which. The grouping is the one `next` uses to rank a plan's discriminating value.
+- `conclusion.support_not_assessed_against_rival`: a live Conclusion has a live rival (linked by `rival_refs` to a hypothesis it names or that a supporting Assessment is about), and no supporting Assessment records an expectation for it (`rival_not_assessed`), or every one is `equally_expected` (`support_equally_expected_under_rival`).
+- `causal.failure_only_selection`: a causal Conclusion without a `causal_test` cites support whose attempt counts record only timed-out attempts, and no non-failing attempts or measurement control.
+- `causal.observational_only_support`: a causal Conclusion's supporting Observations and their Runs record no `interventional` evidence. The finding carries `causal_standing:candidate`; a validated or review-ready record also carries `status_exceeds_evidence:<status>`. The promotion gate already refuses such a claim, so it stays `candidate`.
+- `comparability.environment_differs`: evidence used together was recorded under different conditions: an Observation and a control its measurement judgment cites, or two Observations an Assessment or Conclusion relies on. Recorded Run environments differ, or a known `environment_identity` component differs that neither names in `variables_changed`.
+- `empirical.confirmatory_basis_incomplete`: an Assessment of a frozen plan, or a validated Conclusion, relies on a measurement that is not effectively valid, is valid only by its recorder's statement (`validity_basis:recorded_only`), or has no known sample count or observation window; or the Assessment's plan revision is not frozen or the plan is retired.
+- `conclusion.known_outcome_reuse_as_prospective`: a live Conclusion's supporting tests of frozen plans are all `known_outcome_reuse` or `undetermined` (from `evidence_reuse`), or one applied a stop rule that differs from the frozen one with no stop deviation.
+
 To add a check, add a `CheckSpec` to a family in `crates/investigation-core/src/blindspot/` and list the family in `FAMILIES`. The module documentation gives the rules, and its tests check every registered spec.
 
 ## Search coverage

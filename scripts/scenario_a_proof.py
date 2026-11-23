@@ -206,7 +206,16 @@ def proof(binary, handoff, workspace=None):
         assert "compatible" in error["error"]["message"]
         assert cli.show(case, wrong_claim)["snapshot"] == before
         assert cli.show(case, wrong_claim)["effective_status"]["state"] == "candidate"
-        claim = cli.create(case, "conclusion.create", candidate(factor, rival, [held, base, treated, reverse], base, treated, reverse))
+        # The read-only audit reports the incompatible-build trial as a comparability gap.
+        audit = cli.call("--case", case, "blindspots")
+        assert audit["snapshot"] == before, audit["snapshot"]
+        gap = next(item for item in audit["checks"]
+                   if item["check_id"] == "comparability.environment_differs"
+                   and item["subject_refs"][0]["id"] == wrong_claim)
+        assert {fact["fact"] for fact in gap["facts"]} == {"run_environment_differs"}, gap
+        assert any(ref_["id"] == trap for fact in gap["facts"] for ref_ in fact["refs"]), gap
+        assert wrong_data["build_id"] not in json.dumps(audit)
+        claim =cli.create(case, "conclusion.create", candidate(factor, rival, [held, base, treated, reverse], base, treated, reverse))
         ready = expect_review(cli, case, claim)["updated"][0]["revision"]
         full = cli.show(case, claim)
         basis = full["review_basis"]
