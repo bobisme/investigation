@@ -2,7 +2,7 @@
 name: investigation
 description: Record evidence, rival explanations, options and decisions with the local investigation CLI. Use when a question needs several observations, the explanation of a failure, controlled measurements, a comparison of sources or options, or a handoff to another agent. Skip it for one-shot lookups and ordinary coding tasks.
 ---
-<!-- inv.agent-instructions.v1 -->
+<!-- inv.agent-instructions.v2 -->
 # Investigation
 
 The full instructions are in the binary and work offline:

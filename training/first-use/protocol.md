@@ -28,3 +28,28 @@ Counts are reported with denominators. A zero count also gets its exact one-side
 ## Successor check
 
 The same assignment runs the successor check. No separate session is staged. The successor gets the working directory as the investigator left it: the original `source.txt`, any workspace and any notes. It gets only the ordinary handoff context described above. The original source stays in place, as in an ordinary handoff, so citing `source.txt` alone does not show that the successor used the record. Each row therefore also records whether the successor ran the CLI.
+
+## Help-only arm (W17.03, preregistered)
+
+This section and [help-only/targets.json](help-only/targets.json) were committed before any run of the two arms below. They ask whether an agent learns the CLI from the executable alone, as well as an agent that also has the agent instructions.
+
+**Arms.** Both arms use one pinned build, the same runner, cases, prompts, seed scheme (`--seed 51701`, build order counterbalanced within each model), models (`qwen3.5:9b`, `gemma4:26b`, local, one at a time on the shared GPU) and budgets as the bn-6vlm re-measure ([rerun-6vlm](rerun-6vlm/)).
+
+- **docs**: the investigator and successor prompts also carry the build's own agent instructions (`investigation docs agents`, the page that `integration apply` writes into an AGENTS.md block), presented as the repository's AGENTS.md, the way an agent host loads that file.
+- **help-only**: the executable and the task only. No agent instructions, docs page, README or integration block is in the prompt or in `/work`. The prompts are the first-use prompts above, word for word. Discovery is only through `--help`, `schema`, `onboard`, errors and receipts. The binary's own `docs` command is part of the executable, so it is not blocked; the results report how many assignments ran it.
+
+**Run.** `scripts/run-first-use.py --arm docs --arm help-only --binary BUILD --binary-commit SHA` on the six comparison cases, 12 assignments per arm. The two tuning cases are used only to rehearse the arm before the measured run. The measured commit and build digest are recorded in the manifest.
+
+**Targets.** The help-only arm meets the W17.03 target when all five hold (counts of 12):
+
+1. Receipt within three calls after first CLI contact: help-only ≥ docs − 2, and help-only ≥ 6/12.
+2. Source-linked handoff: help-only ≥ docs − 2.
+3. Unsupported claims (false promotions in the successor answer): help-only = 0/12.
+4. Friction budget, refusals: the share of investigator CLI calls that are refused is at most 0.10 higher in help-only than in docs.
+5. Friction budget, recovery: the share of refused CLI calls (both phases) after which a later call of the same command succeeds is at most 0.10 lower in help-only than in docs.
+
+A margin of 2 of 12 is used because one run per cell makes a difference of one or two assignments noise (see the bn-6vlm re-measure). `scripts/analyze-first-use.py --targets training/first-use/help-only/targets.json` applies the targets.
+
+**Friction.** For each refused CLI call the analysis records the command, the cause (error code and reason, or the parse problem), the repair hint the CLI printed, whether the next CLI call ran the hinted command, and whether a later call of the same command succeeded. A refusal is detected with the same text heuristic as the failed-call count above.
+
+**Second measurement (added after the first, before the second ran).** The first measured run ([help-only/run1](help-only/run1/)) did not meet target 1: the help-only arm reached a receipt within three calls in 4/12 assignments against 12/12 for docs. Its misses were a prose argument in the command position followed by `--help` (4 gemma assignments), an `init` repair without `--actor` followed by a refused `start`, a relative `--workspace` after `cd` into the workspace, and two assignments that never ran the CLI. The CLI was changed for the first three causes. A second run with the same arms, cases, seed, models, budgets and the five targets above measures the changed build ([help-only/run2](help-only/run2/)). Both runs are reported. The first run remains the preregistered result for the build it measured; the second is the result for the changed build.

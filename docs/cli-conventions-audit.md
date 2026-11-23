@@ -94,7 +94,7 @@ readable import reasons instead of the debug variant names.
 | H2 | Each command has a usage line | met | clap prints `Usage: investigation show [OPTIONS] <ID>` on every page. | Nothing to do. |
 | H3 | Each command has examples | help gap | Leaf pages without an example: `ingest`, `evidence read`, `onboard`, `next`, `show`, `observe`, `note`, `case new`, `source add`. Group pages without one: `evidence`, `capture`, `method`, `repair`, `case`, `source`. | W17.02. |
 | H4 | Help shows the agent workflow | help gap | Only the root help ("Continue, record and hand off:") and `schema` show a sequence. No leaf page names the command to run next. | W17.02. |
-| H5 | Help documents exit codes | help gap | `investigation --help` has no exit-code table. The table is in plan §9.6 only; `doctor` and `capture finalize` mention one exit status each. | W17.02: put the §9.6 table in the root help or the `docs agents` page. |
+| H5 | Help documents exit codes | help gap | `investigation --help` has no exit-code table. The table is in plan §9.6 only; `doctor` and `capture finalize` mention one exit status each. | W17.02: put the §9.6 table in the root help or the `docs agents` page. Fixed in W17.03 (bn-1tzg): the root help ends with the exit codes. |
 | H6 | Wrong usage fails fast with a helpful error | fixed | Before: `investigation doctor --fix` → `error: unexpected argument '--fix' found … Retry or inspect with investigation --help --format json`. After: `… Retry or inspect with investigation doctor --help --format json`; `investigation --format json vault render --bogus` → `"repair":{"argv":["investigation","vault","render","--help","--format","json"]}` | The repair names the help page of the deepest subcommand on the command line. Global options and their values are skipped. |
 
 ## Standard commands
@@ -129,7 +129,7 @@ readable import reasons instead of the debug variant names.
 | # | Rule | Status | Evidence | Decision |
 |---|---|---|---|---|
 | A1 | No persistent environment variables are needed | met | Each variable has a flag: `AGENT` → `--actor`, `INVESTIGATION_SESSION` → `--session`, `FORMAT` → `--format`, `INVESTIGATION_READ_ONLY` → `--read-only`, `INVESTIGATION_LOG` → `-v`/`-q`. No help page contains `export`. | Nothing to do. |
-| A2 | No persistent working directory is needed | help gap | `--workspace PATH` works on every command, and no help page contains `cd`. A missed discovery repairs itself: `investigation next` in the parent directory → `… A workspace exists at ./casework; pass --workspace ./casework.` But the root help's "Continue" examples `case new`, `source add`, `schema case.create`, `observe` and `note` leave out `--workspace` and depend on the working directory. | W17.02: every example names `--workspace`. The README quickstart's `cd "$scratch"` is a human shell script, not help. |
+| A2 | No persistent working directory is needed | help gap | `--workspace PATH` works on every command, and no help page contains `cd`. A missed discovery repairs itself: `investigation next` in the parent directory → `… A workspace exists at ./casework; pass --workspace ./casework.` But the root help's "Continue" examples `case new`, `source add`, `schema case.create`, `observe` and `note` leave out `--workspace` and depend on the working directory. | W17.02: every example names `--workspace`. The README quickstart's `cd "$scratch"` is a human shell script, not help. Fixed in W17.03 (bn-1tzg): the four root-help shortcut examples now name `--workspace ./casework`. |
 | A3 | `--cwd` is validated | met | No `--cwd`. `--workspace` opens only a directory that holds `investigation.toml`, and file reads are limited to the configured import roots. | Nothing to do. |
 
 ## Styling and tokens
@@ -161,3 +161,9 @@ rewrite help text, apart from one clause on `--format` for the fix in F1.
 8. The shortcut pages (`case new`, `source add`, `observe`, `note`) mix global
    options with the catalog fields, so the operation's own flags are hard to
    find.
+
+W17.03 (bn-1tzg) fixed gaps 3, 5, 6 and 7 in the help text: the root help
+ends with the exit-code table, every root-help example names `--workspace`,
+`--no-color` and `--no-pager` say that they change nothing, and
+`ingest --input` says that the manifest is JSON and names
+`investigation schema ingest`.

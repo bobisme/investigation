@@ -15,7 +15,9 @@ pub(crate) fn open_workspace(path: Option<&Path>) -> Result<Workspace, Failure> 
             if matches!(&error, WorkspaceError::Io { source, .. } if source.kind() == io::ErrorKind::NotFound)
                 && !path.join("investigation.toml").is_file()
             {
-                return workspace_failure(WorkspaceError::WorkspaceNotFound(path.to_owned()));
+                return enclosing_workspace_hint(path).unwrap_or_else(|| {
+                    workspace_failure(WorkspaceError::WorkspaceNotFound(path.to_owned()))
+                });
             }
             workspace_failure(error)
         }),
@@ -45,6 +47,36 @@ pub(crate) fn open_workspace(path: Option<&Path>) -> Result<Workspace, Failure> 
             })
         }
     }
+}
+
+/// `--workspace PATH` named no workspace, but the working directory is inside
+/// one, typically after `cd` into it with a relative PATH: name that one
+/// instead of suggesting `init`, which would nest a second workspace.
+fn enclosing_workspace_hint(path: &Path) -> Option<Failure> {
+    let workspace = Workspace::discover(&env::current_dir().ok()?).ok()?;
+    let root = workspace.root().display().to_string();
+    let missing = WorkspaceError::WorkspaceNotFound(path.to_owned());
+    Some(
+        Failure::new(
+            ErrorCode::WorkspaceRequired,
+            format!(
+                "{missing}. The working directory is inside the workspace {root}; \
+                 pass --workspace {root}. Do not run init here."
+            ),
+        )
+        .with_argv(
+            [
+                PROGRAM_NAME,
+                "--workspace",
+                &root,
+                "onboard",
+                "--format",
+                "json",
+            ]
+            .map(str::to_owned)
+            .to_vec(),
+        ),
+    )
 }
 
 pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {

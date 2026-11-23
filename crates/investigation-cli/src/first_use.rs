@@ -113,7 +113,21 @@ fn with_init_path(
         argv.extend(["--import-root".to_owned(), root.to_str()?.to_owned()]);
     }
     argv.insert(0, PROGRAM_NAME.to_owned());
-    Some(argv)
+    Some(with_init_actor(argv))
+}
+
+/// An `init` repair also names an example `--actor` when the call names none
+/// and AGENT is unset, so the `start` that follows is not refused for a
+/// missing actor. The agent sees the actor in the argv it runs; nothing is
+/// recorded unless it runs it.
+fn with_init_actor(mut argv: Vec<String>) -> Vec<String> {
+    let named = argv
+        .iter()
+        .any(|arg| arg == "--actor" || arg.starts_with("--actor="));
+    if !named && env::var_os("AGENT").is_none() {
+        argv.extend(["--actor".to_owned(), EXAMPLE_ACTOR.to_owned()]);
+    }
+    argv
 }
 
 /// Repair for `init` on a directory that holds files but no workspace: the
@@ -142,7 +156,7 @@ pub(crate) fn nonempty_init_repair(
         if no_import_roots {
             argv.extend(["--import-root".to_owned(), path.to_str()?.to_owned()]);
         }
-        Some(argv)
+        Some(with_init_actor(argv))
     });
     match argv {
         Some(argv) => repaired.with_argv(argv),
@@ -309,7 +323,16 @@ pub(crate) fn check_attachment(
             given.display(),
             resolved.display()
         );
-        let found = beneath_roots.first();
+        // A wrong relative prefix (`../source.txt` from the import root) is
+        // common: suggest a file of the same name directly in an import root.
+        let found = beneath_roots.first().cloned().or_else(|| {
+            let name = given.file_name()?;
+            roots
+                .iter()
+                .map(|root| root.join(name))
+                .find(|path| path.is_file())
+        });
+        let found = found.as_ref();
         if let Some(found) = found {
             message.push_str(&format!(" The file exists at {}.", found.display()));
         }
@@ -423,12 +446,22 @@ fn with_replaced_path(
 }
 
 /// Explain a shortcut quote that does not occur in the source. The text
-/// argument doubles as the quote unless `--quote` is given.
-pub(crate) fn explain_quote_failure(mut failure: Failure) -> Failure {
+/// argument doubles as the quote unless `--quote` is given. In the first-use
+/// trials most misses were a typed `\n` for a line break, or two lines joined.
+pub(crate) fn explain_quote_failure(mut failure: Failure, quote: Option<&str>) -> Failure {
     if failure.error.message == "OBSERVATION_TEXT_QUOTE_NOT_FOUND" {
         failure.error.message.push_str(
             ": the quote must be copied exactly from the source text. TEXT is used as the quote unless --quote gives one.",
         );
+        if quote.is_some_and(|quote| quote.contains("\\n")) {
+            failure.error.message.push_str(
+                " The quote contains a typed \\n, which the source does not; quote one line, or put a real line break in the argument.",
+            );
+        } else {
+            failure.error.message.push_str(
+                " Copy one passage character for character; do not shorten, reword or join lines.",
+            );
+        }
     }
     failure
 }

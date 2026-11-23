@@ -65,6 +65,53 @@ def check_schedule():
         assert abs(first["current"] - first["revised"]) <= 1, first
 
 
+def check_arms():
+    """The help-only arm gets the first-use prompts verbatim; only the docs arm adds the page."""
+    plain = RUNNER["prompts"]("help-only")
+    assert plain == {"investigator": RUNNER["INVESTIGATE"], "successor": RUNNER["RESUME"]}
+    assert "AGENTS.md" not in plain["investigator"] + plain["successor"]
+    docs = RUNNER["prompts"]("docs", "# Page\nUse investigation onboard.\n")
+    for phase in ("investigator", "successor"):
+        assert docs[phase].startswith(plain[phase]) and docs[phase].endswith("Use investigation onboard.")
+    families = [{"id": f"f{index}", "domain": "debugging", "variants": [{"id": "default"}]} for index in range(6)]
+    old = RUNNER["schedule"](families, ["a", "b"], ("current", "revised"), 51701)
+    new = RUNNER["schedule"](families, ["a", "b"], ("docs", "help-only"), 51701)
+    # Same seed scheme: the same case order, block seeds and build-order pattern.
+    assert [(b["family"], b["block_seed"]) for b in old] == [(b["family"], b["block_seed"]) for b in new]
+    assert [b["order"][0] == "current" for b in old] == [b["order"][0] == "docs" for b in new]
+
+
+def check_friction():
+    verbs = ANALYSIS["invocations"]
+    assert verbs("investigation --workspace ./w --actor a start 'Q' --attach f.txt") == ["start"]
+    assert verbs("cd w && /tools/investigation case new 'T' | head; investigation --help") == ["case new", "--help"]
+    assert verbs("investigation --format=json evidence read ART --selector-file s") == ["evidence read"]
+    assert verbs("investigation hypothesis add 'x'") == ["(unknown)"]
+    assert verbs("investigation case case_01a2 observe x") == ["case (unknown)"]
+    cause, hint = ANALYSIS["refusal_cause"], ANALYSIS["repair_hint"]
+    text = ("error: the following required arguments were not provided:\n  --on <RECORD_ID>\n\n"
+            "Retry or inspect with investigation note --help --format json\n")
+    assert cause(text) == "missing --on <RECORD_ID>" and hint(text) == "investigation note --help --format json"
+    failure = json.dumps({"ok": False, "error": {"code": "INVALID_INPUT", "message":
+                          "OBSERVATION_TEXT_QUOTE_NOT_FOUND: copy the quote", "repair": {"argv": ["investigation", "brief"]}}})
+    assert cause("command_id: tx_1\n" + failure) == "OBSERVATION_TEXT_QUOTE_NOT_FOUND"
+    assert hint(failure) == "investigation brief"
+    assert cause("no investigation.toml found from /work up to the filesystem root.") == "no workspace found"
+    targets = load(ROOT / "training/first-use/help-only/targets.json")
+    assert targets["arms"] == ["docs", "help-only"] and set(targets["targets"]) == {
+        "receipt", "handoff", "unsupported_claims", "refused_share", "recovery"}
+    arm = {"receipt_within_three_after_contact": {"count": 7, "of": 12}, "source_linked_handoff": {"count": 4, "of": 12},
+           "unwarranted_claims": {"count": 0, "of": 12}, "investigator_failed_cli_calls": 30,
+           "investigator_cli_calls": 100, "refused_unstuck": {"count": 20, "of": 30}}
+    base = dict(arm, receipt_within_three_after_contact={"count": 9, "of": 12}, investigator_failed_cli_calls=25)
+    result = ANALYSIS["evaluate"](targets, {"docs": base, "help-only": arm}, "docs", "help-only")
+    assert result["met"], result
+    worse = dict(arm, unwarranted_claims={"count": 1, "of": 12}, receipt_within_three_after_contact={"count": 6, "of": 12})
+    result = ANALYSIS["evaluate"](targets, {"docs": base, "help-only": worse}, "docs", "help-only")
+    assert not result["met"] and not result["targets"]["receipt"]["met"]
+    assert not result["targets"]["unsupported_claims"]["met"] and result["targets"]["handoff"]["met"]
+
+
 def check_grading():
     key = load(KEYS / "river-gauge-record.json")["variants"]["default"]
     with tempfile.TemporaryDirectory() as directory:
@@ -86,14 +133,22 @@ def check_grading():
 def check_results():
     if not RESULTS.exists():
         return None
-    results = load(RESULTS)
-    assert results["schema"] == "first-use-results.v1"
-    rows = results["assignments"]
-    # Recompute every summary from the per-assignment rows.
-    assert results["summary"] == ANALYSIS["summarize"](rows, results["comparison"]), "stale summary"
-    for row in rows:
-        assert row["arm"] in ("current", "revised") and (KEYS / f"{row['family']}.json").exists()
-    return len(rows)
+    count = 0
+    targets = load(ROOT / "training/first-use/help-only/targets.json")
+    for path in [RESULTS, *sorted((ROOT / "training/first-use/help-only").glob("run*/results.json"))]:
+        results = load(path)
+        assert results["schema"] == "first-use-results.v1", path
+        rows = results["assignments"]
+        # Recompute every summary from the per-assignment rows.
+        assert results["summary"] == ANALYSIS["summarize"](rows, results["comparison"]), f"stale summary: {path}"
+        arms = tuple(results["comparison"].get("arms", ("current", "revised")))
+        for row in rows:
+            assert row["arm"] in arms and (KEYS / f"{row['family']}.json").exists(), path
+        if path != RESULTS:
+            # Help-only runs are judged against the committed preregistered targets.
+            assert results["comparison"]["targets"] == targets, f"targets differ from preregistration: {path}"
+        count += len(rows)
+    return count
 
 
 def check_shell():
@@ -132,6 +187,8 @@ def check_shell():
 if __name__ == "__main__":
     roles = check_cases()
     check_schedule()
+    check_arms()
+    check_friction()
     check_grading()
     rows = check_results()
     if "--shell" in sys.argv[1:]:

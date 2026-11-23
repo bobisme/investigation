@@ -100,3 +100,76 @@ The successor measures did not improve, and citation fell. The two gemma success
 - **Revised build.** `c46441d` with [revision.patch](../training/first-use/archive/revision.patch) applied, SHA-256 `769d4025…348001`. The shipped commit was rebased onto a later main. Its crate changes are the same as the patch, apart from hunk offsets.
 - **Fixtures.** The cases are independent of the A-gate pilot families. The study read no sealed material.
 - **Checks.** `scripts/check-first-use.py` checks the cases, keys, schedule and `results.json` in CI and calls no model.
+
+## Help-only arm (W17.03, bn-1tzg)
+
+Can a cold agent learn the CLI from the executable alone? Two arms ran on one build: **docs** also got the build's own agent instructions (`investigation docs agents`) in both prompts, as a host loads AGENTS.md; **help-only** got the executable and the task only. Same runner, cases, seed (51701), models, budgets and prompts as the bn-6vlm re-measure. The five targets were committed before any run ([protocol](../training/first-use/protocol.md#help-only-arm-w1703-preregistered), [targets.json](../training/first-use/help-only/targets.json)). Before the measured runs the arm was rehearsed on the two tuning cases, and `docs/agent/agents.md` moved to `inv.agent-instructions.v2` so that it names `init --actor`, as `--help` does.
+
+**The preregistered target was not met.** Target 1 (receipt within three calls) failed in both runs. Handoff, unsupported claims and both friction budgets were met in both runs.
+
+| Measure (of 12) | Run 1 docs | Run 1 help-only | Run 2 docs | Run 2 help-only | Target |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Receipt ≤3 calls after first CLI contact | 12 | **4** | 12 | **5** | ≥ docs − 2 and ≥ 6: **missed** |
+| … qwen / gemma | 6 / 6 | 3 / 1 | 6 / 6 | 1 / 4 | |
+| Persisted Source and Case at any time | 12 | 9 | 12 | 9 | |
+| Source-linked handoff | 4 | 3 | 5 | 4 | ≥ docs − 2: met |
+| Successor answer / citation / limitation | 7 / 5 / 7 | 8 / 5 / 8 | 7 / 5 / 7 | 9 / 7 / 7 | |
+| Unsupported claims | 0 (≤0.221) | 0 (≤0.221) | 0 | 0 | help-only 0: met |
+| Refused / all investigator CLI calls | 105/211 (0.50) | 73/188 (0.39) | 84/239 (0.35) | 75/195 (0.38) | ≤ docs + 0.10: met |
+| Refused calls followed by a successful call of the same command | 55/123 (0.45) | 54/80 (0.68) | 48/102 (0.47) | 59/93 (0.63) | ≥ docs − 0.10: met |
+| Refusals with a repair hint / hint followed next | 85 / 53 | 58 / 36 | 77 / 27 | 80 / 53 | |
+| Ran `--help` / `onboard` / `docs agents` (investigator) | 4 / 6 / 0 | 10 / 3 / 0 | 7 / 7 / 0 | 10 / 3 / 2 | |
+| Median calls from contact to receipt | 1 | 4 | 2 | 3 | |
+| Mean investigator-plus-successor wall time | 94.5 s | 85.3 s | 105.9 s | 92.2 s | |
+
+Run 1 measured `84561f7` (main `d076991` with this bone's first four commits, which the workspace later rebased as `e919b12`), debug build SHA-256 `4112dfaa…`. Run 2 measured `df75b39` (the same work rebased on main `4040392`, plus the fixes for run 1's causes; rebased later), SHA-256 `e33e39de…`. Each run took about 45 min. Compact results, manifests and SHA256SUMS are in [help-only/run1](../training/first-use/help-only/run1/) and [help-only/run2](../training/first-use/help-only/run2/); the raw archives (2 MB each, listed in SHA256SUMS) are kept outside the repository.
+
+**Why help-only misses the receipt target.** The docs arm knows the commands, so its first CLI call is `init` and `start` follows. The help-only arm's first call is a guess or `--help`, and the three-call window must also hold `init` and `start`. Its misses were:
+
+- No receipt at all: 3 in each run. Qwen investigators ran `head` on the executable, which filled the context (1 in run 1, 2 in run 2). On the choir case the gemma investigator wrote notes and handed off, without the CLI in run 1 and after only `--help` in run 2. No help text reaches an agent that does not run the executable. The third run-1 case is the `cd` slip below.
+- Prose in the command position (`investigation "Initial discovery of …"`), then `--help`: 4 gemma assignments in run 1. After the fix in run 2 the refusal printed the two first steps; 1 gemma assignment still ran `--help` before `init`.
+- One extra discovery call between `--help` and `init`, usually `onboard`, which the root help named as its next command.
+- Slips on `init`: `init --workspace /work` (repaired), an `init` without `--actor` and then a refused `start`, `cd` into the workspace with a relative `--workspace`, and `--attach ../source.txt` from the import root.
+
+Help-only agents refused fewer calls than docs agents and recovered more often. The largest docs-arm cost was quoting source bullet lines that start with `- `, which clap read as flags (34 refused calls in run 1).
+
+### Friction by cause, help-only arm, run 1
+
+| Command | Cause | Calls | Assignments | Hint | Hint followed | Got past it |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `observe` | quote not found in the source | 16 | 4 | 0 | 0 | 16 |
+| `observe` | extra positional argument | 7 | 2 | 7 | 7 | 7 |
+| `note` | missing `--on` | 5 | 5 | 5 | 1 | 3 |
+| `observe` | malformed `--source` ID | 4 | 1 | 0 | 0 | 4 |
+| `schema` | unknown operation name | 4 | 2 | 4 | 3 | 2 |
+| `start` | missing `--attach` (after `../source.txt` was refused) | 4 | 1 | 4 | 2 | 0 |
+| (none) | prose or a stray word in the command position | 5 | 4 | 5 | 4 | 1 |
+| `show` | missing ID | 3 | 2 | 3 | 2 | 2 |
+| `init` | PATH is a non-empty directory | 2 | 2 | 2 | 2 | 2 |
+| `brief`, `case new`, `frontier`, `observe`, `onboard`, `show` | no workspace found | 9 | 4 | 9 | 2 | 4 |
+| other | 20 other causes | 21 | 10 | 19 | 13 | 13 |
+
+"Hint" means the refusal printed a repair argv. "Hint followed" means the next CLI call ran the command that the hint names. "Got past it" means a later call of the same command succeeded. The per-call rows, with the command, cause and hint of every refusal in both arms, are in each run's `results.json` (`assignments[].friction`).
+
+### Changes
+
+Before run 1 (from the rehearsal and the bn-6vlm transcripts):
+
+- A relative `--workspace` that names no workspace, run from inside one, names the enclosing workspace and no longer advises `init`. A rehearsal successor had nested a second workspace that way.
+- Array-of-strings flags such as `--limitations` say in help and in their refusal that they take a JSON array of strings, with an example.
+- A refused quote that holds a typed `\n` says so. Other refused quotes say to copy one passage without shortening, rewording or joining lines.
+- Root help: every example names `--workspace`, an exit-code line, and `--no-color`/`--no-pager` say that they change nothing. `ingest --input` says that the manifest is JSON. These close audit help gaps 3, 5, 6 and 7.
+- Agent instructions v2 name `init --actor`.
+
+Before run 2 (for run 1's causes):
+
+- Prose in the command position is answered with the two first-use steps and repairs to `onboard`. An unknown single word points at `record` and `schema --list`.
+- An `init` repair names `--actor agent:investigator` when the call named none and AGENT is unset.
+
+After run 2 (not measured):
+
+- TEXT values of the shortcuts (`observe TEXT`, `--quote`, `note TEXT`) may start with a hyphen.
+- A missing attachment names, and repairs to, a file of the same name in an import root (`../source.txt` from the root).
+- The root help's `Next:` line is the `init` command, not `onboard`.
+
+Follow-ups under W17 (bn-3hdd): bn-2mkk (a refused quote points at the nearest source passage), bn-3jr1 (`note` without `--on`), bn-2cc0 (`init` inside a workspace), bn-3bky (brief shows each observation's quote and source lines, for successor citation). The arms are `--arm docs --arm help-only` in `scripts/run-first-use.py`, so the W14 release trial (bn-2aic) can reuse them.

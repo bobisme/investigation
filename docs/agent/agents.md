@@ -1,4 +1,4 @@
-<!-- inv.agent-instructions.v1 -->
+<!-- inv.agent-instructions.v2 -->
 # Investigation workflow: use it when uncertainty accumulates
 
 Use `investigation` when a question needs several observations, the
@@ -9,10 +9,11 @@ lookups and ordinary coding tasks. (Some installs add the alias `inv`.)
 Add `--format json` to any command for one JSON object. Start with
 `investigation onboard --format json`; it prints the next valid command.
 With no workspace yet, run
-`investigation init ./casework --no-vault --import-root .`, then
+`investigation init ./casework --actor agent:NAME --no-vault --import-root .`, then
 `investigation --workspace ./casework --actor agent:NAME start 'QUESTION' --attach FILE`.
 Pass `--workspace ./casework` to later commands unless you run them inside
-that directory; writes need `--actor` or the AGENT variable. Resume with
+that directory. Writes need `--actor`, the AGENT variable, or the actor that
+`init --actor` recorded on this machine; a receipt says when it used that one. Resume with
 `investigation brief`. Skim with `investigation show ID --depth summary`; use
 `--depth full` or `investigation evidence read ARTIFACT --selector-file FILE`
 only when needed. A synopsis never replaces its sources. If several cases

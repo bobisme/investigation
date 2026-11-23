@@ -245,3 +245,312 @@ fn a_text_receipt_for_a_retry_says_already_committed() {
         format!("{first_line}  already_committed")
     );
 }
+
+/// W17.03 help-only arm: a successor ran `cd casework` and then
+/// `--workspace ./casework`, was told to run init, and nested a second
+/// workspace. The refusal now names the enclosing workspace instead.
+#[test]
+fn a_relative_workspace_from_inside_a_workspace_names_the_enclosing_one() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path().canonicalize().unwrap();
+    let output = invoke(&cwd, &["init", "casework", "--no-vault"], &[], b"");
+    assert_eq!(output.status.code(), Some(0), "{output:?}");
+    let inside = cwd.join("casework");
+    let root = inside.display().to_string();
+    let failure = json(&inside, &["--workspace", "./casework", "brief"], 3);
+    assert_eq!(failure["error"]["code"], "WORKSPACE_REQUIRED");
+    let message = failure["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains(&format!("inside the workspace {root}")),
+        "{message}"
+    );
+    assert!(!message.contains("Run investigation init"), "{message}");
+    assert_eq!(
+        failure["error"]["repair"]["argv"],
+        json!([
+            "investigation",
+            "--workspace",
+            root,
+            "onboard",
+            "--format",
+            "json"
+        ])
+    );
+    // Outside any workspace the advice is unchanged.
+    let elsewhere = json(&cwd, &["--workspace", "./nope", "brief"], 3);
+    assert!(
+        elsewhere["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("Run investigation init PATH")
+    );
+}
+
+/// W17.03: agents passed prose to `--limitations`; help and the refusal now
+/// say that the value is a JSON array of strings and show one.
+#[test]
+fn a_string_list_flag_says_it_takes_a_json_array_of_strings() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let help = invoke(cwd, &["observe", "--help"], &[], b"");
+    assert!(
+        text(&help).contains(
+            r#"limitations: a JSON array of strings, for example '["first item","second item"]'"#
+        ),
+        "{help:?}"
+    );
+    let refused = invoke(
+        cwd,
+        &[
+            "observe",
+            "x",
+            "--source",
+            "src_1",
+            "--limitations",
+            "only one log",
+        ],
+        &[],
+        b"",
+    );
+    assert_eq!(refused.status.code(), Some(2));
+    let stderr = String::from_utf8(refused.stderr).unwrap();
+    assert!(
+        stderr.contains("value must be a JSON array of strings"),
+        "{stderr}"
+    );
+}
+
+/// W17.03: most refused quotes in the first-use runs held a typed `\n` for a
+/// line break; the refusal now says so.
+#[test]
+fn a_quote_with_a_typed_newline_is_explained() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    std::fs::write(cwd.join("two.txt"), "line one\nline two\n").unwrap();
+    let init = invoke(
+        cwd,
+        &["init", "casework", "--import-root", ".", "--no-vault"],
+        &[],
+        b"",
+    );
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+    let started = json(
+        cwd,
+        &[
+            "--workspace",
+            "casework",
+            "--actor",
+            ACTOR,
+            "start",
+            "Q",
+            "--attach",
+            "two.txt",
+            "--command-id",
+            "start-1",
+        ],
+        0,
+    );
+    let source = started["items"][0]["source_id"].as_str().unwrap();
+    for (key, quote, advice) in [
+        ("q1", r"line one\nline two", "typed \\n"),
+        (
+            "q2",
+            "line one line two",
+            "do not shorten, reword or join lines",
+        ),
+    ] {
+        let failure = json(
+            cwd,
+            &[
+                "--workspace",
+                "casework",
+                "--actor",
+                ACTOR,
+                "observe",
+                "x",
+                "--source",
+                source,
+                "--quote",
+                quote,
+                "--command-id",
+                key,
+            ],
+            2,
+        );
+        let message = failure["error"]["message"].as_str().unwrap();
+        assert!(
+            message.starts_with("OBSERVATION_TEXT_QUOTE_NOT_FOUND"),
+            "{message}"
+        );
+        assert!(message.contains(advice), "{message}");
+    }
+}
+
+/// W17.03: an investigator in the import root passed `--attach ../source.txt`;
+/// the refusal now names the file of that name in the import root and repairs
+/// to it.
+#[test]
+fn a_wrong_relative_attachment_repairs_to_the_file_in_the_import_root() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path().canonicalize().unwrap();
+    std::fs::write(cwd.join("source.txt"), "one line\n").unwrap();
+    let init = invoke(
+        &cwd,
+        &["init", "casework", "--import-root", ".", "--no-vault"],
+        &[],
+        b"",
+    );
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+    let failure = json(
+        &cwd,
+        &[
+            "--workspace",
+            "casework",
+            "--actor",
+            ACTOR,
+            "start",
+            "Q",
+            "--attach",
+            "../source.txt",
+            "--command-id",
+            "start-1",
+        ],
+        2,
+    );
+    let found = cwd.join("source.txt").display().to_string();
+    let message = failure["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains(&format!("The file exists at {found}.")),
+        "{message}"
+    );
+    let argv = failure["error"]["repair"]["argv"].as_array().unwrap();
+    assert!(argv.iter().any(|arg| arg == &json!(found)), "{argv:?}");
+}
+
+/// W17.03: help-only agents passed prose where the command goes, then spent
+/// a call on --help. The refusal now shows the two first-use steps; an
+/// unknown single word points at the operations.
+#[test]
+fn prose_in_the_command_position_is_answered_with_the_first_steps() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let prose = json(cwd, &["Initial discovery of the source"], 2);
+    let message = prose["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("takes a command first, not free text"),
+        "{message}"
+    );
+    assert!(
+        message.contains(
+            "investigation init ./casework --actor agent:investigator --no-vault --import-root ."
+        ),
+        "{message}"
+    );
+    assert_eq!(
+        prose["error"]["repair"]["argv"],
+        json!(["investigation", "onboard", "--format", "json"])
+    );
+    // An unknown word points at the operations; its repair stays the root help.
+    for word in ["hypothesize", "obseve"] {
+        let refused = json(cwd, &[word], 2);
+        let message = refused["error"]["message"].as_str().unwrap();
+        assert!(
+            message.contains("investigation schema --list lists the operations"),
+            "{message}"
+        );
+        assert_eq!(
+            refused["error"]["repair"]["argv"],
+            json!(["investigation", "--help", "--format", "json"])
+        );
+    }
+    // A group's unknown subcommand is unchanged: its own help.
+    let group = json(cwd, &["case", "bogus"], 2);
+    assert_eq!(
+        group["error"]["repair"]["argv"],
+        json!(["investigation", "case", "--help", "--format", "json"])
+    );
+}
+
+/// W17.03: an init repaired from a non-empty directory names an example actor
+/// when the call named none, so the next start is not refused.
+#[test]
+fn an_init_repair_names_an_actor_when_the_call_named_none() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path().canonicalize().unwrap();
+    std::fs::write(cwd.join("source.txt"), "one line\n").unwrap();
+    let root = cwd.display().to_string();
+    let refused = json(&cwd, &["init", "--workspace", &root], 2);
+    let argv = refused["error"]["repair"]["argv"].as_array().unwrap();
+    let tail: Vec<_> = argv[argv.len() - 2..].to_vec();
+    assert_eq!(
+        tail,
+        vec![json!("--actor"), json!("agent:investigator")],
+        "{argv:?}"
+    );
+    let named = json(
+        &cwd,
+        &["init", "--workspace", &root, "--actor", "agent:me"],
+        2,
+    );
+    let argv = named["error"]["repair"]["argv"].as_array().unwrap();
+    assert_eq!(
+        argv.iter().filter(|arg| *arg == "--actor").count(),
+        1,
+        "{argv:?}"
+    );
+}
+
+/// W17.03: source lines that start with "- " were refused as unknown flags
+/// when passed as TEXT or --quote, and agents looped on the refusal.
+#[test]
+fn text_values_may_start_with_a_hyphen() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    std::fs::write(cwd.join("dash.txt"), "- Each line here\nplain line\n").unwrap();
+    let init = invoke(
+        cwd,
+        &["init", "casework", "--import-root", ".", "--no-vault"],
+        &[],
+        b"",
+    );
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+    let started = json(
+        cwd,
+        &[
+            "--workspace",
+            "casework",
+            "--actor",
+            ACTOR,
+            "start",
+            "Q",
+            "--attach",
+            "dash.txt",
+            "--command-id",
+            "start-1",
+        ],
+        0,
+    );
+    let source = started["items"][0]["source_id"].as_str().unwrap();
+    for (index, args) in [
+        vec![
+            "observe",
+            "x",
+            "--source",
+            source,
+            "--quote",
+            "- Each line here",
+        ],
+        vec!["observe", "- Each line here", "--source", source],
+        vec!["observe", "--source", source, "- Each line here"],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let key = format!("dash-{index}");
+        let mut argv = vec!["--workspace", "casework", "--actor", ACTOR];
+        argv.extend(args);
+        argv.extend(["--command-id", &key]);
+        let receipt = json(cwd, &argv, 0);
+        assert_eq!(receipt["result"], "committed", "{receipt}");
+    }
+}

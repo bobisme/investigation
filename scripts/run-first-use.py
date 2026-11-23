@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Compare two pinned CLI builds on cold first use and a source-linked handoff.
+"""Compare CLI arms on cold first use and a source-linked handoff.
 
 Each assignment gives an investigator one local source in an ordinary working
 directory and the `investigation` executable on PATH, then gives a fresh
-successor the resulting directory. Both arms use the same isolated shell,
-session loop, prompts and budgets as the A-gate runner; only the executable
-differs. Model runs are manual. CI runs `scripts/check-first-use.py`, which
-uses a stub backend.
+successor the resulting directory. Every arm uses the same isolated shell,
+session loop, budgets and task prompts as the A-gate runner.
+
+Two comparisons are supported:
+- `current` against `revised`: two pinned builds, the same context.
+- `docs` against `help-only` (W17.03): one pinned build. The docs arm also gets
+  the build's own agent instructions (`investigation docs agents`, the page that
+  `integration apply` writes into AGENTS.md) in both prompts, as an agent host
+  loads AGENTS.md. The help-only arm gets the executable and the task only, so it
+  must learn the CLI from --help, schema, onboard and errors.
+
+Model runs are manual. CI runs `scripts/check-first-use.py`, which uses a stub
+backend.
 """
 
 import argparse
@@ -33,7 +42,9 @@ COST = runpy.run_path(str(ROOT / "scripts/a-gate-cost.py"))
 # The A-gate session loop reads its prompts and shell from its module globals.
 # Patch that namespace, not the copy runpy returns.
 LOOP = RUNNER["session"].__globals__
-ARMS = ("current", "revised")
+ARMS = ("current", "revised", "docs", "help-only")
+# Arms compared against each other: (baseline, treatment).
+COMPARISONS = (("current", "revised"), ("docs", "help-only"))
 BUDGETS = RUNNER["BUDGETS"]
 INVESTIGATE = """Investigate the objective using the evidence in this directory. The team keeps
 investigation records with the `investigation` command on PATH. Keep your durable work in
@@ -42,6 +53,22 @@ citation and the strongest limitation. Your chat will not be handed over. When y
 is ready for handoff, create an empty file named handoff.ready."""
 RESUME = RUNNER["RESUME"] + """
 The previous investigator kept records with the `investigation` command on PATH."""
+# How the docs arm presents the agent instructions: as a host presents AGENTS.md.
+DOCS_CONTEXT = """
+
+The repository's AGENTS.md contains these instructions:
+
+{page}"""
+
+
+def prompts(arm, page=None):
+    """The investigator and successor prompts of one arm; only the docs arm adds context."""
+    if arm != "docs":
+        return {"investigator": INVESTIGATE, "successor": RESUME}
+    if not page:
+        raise ValueError("The docs arm needs the agent instructions page.")
+    extra = DOCS_CONTEXT.format(page=page.strip())
+    return {"investigator": INVESTIGATE + extra, "successor": RESUME + extra}
 CLI_ERROR = re.compile(
     r'"ok":\s*false|^error:|Retry or inspect with|See investigation schema|no investigation\.toml found'
     r'|^/[a-z_]+(?:/\d+)?: ', re.M)
@@ -95,10 +122,11 @@ class Probe:
 SHELL = LOOP["shell"]
 
 
-def session(model, phase, variant, work, binary, transcript, budget, seed, backend):
+def session(model, phase, variant, work, binary, transcript, budget, seed, backend, texts=None):
+    texts = texts or prompts("help-only")
     probe = Probe(variant["initial"]["sha256"])
     saved = {name: LOOP[name] for name in ("shell", "INVESTIGATE", "RESUME")}
-    LOOP.update(shell=probe, INVESTIGATE=INVESTIGATE, RESUME=RESUME)
+    LOOP.update(shell=probe, INVESTIGATE=texts["investigator"], RESUME=texts["successor"])
     boundary = {"review_status": "missing", "interruption": None}
     try:
         counters, answer = RUNNER["session"](model, phase, variant, work, binary, transcript,
@@ -134,7 +162,7 @@ def grade(answer, key, handoff):
 
 
 def assignment(block, arm, variant, key, output, binary, environment, budgets=BUDGETS,
-               backend=RUNNER["request"]):
+               backend=RUNNER["request"], texts=None):
     run_id = str(uuid.uuid4())
     run = output / run_id
     work = run / "workspace"
@@ -143,7 +171,8 @@ def assignment(block, arm, variant, key, output, binary, environment, budgets=BU
     model, seed = block["model"], block["block_seed"]
     phases = {}
     phases["investigator"], _ = session(model, "investigator", variant, work, binary,
-                                        run / "investigator.jsonl", budgets["investigator"], seed, backend)
+                                        run / "investigator.jsonl", budgets["investigator"], seed, backend,
+                                        texts)
     marker = work / "handoff.ready"
     if marker.is_file() and not marker.is_symlink():
         marker.unlink()
@@ -154,7 +183,8 @@ def assignment(block, arm, variant, key, output, binary, environment, budgets=BU
                "operations": RUNNER["operation_counts"](work), "digest": RUNNER["tree_digest"](work)}
     shutil.copytree(work, run / "handoff", symlinks=True)
     phases["successor"], answer = session(model, "successor", variant, work, binary,
-                                          run / "successor.jsonl", budgets["successor"], seed, backend)
+                                          run / "successor.jsonl", budgets["successor"], seed, backend,
+                                          texts)
     for phase in phases:
         phases[phase].update(friction(run / f"{phase}.jsonl"))
     graded = grade(answer, key, run / "handoff")
@@ -191,29 +221,48 @@ def load_key(family):
     return key
 
 
+def arm_binaries(parser, args, arms):
+    """Map each arm to its executable and commit; docs and help-only share one build."""
+    sources = {"current": (args.current, args.current_commit), "revised": (args.revised, args.revised_commit),
+               "docs": (args.binary, args.binary_commit), "help-only": (args.binary, args.binary_commit)}
+    flags = {"current": "--current", "revised": "--revised", "docs": "--binary", "help-only": "--binary"}
+    if set(arms) not in ({"current", "revised"}, {"current"}, {"revised"}, {"docs", "help-only"},
+                         {"docs"}, {"help-only"}):
+        parser.error("Compare current with revised, or docs with help-only.")
+    binaries, commits = {}, {}
+    for arm in arms:
+        path, commit = sources[arm]
+        if path is None or commit is None:
+            parser.error(f"The {arm} arm needs {flags[arm]} and {flags[arm]}-commit.")
+        binaries[arm], commits[arm] = path.resolve(strict=True), commit
+    return binaries, commits
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--current", type=Path, required=True, help="Executable built from main at the start.")
-    parser.add_argument("--current-commit", required=True)
+    parser.add_argument("--current", type=Path, help="Executable built from main at the start.")
+    parser.add_argument("--current-commit")
     parser.add_argument("--revised", type=Path)
     parser.add_argument("--revised-commit")
+    parser.add_argument("--binary", type=Path, help="The one executable of the docs and help-only arms.")
+    parser.add_argument("--binary-commit")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--model", action="append", required=True)
     parser.add_argument("--role", choices=("tuning", "comparison"), default="comparison")
     parser.add_argument("--family", action="append", default=[])
-    parser.add_argument("--arm", action="append", choices=ARMS)
+    parser.add_argument("--arm", action="append", choices=ARMS,
+                        help="Default: current and revised. W17.03 uses --arm docs --arm help-only.")
     parser.add_argument("--seed", type=int, default=51701)
     args = parser.parse_args()
-    arms = tuple(args.arm or ARMS)
-    binaries = {"current": args.current.resolve(strict=True)}
-    commits = {"current": args.current_commit}
-    if "revised" in arms:
-        if args.revised is None or args.revised_commit is None:
-            parser.error("The revised arm needs --revised and --revised-commit.")
-        binaries["revised"] = args.revised.resolve(strict=True)
-        commits["revised"] = args.revised_commit
-    for binary in binaries.values():
+    arms = tuple(args.arm or COMPARISONS[0])
+    binaries, commits = arm_binaries(parser, args, arms)
+    for binary in set(binaries.values()):
         RUNNER["check_isolation"](binary)
+    page = None
+    if "docs" in arms:
+        page = subprocess.check_output([binaries["docs"], "docs", "agents"], text=True,
+                                       env={"PATH": "/usr/bin", "LC_ALL": "C.UTF-8"})
+    texts = {arm: prompts(arm, page) for arm in arms}
     registry = json.loads((FIXTURES / "family-registry.json").read_text(encoding="utf-8"))
     FIXTURE["validate"](registry, FIXTURES)
     keys = {path.stem: load_key(path.stem) for path in sorted(KEYS.glob("*.json"))}
@@ -233,13 +282,17 @@ def main():
         "host": {"kernel": platform.release(), "machine": platform.machine()},
         "tools": {"ollama": RUNNER["request"]("/api/version")["version"], "python": platform.python_version()},
     }
+    if page is not None:
+        environment["docs_page"] = {"argv": ["investigation", "docs", "agents"],
+                                    "sha256": hashlib.sha256(page.encode()).hexdigest(), "bytes": len(page.encode())}
     blocks = schedule(families, args.model, arms, args.seed)
     output = args.output.resolve()
     output.mkdir(mode=0o700)
     RUNNER["write_json"](output / "manifest.json", {
         "created_at": datetime.now(timezone.utc).isoformat(), "role": args.role, "seed": args.seed,
         "arms": arms, "environment": environment, "budgets": BUDGETS, "blocks": blocks,
-        "prompts": {"system": RUNNER["SYSTEM"], "investigator": INVESTIGATE, "successor": RESUME}})
+        "prompts": {"system": RUNNER["SYSTEM"], "investigator": INVESTIGATE, "successor": RESUME,
+                    "by_arm": texts}})
     variants = {(family["id"], variant["id"]): variant for family in families for variant in family["variants"]}
     for model in args.model:
         warm = RUNNER["request"]("/api/generate", {"model": model, "prompt": "", "stream": False,
@@ -249,7 +302,7 @@ def main():
             variant = variants[(block["family"], block["variant"])]
             key = keys[block["family"]]["variants"][block["variant"]]
             for arm in block["order"]:
-                assignment(block, arm, variant, key, output, binaries[arm], environment)
+                assignment(block, arm, variant, key, output, binaries[arm], environment, texts=texts[arm])
         # Unload before the next model so only one model occupies the shared GPU.
         RUNNER["request"]("/api/generate", {"model": model, "prompt": "", "stream": False, "keep_alive": 0},
                           timeout=60)

@@ -93,17 +93,20 @@ Continue, record and hand off:
   investigation docs agents
   investigation --workspace ./casework brief --format json
   investigation --workspace ./casework next --format json
-  investigation case new 'Request latency' --format json
-  investigation source add ./results.log --case <ID> --format json
+  investigation --workspace ./casework case new 'Request latency' --format json
+  investigation --workspace ./casework source add ./results.log --case <ID> --format json
   investigation schema case.create --format json
-  investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json
-  investigation note 'Check the clock source' --on <RECORD_ID> --format json
+  investigation --workspace ./casework observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json
+  investigation --workspace ./casework note 'Check the clock source' --on <RECORD_ID> --format json
   investigation --workspace ./casework record --input case.json --format json
   investigation --workspace ./casework receipt KEY --actor ACTOR --format json
 
 Use schema record for the transaction envelope and schema --list for operations.
 Generated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.
-Use --print-envelope to inspect a shortcut request without writing.";
+Use --print-envelope to inspect a shortcut request without writing.
+Exit codes: 0 success, 2 invalid input, 3 missing workspace, case or reference, 4 conflict,
+5 gate refused, 6 integrity failure, 7 busy, IO or unknown durability. With --format json
+the failure names its cause in error.code and its retry in error.repair.";
 
 #[derive(Parser)]
 #[command(
@@ -151,10 +154,10 @@ pub(crate) struct Global {
     #[arg(long, global = true)]
     #[allow(dead_code)]
     read_only: bool,
-    /// Suppress terminal colors.
+    /// Accepted for compatibility; output is never colored.
     #[arg(long, global = true)]
     no_color: bool,
-    /// Write directly to stdout.
+    /// Accepted for compatibility; output is never paged.
     #[arg(long, global = true)]
     no_pager: bool,
     /// Diagnostic logs on stderr: -v info, -vv debug, -vvv trace. INVESTIGATION_LOG sets a level.
@@ -206,7 +209,7 @@ enum Commands {
     },
     /// Preserve original local bytes and return their acquisition IDs.
     Ingest {
-        /// Read the manifest from FILE, or - for a path-only manifest on stdin.
+        /// Read the JSON manifest from FILE, or - for stdin; investigation schema ingest shows it.
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
         #[arg(long, help = dry_run::HELP)]
@@ -1271,11 +1274,41 @@ fn parse_error(error: clap::Error, help: Vec<String>) -> Output {
             Output::success("help", json!({ "help": text }), text)
         }
         ErrorKind::DisplayVersion => version_output(error.to_string()),
+        ErrorKind::InvalidSubcommand if help.len() == 4 => {
+            // An unknown word in the command position of the root. In the
+            // W17.03 help-only runs agents passed prose here, as if the CLI
+            // were a note taker, then spent a call on --help.
+            let word = error
+                .get(clap::error::ContextKind::InvalidSubcommand)
+                .map(ToString::to_string)
+                .unwrap_or_default();
+            let (advice, repair) = if word.contains(char::is_whitespace) {
+                (
+                    ROOT_PROSE_ADVICE,
+                    [PROGRAM_NAME, "onboard", "--format", "json"]
+                        .map(str::to_owned)
+                        .to_vec(),
+                )
+            } else {
+                (ROOT_WORD_ADVICE, help)
+            };
+            let message = format!("{}\n{advice}", error.to_string().trim_end());
+            Output::failure(Failure::new(ErrorCode::InvalidInput, message).with_argv(repair))
+        }
         _ => Output::failure(
             Failure::new(ErrorCode::InvalidInput, error.to_string()).with_argv(help),
         ),
     }
 }
+
+const ROOT_PROSE_ADVICE: &str = "\
+investigation takes a command first, not free text. To start a case from a local file:
+  investigation init ./casework --actor agent:investigator --no-vault --import-root .
+  investigation --workspace ./casework --actor agent:investigator start 'QUESTION' --attach FILE";
+
+const ROOT_WORD_ADVICE: &str = "\
+investigation --help lists the commands. Typed records such as assessment.add are written with
+investigation record --input FILE; investigation schema --list lists the operations.";
 
 fn version_output(text: String) -> Output {
     Output::success(

@@ -28,7 +28,7 @@ macro_rules! t {
 
 #[rustfmt::skip]
 const TEACH: &[Teach] = &[
-    t!(&[], [], "investigation onboard --format json"),
+    t!(&[], [], "investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json"),
     t!(&["init"], [], "investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json"),
     t!(&["record"], [], "investigation --workspace ./casework receipt KEY --actor agent:investigator --format json"),
     t!(&["ingest"], ["investigation --workspace ./casework ingest --input manifest.json --format json"], "investigation --workspace ./casework brief --format json"),

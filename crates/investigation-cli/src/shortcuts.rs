@@ -106,10 +106,13 @@ fn shortcut_leaf(
             spec.path.join(" "),
             argument.id
         );
+        // Source lines often start with "- " (bullets); a TEXT value may
+        // begin with a hyphen. W17.03 runs looped on clap refusing them.
         let mut arg = Arg::new(argument.id)
             .value_name(argument.value_name)
             .help(argument.help)
-            .required(argument.required);
+            .required(argument.required)
+            .allow_hyphen_values(argument.value_name == "TEXT");
         if argument.positional {
             arg = arg.index(positional_index(spec, argument.id));
         } else if let Some(long) = argument.long {
@@ -146,6 +149,11 @@ fn shortcut_leaf(
             )
         } else if is_string_schema(&schema, &field.schema) {
             format!("Catalog payload field {}.", field.path)
+        } else if is_string_array_schema(&schema, &field.schema) {
+            format!(
+                "Catalog payload field {}: a JSON array of strings, for example {STRING_ARRAY_EXAMPLE}.",
+                field.path
+            )
         } else {
             format!(
                 "Catalog payload field {} (structured values use JSON).",
@@ -355,8 +363,36 @@ fn parse_cli_value(input: &str, schema: &Value, root: &Value) -> Result<Value, S
     if kind == Some("string") {
         return Ok(Value::String(input.to_owned()));
     }
+    if is_string_array_schema(root, schema) {
+        return serde_json::from_str(input).map_err(|error| {
+            format!(
+                "value must be a JSON array of strings, for example {STRING_ARRAY_EXAMPLE}: {error}"
+            )
+        });
+    }
     serde_json::from_str(input)
         .map_err(|error| format!("value must be valid JSON for this catalog field: {error}"))
+}
+
+/// How help and errors show a value for an array-of-strings field.
+const STRING_ARRAY_EXAMPLE: &str = r#"'["first item","second item"]'"#;
+
+fn is_string_array_schema(root: &Value, schema: &Value) -> bool {
+    let schema = dereference(root, schema);
+    let array = schema.get("type").and_then(Value::as_str) == Some("array")
+        || schema
+            .get("type")
+            .and_then(Value::as_array)
+            .is_some_and(|types| {
+                types.iter().any(|kind| kind.as_str() == Some("array"))
+                    && types
+                        .iter()
+                        .all(|kind| matches!(kind.as_str(), Some("array" | "null")))
+            });
+    array
+        && schema
+            .get("items")
+            .is_some_and(|items| is_string_schema(root, items))
 }
 
 fn enum_values(root: &Value, schema: &Value) -> Option<Vec<String>> {
@@ -593,7 +629,12 @@ fn run_operation(
     let receipt = store
         .record(&bytes)
         .map_err(|failure| with_workspace_repair(store.workspace(), failure))
-        .map_err(crate::first_use::explain_quote_failure)?;
+        .map_err(|failure| {
+            let quote = envelope
+                .pointer("/operations/0/payload/basis/text_quote/exact")
+                .and_then(Value::as_str);
+            crate::first_use::explain_quote_failure(failure, quote)
+        })?;
     Ok(receipt_output(store.workspace(), receipt))
 }
 
