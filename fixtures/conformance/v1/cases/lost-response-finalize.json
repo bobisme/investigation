@@ -1,0 +1,48 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "lost-response-finalize",
+  "covers": [
+    "lost-responses",
+    "idempotent-begin-append-attach-finalize",
+    "finalize-retry"
+  ],
+  "summary": "The response to finalize is lost; the identical resend returns the original receipt and the canonical state equals a clean run.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "faults": [
+        "drop-response:finalize:1"
+      ],
+      "calls": [
+        {
+          "key": "${external_run_id}/finalize",
+          "results": [
+            "committed",
+            "already_committed"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

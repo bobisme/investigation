@@ -74,11 +74,14 @@ struct Fault {
 }
 
 struct Options {
+    resume: bool,
     scenario: &'static str,
     protocol: Option<String>,
     workspace: PathBuf,
     output_dir: PathBuf,
-    producer: ProducerName,
+    /// Checked against the producer name rule when `begin` is built, so a
+    /// refused name is a rejected `begin`, not a usage error.
+    producer: String,
     external_run_id: ExternalRunId,
     faults: Vec<Fault>,
 }
@@ -112,12 +115,12 @@ impl Options {
         };
         let absolute = |path: PathBuf| std::path::absolute(&path).map_err(|e| e.to_string());
         Ok(Self {
+            resume,
             scenario,
             protocol,
             workspace: absolute(workspace.ok_or_else(|| need("--workspace"))?)?,
             output_dir: absolute(output_dir.ok_or_else(|| need("--output-dir"))?)?,
-            producer: ProducerName::new(producer.ok_or_else(|| need("--producer"))?)
-                .map_err(|e| e.to_string())?,
+            producer: producer.ok_or_else(|| need("--producer"))?,
             external_run_id: ExternalRunId::new(
                 external_run_id.ok_or_else(|| need("--external-run-id"))?,
             )
@@ -478,14 +481,30 @@ fn finalize_request(scenario: &str, handle: CaptureHandle, id: &str) -> Finalize
     }
 }
 
-fn begin_request(options: &Options) -> Result<BeginCapture, Stop> {
+fn begin_request(options: &Options, driver: &mut Driver<'_>) -> Result<BeginCapture, Stop> {
     let id = options.external_run_id.as_str();
+    let producer = match ProducerName::new(options.producer.as_str()) {
+        Ok(producer) => producer,
+        Err(error) => {
+            // The recording crate refuses the name before any call. Report it as
+            // the recorder would: a rejected `begin` with `INVALID_INPUT`.
+            eprintln!("begin rejected: {error}");
+            driver.calls.push(json!({
+                "operation": "capture.begin",
+                "key": format!("{id}/begin"),
+                "position": null,
+                "result": "rejected",
+                "error_code": "INVALID_INPUT",
+            }));
+            return Err(Stop::Rejected);
+        }
+    };
     let mut begin = BeginCapture::new(
         key(&format!("{id}/begin")),
-        format!("agent:{}", options.producer)
+        format!("agent:{producer}")
             .parse()
             .map_err(|_| Stop::Rejected)?,
-        ProducerIdentity::new(options.producer.clone()),
+        ProducerIdentity::new(producer),
         options.external_run_id.clone(),
         CaptureIntent::new("synthetic run"),
         CaseTarget::NewRecordCase {
@@ -499,7 +518,8 @@ fn begin_request(options: &Options) -> Result<BeginCapture, Stop> {
     Ok(begin)
 }
 
-/// Begin, the scenario's steps, finalize. `run` and `resume` share this code: it
+/// Begin, the scenario's steps, finalize. `run` sends every request of the
+/// scenario, so a rerun resends them all and gets the original receipts. `resume`
 /// resends the same `begin`, asks `recover` where it stopped, and continues with
 /// the first step after `last_position`.
 fn synthetic_run(
@@ -508,7 +528,7 @@ fn synthetic_run(
     ids: &RefCell<(Option<String>, Option<String>)>,
 ) -> Result<FinalizeReceipt, Stop> {
     let id = options.external_run_id.as_str();
-    let begin = begin_request(options)?;
+    let begin = begin_request(options, driver)?;
     let begun = driver.call(
         "begin",
         begin.key.as_str(),
@@ -524,6 +544,13 @@ fn synthetic_run(
         },
     )?;
     let handle: CaptureHandle = begun.handle;
+    if !options.resume {
+        let receipt = run_steps(options, driver, handle, id, 0)?;
+        if options.scenario == "late-item" {
+            late_item(driver, handle)?;
+        }
+        return Ok(receipt);
+    }
 
     let state = driver
         .recorder

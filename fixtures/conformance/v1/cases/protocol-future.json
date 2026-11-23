@@ -1,0 +1,87 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "protocol-future",
+  "covers": [
+    "protocol-version"
+  ],
+  "summary": "A begin that requires an unsupported protocol version is refused and nothing is declared.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 1,
+      "outcome": "rejected",
+      "protocol": "inv.capture.v2",
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "rejected"
+          ],
+          "error_code": "INVALID_INPUT"
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 0,
+        "sequences": []
+      },
+      "attempts": {
+        "a": {
+          "state": "absent"
+        }
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "recover"
+      ],
+      "expect": {
+        "handles": []
+      },
+      "resolve": false
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "begin",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "INVALID_INPUT",
+          "path": "/protocol",
+          "expected": [
+            "inv.capture.v1"
+          ]
+        }
+      },
+      "resolve": false,
+      "stdin": {
+        "key": "${external_run_id}/begin",
+        "actor": "agent:${producer}",
+        "producer": {
+          "name": "${producer}"
+        },
+        "external_run_id": "${external_run_id}",
+        "intent": {
+          "label": "synthetic run"
+        },
+        "case": {
+          "kind": "new_record_case",
+          "title": "Synthetic runs"
+        },
+        "protocol": "inv.capture.v2"
+      }
+    }
+  ]
+}

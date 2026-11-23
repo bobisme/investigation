@@ -192,7 +192,7 @@ def scenario(name, external_run_id, producer, out_dir, protocol=None):
     begin = {
         "key": external_run_id + "/begin",
         "actor": "agent:" + producer,
-        "producer": {"name": producer, "version": "0.1.0"},
+        "producer": {"name": producer},
         "external_run_id": external_run_id,
         "intent": {"label": "synthetic run"},
         "case": {"kind": "new_record_case", "title": "Synthetic runs"},

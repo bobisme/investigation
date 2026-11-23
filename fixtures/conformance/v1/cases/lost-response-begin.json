@@ -1,0 +1,47 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "lost-response-begin",
+  "covers": [
+    "lost-responses",
+    "idempotent-begin-append-attach-finalize"
+  ],
+  "summary": "The response to begin is lost; the identical resend returns the original receipt and the canonical state equals a clean run.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "faults": [
+        "drop-response:begin:1"
+      ],
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "committed",
+            "already_committed"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

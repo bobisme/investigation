@@ -1,0 +1,192 @@
+{
+  "schema_version": "inv.conformance-suite.v1",
+  "protocol": "inv.capture.v1",
+  "adapter": "inv.producer-adapter.v1",
+  "scenarios": [
+    "interrupted-run",
+    "late-item",
+    "partial-evidence",
+    "synthetic-run"
+  ],
+  "default_attempt": {
+    "producer": "example-producer",
+    "external_run_id": "run-0001"
+  },
+  "coverage": [
+    {
+      "id": "equivalent-hashes-ids",
+      "plan": "\u00a711.7 equivalent hashes/IDs",
+      "statement": "Retained bytes, manifest bytes and recorded digests agree; a retry or rerun keeps the Run, handle and receipts; two producers record equal normalized state.",
+      "cases": [
+        "attempt-distinct-producers",
+        "baseline",
+        "rerun-identical"
+      ]
+    },
+    {
+      "id": "idempotent-begin-append-attach-finalize",
+      "plan": "\u00a711.7 idempotent begin/append/attach/finalize",
+      "statement": "Identical resends return original receipts and record nothing.",
+      "cases": [
+        "lost-response-append",
+        "lost-response-attach",
+        "lost-response-begin",
+        "lost-response-finalize",
+        "positions-and-changed-requests",
+        "rerun-identical",
+        "staging-retirement"
+      ]
+    },
+    {
+      "id": "lost-responses",
+      "plan": "\u00a711.7 lost responses",
+      "statement": "A lost acknowledgement is answered by resending the identical request with the same key.",
+      "cases": [
+        "lost-response-append",
+        "lost-response-attach",
+        "lost-response-begin",
+        "lost-response-finalize"
+      ]
+    },
+    {
+      "id": "truncated-streams",
+      "plan": "\u00a711.7 truncated streams",
+      "statement": "A stream that stops early is recorded as the durable prefix, with missing positions named.",
+      "cases": [
+        "crash-resume-append",
+        "crash-resume-attach",
+        "crash-resume-begin",
+        "crash-resume-finalize",
+        "interrupted-run"
+      ]
+    },
+    {
+      "id": "changed-manifest",
+      "plan": "\u00a711.7 changed manifest",
+      "statement": "The same key with other content, including a changed finalize, is refused.",
+      "cases": [
+        "positions-and-changed-requests"
+      ]
+    },
+    {
+      "id": "exact-acquisition-mapping",
+      "plan": "\u00a711.7 exact acquisition mapping",
+      "statement": "Each item key maps to its position, Source and retained Artifact whose bytes are exactly what the producer wrote.",
+      "cases": [
+        "baseline",
+        "partial-evidence"
+      ]
+    },
+    {
+      "id": "incomplete-controls",
+      "plan": "\u00a711.7 incomplete controls",
+      "statement": "A control the producer did not complete stays a producer claim and sets no validity.",
+      "cases": [
+        "partial-evidence"
+      ]
+    },
+    {
+      "id": "namespaced-metadata",
+      "plan": "\u00a711.7 namespaced metadata preservation",
+      "statement": "Namespaced metadata on items and finalize is kept verbatim.",
+      "cases": [
+        "partial-evidence"
+      ]
+    },
+    {
+      "id": "protocol-version",
+      "plan": "\u00a711.7 schema future-version refusal (W07.15)",
+      "statement": "An unsupported protocol version is refused and nothing is declared.",
+      "cases": [
+        "protocol-explicit",
+        "protocol-future"
+      ]
+    },
+    {
+      "id": "crash-restart-recovery",
+      "plan": "\u00a711.7 crash/restart recovery",
+      "statement": "After a crash, resume resends begin, reads recover and continues after last_position.",
+      "cases": [
+        "crash-resume-append",
+        "crash-resume-attach",
+        "crash-resume-begin",
+        "crash-resume-finalize"
+      ]
+    },
+    {
+      "id": "positions",
+      "plan": "Positions",
+      "statement": "One shared sequence per handle from 1; gaps are refused.",
+      "cases": [
+        "baseline",
+        "positions-and-changed-requests"
+      ]
+    },
+    {
+      "id": "attachments",
+      "plan": "Attachments",
+      "statement": "Closed files are copied, verified by digest and size, and retained.",
+      "cases": [
+        "baseline",
+        "partial-evidence"
+      ]
+    },
+    {
+      "id": "missing-attachments",
+      "plan": "Missing attachments",
+      "statement": "A declared-missing or never-attached artifact is recorded missing, never as empty bytes.",
+      "cases": [
+        "partial-evidence"
+      ]
+    },
+    {
+      "id": "interrupted-runs",
+      "plan": "Interrupted runs",
+      "statement": "Completion interrupted with execution unknown is finalized_partial.",
+      "cases": [
+        "interrupted-run"
+      ]
+    },
+    {
+      "id": "late-items",
+      "plan": "Late items (W07.08)",
+      "statement": "Items after sealing get the closed-handle response.",
+      "cases": [
+        "late-item"
+      ]
+    },
+    {
+      "id": "finalize-retry",
+      "plan": "Finalize retry",
+      "statement": "A resent finalize returns the original receipt, also after a crash and after staging retirement.",
+      "cases": [
+        "crash-resume-finalize",
+        "lost-response-finalize",
+        "staging-retirement"
+      ]
+    },
+    {
+      "id": "recover",
+      "plan": "Recover (W07.07)",
+      "statement": "Recover reports seal, staging, last position and receipts, and reruns nothing.",
+      "cases": [
+        "crash-resume-append",
+        "crash-resume-attach",
+        "crash-resume-begin",
+        "crash-resume-finalize",
+        "positions-and-changed-requests",
+        "staging-retirement"
+      ]
+    },
+    {
+      "id": "producer-name-attempt-identity",
+      "plan": "Producer name and attempt identity (W07.18)",
+      "statement": "The name rule is enforced and one attempt has one Run across capture and envelopes.",
+      "cases": [
+        "attempt-distinct-producers",
+        "attempt-envelope-first",
+        "producer-name-refused"
+      ]
+    }
+  ]
+}

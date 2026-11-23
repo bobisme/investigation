@@ -1,0 +1,58 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "attempt-distinct-producers",
+  "covers": [
+    "producer-name-attempt-identity",
+    "equivalent-hashes-ids"
+  ],
+  "summary": "The same external run ID under two producer names is two attempts with two Runs, each recorded like a clean run.",
+  "attempts": {
+    "a": {
+      "producer": "example-producer",
+      "external_run_id": "run-0001"
+    },
+    "b": {
+      "producer": "example-producer-b",
+      "external_run_id": "run-0001"
+    }
+  },
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "attempt": "b"
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 2,
+        "sequences": [
+          2,
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        },
+        "b": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

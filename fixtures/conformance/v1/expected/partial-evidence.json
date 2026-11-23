@@ -1,0 +1,361 @@
+{
+  "case": {
+    "lifecycle": "active",
+    "mode": "record",
+    "title": "Synthetic runs"
+  },
+  "run": {
+    "execution_status": "completed",
+    "evidence_completeness": "partial",
+    "evidence_validity": "unknown",
+    "external_ref": "${external_run_id}",
+    "intent": {
+      "intent": "synthetic run",
+      "kind": "exploration"
+    },
+    "producer": "agent:${producer}",
+    "tool": "${producer}",
+    "manifest_digest": "<manifest-digest>",
+    "started_at": null,
+    "finished_at": null,
+    "capture": {
+      "protocol": "inv.capture.v1",
+      "producer": "${producer}",
+      "external_run_id": "${external_run_id}",
+      "handle": "${handle}",
+      "limits": {
+        "max_attachment_bytes": 67108864,
+        "max_event_bytes": 65536,
+        "max_items": 100000
+      }
+    },
+    "capture_finalization": {
+      "artifacts": [
+        {
+          "channel": "results",
+          "declared": true,
+          "key": "result",
+          "media_type": "application/json",
+          "position": 2,
+          "retention": {
+            "artifact_ref": "<any>",
+            "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+            "size_bytes": 50,
+            "source_ref": "<any>",
+            "state": "retained"
+          },
+          "role": "original-output"
+        },
+        {
+          "channel": "trace",
+          "declared": true,
+          "key": "trace",
+          "position": 3,
+          "retention": {
+            "cause": "declared",
+            "reason": "trace collector exited before flush",
+            "state": "missing"
+          },
+          "role": "log"
+        },
+        {
+          "declared": true,
+          "key": "summary",
+          "retention": {
+            "cause": "not_attached",
+            "state": "missing"
+          }
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "reported_metric",
+          "name": "latency.p99",
+          "unit": "ms",
+          "validity_claim": "producer_reported",
+          "value": 18.7
+        }
+      ],
+      "attribution": "producer_reported",
+      "channels": [
+        {
+          "channel": "results",
+          "claimed": "complete",
+          "missing_artifacts": 0,
+          "recorded": "complete",
+          "retained_artifacts": 1
+        },
+        {
+          "channel": "trace",
+          "claimed": "complete",
+          "gaps": [
+            4
+          ],
+          "missing_artifacts": 1,
+          "recorded": "missing",
+          "retained_artifacts": 0
+        }
+      ],
+      "command_id": "${external_run_id}/finalize",
+      "completion": "complete",
+      "controls": [
+        {
+          "name": "steady-load",
+          "producer_result": "reported_pass"
+        },
+        {
+          "name": "warm-cache",
+          "producer_result": "not_run"
+        }
+      ],
+      "evidence_completeness": "partial",
+      "execution": {
+        "exit_code": 0,
+        "state": "completed"
+      },
+      "expected_last_position": 4,
+      "external_run_id": "${external_run_id}",
+      "finalization": "finalized",
+      "limitations": [
+        "Single synthetic workload"
+      ],
+      "manifest": {
+        "artifact_ref": "<any>",
+        "source_ref": "<any>",
+        "digest": "<manifest-digest>"
+      },
+      "metadata": {
+        "example-org.fixture": {
+          "seed": 7
+        }
+      },
+      "producer": {
+        "name": "${producer}"
+      },
+      "receipts": [
+        {
+          "kind": "signed-statement",
+          "reference": "urn:example:statement:1"
+        }
+      ],
+      "schema_version": "inv.capture.v1",
+      "sealed_position": 4,
+      "snapshot": {
+        "sequence": 1
+      }
+    }
+  },
+  "manifest": {
+    "artifacts": [
+      {
+        "channel": "results",
+        "declared": true,
+        "key": "result",
+        "media_type": "application/json",
+        "position": 2,
+        "retention": {
+          "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "size_bytes": 50,
+          "state": "retained"
+        },
+        "role": "original-output"
+      },
+      {
+        "channel": "trace",
+        "declared": true,
+        "key": "trace",
+        "position": 3,
+        "retention": {
+          "cause": "declared",
+          "reason": "trace collector exited before flush",
+          "state": "missing"
+        },
+        "role": "log"
+      },
+      {
+        "declared": true,
+        "key": "summary",
+        "retention": {
+          "cause": "not_attached",
+          "state": "missing"
+        }
+      }
+    ],
+    "assertions": [
+      {
+        "kind": "reported_metric",
+        "name": "latency.p99",
+        "unit": "ms",
+        "validity_claim": "producer_reported",
+        "value": 18.7
+      }
+    ],
+    "case_id": "${case_id}",
+    "channels": [
+      {
+        "channel": "results",
+        "claimed": "complete",
+        "missing_artifacts": 0,
+        "recorded": "complete",
+        "retained_artifacts": 1
+      },
+      {
+        "channel": "trace",
+        "claimed": "complete",
+        "gaps": [
+          4
+        ],
+        "missing_artifacts": 1,
+        "recorded": "missing",
+        "retained_artifacts": 0
+      }
+    ],
+    "command_id": "${external_run_id}/finalize",
+    "completion": "complete",
+    "controls": [
+      {
+        "name": "steady-load",
+        "producer_result": "reported_pass"
+      },
+      {
+        "name": "warm-cache",
+        "producer_result": "not_run"
+      }
+    ],
+    "evidence_completeness": "partial",
+    "execution": {
+      "exit_code": 0,
+      "state": "completed"
+    },
+    "expected_last_position": 4,
+    "external_run_id": "${external_run_id}",
+    "finalization": "finalized",
+    "handle": "${handle}",
+    "items": [
+      {
+        "key": "started",
+        "operation": "capture.append",
+        "position": 1,
+        "request": {
+          "fact": {
+            "kind": "started"
+          },
+          "handle": "${handle}",
+          "key": "started",
+          "metadata": {
+            "example-org.host": {
+              "slot": 3
+            }
+          },
+          "position": 1
+        }
+      },
+      {
+        "key": "result",
+        "operation": "capture.attach",
+        "outcome": {
+          "availability": "staged",
+          "blob": "blobs/a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "classification": "internal",
+          "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "size_bytes": 50
+        },
+        "position": 2,
+        "request": {
+          "channel": "results",
+          "expected_digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "expected_size_bytes": 50,
+          "handle": "${handle}",
+          "key": "result",
+          "media_type": "application/json",
+          "metadata": {
+            "example-org.host": {
+              "slot": 3
+            }
+          },
+          "position": 2,
+          "role": "original-output",
+          "source": {
+            "kind": "file",
+            "path": "${output_dir}/result.json"
+          }
+        }
+      },
+      {
+        "key": "trace",
+        "operation": "capture.attach",
+        "outcome": {
+          "availability": "missing",
+          "classification": "internal",
+          "missing": "declared"
+        },
+        "position": 3,
+        "request": {
+          "channel": "trace",
+          "handle": "${handle}",
+          "key": "trace",
+          "position": 3,
+          "role": "log",
+          "source": {
+            "kind": "missing",
+            "reason": "trace collector exited before flush"
+          }
+        }
+      },
+      {
+        "key": "trace-gap",
+        "operation": "capture.append",
+        "position": 4,
+        "request": {
+          "fact": {
+            "channel": "trace",
+            "kind": "channel",
+            "state": {
+              "detail": "collector restarted",
+              "kind": "gap"
+            }
+          },
+          "handle": "${handle}",
+          "key": "trace-gap",
+          "position": 4
+        }
+      }
+    ],
+    "limitations": [
+      "Single synthetic workload"
+    ],
+    "metadata": {
+      "example-org.fixture": {
+        "seed": 7
+      }
+    },
+    "producer": {
+      "name": "${producer}"
+    },
+    "protocol": "inv.capture.v1",
+    "receipts": [
+      {
+        "kind": "signed-statement",
+        "reference": "urn:example:statement:1"
+      }
+    ],
+    "run_id": "${run_id}",
+    "schema_version": "inv.capture-manifest.v1",
+    "sealed_position": 4
+  },
+  "recover": {
+    "seal": "finalized",
+    "last_position": 4,
+    "execution": "completed",
+    "producer": {
+      "name": "${producer}"
+    },
+    "external_run_id": "${external_run_id}",
+    "handle": "${handle}",
+    "run_id": "${run_id}",
+    "case_id": "${case_id}"
+  },
+  "artifact_bytes": {
+    "result": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21"
+  }
+}

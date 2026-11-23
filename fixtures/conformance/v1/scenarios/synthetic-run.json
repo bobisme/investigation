@@ -1,0 +1,101 @@
+{
+  "schema_version": "inv.conformance-scenario.v1",
+  "name": "synthetic-run",
+  "summary": "A complete run: started, one retained result, one phase change, a complete finalization.",
+  "files": [
+    {
+      "name": "result.json",
+      "text": "{\"metric\":\"latency.p99\",\"value\":18.7,\"unit\":\"ms\"}\n",
+      "sha256": "a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+      "size_bytes": 50
+    }
+  ],
+  "steps": [
+    {
+      "step": 1,
+      "operation": "capture.begin",
+      "request": {
+        "key": "${external_run_id}/begin",
+        "actor": "agent:${producer}",
+        "producer": {
+          "name": "${producer}"
+        },
+        "external_run_id": "${external_run_id}",
+        "intent": {
+          "label": "synthetic run"
+        },
+        "case": {
+          "kind": "new_record_case",
+          "title": "Synthetic runs"
+        }
+      },
+      "expect": "success"
+    },
+    {
+      "step": 2,
+      "operation": "capture.append",
+      "request": {
+        "handle": "${handle}",
+        "key": "started",
+        "position": 1,
+        "fact": {
+          "kind": "started"
+        }
+      },
+      "expect": "success"
+    },
+    {
+      "step": 3,
+      "operation": "capture.attach",
+      "request": {
+        "handle": "${handle}",
+        "key": "result",
+        "position": 2,
+        "role": "original-output",
+        "source": {
+          "kind": "file",
+          "path": "${output_dir}/result.json"
+        },
+        "media_type": "application/json"
+      },
+      "expect": "success"
+    },
+    {
+      "step": 4,
+      "operation": "capture.append",
+      "request": {
+        "handle": "${handle}",
+        "key": "phase-summarize",
+        "position": 3,
+        "fact": {
+          "kind": "phase_changed",
+          "phase": "summarize"
+        }
+      },
+      "expect": "success"
+    },
+    {
+      "step": 5,
+      "operation": "capture.finalize",
+      "request": {
+        "handle": "${handle}",
+        "key": "${external_run_id}/finalize",
+        "expected_last_position": 3,
+        "completion": "complete",
+        "execution": {
+          "state": "completed",
+          "exit_code": 0
+        },
+        "assertions": [
+          {
+            "kind": "reported_metric",
+            "name": "latency.p99",
+            "value": 18.7,
+            "unit": "ms"
+          }
+        ]
+      },
+      "expect": "success"
+    }
+  ]
+}

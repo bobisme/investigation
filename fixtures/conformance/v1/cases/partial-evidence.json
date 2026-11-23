@@ -1,0 +1,38 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "partial-evidence",
+  "covers": [
+    "missing-attachments",
+    "attachments",
+    "incomplete-controls",
+    "namespaced-metadata",
+    "exact-acquisition-mapping"
+  ],
+  "summary": "A retained artifact, a declared-missing artifact and a never-attached one, a channel gap and a control that did not run. Completeness is computed, claims stay producer claims, metadata is kept verbatim.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "partial-evidence",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "partial-evidence"
+        }
+      }
+    }
+  ]
+}

@@ -16,8 +16,8 @@ example-rust-producer resume --workspace WS --output-dir OUT --scenario syntheti
 
 Scenarios: `synthetic-run`, `partial-evidence`, `interrupted-run`, `late-item` (a post-finalize append that must be refused with `REVISION_CONFLICT`). `--protocol VERSION` sets the protocol on `begin`.
 
-Exit status: 0 finalized, 1 rejected, 2 usage error, 75 injected crash. One JSON object goes to stdout; diagnostics go to stderr.
+Exit status: 0 finalized, 1 rejected, 2 usage error, 75 injected crash. One JSON object goes to stdout; diagnostics go to stderr. A producer name that the recording crate refuses is a rejected `begin` (exit 1, error code `INVALID_INPUT`), not a usage error.
 
-Flow: `begin` (new `record` case), `append started`, `attach result.json`, `append phase_changed`, `finalize`. `resume` resends the same `begin`, calls `recover` and continues after `last_position`. If `OUT/result.json` holds bytes it did not write, it cannot vouch for the step, so it finalizes with completion `interrupted` and execution `unknown`.
+Flow: `begin` (new `record` case), `append started`, `attach result.json`, `append phase_changed`, `finalize`. `run` sends every request, so a second `run` gets every original receipt back. `resume` resends the same `begin`, calls `recover` and continues after `last_position`. If `OUT/result.json` holds bytes it did not write, it cannot vouch for the step, so it finalizes with completion `interrupted` and execution `unknown`.
 
 To remove the example, delete this directory, its line in the workspace `members` in `Cargo.toml`, and its entry in `scripts/check-boundaries.py`. The core build is unchanged.

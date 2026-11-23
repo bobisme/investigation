@@ -1,0 +1,69 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "baseline",
+  "covers": [
+    "equivalent-hashes-ids",
+    "positions",
+    "attachments",
+    "exact-acquisition-mapping"
+  ],
+  "summary": "A clean synthetic-run: one case, two journal transactions, contiguous positions, retained bytes equal to the file the producer wrote.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "committed"
+          ]
+        },
+        {
+          "key": "started",
+          "results": [
+            "accepted"
+          ]
+        },
+        {
+          "key": "result",
+          "results": [
+            "accepted"
+          ]
+        },
+        {
+          "key": "phase-summarize",
+          "results": [
+            "accepted"
+          ]
+        },
+        {
+          "key": "${external_run_id}/finalize",
+          "results": [
+            "committed"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

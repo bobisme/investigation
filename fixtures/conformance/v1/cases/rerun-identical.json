@@ -1,0 +1,57 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "rerun-identical",
+  "covers": [
+    "idempotent-begin-append-attach-finalize",
+    "equivalent-hashes-ids"
+  ],
+  "summary": "Running the whole scenario again with the same identity returns every original receipt and records nothing new.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "only_already": true,
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "already_committed"
+          ]
+        },
+        {
+          "key": "${external_run_id}/finalize",
+          "results": [
+            "already_committed"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

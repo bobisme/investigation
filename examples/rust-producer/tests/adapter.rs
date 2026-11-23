@@ -161,11 +161,19 @@ fn an_identical_retry_is_idempotent() {
         first["finalize"]["manifest_digest"],
         second["finalize"]["manifest_digest"]
     );
-    // The recorded Run is not duplicated: `begin` replays and the run stops there.
-    assert_eq!(
-        results(&second),
-        [("capture.begin".to_owned(), "already_committed".to_owned())]
-    );
+    // `run` resends every request of the scenario. Each returns its original
+    // receipt, so the recorded Run is not duplicated.
+    let replayed: Vec<(String, String)> = [
+        ("capture.begin", "already_committed"),
+        ("capture.append", "already_accepted"),
+        ("capture.attach", "already_accepted"),
+        ("capture.append", "already_accepted"),
+        ("capture.finalize", "already_committed"),
+    ]
+    .into_iter()
+    .map(|(operation, result)| (operation.to_owned(), result.to_owned()))
+    .collect();
+    assert_eq!(results(&second), replayed);
 }
 
 #[test]

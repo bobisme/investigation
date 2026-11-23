@@ -1,0 +1,84 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "crash-resume-append",
+  "covers": [
+    "crash-restart-recovery",
+    "recover",
+    "truncated-streams"
+  ],
+  "summary": "The producer crashes right after append returns. Recover reports the durable prefix; resume resends begin, continues after last_position and repeats no recorded step.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 75,
+      "outcome": "crashed",
+      "faults": [
+        "crash-after:append:1"
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          1
+        ],
+        "errors": [],
+        "staging": {
+          "active": 1
+        }
+      },
+      "attempts": {
+        "a": {
+          "state": "open",
+          "recover": {
+            "seal": "open",
+            "staging": "present",
+            "execution": "unknown",
+            "next_position": 2,
+            "last_position": 1
+          }
+        }
+      }
+    },
+    {
+      "action": "producer",
+      "command": "resume",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "already_committed"
+          ]
+        },
+        {
+          "key": "started",
+          "results": []
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

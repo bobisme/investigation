@@ -1,0 +1,35 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "interrupted-run",
+  "covers": [
+    "interrupted-runs",
+    "truncated-streams"
+  ],
+  "summary": "The producer cannot vouch for its stream: finalized interrupted with a cursor ahead of what arrived. Missing positions are named and execution stays unknown.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "interrupted-run",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "interrupted-run"
+        }
+      }
+    }
+  ]
+}

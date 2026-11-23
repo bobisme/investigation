@@ -1,0 +1,45 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "producer-name-refused",
+  "covers": [
+    "producer-name-attempt-identity"
+  ],
+  "summary": "A producer name outside the shared name rule is refused at begin and nothing is declared.",
+  "attempts": {
+    "a": {
+      "producer": "example-org:producer",
+      "external_run_id": "run-0001"
+    }
+  },
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 1,
+      "outcome": "rejected",
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "rejected"
+          ],
+          "error_code": "INVALID_INPUT"
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 0,
+        "sequences": []
+      },
+      "attempts": {
+        "a": {
+          "state": "absent"
+        }
+      }
+    }
+  ]
+}

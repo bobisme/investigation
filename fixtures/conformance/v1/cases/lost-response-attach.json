@@ -1,0 +1,47 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "lost-response-attach",
+  "covers": [
+    "lost-responses",
+    "idempotent-begin-append-attach-finalize"
+  ],
+  "summary": "The response to attach is lost; the identical resend returns the original receipt and the canonical state equals a clean run.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "faults": [
+        "drop-response:attach:1"
+      ],
+      "calls": [
+        {
+          "key": "result",
+          "results": [
+            "accepted",
+            "already_accepted"
+          ]
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,203 @@
+{
+  "case": {
+    "lifecycle": "active",
+    "mode": "record",
+    "title": "Synthetic runs"
+  },
+  "run": {
+    "execution_status": "completed",
+    "evidence_completeness": "complete",
+    "evidence_validity": "unknown",
+    "external_ref": "${external_run_id}",
+    "intent": {
+      "intent": "synthetic run",
+      "kind": "exploration"
+    },
+    "producer": "agent:${producer}",
+    "tool": "${producer}",
+    "manifest_digest": "<manifest-digest>",
+    "started_at": null,
+    "finished_at": null,
+    "capture": {
+      "protocol": "inv.capture.v1",
+      "producer": "${producer}",
+      "external_run_id": "${external_run_id}",
+      "handle": "${handle}",
+      "limits": {
+        "max_attachment_bytes": 67108864,
+        "max_event_bytes": 65536,
+        "max_items": 100000
+      }
+    },
+    "capture_finalization": {
+      "artifacts": [
+        {
+          "declared": false,
+          "key": "result",
+          "media_type": "application/json",
+          "position": 2,
+          "retention": {
+            "artifact_ref": "<any>",
+            "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+            "size_bytes": 50,
+            "source_ref": "<any>",
+            "state": "retained"
+          },
+          "role": "original-output"
+        }
+      ],
+      "assertions": [
+        {
+          "kind": "reported_metric",
+          "name": "latency.p99",
+          "unit": "ms",
+          "validity_claim": "producer_reported",
+          "value": 18.7
+        }
+      ],
+      "attribution": "producer_reported",
+      "channels": [],
+      "command_id": "${external_run_id}/finalize",
+      "completion": "complete",
+      "controls": [],
+      "evidence_completeness": "complete",
+      "execution": {
+        "exit_code": 0,
+        "state": "completed"
+      },
+      "expected_last_position": 3,
+      "external_run_id": "${external_run_id}",
+      "finalization": "finalized",
+      "limitations": [],
+      "manifest": {
+        "artifact_ref": "<any>",
+        "source_ref": "<any>",
+        "digest": "<manifest-digest>"
+      },
+      "producer": {
+        "name": "${producer}"
+      },
+      "receipts": [],
+      "schema_version": "inv.capture.v1",
+      "sealed_position": 3,
+      "snapshot": {
+        "sequence": 1
+      }
+    }
+  },
+  "manifest": {
+    "artifacts": [
+      {
+        "declared": false,
+        "key": "result",
+        "media_type": "application/json",
+        "position": 2,
+        "retention": {
+          "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "size_bytes": 50,
+          "state": "retained"
+        },
+        "role": "original-output"
+      }
+    ],
+    "assertions": [
+      {
+        "kind": "reported_metric",
+        "name": "latency.p99",
+        "unit": "ms",
+        "validity_claim": "producer_reported",
+        "value": 18.7
+      }
+    ],
+    "case_id": "${case_id}",
+    "channels": [],
+    "command_id": "${external_run_id}/finalize",
+    "completion": "complete",
+    "controls": [],
+    "evidence_completeness": "complete",
+    "execution": {
+      "exit_code": 0,
+      "state": "completed"
+    },
+    "expected_last_position": 3,
+    "external_run_id": "${external_run_id}",
+    "finalization": "finalized",
+    "handle": "${handle}",
+    "items": [
+      {
+        "key": "started",
+        "operation": "capture.append",
+        "position": 1,
+        "request": {
+          "fact": {
+            "kind": "started"
+          },
+          "handle": "${handle}",
+          "key": "started",
+          "position": 1
+        }
+      },
+      {
+        "key": "result",
+        "operation": "capture.attach",
+        "outcome": {
+          "availability": "staged",
+          "blob": "blobs/a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "classification": "internal",
+          "digest": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21",
+          "size_bytes": 50
+        },
+        "position": 2,
+        "request": {
+          "handle": "${handle}",
+          "key": "result",
+          "media_type": "application/json",
+          "position": 2,
+          "role": "original-output",
+          "source": {
+            "kind": "file",
+            "path": "${output_dir}/result.json"
+          }
+        }
+      },
+      {
+        "key": "phase-summarize",
+        "operation": "capture.append",
+        "position": 3,
+        "request": {
+          "fact": {
+            "kind": "phase_changed",
+            "phase": "summarize"
+          },
+          "handle": "${handle}",
+          "key": "phase-summarize",
+          "position": 3
+        }
+      }
+    ],
+    "limitations": [],
+    "producer": {
+      "name": "${producer}"
+    },
+    "protocol": "inv.capture.v1",
+    "receipts": [],
+    "run_id": "${run_id}",
+    "schema_version": "inv.capture-manifest.v1",
+    "sealed_position": 3
+  },
+  "recover": {
+    "seal": "finalized",
+    "last_position": 3,
+    "execution": "completed",
+    "producer": {
+      "name": "${producer}"
+    },
+    "external_run_id": "${external_run_id}",
+    "handle": "${handle}",
+    "run_id": "${run_id}",
+    "case_id": "${case_id}"
+  },
+  "artifact_bytes": {
+    "result": "sha256:a5d7ece3ed36c0eefb652b51c1972aa160ac078c1f663d2b78642e76543dbb21"
+  }
+}

@@ -87,7 +87,7 @@ investigation --workspace ./cases capture append --input event.json --format jso
 | `phase_changed` | `phase` | 1–256 characters, no control characters |
 | `error` | `message`, optional `external_code` | message 1–16384 characters, kept verbatim; code 1–128 characters, no control characters |
 | `cancelled` | optional `reason` | 1–4096 characters |
-| `channel` | `channel`, `state` (`opened`, `closed`, or `gap` with optional `detail`) | channel 1–256 characters, no control characters; detail 1–4096 characters |
+| `channel` | `channel`, `state` (`{"kind": "opened"}`, `{"kind": "closed"}`, or `{"kind": "gap"}` with optional `detail`) | channel 1–256 characters, no control characters; detail 1–4096 characters |
 
 Stdout is the `ItemReceipt` (`result`, `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`), the same value `Recorder::append` returns. `reported_at` is the producer's claim and stays in the staged request. `accepted_at` is the recorder's local acceptance time. Neither orders the items; the position does. The serialized request may be at most `max_event_bytes` (65536). Put high-frequency samples in an attached artifact, not in individual facts.
 
@@ -445,18 +445,20 @@ The conformance runner drives every example producer through this executable int
 
 ```text
 PRODUCER describe
-PRODUCER run    --workspace DIR --output-dir OUT --scenario NAME --producer NAME --external-run-id ID [--fault FAULT]...
-PRODUCER resume --workspace DIR --output-dir OUT --scenario NAME --producer NAME --external-run-id ID
+PRODUCER run    --workspace DIR --output-dir OUT --scenario NAME --producer NAME --external-run-id ID [--protocol VERSION] [--fault FAULT]...
+PRODUCER resume --workspace DIR --output-dir OUT --scenario NAME --producer NAME --external-run-id ID [--protocol VERSION]
 ```
 
-- The runner initializes `DIR` with `investigation init DIR --no-vault` first. The adapter never creates or deletes workspaces.
+- The runner initializes `DIR` with `investigation init DIR --no-vault --import-root OUT` first. The adapter never creates or deletes workspaces.
 - The runner sets `INVESTIGATION_BIN` to the `investigation` executable. A JSON-CLI adapter spawns it with an argument array and JSON on stdin, without a shell. A library adapter ignores it.
 - `OUT` is an empty directory outside `DIR` that the runner creates and keeps between `run` and `resume`. The adapter writes its output files there, so a resumed run attaches the same paths. It writes nowhere else, reads nothing else from the environment, and uses no network.
-- `--producer` and `--external-run-id` set the producer name and external run ID, so two adapters record identical identities.
+- `--producer` and `--external-run-id` set the producer name and external run ID, so two adapters record identical identities. The begin `producer` object is exactly `{"name": NAME}`, with no `version` or `instance`.
+- `--protocol` makes `begin` carry `"protocol": VERSION`. Without it, `begin` has no `protocol` field. The runner passes an unsupported version to check the refusal.
+- `OUT` is absolute. An attachment's `source.path` is `OUT` joined with the file name, for example `OUT/result.json`.
 
 ### Scenarios
 
-Every adapter supports `synthetic-run`. The conformance suite may add scenarios; `describe` lists the ones an adapter supports.
+A conforming adapter supports all four scenarios: `synthetic-run`, `partial-evidence`, `interrupted-run` and `late-item`. `describe` lists them. The normative requests are in [fixtures/conformance/v1/scenarios](../fixtures/conformance/v1/scenarios). Each file holds the bytes the producer writes to `OUT` and every request in order. `${producer}`, `${external_run_id}`, `${output_dir}` and `${handle}` stand for the flag values and the handle that `begin` returned. An adapter can build typed requests or send the JSON. Its requests must be equal to the file's requests after substitution. `synthetic-run`:
 
 | Step | Call | Key | Content |
 |---|---|---|---|
@@ -466,23 +468,35 @@ Every adapter supports `synthetic-run`. The conformance suite may add scenarios;
 | 4 | `append` | `phase-summarize` | Position 3, `phase_changed`, phase `summarize`. |
 | 5 | `finalize` | `ID/finalize` | Expected last position 3, `complete`, execution `completed` with exit code 0, one `reported_metric` assertion `latency.p99` = 18.7 ms. |
 
+The other scenarios have the same `begin` request, the same keys `ID/begin` and `ID/finalize`, and the same `OUT/result.json`:
+
+| Scenario | Items, then finalize |
+|---|---|
+| `partial-evidence` | `begin` adds `metadata`. 1 `started` with metadata. 2 `result` on channel `results`, with `expected_digest`, `expected_size_bytes` and metadata. 3 `trace`, role `log`, a `missing` source on channel `trace`. 4 `trace-gap`, a channel `gap` fact. Finalize: `complete` at 4, claims both channels `complete`, declares `result`, `trace` and the never-attached `summary`, reports a control `warm-cache` as `not_run`, and has a receipt, a limitation and metadata. |
+| `interrupted-run` | 1 `started`. 2 `result`. Finalize `interrupted` at expected last position 4, execution `unknown`, declares `result`. |
+| `late-item` | All of `synthetic-run`, then append `late-note` at position 4 after finalization. The recorder must refuse it with `REVISION_CONFLICT`. The adapter logs the refusal and exits 0. If the item is accepted, the adapter exits 1. |
+
 Requests carry no wall-clock times or random values, so a rerun or resume sends identical requests. The synthetic "action" fabricates the result bytes; it performs no real external action.
 
 ### Faults
 
 `--fault` may repeat. `OP` is `begin`, `append`, `attach` or `finalize`; `N` counts calls of that operation from 1.
 
-- `drop-response:OP:N` — discard the response to the Nth call and resend the identical request with the same key, as after a lost acknowledgement.
-- `crash-after:OP:N` — exit with status 75 as soon as the Nth call returns, before acting on the response.
+- `drop-response:OP:N` discards the response to the Nth call and resends the identical request with the same key, as after a lost acknowledgement. `calls` logs both: the first with the result the recorder returned, the resend with `already_accepted` or `already_committed`.
+- `crash-after:OP:N` exits with status 75 as soon as the Nth call returns, before the adapter acts on the response.
 
-`resume` continues the same run after a crash. It resends the step 1 request unchanged to obtain the same handle, calls `recover`, and continues with the first step after `last_position`. It never repeats a completed step's external action. If it cannot vouch for a step that did not finish, it finalizes with completion `interrupted` and execution state `unknown`.
+N counts the scenario's requests of that operation, not resends.
+
+`run` sends every request of the scenario, in order, and does not read `recover` first. Running the same scenario again with the same identity resends every request and gets every original receipt back. The `rerun-identical` case checks this.
+
+`resume` continues the same run after a crash. It resends the step 1 request unchanged to obtain the same handle, calls `recover`, and continues with the first step after `last_position`. It sends no item at or below `last_position`. When the handle is already finalized, it takes the finalize receipt from `recover` or resends the identical finalize request. It never repeats a completed step's external action. If it cannot vouch for a step that did not finish, it finalizes with completion `interrupted` and execution state `unknown`.
 
 ### Output
 
 `describe` prints one JSON object:
 
 ```json
-{"schema_version": "inv.producer-adapter.v1", "protocols": ["inv.capture.v1"], "scenarios": ["synthetic-run"], "faults": ["drop-response", "crash-after"]}
+{"schema_version": "inv.producer-adapter.v1", "protocols": ["inv.capture.v1"], "scenarios": ["interrupted-run", "late-item", "partial-evidence", "synthetic-run"], "faults": ["drop-response", "crash-after"]}
 ```
 
 `run` and `resume` print exactly one JSON object on stdout, also after an injected crash or a rejection. Diagnostics go to stderr.
@@ -509,8 +523,42 @@ Requests carry no wall-clock times or random values, so a rerun or resume sends 
 | Exit status | Meaning |
 |---|---|
 | 0 | The scenario ran as instructed and the run is finalized. |
-| 1 | The recorder rejected a call the scenario expected to succeed. |
-| 2 | Usage error, or an unknown scenario or fault. Nothing was called and stdout is empty. |
+| 1 | The recorder rejected a call the scenario expected to succeed, or accepted one it expected to be refused. |
+| 2 | Usage error, or an unknown scenario or fault. Nothing was called and stdout is empty. A `--producer` value that breaks the producer name rule is not a usage error. It is a rejected `begin`: exit 1, outcome `rejected`, and one `capture.begin` call with error code `INVALID_INPUT`. This holds also when a library refuses the name before it calls the recorder. |
 | 75 | An injected `crash-after` fault fired. |
 
 The runner judges conformance from canonical state that it reads through the CLI, not from adapter output alone. The output explains a failure; it does not prove a pass.
+
+## Conformance suite
+
+The suite is data in [fixtures/conformance/v1](../fixtures/conformance/v1), versioned with the protocol (`inv.conformance-suite.v1` for `inv.capture.v1`):
+
+- `scenarios/*.json` holds the requests that each scenario sends.
+- `cases/*.json` holds the cases. Each one is a sequence of steps that run in a new workspace: drive the producer (`run` or `resume`, with faults, a protocol or an identity), make a direct CLI call with an expected response, replay every manifest item, or check canonical state.
+- `expected/*.json` holds the canonical state of a scenario after normalization, as a pattern.
+- `suite.json` maps each §11.7 item and each recording rule (positions, attachments, missing attachments, interrupted runs, late items, finalize retry, recover, attempt identity, protocol version) to the cases that cover it.
+
+```sh
+python3 scripts/run-conformance.py --bin target/debug/investigation \
+    --producer 'python3 scripts/conformance/reference_producer.py' \
+    --producer 'PATH/TO/OTHER-ADAPTER'
+```
+
+`--producer` can repeat. `--case NAME` selects cases. `--keep DIR` keeps each workspace. `--dump DIR` writes each normalized state. `--jobs N` sets how many cases run at once (default 8). `--json` prints one report. `--validate-suite` checks only the suite files. The exit status is 0 only when every producer passes every case and, with more than one producer, each producer after the first records the same normalized state as the first.
+
+The runner gets every verdict from the binary, never from the adapter's word:
+
+- It finds an attempt by its begin receipt (`receipt ID/begin --actor agent:NAME`), not by the `run_id` that the adapter prints.
+- It reads the Run and the case with `show --depth full` and the handle with `capture recover --handle`. It reads the manifest and every retained artifact with `evidence read` and a `whole` selector. It reads the workspace with `check`: the number of cases, the journal sequence of each, error issues and staging counts.
+- Every finalized attempt must satisfy these properties:
+  - The manifest bytes hash to the Run's `manifest_digest`.
+  - Positions are contiguous from 1, and keys are unique.
+  - The `recover` receipts equal the manifest items.
+  - Retained bytes hash to their recorded digests.
+  - `evidence_validity` stays `unknown`.
+  - The finalize receipt updates the Run.
+- To normalize state, the runner replaces the workspace, output directory, handle, Run, case, producer name and external run ID with placeholders. It masks generated IDs and drops wall-clock times, journal hashes, request digests and the manifest's own digest and size. The remaining state must match the expected pattern. Extra fields are allowed, so additive v1 fields do not break the suite.
+
+`scripts/conformance/reference_producer.py` is a standard-library producer that sends the scenario files through the JSON CLI. It passes every case. `scripts/conformance/non_idempotent_producer.py` has one defect: it records a step again under a fresh key when a response is lost. The suite fails it on the four lost-response cases. A duplicated item fails the canonical check even when the adapter's call log is ignored. `crates/investigation-cli/tests/conformance.rs` runs both. It also runs the reference producer, the Python example (`examples/python-producer/producer.py`) and the Rust example (`example-rust-producer`) together. All three must pass all 20 cases and record the same normalized state.
+
+To prove a new adapter, add `--producer` for it. Its result counts only when it passes every case and its normalized state equals the reference producer's.

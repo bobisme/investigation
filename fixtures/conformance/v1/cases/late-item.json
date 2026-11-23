@@ -1,0 +1,89 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "late-item",
+  "covers": [
+    "late-items"
+  ],
+  "summary": "An item after finalization gets the closed-handle response and never enters the manifest.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "late-item",
+      "exit": 0,
+      "outcome": "finalized",
+      "calls": [
+        {
+          "key": "late-note",
+          "results": [
+            "rejected"
+          ],
+          "error_code": "REVISION_CONFLICT"
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "append",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "REVISION_CONFLICT",
+          "path": "/handle",
+          "expected": {
+            "seal": "finalized",
+            "sealed_position": 3
+          }
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "late-note",
+        "position": 4,
+        "fact": {
+          "kind": "phase_changed",
+          "phase": "late"
+        }
+      }
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

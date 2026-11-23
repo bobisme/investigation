@@ -1,0 +1,87 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "staging-retirement",
+  "covers": [
+    "recover",
+    "idempotent-begin-append-attach-finalize",
+    "finalize-retry"
+  ],
+  "summary": "After staging is retired, recover reads the finalized manifest, every item replays to its original receipt and a full rerun records nothing.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "repair",
+        "staging"
+      ],
+      "expect": {
+        "ok": true
+      },
+      "resolve": false
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": [],
+        "staging": {
+          "retired": 1,
+          "retirable": 0
+        }
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run",
+          "recover": {
+            "seal": "finalized",
+            "staging": "retired",
+            "last_position": 3
+          }
+        }
+      }
+    },
+    {
+      "action": "replay-items"
+    },
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "only_already": true
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": [],
+        "staging": {
+          "retired": 1
+        }
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

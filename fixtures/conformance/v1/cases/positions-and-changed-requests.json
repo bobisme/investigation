@@ -1,0 +1,276 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "positions-and-changed-requests",
+  "covers": [
+    "positions",
+    "changed-manifest",
+    "recover",
+    "idempotent-begin-append-attach-finalize"
+  ],
+  "summary": "On an open handle, a gap, a reused key with other content and a stale complete cursor are refused without staging anything; after finalization a changed begin or finalize under its key is refused and every item replays to its original receipt.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 75,
+      "outcome": "crashed",
+      "faults": [
+        "crash-after:append:1"
+      ]
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "append",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "REVISION_CONFLICT",
+          "path": "/position",
+          "expected": {
+            "position": 2,
+            "last_position": 1
+          }
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "skipped-ahead",
+        "position": 3,
+        "fact": {
+          "kind": "started"
+        }
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "append",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "IDEMPOTENCY_KEY_REUSED",
+          "path": "/key"
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "started",
+        "position": 1,
+        "fact": {
+          "kind": "phase_changed",
+          "phase": "changed"
+        }
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "finalize",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "REVISION_CONFLICT",
+          "path": "/expected_last_position",
+          "expected": {
+            "last_position": 1
+          }
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "${external_run_id}/finalize",
+        "expected_last_position": 3,
+        "completion": "complete",
+        "execution": {
+          "state": "completed",
+          "exit_code": 0
+        },
+        "assertions": [
+          {
+            "kind": "reported_metric",
+            "name": "latency.p99",
+            "value": 18.7,
+            "unit": "ms"
+          }
+        ]
+      }
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          1
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "open",
+          "recover": {
+            "seal": "open",
+            "last_position": 1,
+            "next_position": 2
+          }
+        }
+      }
+    },
+    {
+      "action": "producer",
+      "command": "resume",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized"
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    },
+    {
+      "action": "replay-items"
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "finalize",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "IDEMPOTENCY_KEY_REUSED",
+          "path": "/key"
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "${external_run_id}/finalize",
+        "expected_last_position": 3,
+        "completion": "interrupted",
+        "execution": {
+          "state": "completed",
+          "exit_code": 0
+        },
+        "assertions": [
+          {
+            "kind": "reported_metric",
+            "name": "latency.p99",
+            "value": 18.7,
+            "unit": "ms"
+          }
+        ]
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "finalize",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "REVISION_CONFLICT",
+          "path": "/handle"
+        }
+      },
+      "stdin": {
+        "handle": "${handle}",
+        "key": "${external_run_id}/finalize-again",
+        "expected_last_position": 3,
+        "completion": "complete",
+        "execution": {
+          "state": "completed",
+          "exit_code": 0
+        },
+        "assertions": [
+          {
+            "kind": "reported_metric",
+            "name": "latency.p99",
+            "value": 18.7,
+            "unit": "ms"
+          }
+        ]
+      }
+    },
+    {
+      "action": "cli",
+      "argv": [
+        "capture",
+        "begin",
+        "--input",
+        "-"
+      ],
+      "expect": {
+        "ok": false,
+        "error": {
+          "code": "IDEMPOTENCY_KEY_REUSED"
+        }
+      },
+      "stdin": {
+        "key": "${external_run_id}/begin",
+        "actor": "agent:${producer}",
+        "producer": {
+          "name": "${producer}"
+        },
+        "external_run_id": "${external_run_id}",
+        "intent": {
+          "label": "changed run"
+        },
+        "case": {
+          "kind": "new_record_case",
+          "title": "Synthetic runs"
+        }
+      }
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

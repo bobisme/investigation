@@ -1,0 +1,35 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "protocol-explicit",
+  "covers": [
+    "protocol-version"
+  ],
+  "summary": "A begin that names inv.capture.v1 records the same run as one that omits the protocol.",
+  "steps": [
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 0,
+      "outcome": "finalized",
+      "protocol": "inv.capture.v1"
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          2
+        ],
+        "errors": []
+      },
+      "attempts": {
+        "a": {
+          "state": "finalized",
+          "expected": "synthetic-run"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,70 @@
+{
+  "schema_version": "inv.conformance-case.v1",
+  "name": "attempt-envelope-first",
+  "covers": [
+    "producer-name-attempt-identity"
+  ],
+  "summary": "An attempt that a producer-run envelope already recorded cannot be declared again by capture begin: one attempt, one Run.",
+  "steps": [
+    {
+      "action": "cli",
+      "argv": [
+        "ingest",
+        "--input",
+        "${output_dir}/envelope.json"
+      ],
+      "expect": {
+        "ok": true
+      },
+      "resolve": false,
+      "actor": "agent:${producer}",
+      "write": {
+        "envelope.json": {
+          "schema_version": "inv.producer-run.v1",
+          "producer": {
+            "name": "${producer}"
+          },
+          "external_run_id": "${external_run_id}",
+          "intent": {
+            "label": "synthetic run"
+          },
+          "execution": {
+            "state": "completed",
+            "exit_code": 0
+          }
+        }
+      }
+    },
+    {
+      "action": "producer",
+      "command": "run",
+      "scenario": "synthetic-run",
+      "exit": 1,
+      "outcome": "rejected",
+      "calls": [
+        {
+          "key": "${external_run_id}/begin",
+          "results": [
+            "rejected"
+          ],
+          "error_code": "IDEMPOTENCY_KEY_REUSED"
+        }
+      ]
+    },
+    {
+      "action": "check",
+      "workspace": {
+        "ok": true,
+        "cases": 1,
+        "sequences": [
+          1
+        ]
+      },
+      "attempts": {
+        "a": {
+          "state": "absent"
+        }
+      }
+    }
+  ]
+}
