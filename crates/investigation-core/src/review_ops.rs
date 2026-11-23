@@ -1043,7 +1043,16 @@ fn apply_pack_policy(
 
 fn context_shape(context: &ReviewContext) -> Result<(), Failure> {
     text(&context.activity, "/context/activity")?;
-    text(&context.dependence_basis, "/context/dependence_basis")
+    text(&context.dependence_basis, "/context/dependence_basis")?;
+    if let Some(Knowledge::Known(involvement)) = &context.prior_involvement {
+        for (index, statement) in involvement.iter().enumerate() {
+            text(
+                statement,
+                &format!("/context/prior_involvement/value/{index}"),
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn review_shape(payload: &ReviewSubmit) -> Result<(), Failure> {
@@ -1132,6 +1141,18 @@ fn normalized_read_set(
 
 fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
     let detail = blindspot_detail(&payload);
+    let independence = match &payload {
+        ReviewSubmit::Validation {
+            context_isolation,
+            context,
+            ..
+        }
+        | ReviewSubmit::Blindspot {
+            context_isolation,
+            context,
+            ..
+        } => crate::review_independence::submission_warnings(*context_isolation, context),
+    };
     let mut blindspot = None;
     let mut body = match payload.clone() {
         ReviewSubmit::Validation {
@@ -1262,6 +1283,9 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
         resolved.store(&mut body, ctx);
     }
     ctx.create(Kind::Review, body)?;
+    independence
+        .into_iter()
+        .for_each(|warning| ctx.warn(warning));
     Ok(())
 }
 

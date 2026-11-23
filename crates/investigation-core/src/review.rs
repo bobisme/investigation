@@ -266,6 +266,18 @@ pub enum Dependence {
     Unknown,
 }
 
+/// The kind of work a review was (§14.2). Declared, never inferred.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewWorkKind {
+    SelfReview,
+    IndependentInterpretation,
+    Rerun,
+    IndependentMethodValidation,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReviewContext {
@@ -275,6 +287,20 @@ pub struct ReviewContext {
     pub activity: String,
     pub dependencies: Dependence,
     pub dependence_basis: String,
+    /// Self-review, independent interpretation, rerun or independent-method
+    /// validation. Absent reads as undeclared, which views show as unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_kind: Option<Knowledge<ReviewWorkKind>>,
+    /// The reviewer's prior involvement with the subject, in the reviewer's
+    /// words: authored it, gathered its evidence, advised on it. Known and
+    /// empty declares none. Absent reads as undeclared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prior_involvement: Option<Knowledge<Vec<String>>>,
+    /// Whether the reviewer read another review of the same subject before
+    /// recording this one. Reviews named in `read_set` are recorded reads
+    /// whatever this says. Absent reads as undeclared.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_other_reviews: Option<Knowledge<bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

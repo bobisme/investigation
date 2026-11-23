@@ -116,6 +116,12 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     f.word("Status", "status");
     f.text("Method", "method");
     f.word("Context isolation", "context_isolation");
+    if body["context_isolation"] == "same_session_self_review" {
+        let _ = writeln!(
+            f.out,
+            "- Low independence: same-session self-review, declared by the reviewer"
+        );
+    }
     if let Some(sequence) = basis_sequence(f.notes, f.record) {
         let read = refs(body.get("read_set")).len();
         let _ = writeln!(
@@ -224,5 +230,41 @@ fn context(f: &mut Facts<'_, '_, '_>) {
         .collect();
     for change in changes.iter().take(MAX_LISTED) {
         let _ = writeln!(f.out, "- Method or source change: {}", prose(change));
+    }
+    // Independence declarations added later; absent means undeclared.
+    let declared = |key: &str| match context.get(key) {
+        None => "undeclared".to_owned(),
+        Some(value) if value["state"] == "known" && value["value"].is_string() => {
+            inline_code(&super::wire(value["value"].as_str().unwrap_or_default()))
+        }
+        Some(value) => knowledge(value),
+    };
+    let _ = writeln!(
+        f.out,
+        "- Work kind: {}; read other reviews first: {}",
+        declared("work_kind"),
+        declared("read_other_reviews")
+    );
+    match context.get("prior_involvement") {
+        None => {
+            let _ = writeln!(f.out, "- Prior involvement: undeclared");
+        }
+        Some(value) if value["state"] != "known" => {
+            let _ = writeln!(f.out, "- Prior involvement: unknown");
+        }
+        Some(value) => {
+            let items: Vec<&str> = value["value"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect();
+            if items.is_empty() {
+                let _ = writeln!(f.out, "- Prior involvement: none declared");
+            }
+            for item in items.iter().take(MAX_LISTED) {
+                let _ = writeln!(f.out, "- Prior involvement: {}", prose(item));
+            }
+        }
     }
 }

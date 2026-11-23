@@ -493,6 +493,14 @@ fn every_kind_renders_with_typed_sections_and_links_both_ways() {
         body,
         "Zero gaps means none was identified within the examined scope",
     );
+    has(
+        body,
+        "- Low independence: same-session self-review, declared by the reviewer",
+    );
+    has(
+        body,
+        "- Work kind: undeclared; read other reviews first: undeclared\n- Prior involvement: undeclared",
+    );
 
     // The objection and the annotation.
     let critical = note(&plan, case, fixture.critical);

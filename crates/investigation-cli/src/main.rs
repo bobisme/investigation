@@ -13,6 +13,7 @@ mod lineage;
 mod next;
 mod onboard;
 mod retrospective;
+mod review_packet;
 mod schema;
 mod search;
 mod selection;
@@ -234,6 +235,9 @@ enum Commands {
     /// Walk the recorded evidence and assessment chain behind one record.
     #[command(after_help = explain::AFTER_HELP)]
     Explain(explain::Args),
+    /// Read a blinded review packet: question, evidence and criteria, no conclusion.
+    #[command(after_help = review_packet::AFTER_HELP)]
+    ReviewPacket(review_packet::Args),
     /// Compute the recorded process digest that a retrospective cites.
     #[command(after_help = retrospective::AFTER_HELP)]
     Retrospective(retrospective::Args),
@@ -394,6 +398,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
                 Commands::Search(args) => search::run(&mut store, &global, args),
                 Commands::Retrospective(args) => retrospective::run(&mut store, &global, args),
+                Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;
@@ -532,6 +537,7 @@ fn show(
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
     text.push_str(&investigation_core::confidence::text(&view));
+    text.push_str(&investigation_core::review_independence::text(&view));
     Ok(Output::success("record_shown", view, text))
 }
 

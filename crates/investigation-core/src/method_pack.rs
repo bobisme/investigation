@@ -387,6 +387,11 @@ pub enum PolicyInput {
     DistinctActor,
     /// Every open objection, not only critical ones, needs an acknowledgment.
     AcknowledgeOpenObjections,
+    /// A current review of the gated subject with no low-independence flag:
+    /// not a same-session self-review, not a declared self-review, and not
+    /// recorded by an actor who recorded the subject's content. Declared and
+    /// attributed, never a claim of cognitive independence.
+    IsolatedReview,
 }
 
 impl PolicyInput {
@@ -394,7 +399,7 @@ impl PolicyInput {
     pub const fn gates(self) -> &'static [&'static str] {
         match self {
             Self::RequiredFields => POLICY_GATES,
-            Self::BlindspotReview | Self::DistinctActor => {
+            Self::BlindspotReview | Self::DistinctActor | Self::IsolatedReview => {
                 &["conclusion.validate", "decision.accept"]
             }
             Self::ClosureRetrospective => &["case.close"],

@@ -175,7 +175,14 @@ fn zero_gaps_record_the_audited_scope_and_snapshot_with_a_bounded_reason() {
         json!("Only one open question is recorded; nothing is concluded yet.");
     let accepted = case.run(vec![op("review.submit", payload)]).unwrap();
     assert!(accepted.updated.is_empty());
-    assert!(accepted.warnings.is_empty(), "{:?}", accepted.warnings);
+    // Only the independence notices: no undispositioned gap is reported.
+    assert_eq!(
+        accepted.warnings,
+        crate::review_independence::submission_warnings(
+            crate::review::ContextIsolation::SameSessionSelfReview,
+            &serde_json::from_value(context()).unwrap()
+        )
+    );
     let body = &accepted.records[0].body;
     assert_eq!(body["kind"], "blindspot");
     assert_eq!(body["audited_snapshot"], json!(response.snapshot));

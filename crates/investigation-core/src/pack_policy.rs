@@ -106,7 +106,8 @@ pub struct AppliedRule {
     pub input: PolicyInput,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<String>,
-    /// `blindspot_review`: the current reviews that satisfied the rule.
+    /// `blindspot_review` and `isolated_review`: the current reviews that
+    /// satisfied the rule.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub satisfied_by: Vec<RevisionRef>,
     /// `closure_retrospective`: whether the declared triggers held.
@@ -232,7 +233,7 @@ impl Consulted {
     /// the operation whose schema shows how to satisfy it, when there is one.
     fn blocker(&self, pack: &ResolvedPack, policy: &PolicyProposal, unmet: Value) -> Value {
         let repair = match policy.input {
-            PolicyInput::BlindspotReview => Some("review.submit"),
+            PolicyInput::BlindspotReview | PolicyInput::IsolatedReview => Some("review.submit"),
             PolicyInput::ClosureRetrospective => Some("retrospective.record"),
             PolicyInput::RequiredFields
             | PolicyInput::DistinctActor
@@ -289,6 +290,14 @@ impl Consulted {
                     rule.satisfied_by.is_empty().then(|| {
                         json!({"missing": "current_blindspot_review", "subject_ref": record.reference()})
                     })
+                }
+                PolicyInput::IsolatedReview => {
+                    let record = subject.record.ok_or_else(integrity)?;
+                    rule.satisfied_by =
+                        crate::review_independence::isolated_reviews(state, record)?;
+                    rule.satisfied_by.is_empty().then(
+                        || json!({"missing": "isolated_review", "subject_ref": record.reference()}),
+                    )
                 }
                 PolicyInput::DistinctActor => {
                     let record = subject.record.ok_or_else(integrity)?;

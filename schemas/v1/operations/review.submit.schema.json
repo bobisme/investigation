@@ -148,6 +148,79 @@
         }
       ]
     },
+    "Knowledge2": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/$defs/ReviewWorkKind"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "Knowledge3": {
+      "description": "Explicit unknown is distinct from a known zero, empty string, or empty list.",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "unknown",
+              "type": "string"
+            }
+          },
+          "required": [
+            "state"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "state": {
+              "const": "known",
+              "type": "string"
+            },
+            "value": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "state",
+            "value"
+          ],
+          "type": "object"
+        }
+      ]
+    },
     "NovelGap": {
       "additionalProperties": false,
       "description": "A gap the reviewer identified that no registered check reports.",
@@ -215,8 +288,41 @@
           },
           "type": "array"
         },
+        "prior_involvement": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge3"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The reviewer's prior involvement with the subject, in the reviewer's\nwords: authored it, gathered its evidence, advised on it. Known and\nempty declares none. Absent reads as undeclared."
+        },
+        "read_other_reviews": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the reviewer read another review of the same subject before\nrecording this one. Reviews named in `read_set` are recorded reads\nwhatever this says. Absent reads as undeclared."
+        },
         "saw_original_conclusion": {
           "$ref": "#/$defs/Knowledge"
+        },
+        "work_kind": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Knowledge2"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Self-review, independent interpretation, rerun or independent-method\nvalidation. Absent reads as undeclared, which views show as unknown."
         }
       },
       "required": [
@@ -228,6 +334,16 @@
         "dependence_basis"
       ],
       "type": "object"
+    },
+    "ReviewWorkKind": {
+      "description": "The kind of work a review was (§14.2). Declared, never inferred.",
+      "enum": [
+        "self_review",
+        "independent_interpretation",
+        "rerun",
+        "independent_method_validation"
+      ],
+      "type": "string"
     },
     "ReviewedAudit": {
       "additionalProperties": false,

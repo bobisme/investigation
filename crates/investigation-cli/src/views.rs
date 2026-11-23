@@ -463,6 +463,18 @@ pub(crate) fn project_record(
     {
         out.insert("confidence".into(), json!(view));
     }
+    // Declared review independence beside the review count: low-independence
+    // flags, dependence groups by self-reported model family, pair order.
+    if depth != ViewDepth::Title
+        && let Some(view) = investigation_core::review_independence::projection(
+            &replay.state,
+            record,
+            depth == ViewDepth::Full,
+            &|review| !hidden(review),
+        )
+    {
+        out.insert("review_independence".into(), view);
+    }
     // Withdrawal is labeled wherever evidence material is read; it is not erasure.
     if matches!(
         record.header.id.kind(),
