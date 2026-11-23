@@ -1,0 +1,57 @@
+{
+  "family": "tram-door-gateway",
+  "role": "comparison",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "option y|buffer|store[- ]and[- ]forward"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              5,
+              18,
+              24
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "200|600|peak|one third|1/3|third of|flash|load|rate"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "chose_lossy_option",
+          "field": "answer",
+          "all": [
+            "(?:recommend\\w*|choose|select\\w*|prefer\\w*) option x"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        },
+        {
+          "id": "overclaimed_peak",
+          "field": "answer",
+          "all": [
+            "(?:proven|verified|confirmed|tested) at (?:full |the )?peak"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

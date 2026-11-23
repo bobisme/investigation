@@ -1,0 +1,61 @@
+{
+  "family": "greenhouse-humidity-alarm",
+  "role": "comparison",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "mist|nozzle|n7|placement|mounted|spray"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              5,
+              6,
+              9,
+              10,
+              11,
+              12,
+              14
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "four nights|4 nights|only (?:4|four)|one sensor|single sensor|sample|not (?:yet )?(?:been )?tested|untested|no test|moved|moving|paus|intervention|experiment"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "overclaimed_cause",
+          "field": "answer",
+          "all": [
+            "\\b(?:confirmed|proven|definitive(?:ly)?|conclusively|established beyond)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        },
+        {
+          "id": "bay_wide_humidity",
+          "field": "answer",
+          "all": [
+            "(?:bay|greenhouse)(?:[- ]wide| as a whole| is) (?:too )?humid"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

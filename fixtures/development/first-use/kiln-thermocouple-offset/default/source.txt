@@ -1,0 +1,21 @@
+Studio kiln K2: reading versus witness cones
+Ceramics studio maintenance notes
+
+Kiln controller: type K thermocouple, installed three years ago, never replaced or recalibrated.
+Firing 112 (glaze firing, target cone 6)
+
+Controller peak reading: 1204 C
+Witness cones on the middle shelf, centre position:
+  cone 5 fully bent, cone 6 fully bent, cone 7 tip touching the shelf
+Published cone chart for this heating rate: cone 6 bends at about 1222 C, cone 7 at about 1240 C.
+
+Reading of the cones: the ware reached at least the cone 6 temperature, about 1222 C, so the controller read about 18 C low or more.
+
+Context
+- Type K thermocouples commonly drift as they age at glaze temperatures.
+- The studio had two underfired-looking glaze loads this term, which the controller showed as reaching target.
+
+Limits
+- Only firing 112 had witness cones. One firing.
+- Cones were on one shelf position only; the kiln is known to run cooler near the door, and no cones were placed there.
+- No reference thermocouple was used.

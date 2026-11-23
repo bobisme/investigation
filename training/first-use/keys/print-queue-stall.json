@@ -1,0 +1,49 @@
+{
+  "family": "print-queue-stall",
+  "role": "tuning",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "4\\.2|driver"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              10,
+              13,
+              15,
+              17,
+              18
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "ps-?1|ps-?3|one (?:print )?server|single server|only (?:one|the )?(?:ps-?2)|ps-?2 (?:log )?only|one log|single log|other servers|not exported|reinstall|correlat|not (?:been )?(?:tested|reproduced|repeated)|untested"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "overclaimed_cause",
+          "field": "answer",
+          "all": [
+            "\\b(?:confirmed|proven|definitive(?:ly)?|conclusively|established beyond)\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

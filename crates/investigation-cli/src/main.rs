@@ -5,6 +5,7 @@ mod brief;
 mod brief_delta;
 mod capture;
 mod evidence;
+mod first_use;
 mod frontier;
 mod guide;
 mod lineage;
@@ -56,12 +57,17 @@ const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
 The workspace preserves evidence and attributed revisions. Writes return a durable receipt.
 
+Start a case from a local file in the working directory:
+  investigation init ./casework --no-vault --import-root . --format json
+  investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json
+
+Continue, record and hand off:
   investigation onboard --format json
-  investigation init ./casework --no-vault --format json
-  investigation schema case.create --format json
+  investigation --workspace ./casework brief --format json
   investigation --workspace ./casework next --format json
   investigation case new 'Request latency' --format json
   investigation source add ./results.log --case <ID> --format json
+  investigation schema case.create --format json
   investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json
   investigation note 'Check the clock source' --on <RECORD_ID> --format json
   investigation --workspace ./casework record --input case.json --format json
@@ -129,13 +135,19 @@ enum Format {
 #[derive(Subcommand)]
 enum Commands {
     /// Create a local workspace and an optional Obsidian vault.
-    #[command(after_help = "Example: investigation init ./casework --format json")]
+    #[command(
+        after_help = "Example: investigation init ./casework --no-vault --import-root . --format json"
+    )]
     Init {
+        /// New or empty directory for the workspace.
         #[arg(value_name = "PATH")]
         path: PathBuf,
         /// Skip creation of the optional Obsidian vault.
         #[arg(long)]
         no_vault: bool,
+        /// Let the workspace retain copies of files beneath DIR (read-only; repeatable).
+        #[arg(long = "import-root", value_name = "DIR")]
+        import_roots: Vec<PathBuf>,
     },
     /// Submit one atomic transaction using the operation catalog.
     #[command(
@@ -153,12 +165,18 @@ enum Commands {
         input: PathBuf,
     },
     /// Open an exploratory case and retain one attachment atomically.
+    #[command(
+        after_help = "Example: investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin."
+    )]
     Start {
+        /// The question the case investigates.
         question: String,
+        /// Local file to retain as the first source, or - for stdin.
         #[arg(long, value_name = "FILE|-")]
         attach: PathBuf,
+        /// Stable idempotency key; generated if omitted.
         #[arg(long, value_name = "KEY")]
-        command_id: String,
+        command_id: Option<String>,
     },
     /// Inspect retained source material explicitly.
     #[command(subcommand)]
@@ -332,7 +350,11 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
     }
     match cli.command {
         Commands::Schema(args) => schema::describe(args, &global),
-        Commands::Init { path, no_vault } => init(&path, !no_vault, global.workspace.as_deref()),
+        Commands::Init {
+            path,
+            no_vault,
+            import_roots,
+        } => init(&path, !no_vault, &import_roots, global.workspace.as_deref()),
         Commands::Onboard => onboard::run(&global),
         Commands::Guide(args) => guide::show(args, &global),
         Commands::Method(command) => guide::method(command, &global),
@@ -345,7 +367,13 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                     question,
                     attach,
                     command_id,
-                } => evidence::start(&mut store, &global, &question, &attach, &command_id),
+                } => evidence::start(
+                    &mut store,
+                    &global,
+                    &question,
+                    &attach,
+                    command_id.as_deref(),
+                ),
                 Commands::Evidence(command) => evidence::read(&mut store, &global, command),
                 Commands::Capture(command) => capture::run(&mut store, &global, command),
                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),
@@ -627,7 +655,12 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
     Ok(Output::new(view, text))
 }
 
-fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output, Failure> {
+fn init(
+    path: &Path,
+    vault: bool,
+    import_roots: &[PathBuf],
+    override_path: Option<&Path>,
+) -> Result<Output, Failure> {
     if override_path.is_some() {
         return Err(Failure::new(
             ErrorCode::InvalidInput,
@@ -635,7 +668,31 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
         )
         .at("--workspace"));
     }
-    let (workspace, result) = match Workspace::init(path, vault) {
+    let import_roots = import_roots
+        .iter()
+        .map(|root| {
+            std::fs::canonicalize(root)
+                .ok()
+                .filter(|root| root.is_dir())
+                .ok_or_else(|| {
+                    let failure = Failure::new(
+                        ErrorCode::InvalidInput,
+                        format!(
+                            "Import root {} is not an existing directory. Name the directory that holds the files.",
+                            root.display()
+                        ),
+                    )
+                    .at("--import-root");
+                    match first_use::import_root_repair(root).and_then(|parent| {
+                        first_use::with_replaced_value(env::args_os(), "--import-root", root, &parent)
+                    }) {
+                        Some(argv) => failure.with_argv(argv),
+                        None => failure,
+                    }
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let (workspace, result) = match Workspace::init_with_import_roots(path, vault, &import_roots) {
         Ok(workspace) => (workspace, "initialized"),
         Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
             if path.join("investigation.toml").is_file() {
@@ -651,18 +708,27 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
     };
     let vault = workspace.config().vault_policy.enabled;
     let path = workspace.root().to_string_lossy();
-    let mut next = workspace_argv(&workspace);
-    next.extend(["schema", "case.create", "--format", "json"].map(str::to_owned));
-    let text = format!(
-        "{}  {result}  {path}\nstate/  canonical\ncache/  disposable\nlocal/  machine-local\n{}Next: {}",
+    let configured_roots = &workspace.config().import_roots;
+    let start = first_use::start_step(&path);
+    let mut text = format!(
+        "{}  {result}  {path}\nstate/  canonical\ncache/  disposable\nlocal/  machine-local\n{}",
         workspace.id(),
         if vault {
             "vault/  optional projection\n"
         } else {
             ""
         },
-        display_argv(&next)
     );
+    for root in configured_roots {
+        text.push_str(&format!("import root  {}\n", root.display()));
+    }
+    text.push_str(&first_use::start_text(&path, false));
+    if configured_roots.is_empty() {
+        text.push_str(&format!(
+            "\nNo import roots are configured, so FILE paths are refused. {}",
+            first_use::import_root_advice(&workspace)
+        ));
+    }
     Ok(Output::success(
         result,
         json!({
@@ -675,7 +741,8 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
                 "machine_local": "local/",
                 "projection": vault.then_some("vault/"),
             },
-            "next": [{ "kind": "local_read", "argv": next }]
+            "import_roots": configured_roots,
+            "next": [start]
         }),
         text,
     ))
@@ -683,9 +750,14 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
 
 pub(crate) fn read_input(path: &Path) -> Result<Vec<u8>, Failure> {
     let read = |error| {
+        let hint = if path.to_string_lossy().trim_start().starts_with(['{', '[']) {
+            " --input takes a file path; pass - and pipe inline JSON on stdin."
+        } else {
+            ""
+        };
         Failure::new(
             ErrorCode::IoFailure,
-            format!("Read input {}: {error}", path.display()),
+            format!("Read input {}: {error}.{hint}", path.display()),
         )
         .at("--input")
     };

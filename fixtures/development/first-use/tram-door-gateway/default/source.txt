@@ -1,0 +1,24 @@
+Tram door sensor gateway: transport choice
+Rolling stock engineering note
+
+Hard requirement
+T1. No door-event message may be lost during a tunnel radio dropout of up to 30 seconds.
+
+Preferences
+T2. Lower end-to-end latency in normal service.
+T3. Use equipment the depot already maintains.
+
+Option X: direct publish over the radio link
+- Each sensor message is sent immediately. During a dropout messages are discarded.
+- Bench test: 30-second dropout, 1,800 messages sent, 1,212 received.
+- Median latency in normal service: 0.4 s.
+
+Option Y: gateway buffer with store-and-forward
+- The on-board gateway writes messages to flash and forwards them after the link returns.
+- Bench test: 30-second dropout at 200 messages per second, 6,000 messages sent, 6,000 received in order.
+- Median latency in normal service: 0.9 s.
+- The gateway model is already maintained at the depot.
+
+Test conditions
+- Peak traffic measured on line 3 is 600 messages per second at the morning door cycle.
+- Option Y has only been tested at 200 messages per second, one third of peak. Flash write speed at peak was not tested.

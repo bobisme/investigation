@@ -1,0 +1,19 @@
+Claim check: "the river reached a record 6.1 m"
+
+Item 1: parish newsletter, March issue
+"Last month the river reached a record 6.1 metres at Millford bridge, the highest ever measured there."
+
+Item 2: data extract from the regional water office, station Millford Bridge
+Station history
+  1978 to 2021: gauge on the north pier
+  2022: gauge relocated 200 m downstream to the weir footbridge; readings at the new site are not comparable with the old site without a datum adjustment, which has not yet been published.
+Annual maxima (stage, metres)
+  2019  5.6  (old site)
+  2020  5.9  (old site)
+  2021  5.2  (old site)
+  2022  4.8  (new site)
+  2023  5.5  (new site)
+  2024  6.1  (new site, provisional; data not yet quality checked)
+
+Item 3: note from the water office help desk
+"Provisional values can change after quality checks. We do not describe a reading as a record until the series is adjusted for the 2022 relocation."

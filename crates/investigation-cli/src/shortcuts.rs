@@ -509,14 +509,14 @@ pub(crate) fn run(store: &mut Store, shortcut: ParsedShortcut) -> Result<Output,
     }
 }
 
-fn generated_command_id() -> String {
+pub(crate) fn generated_command_id() -> String {
     SystemIdSource
         .next_id(Kind::Transaction)
         .expect("transaction id generation")
         .to_string()
 }
 
-fn announce_generated_id(command_id: &str) -> Result<(), Failure> {
+pub(crate) fn announce_generated_id(command_id: &str) -> Result<(), Failure> {
     writeln!(std::io::stderr().lock(), "command_id: {command_id}").map_err(|error| {
         Failure::new(
             ErrorCode::IoFailure,
@@ -576,7 +576,8 @@ fn run_operation(
     }
     let receipt = store
         .record(&bytes)
-        .map_err(|failure| with_workspace_repair(store.workspace(), failure))?;
+        .map_err(|failure| with_workspace_repair(store.workspace(), failure))
+        .map_err(crate::first_use::explain_quote_failure)?;
     Ok(receipt_output(store.workspace(), receipt))
 }
 
@@ -671,7 +672,10 @@ fn run_ingest(
     command_id: &str,
     generated: bool,
 ) -> Result<Output, Failure> {
-    let path = PathBuf::from(value(shortcut, "path"));
+    let path = crate::first_use::attachment_path(
+        store.workspace(),
+        &PathBuf::from(value(shortcut, "path")),
+    );
     if path.as_os_str() == std::ffi::OsStr::new("-") {
         return Err(Failure::new(
             ErrorCode::InvalidInput,

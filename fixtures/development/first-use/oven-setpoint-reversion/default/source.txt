@@ -1,0 +1,25 @@
+Deck oven 2: Monday overbaking
+Bakery shift log and oven controller export, weeks 18 to 20
+
+Shift log (written by bakers, kitchen wall clock)
+Mon 29 Apr 05:10  rye batch dark crust, 12 loaves discarded
+Mon 06 May 05:05  rye batch dark crust, 9 loaves discarded
+Mon 13 May 05:15  rye batch dark crust, 11 loaves discarded
+Tue to Sat, all three weeks: no overbaking noted
+
+Oven controller events (controller clock)
+Sun 28 Apr 22:00  power-save entered
+Mon 29 Apr 04:12  power-save exited, setpoint restored to factory default 230 C
+Mon 29 Apr 05:58  setpoint changed to 205 C by panel
+Sun 05 May 22:00  power-save entered
+Mon 06 May 04:08  power-save exited, setpoint restored to factory default 230 C
+Mon 06 May 05:51  setpoint changed to 205 C by panel
+Sun 12 May 22:00  power-save entered
+Mon 13 May 04:15  power-save exited, setpoint restored to factory default 230 C
+Mon 13 May 06:03  setpoint changed to 205 C by panel
+
+Notes
+- The rye recipe bakes at 205 C.
+- The oven is only put into power-save at Sunday night closing.
+- The controller clock was found 47 minutes fast on 14 May and was not corrected before these exports, so its times cannot be lined up minute by minute with the kitchen clock.
+- No Monday bake has yet been run with the setpoint checked before loading.

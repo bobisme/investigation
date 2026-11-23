@@ -1,0 +1,20 @@
+Greenhouse bay 4: night humidity alarms
+Export from the climate controller, sensor H4-a, nights of 2 to 5 June
+Alarm threshold: relative humidity above 92% for 60 seconds
+
+Misting schedule (from controller settings): misting runs 02:00 to 02:06 every night.
+Sensor placement (from the install sheet): H4-a is mounted 40 cm from misting nozzle N7.
+
+Night  | alarm start | alarm end | peak RH
+2 June | 02:01:10    | 02:09:40  | 97%
+3 June | 02:01:05    | 02:10:15  | 98%
+4 June | 02:00:55    | 02:09:05  | 96%
+5 June | 02:01:20    | 02:09:50  | 97%
+
+Bay-average humidity from the three other bay sensors during the same windows: 78% to 83%.
+No alarms were recorded outside 02:00 to 02:11 on these nights.
+
+Limits of this export
+- Only four nights are included; the growers report alarms "most nights since May".
+- Only sensor H4-a raised alarms; it is the only sensor in bay 4 near a nozzle.
+- Nobody has yet moved the sensor or paused misting to test the explanation.

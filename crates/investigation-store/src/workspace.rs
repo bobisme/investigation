@@ -178,11 +178,39 @@ impl Workspace {
         Self::init_with_detector(root, vault, &NativeFilesystemDetector)
     }
 
+    /// Create a workspace whose config names these read-only import roots.
+    /// Each root must be an absolute path to an existing directory; nothing
+    /// else about the roots is checked or touched here.
+    pub fn init_with_import_roots(
+        root: &Path,
+        vault: bool,
+        import_roots: &[PathBuf],
+    ) -> Result<Self, WorkspaceError> {
+        for import_root in import_roots {
+            if !import_root.is_absolute() || !import_root.is_dir() {
+                return Err(WorkspaceError::InvalidConfig(format!(
+                    "import root {} must be an absolute path to an existing directory",
+                    import_root.display()
+                )));
+            }
+        }
+        Self::init_inner(root, vault, import_roots, &NativeFilesystemDetector)
+    }
+
     /// Test and integration seam for filesystem policy. The detector must be
     /// read-only; it runs before the first create operation.
     pub fn init_with_detector(
         root: &Path,
         vault: bool,
+        detector: &impl FilesystemDetector,
+    ) -> Result<Self, WorkspaceError> {
+        Self::init_inner(root, vault, &[], detector)
+    }
+
+    fn init_inner(
+        root: &Path,
+        vault: bool,
+        import_roots: &[PathBuf],
         detector: &impl FilesystemDetector,
     ) -> Result<Self, WorkspaceError> {
         let root = absolute_lexical(root)?;
@@ -219,7 +247,8 @@ impl Workspace {
         let id = SystemIdSource
             .next_id(Kind::Workspace)
             .map_err(|error| WorkspaceError::Identity(error.to_string()))?;
-        let config = WorkspaceConfig::initial(vault);
+        let mut config = WorkspaceConfig::initial(vault);
+        config.import_roots = import_roots.to_vec();
         let config_bytes = config_text(&config)?;
 
         // The persistent lock is created once. Neither init nor open replaces it.
@@ -844,6 +873,24 @@ mod tests {
             name: "test-local".to_owned(),
             magic: Some(1),
         }
+    }
+
+    #[test]
+    fn init_with_import_roots_persists_only_absolute_existing_directories() {
+        let temp = TempDir::new();
+        fs::create_dir(&temp.0).unwrap();
+        let inputs = fs::canonicalize(&temp.0).unwrap();
+        let root = temp.0.join("casework");
+        assert!(matches!(
+            Workspace::init_with_import_roots(&root, false, &[PathBuf::from("relative")]),
+            Err(WorkspaceError::InvalidConfig(_))
+        ));
+        assert!(!root.exists(), "a rejected import root creates nothing");
+        let created =
+            Workspace::init_with_import_roots(&root, false, std::slice::from_ref(&inputs)).unwrap();
+        assert_eq!(created.config().import_roots, vec![inputs.clone()]);
+        let reopened = Workspace::open(&root).unwrap();
+        assert_eq!(reopened.config().import_roots, vec![inputs]);
     }
 
     #[test]

@@ -1,0 +1,47 @@
+{
+  "family": "river-gauge-record",
+  "role": "comparison",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "not (?:\\w+ )?(?:supported|established|verified|a record|confirmed)|unsupported|cannot|provisional|not comparable|relocat|unverified"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              9,
+              16,
+              19
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "provisional|quality|relocat|datum|comparab|adjust|moved"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "promoted_record",
+          "field": "answer",
+          "all": [
+            "\\b(?:is|was|reached|set) (?:a |the )?(?:new )?record\\b"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

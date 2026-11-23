@@ -566,9 +566,16 @@ impl<F: DurableFs> Store<F> {
         Err(Failure::new(
             ErrorCode::InvalidInput,
             failure.unwrap_or_else(|| {
+                let configured = &self.workspace.config().import_roots;
                 format!(
-                    "Path {} is outside configured import roots.",
-                    path.display()
+                    "Path {} is outside configured import roots{}. Add the file's directory to import_roots in {}, or create the workspace with init PATH --import-root DIR.",
+                    path.display(),
+                    if configured.is_empty() {
+                        " (none are configured)"
+                    } else {
+                        ""
+                    },
+                    self.workspace.root().join("investigation.toml").display()
                 )
             }),
         )

@@ -1,0 +1,58 @@
+{
+  "family": "ferry-ticket-storage",
+  "role": "tuning",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "option b|local"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              5,
+              13,
+              18,
+              19
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "2[- ]?hours?|two[- ]hours?|9[- ]?hours?|nine[- ]hours?|longer|storage|8 ?gb|duration|full shift|whole shift"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "chose_failing_option",
+          "field": "answer",
+          "all": [
+            "(?:recommend\\w*|choose|select\\w*|prefer\\w*) (?:option a|the hosted)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        },
+        {
+          "id": "overclaimed_fit",
+          "field": "answer",
+          "all": [
+            "(?:proven|verified|confirmed) (?:for|over|across) (?:a )?(?:full|whole|9)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

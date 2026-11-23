@@ -320,8 +320,13 @@ fn onboarding_and_budget_repairs_follow_the_public_cli_contract() {
     assert_eq!(missing["error"]["code"], "CASE_REQUIRED");
     let onboard = follow(&root, &missing["error"]["repair"]["argv"]);
     assert_eq!(onboard["state"], "empty_workspace");
+    assert_eq!(onboard["next"][0]["kind"], "start_case_with_source");
     assert_eq!(
-        follow(&root, &onboard["next"][0]["argv"])["name"],
+        onboard["next"][0]["unresolved_fields"],
+        json!(["QUESTION", "FILE"])
+    );
+    assert_eq!(
+        follow(&root, &onboard["next"][1]["argv"])["name"],
         "case.create"
     );
     let (_, receipt) = create_case(&root, "repair-and-budget");

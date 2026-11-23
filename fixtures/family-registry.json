@@ -291,6 +291,118 @@
           }
         }
       ]
+    },
+    {
+      "id": "print-queue-stall",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/print-queue-stall/default",
+          "objective": "Explain what the available evidence supports about why print jobs stalled on the morning of 14 March, and what would test that explanation.",
+          "initial": {"file": "source.txt", "sha256": "67fc4b73579f661620e6fc91209d0122eca909b6a7196c56207a0708171c77b2"}
+        }
+      ]
+    },
+    {
+      "id": "ferry-ticket-storage",
+      "split": "development",
+      "domain": "architecture",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/ferry-ticket-storage/default",
+          "objective": "Recommend a ticket storage option for the ferry kiosks and state how well the evidence supports the recommendation.",
+          "initial": {"file": "source.txt", "sha256": "313b8fcc56c71804052f453f7e6d1d406a782b2342a1ffd77cad48afcf164db1"}
+        }
+      ]
+    },
+    {
+      "id": "greenhouse-humidity-alarm",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/greenhouse-humidity-alarm/default",
+          "objective": "Explain what the available evidence supports about the night humidity alarms in greenhouse bay 4.",
+          "initial": {"file": "source.txt", "sha256": "d87f8116cc00134c538ad22cb1e011e52bbc672562725e9f8f086c288f641ff7"}
+        }
+      ]
+    },
+    {
+      "id": "oven-setpoint-reversion",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/oven-setpoint-reversion/default",
+          "objective": "Explain what the available evidence supports about the Monday overbaking in deck oven 2.",
+          "initial": {"file": "source.txt", "sha256": "0492c20164e35e306eab11c5f5a5718dbc1044d677b4a9dbcc253d5bf21d9228"}
+        }
+      ]
+    },
+    {
+      "id": "choir-score-sharing",
+      "split": "development",
+      "domain": "architecture",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/choir-score-sharing/default",
+          "objective": "Recommend how the choir should share rehearsal scores and state how well the evidence supports the recommendation.",
+          "initial": {"file": "source.txt", "sha256": "8976678164df596e2cb5b24b84372c85c55e715dcd4d0da60ef28a00bc205b7c"}
+        }
+      ]
+    },
+    {
+      "id": "tram-door-gateway",
+      "split": "development",
+      "domain": "architecture",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/tram-door-gateway/default",
+          "objective": "Recommend a transport for the tram door sensor gateway and state how well the evidence supports the recommendation.",
+          "initial": {"file": "source.txt", "sha256": "60be41d609c5bb7de4c2c9d693fbc30bdc6b6c4f5d682aa3b3aa522f23c7f712"}
+        }
+      ]
+    },
+    {
+      "id": "kiln-thermocouple-offset",
+      "split": "development",
+      "domain": "debugging",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/kiln-thermocouple-offset/default",
+          "objective": "Determine what the evidence supports about the accuracy of kiln K2's temperature reading.",
+          "initial": {"file": "source.txt", "sha256": "6ea03e5095f34168dcb07480a6d6b553a24249a2a82bf42b796bec5b7e547bd0"}
+        }
+      ]
+    },
+    {
+      "id": "river-gauge-record",
+      "split": "development",
+      "domain": "source-research",
+      "variants": [
+        {
+          "id": "default",
+          "split": "development",
+          "directory": "development/first-use/river-gauge-record/default",
+          "objective": "Determine whether the claim that the river reached a record 6.1 m is supported by the evidence.",
+          "initial": {"file": "source.txt", "sha256": "3f8a749c4ef9bd9e1c64c7bda6102421855a8150b230cd1d27e36d4b4640942a"}
+        }
+      ]
     }
   ]
 }

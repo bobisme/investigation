@@ -1,0 +1,997 @@
+{
+  "schema": "first-use-results.v1",
+  "runs": [
+    {
+      "directory": "repro-qwen-1",
+      "role": "tuning",
+      "arms": [
+        "current"
+      ],
+      "seed": 51701,
+      "models": {
+        "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7"
+      },
+      "binaries": {
+        "current": {
+          "path": "investigation-c46441d",
+          "sha256": "d0a7a9216990cf511b9d82237102213c934c3aa0a4a7655a39ea1c211a66c63f",
+          "commit": "c46441d31e72580bc2433ce87f705cb55be8de8f"
+        }
+      },
+      "runner_sha256": "3bea18615ca03384db42f9bea004d5b49797eed10ef683039e08419940dad0d4",
+      "fixture_commit": "a9feffc8eb3222cc61faef2ae03cc8f2a91f61ee",
+      "blocks": [
+        {
+          "family": "ferry-ticket-storage",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 302522584,
+          "order": [
+            "current"
+          ]
+        },
+        {
+          "family": "print-queue-stall",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1672345479,
+          "order": [
+            "current"
+          ]
+        }
+      ]
+    },
+    {
+      "directory": "iter-qwen-rev1",
+      "role": "tuning",
+      "arms": [
+        "revised"
+      ],
+      "seed": 51701,
+      "models": {
+        "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7"
+      },
+      "binaries": {
+        "revised": {
+          "path": "investigation-rev1",
+          "sha256": "0b2795414912bb306c0287988853b3765303f53f6daadea0cacaba0adc1b4cad",
+          "commit": "wip-rev1"
+        }
+      },
+      "runner_sha256": "3bea18615ca03384db42f9bea004d5b49797eed10ef683039e08419940dad0d4",
+      "fixture_commit": "a9feffc8eb3222cc61faef2ae03cc8f2a91f61ee",
+      "blocks": [
+        {
+          "family": "ferry-ticket-storage",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 302522584,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "print-queue-stall",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1672345479,
+          "order": [
+            "revised"
+          ]
+        }
+      ]
+    },
+    {
+      "directory": "iter-rev2",
+      "role": "tuning",
+      "arms": [
+        "revised"
+      ],
+      "seed": 51701,
+      "models": {
+        "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "gemma4:26b": "5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251"
+      },
+      "binaries": {
+        "revised": {
+          "path": "investigation-a4ea4fc",
+          "sha256": "8fdefe2be1df6b504b12351e71b2482dcea38541506012ea6aeb1ada1ae51cb8",
+          "commit": "a4ea4fc"
+        }
+      },
+      "runner_sha256": "aa4e9447d5524d0f64abf396dd6c4e3d98222be60c9cf1e5eb8da4212824e284",
+      "fixture_commit": "a4ea4fc72bcf3b5b104a4c12f046fd235601f20b",
+      "blocks": [
+        {
+          "family": "ferry-ticket-storage",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 302522584,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "print-queue-stall",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1672345479,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "ferry-ticket-storage",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "gemma4:26b",
+          "block_seed": 745346620,
+          "order": [
+            "revised"
+          ]
+        },
+        {
+          "family": "print-queue-stall",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 2124881018,
+          "order": [
+            "revised"
+          ]
+        }
+      ]
+    }
+  ],
+  "assignments": [
+    {
+      "id": "9ae46529-065f-4d04-bc2a-507b03e3b38b",
+      "family": "ferry-ticket-storage",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "8fdefe2be1df6b504b12351e71b2482dcea38541506012ea6aeb1ada1ae51cb8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 6,
+        "elapsed_ms": 13689,
+        "input_tokens": 1351,
+        "output_tokens": 1177,
+        "first_contact_call": null,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 6,
+        "elapsed_ms": 26857,
+        "input_tokens": 2939,
+        "output_tokens": 2890,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          13,
+          17
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 40546
+    },
+    {
+      "id": "fe64607e-2851-45e6-8ea3-a39959c66151",
+      "family": "print-queue-stall",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "8fdefe2be1df6b504b12351e71b2482dcea38541506012ea6aeb1ada1ae51cb8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 22,
+        "elapsed_ms": 39418,
+        "input_tokens": 4433,
+        "output_tokens": 3460,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 11,
+        "source_case_call": 11,
+        "cli_calls": 16,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 21649,
+        "input_tokens": 7602,
+        "output_tokens": 1770,
+        "cli_calls": 4,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": false,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 61067
+    },
+    {
+      "id": "3cb3b947-b361-43d8-81af-a363515cbf6c",
+      "family": "ferry-ticket-storage",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "current",
+      "order": 1,
+      "binary_sha256": "d0a7a9216990cf511b9d82237102213c934c3aa0a4a7655a39ea1c211a66c63f",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 52436,
+        "input_tokens": 14630,
+        "output_tokens": 4157,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 13,
+        "source_case_call": null,
+        "cli_calls": 16,
+        "cli_error_calls": 9,
+        "shell_timeouts": 0,
+        "discovery_bytes": 32393
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 22647,
+        "input_tokens": 5426,
+        "output_tokens": 2087,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1
+      },
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          13,
+          16,
+          18
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 75083
+    },
+    {
+      "id": "d4079ee6-045c-4a3d-8b31-118b394833c8",
+      "family": "ferry-ticket-storage",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "0b2795414912bb306c0287988853b3765303f53f6daadea0cacaba0adc1b4cad",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 20,
+        "elapsed_ms": 64990,
+        "input_tokens": 12889,
+        "output_tokens": 5630,
+        "first_contact_call": 6,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 8,
+        "cli_error_calls": 6,
+        "shell_timeouts": 0,
+        "discovery_bytes": 3668
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 28070,
+        "input_tokens": 7543,
+        "output_tokens": 2361,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          13,
+          23
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 93060
+    },
+    {
+      "id": "a674a31f-b69d-41b3-a3aa-e863571300d3",
+      "family": "ferry-ticket-storage",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "8fdefe2be1df6b504b12351e71b2482dcea38541506012ea6aeb1ada1ae51cb8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 61702,
+        "input_tokens": 13419,
+        "output_tokens": 5173,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 23,
+        "cli_error_calls": 15,
+        "shell_timeouts": 0,
+        "discovery_bytes": 5919
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 12,
+        "elapsed_ms": 39641,
+        "input_tokens": 14218,
+        "output_tokens": 3293,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          13,
+          18
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 101343
+    },
+    {
+      "id": "dbb77061-27d2-411d-9d7a-1964f7981846",
+      "family": "print-queue-stall",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "current",
+      "order": 1,
+      "binary_sha256": "d0a7a9216990cf511b9d82237102213c934c3aa0a4a7655a39ea1c211a66c63f",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 26,
+        "elapsed_ms": 60960,
+        "input_tokens": 17057,
+        "output_tokens": 5312,
+        "first_contact_call": 3,
+        "first_onboard_call": 13,
+        "first_receipt_call": 17,
+        "source_case_call": null,
+        "cli_calls": 17,
+        "cli_error_calls": 7,
+        "shell_timeouts": 0,
+        "discovery_bytes": 42936
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 6,
+        "elapsed_ms": 22133,
+        "input_tokens": 7883,
+        "output_tokens": 1938,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1
+      },
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          3,
+          5,
+          10,
+          12,
+          18,
+          19
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 83093
+    },
+    {
+      "id": "88341bf3-7d3e-4fd6-a545-a1269b8ec4da",
+      "family": "print-queue-stall",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "0b2795414912bb306c0287988853b3765303f53f6daadea0cacaba0adc1b4cad",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 52735,
+        "input_tokens": 15922,
+        "output_tokens": 3850,
+        "first_contact_call": 3,
+        "first_onboard_call": 7,
+        "first_receipt_call": 5,
+        "source_case_call": 5,
+        "cli_calls": 26,
+        "cli_error_calls": 14,
+        "shell_timeouts": 0,
+        "discovery_bytes": 15040
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 40419,
+        "input_tokens": 26047,
+        "output_tokens": 2991,
+        "cli_calls": 9,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          3,
+          5,
+          7,
+          10,
+          11,
+          12,
+          13,
+          15,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 93154
+    },
+    {
+      "id": "69aaa904-7a02-4b36-8923-46788e7f41cc",
+      "family": "print-queue-stall",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "revised",
+      "order": 1,
+      "binary_sha256": "8fdefe2be1df6b504b12351e71b2482dcea38541506012ea6aeb1ada1ae51cb8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 28,
+        "elapsed_ms": 67353,
+        "input_tokens": 17016,
+        "output_tokens": 5627,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 20,
+        "cli_error_calls": 12,
+        "shell_timeouts": 0,
+        "discovery_bytes": 9600
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 22473,
+        "input_tokens": 11208,
+        "output_tokens": 1967,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 2
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          3,
+          5,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          15,
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 89826
+    }
+  ],
+  "comparison": {
+    "runs": [
+      "repro-qwen-1",
+      "iter-qwen-rev1",
+      "iter-rev2"
+    ]
+  },
+  "summary": {
+    "by_arm": {
+      "current": {
+        "assignments": 2,
+        "receipt_within_three_after_contact": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 0,
+          "of": 1,
+          "upper_95": 0.95
+        },
+        "ran_onboard": {
+          "count": 1,
+          "of": 2
+        },
+        "persisted_source_and_case": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "source_linked_handoff": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "successor_answered": {
+          "count": 2,
+          "of": 2
+        },
+        "successor_citation": {
+          "count": 2,
+          "of": 2
+        },
+        "successor_limitation": {
+          "count": 2,
+          "of": 2
+        },
+        "successor_answer": {
+          "count": 2,
+          "of": 2
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "successor_used_cli": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "investigator_failed_cli_calls": 16,
+        "investigator_cli_calls": 33,
+        "investigator_budget_or_timeout": {
+          "count": 2,
+          "of": 2
+        },
+        "successor_budget_or_timeout": {
+          "count": 0,
+          "of": 2,
+          "upper_95": 0.776
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": null,
+        "median_calls_contact_to_source_case": null,
+        "mean_total_seconds": 79.1,
+        "mean_investigator_calls": 27.0
+      },
+      "revised": {
+        "assignments": 6,
+        "receipt_within_three_after_contact": {
+          "count": 3,
+          "of": 6
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 0,
+          "of": 1,
+          "upper_95": 0.95
+        },
+        "ran_onboard": {
+          "count": 1,
+          "of": 6
+        },
+        "persisted_source_and_case": {
+          "count": 4,
+          "of": 6
+        },
+        "source_linked_handoff": {
+          "count": 3,
+          "of": 6
+        },
+        "successor_answered": {
+          "count": 6,
+          "of": 6
+        },
+        "successor_citation": {
+          "count": 5,
+          "of": 6
+        },
+        "successor_limitation": {
+          "count": 6,
+          "of": 6
+        },
+        "successor_answer": {
+          "count": 6,
+          "of": 6
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 6,
+          "upper_95": 0.393
+        },
+        "successor_used_cli": {
+          "count": 4,
+          "of": 6
+        },
+        "investigator_failed_cli_calls": 51,
+        "investigator_cli_calls": 93,
+        "investigator_budget_or_timeout": {
+          "count": 2,
+          "of": 6
+        },
+        "successor_budget_or_timeout": {
+          "count": 0,
+          "of": 6,
+          "upper_95": 0.393
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 6.5,
+        "median_calls_contact_to_source_case": 2.5,
+        "mean_total_seconds": 79.8,
+        "mean_investigator_calls": 22.0
+      }
+    },
+    "by_model": {
+      "gemma4:26b": {
+        "revised": {
+          "assignments": 2,
+          "receipt_within_three_after_contact": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 0,
+            "upper_95": null
+          },
+          "ran_onboard": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "persisted_source_and_case": {
+            "count": 1,
+            "of": 2
+          },
+          "source_linked_handoff": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "successor_answered": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_citation": {
+            "count": 1,
+            "of": 2
+          },
+          "successor_limitation": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_answer": {
+            "count": 2,
+            "of": 2
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "successor_used_cli": {
+            "count": 2,
+            "of": 2
+          },
+          "investigator_failed_cli_calls": 4,
+          "investigator_cli_calls": 16,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 11,
+          "median_calls_contact_to_source_case": 8,
+          "mean_total_seconds": 50.8,
+          "mean_investigator_calls": 14.0
+        }
+      },
+      "qwen3.5:9b": {
+        "current": {
+          "assignments": 2,
+          "receipt_within_three_after_contact": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 1,
+            "upper_95": 0.95
+          },
+          "ran_onboard": {
+            "count": 1,
+            "of": 2
+          },
+          "persisted_source_and_case": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "source_linked_handoff": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "successor_answered": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_citation": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_limitation": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_answer": {
+            "count": 2,
+            "of": 2
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "successor_used_cli": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "investigator_failed_cli_calls": 16,
+          "investigator_cli_calls": 33,
+          "investigator_budget_or_timeout": {
+            "count": 2,
+            "of": 2
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 2,
+            "upper_95": 0.776
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": null,
+          "median_calls_contact_to_source_case": null,
+          "mean_total_seconds": 79.1,
+          "mean_investigator_calls": 27.0
+        },
+        "revised": {
+          "assignments": 4,
+          "receipt_within_three_after_contact": {
+            "count": 3,
+            "of": 4
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 1,
+            "upper_95": 0.95
+          },
+          "ran_onboard": {
+            "count": 1,
+            "of": 4
+          },
+          "persisted_source_and_case": {
+            "count": 3,
+            "of": 4
+          },
+          "source_linked_handoff": {
+            "count": 3,
+            "of": 4
+          },
+          "successor_answered": {
+            "count": 4,
+            "of": 4
+          },
+          "successor_citation": {
+            "count": 4,
+            "of": 4
+          },
+          "successor_limitation": {
+            "count": 4,
+            "of": 4
+          },
+          "successor_answer": {
+            "count": 4,
+            "of": 4
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 4,
+            "upper_95": 0.527
+          },
+          "successor_used_cli": {
+            "count": 2,
+            "of": 4
+          },
+          "investigator_failed_cli_calls": 47,
+          "investigator_cli_calls": 77,
+          "investigator_budget_or_timeout": {
+            "count": 2,
+            "of": 4
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 4,
+            "upper_95": 0.527
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 6,
+          "median_calls_contact_to_source_case": 2,
+          "mean_total_seconds": 94.3,
+          "mean_investigator_calls": 26.0
+        }
+      }
+    },
+    "paired": {
+      "pairs": 2,
+      "mean_total_seconds": {
+        "current": 79.1,
+        "revised": 95.6
+      },
+      "mean_difference_seconds": 16.5,
+      "revised_to_current_time_ratio": 1.209,
+      "pairs_revised_faster": 0,
+      "source_linked_handoff": {
+        "current": 0,
+        "revised": 2
+      },
+      "successor_citation_and_limitation": {
+        "current": 2,
+        "revised": 2
+      }
+    },
+    "comparison": {
+      "runs": [
+        "repro-qwen-1",
+        "iter-qwen-rev1",
+        "iter-rev2"
+      ]
+    }
+  }
+}

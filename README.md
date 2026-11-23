@@ -32,7 +32,9 @@ investigation --workspace casework next --format json
 ```
 <!-- quickstart:end -->
 
-Run `investigation onboard` from an existing workspace or an empty directory. `investigation schema --list` lists active operations. `investigation schema observation.add --format json` describes the payload and its repair guidance. Supply an exact revision for changes to an existing record and reuse the original command ID after a lost response.
+To retain a file that is already in the working directory, create the workspace with `investigation init ./casework --no-vault --import-root .` and pass `--attach FILE` to `start`. Import roots are read-only inputs; a fresh workspace has none unless `--import-root` names them.
+
+Run `investigation onboard` from an existing workspace, the directory that contains it, or an empty directory. `investigation schema --list` lists active operations. `investigation schema observation.add --format json` describes the payload and its repair guidance. Supply an exact revision for changes to an existing record and reuse the original command ID after a lost response.
 
 `investigation next` ranks up to three open gaps by ordinal factors read from recorded structure, such as whether a result could change a hard-criterion disposition or an option's Pareto status, and shows each factor with its source. It is a heuristic, not a probability or score. It groups repeated cells for one criterion, withholds soft-criterion cells on options that already fail a hard criterion, and returns snapshot-bound `frontier` routes for groups and for blocked and deferred gaps. `investigation frontier --format json` lists every gap at the same committed snapshot, unranked, with `--status`, `--kind`, `--rule` and `--reads` filters and a cursor that stays on the first page's snapshot. `investigation frontier --explain GAP_ID` names the rule and rule version that emits a gap and the fields it reads. A gap is missing or stale recorded information. It is not an assignment, and neither command dispatches work.
 

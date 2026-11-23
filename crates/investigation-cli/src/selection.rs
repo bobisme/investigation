@@ -23,7 +23,26 @@ pub(crate) fn open_workspace(path: Option<&Path>) -> Result<Workspace, Failure> 
             let cwd = env::current_dir().map_err(|error| {
                 Failure::new(ErrorCode::IoFailure, format!("Read working directory: {error}"))
             })?;
-            Workspace::discover(&cwd).map_err(workspace_failure)
+            Workspace::discover(&cwd).map_err(|error| {
+                let failure = workspace_failure(error);
+                match crate::first_use::nearby_workspaces().as_slice() {
+                    [(_, display), ..] if failure.error.code == ErrorCode::WorkspaceRequired => {
+                        Failure::new(
+                            ErrorCode::WorkspaceRequired,
+                            format!(
+                                "{} A workspace exists at {display}; pass --workspace {display}.",
+                                failure.error.message
+                            ),
+                        )
+                        .with_argv(
+                            [PROGRAM_NAME, "--workspace", display, "onboard", "--format", "json"]
+                                .map(str::to_owned)
+                                .to_vec(),
+                        )
+                    }
+                    _ => failure,
+                }
+            })
         }
     }
 }
@@ -96,11 +115,17 @@ pub(crate) fn select_actor(
             failure.error.actual = Some(json!(envelope));
             failure
         }
-        ActorResolutionError::Missing => Failure::new(
-            ErrorCode::InvalidInput,
-            "Specify an attributed actor with --actor, the workspace actor setting, or AGENT.",
-        )
-        .at("/actor"),
+        ActorResolutionError::Missing => {
+            let failure = Failure::new(
+                ErrorCode::InvalidInput,
+                "Specify an attributed actor with --actor, the workspace actor setting, or AGENT, for example --actor agent:investigator.",
+            )
+            .at("/actor");
+            match crate::first_use::with_example_actor(env::args_os()) {
+                Some(argv) => failure.with_argv(argv),
+                None => failure,
+            }
+        }
     })
 }
 
@@ -116,7 +141,7 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
     let mut failure = Failure::new(
         ErrorCode::CaseRequired,
         if heads.is_empty() {
-            "Create a case with investigation schema case.create and investigation record."
+            "Create a case with investigation start QUESTION --attach FILE, or with investigation case new TITLE."
         } else {
             "Select a case with --case ID."
         },

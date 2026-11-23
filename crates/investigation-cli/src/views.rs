@@ -542,6 +542,16 @@ pub(crate) fn project_record(
         }
         if record.header.id.kind() == Kind::Observation {
             out.insert("summary_untrusted_data".into(), json!(true));
+            // A successor reading a summary or brief needs the recorded
+            // limitations, not only the statement and quote.
+            out.insert(
+                "recorded_limitations".into(),
+                record
+                    .body
+                    .get("limitations")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+            );
             if let Ok(reference) =
                 serde_json::from_value::<RevisionRef>(record.body["basis"]["artifact_ref"].clone())
                 && let Some(artifact) = replay.state.revision(reference)

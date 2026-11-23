@@ -1,0 +1,49 @@
+{
+  "family": "kiln-thermocouple-offset",
+  "role": "comparison",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "\\blow\\b|lower|under[- ]?read|reads? low|18 ?c|1222|below|drift"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              7,
+              9,
+              10,
+              12
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "one firing|single firing|only firing|firing 112|one shelf|one (?:shelf )?position|single position|door|no reference|reference thermocouple|position"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "overclaimed_offset",
+          "field": "answer",
+          "all": [
+            "\\b(?:confirmed|proven|definitive(?:ly)?|conclusively|established beyond)\\b",
+            "exactly 18|precisely 18"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

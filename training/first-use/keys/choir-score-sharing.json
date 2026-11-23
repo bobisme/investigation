@@ -1,0 +1,46 @@
+{
+  "family": "choir-score-sharing",
+  "role": "comparison",
+  "variants": {
+    "default": {
+      "warranted": [
+        {
+          "id": "current_answer",
+          "field": "answer",
+          "all": [
+            "option 2|binder|public (?:pdf )?link|pdf link|link to the pdf"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              5,
+              17
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "11 of 40|11/40|survey|29|repl(?:y|ied)|respon|did not reply|unknown|how many"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "chose_account_option",
+          "field": "answer",
+          "all": [
+            "(?:recommend\\w*|choose|select\\w*|prefer\\w*) (?:option 1|the (?:shared )?cloud folder)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothe\\w*|unsupported|unwarranted|unverified|insufficient|unknown|pending|likely|probabl\\w*|suggest\\w*|appears?|would|could|might|may|if|not|never|cannot|no|until|whether|claim\\w*|newsletter|reports?)\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

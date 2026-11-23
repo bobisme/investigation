@@ -123,11 +123,20 @@ pub(crate) fn start(
     global: &Global,
     question: &str,
     attachment: &Path,
-    command_id: &str,
+    command_id: Option<&str>,
 ) -> Result<Output, Failure> {
     require_case_agreement(store, global.case.as_deref(), None)?;
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
     let stdin = attachment == Path::new("-");
+    let attachment = &crate::first_use::attachment_path(store.workspace(), attachment);
+    let command_id = match command_id {
+        Some(command_id) => command_id.to_owned(),
+        None => {
+            let generated = crate::shortcuts::generated_command_id();
+            crate::shortcuts::announce_generated_id(&generated)?;
+            generated
+        }
+    };
     let mut manifest = json!({
         "schema_version":ingest::IngestVersion::V1,
         "command_id":command_id,
@@ -142,11 +151,43 @@ pub(crate) fn start(
         manifest["paths"] = json!([attachment]);
     }
     let bytes = serde_json::to_vec(&manifest).expect("start manifest serializes");
-    if stdin {
+    let mut out = if stdin {
         submit(store, &bytes, Some(&mut io::stdin().lock()))
     } else {
         submit(store, &bytes, None)
+    }?;
+    let created = |prefix: &str| {
+        out.value["created"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|change| change["id"].as_str())
+            .find(|id| id.starts_with(prefix))
+            .map(str::to_owned)
+    };
+    if let (Some(case), Some(source)) = (created("case_"), created("src_")) {
+        let mut argv = crate::workspace_argv(store.workspace());
+        argv.extend(
+            [
+                "--case",
+                &case,
+                "observe",
+                "STATEMENT",
+                "--source",
+                &source,
+                "--quote",
+                "EXACT TEXT",
+                "--limitations",
+                "[\"LIMITATION\"]",
+            ]
+            .map(str::to_owned),
+        );
+        out.text.push_str(&format!(
+            "\nRecord what the source shows, quoting it exactly: {}",
+            crate::display_argv(&argv)
+        ));
     }
+    Ok(out)
 }
 
 fn submit(

@@ -1,0 +1,1171 @@
+diff --git a/crates/investigation-cli/src/evidence.rs b/crates/investigation-cli/src/evidence.rs
+index b3c9fa4..c1db7a9 100644
+--- a/crates/investigation-cli/src/evidence.rs
++++ b/crates/investigation-cli/src/evidence.rs
+@@ -123,11 +123,20 @@ pub(crate) fn start(
+     global: &Global,
+     question: &str,
+     attachment: &Path,
+-    command_id: &str,
++    command_id: Option<&str>,
+ ) -> Result<Output, Failure> {
+     require_case_agreement(store, global.case.as_deref(), None)?;
+     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
+     let stdin = attachment == Path::new("-");
++    let attachment = &crate::first_use::attachment_path(store.workspace(), attachment);
++    let command_id = match command_id {
++        Some(command_id) => command_id.to_owned(),
++        None => {
++            let generated = crate::shortcuts::generated_command_id();
++            crate::shortcuts::announce_generated_id(&generated)?;
++            generated
++        }
++    };
+     let mut manifest = json!({
+         "schema_version":ingest::IngestVersion::V1,
+         "command_id":command_id,
+@@ -142,11 +151,43 @@ pub(crate) fn start(
+         manifest["paths"] = json!([attachment]);
+     }
+     let bytes = serde_json::to_vec(&manifest).expect("start manifest serializes");
+-    if stdin {
++    let mut out = if stdin {
+         submit(store, &bytes, Some(&mut io::stdin().lock()))
+     } else {
+         submit(store, &bytes, None)
++    }?;
++    let created = |prefix: &str| {
++        out.value["created"]
++            .as_array()
++            .into_iter()
++            .flatten()
++            .filter_map(|change| change["id"].as_str())
++            .find(|id| id.starts_with(prefix))
++            .map(str::to_owned)
++    };
++    if let (Some(case), Some(source)) = (created("case_"), created("src_")) {
++        let mut argv = crate::workspace_argv(store.workspace());
++        argv.extend(
++            [
++                "--case",
++                &case,
++                "observe",
++                "STATEMENT",
++                "--source",
++                &source,
++                "--quote",
++                "EXACT TEXT",
++                "--limitations",
++                "[\"LIMITATION\"]",
++            ]
++            .map(str::to_owned),
++        );
++        out.text.push_str(&format!(
++            "\nRecord what the source shows, quoting it exactly: {}",
++            crate::display_argv(&argv)
++        ));
+     }
++    Ok(out)
+ }
+ 
+ fn submit(
+diff --git a/crates/investigation-cli/src/first_use.rs b/crates/investigation-cli/src/first_use.rs
+new file mode 100644
+index 0000000..9994e47
+--- /dev/null
++++ b/crates/investigation-cli/src/first_use.rs
+@@ -0,0 +1,273 @@
++//! The shortest valid path from an ordinary working directory to a receipt
++//! that names a case and its retained source, and back for a successor.
++
++use std::{
++    env,
++    ffi::OsString,
++    fs,
++    path::{Component, Path, PathBuf},
++};
++
++use investigation_core::{PROGRAM_NAME, wire::Failure};
++use investigation_store::Workspace;
++use serde_json::{Value, json};
++
++/// A generic example actor. Callers can and should choose their own.
++pub(crate) const EXAMPLE_ACTOR: &str = "agent:investigator";
++
++fn argv(parts: &[&str]) -> Vec<String> {
++    parts.iter().map(|part| (*part).to_owned()).collect()
++}
++
++/// `init` for a workspace beside the files in the working directory, with
++/// that directory as the only read-only import root.
++pub(crate) fn init_step() -> Value {
++    json!({
++        "kind":"initialize_workspace",
++        "argv":argv(&[PROGRAM_NAME, "init", "./casework", "--no-vault", "--import-root", ".", "--format", "json"]),
++        "effect":"Creates ./casework and lets it retain copies of files beneath the working directory. Nothing else is read."
++    })
++}
++
++/// `start` with the question and file left for the caller to supply.
++pub(crate) fn start_step(workspace: &str) -> Value {
++    json!({
++        "kind":"start_case_with_source",
++        "argv":argv(&[PROGRAM_NAME, "--workspace", workspace, "--actor", EXAMPLE_ACTOR, "start", "QUESTION", "--attach", "FILE", "--format", "json"]),
++        "unresolved_fields":["QUESTION", "FILE"],
++        "effect":"Opens an exploratory case and retains FILE as its first source in one transaction. The receipt names both."
++    })
++}
++
++/// Text for the two-command start path.
++pub(crate) fn start_text(workspace: &str, init: bool) -> String {
++    let mut text = String::from("Start a case from a local file:\n");
++    if init {
++        text.push_str(&format!(
++            "  {PROGRAM_NAME} init ./casework --no-vault --import-root . --format json\n"
++        ));
++    }
++    text.push_str(&format!(
++        "  {PROGRAM_NAME} --workspace {workspace} --actor {EXAMPLE_ACTOR} start 'QUESTION' --attach FILE --format json\n\
++         Replace QUESTION and FILE. Use your own actor name if you have one. The receipt names the case and the retained source."
++    ));
++    text
++}
++
++/// Advice when no configured import root can supply a path.
++pub(crate) fn import_root_advice(workspace: &Workspace) -> String {
++    format!(
++        "Add the file's directory to import_roots in {}, or create the workspace with init PATH --import-root DIR.",
++        workspace.root().join("investigation.toml").display()
++    )
++}
++
++/// The current invocation with `--actor` added, for a missing-actor repair.
++/// Arguments that read stdin are not repeated, since stdin is consumed.
++pub(crate) fn with_example_actor(args: impl Iterator<Item = OsString>) -> Option<Vec<String>> {
++    let mut args = args.skip(1).map(|arg| arg.into_string().ok());
++    let rest: Option<Vec<String>> = args.by_ref().collect();
++    let rest = rest?;
++    if rest
++        .iter()
++        .any(|arg| arg == "-" || arg == "--actor" || arg.starts_with("--actor="))
++    {
++        return None;
++    }
++    let mut argv = vec![
++        PROGRAM_NAME.to_owned(),
++        "--actor".to_owned(),
++        EXAMPLE_ACTOR.to_owned(),
++    ];
++    argv.extend(rest);
++    Some(argv)
++}
++
++/// Repair for an `--import-root` that names a file rather than a directory.
++pub(crate) fn import_root_repair(root: &Path) -> Option<PathBuf> {
++    fs::canonicalize(root)
++        .ok()
++        .filter(|path| path.is_file())
++        .and_then(|path| path.parent().map(Path::to_path_buf))
++}
++
++/// The current invocation with one `FLAG VALUE` pair's value replaced.
++pub(crate) fn with_replaced_value(
++    args: impl Iterator<Item = OsString>,
++    flag: &str,
++    old: &Path,
++    new: &Path,
++) -> Option<Vec<String>> {
++    let mut argv: Vec<String> = args
++        .skip(1)
++        .map(OsString::into_string)
++        .collect::<Result<_, _>>()
++        .ok()?;
++    let index = argv
++        .windows(2)
++        .position(|pair| pair[0] == flag && Path::new(&pair[1]) == old)?;
++    argv[index + 1] = new.to_str()?.to_owned();
++    argv.insert(0, PROGRAM_NAME.to_owned());
++    Some(argv)
++}
++
++/// Explain a shortcut quote that does not occur in the source. The text
++/// argument doubles as the quote unless `--quote` is given.
++pub(crate) fn explain_quote_failure(mut failure: Failure) -> Failure {
++    if failure.error.message == "OBSERVATION_TEXT_QUOTE_NOT_FOUND" {
++        failure.error.message.push_str(
++            ": the quote must be copied exactly from the source text. TEXT is used as the quote unless --quote gives one.",
++        );
++    }
++    failure
++}
++
++/// Immediate child directories of `directory` that hold a workspace config.
++/// Symbolic links are not followed.
++pub(crate) fn child_workspaces(directory: &Path) -> Vec<PathBuf> {
++    let Ok(entries) = fs::read_dir(directory) else {
++        return Vec::new();
++    };
++    let mut found: Vec<_> = entries
++        .filter_map(Result::ok)
++        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
++        .map(|entry| entry.path())
++        .filter(|path| {
++            fs::symlink_metadata(path.join("investigation.toml")).is_ok_and(|meta| meta.is_file())
++        })
++        .collect();
++    found.sort();
++    found.truncate(8);
++    found
++}
++
++/// Child workspaces of the working directory, as `./name` display paths.
++pub(crate) fn nearby_workspaces() -> Vec<(PathBuf, String)> {
++    let Ok(cwd) = env::current_dir() else {
++        return Vec::new();
++    };
++    child_workspaces(&cwd)
++        .into_iter()
++        .map(|path| {
++            let display = path
++                .file_name()
++                .map(|name| format!("./{}", name.to_string_lossy()))
++                .unwrap_or_else(|| path.display().to_string());
++            (path, display)
++        })
++        .collect()
++}
++
++fn lexical(path: &Path) -> Option<PathBuf> {
++    let mut normalized = PathBuf::new();
++    for component in path.components() {
++        match component {
++            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
++                normalized.push(component.as_os_str());
++            }
++            Component::CurDir => {}
++            Component::ParentDir => {
++                if !normalized.pop() {
++                    return None;
++                }
++            }
++        }
++    }
++    Some(normalized)
++}
++
++/// Resolve a relative attachment against the working directory when the
++/// result lies beneath a configured import root. Otherwise keep the path as
++/// given, so ingest keeps resolving it beneath each import root.
++///
++/// Beneath the first root the path stays relative, so the acquisition label
++/// keeps the caller's short name. Beneath a later root it becomes absolute,
++/// because ingest tries a relative path against every root in order.
++pub(crate) fn attachment_path(workspace: &Workspace, path: &Path) -> PathBuf {
++    if path.is_absolute() || path == Path::new("-") {
++        return path.to_owned();
++    }
++    let Some(candidate) = env::current_dir()
++        .ok()
++        .and_then(|cwd| lexical(&cwd.join(path)))
++    else {
++        return path.to_owned();
++    };
++    let roots = workspace.config().import_roots.iter().map(|root| {
++        lexical(&if root.is_absolute() {
++            root.clone()
++        } else {
++            workspace.root().join(root)
++        })
++    });
++    for (index, root) in roots.enumerate() {
++        let Some(relative) =
++            root.and_then(|root| candidate.strip_prefix(&root).ok().map(Path::to_path_buf))
++        else {
++            continue;
++        };
++        if relative.as_os_str().is_empty() {
++            break;
++        }
++        return if index == 0 { relative } else { candidate };
++    }
++    path.to_owned()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn actor_repair_repeats_the_invocation_unless_stdin_was_read() {
++        let args = |parts: &[&str]| parts.iter().map(OsString::from).collect::<Vec<_>>();
++        assert_eq!(
++            with_example_actor(
++                args(&["/tools/investigation", "start", "Q?", "--attach", "a.txt"]).into_iter()
++            ),
++            Some(
++                [
++                    "investigation",
++                    "--actor",
++                    EXAMPLE_ACTOR,
++                    "start",
++                    "Q?",
++                    "--attach",
++                    "a.txt"
++                ]
++                .map(str::to_owned)
++                .to_vec()
++            )
++        );
++        assert_eq!(
++            with_example_actor(
++                args(&["investigation", "start", "Q?", "--attach", "-"]).into_iter()
++            ),
++            None
++        );
++    }
++
++    #[test]
++    fn lexical_normalization_refuses_to_escape_the_root() {
++        assert_eq!(
++            lexical(Path::new("/work/casework/../source.txt")),
++            Some(PathBuf::from("/work/source.txt"))
++        );
++        assert_eq!(
++            lexical(Path::new("/work/./source.txt")),
++            Some(PathBuf::from("/work/source.txt"))
++        );
++        assert_eq!(lexical(Path::new("/..")), None);
++    }
++
++    #[test]
++    fn child_workspaces_lists_only_directories_with_a_config() {
++        let directory = tempfile::tempdir().unwrap();
++        let root = directory.path();
++        fs::create_dir(root.join("casework")).unwrap();
++        fs::write(root.join("casework/investigation.toml"), "").unwrap();
++        fs::create_dir(root.join("notes")).unwrap();
++        fs::write(root.join("investigation.toml"), "").unwrap();
++        assert_eq!(child_workspaces(root), vec![root.join("casework")]);
++    }
++}
+diff --git a/crates/investigation-cli/src/main.rs b/crates/investigation-cli/src/main.rs
+index ada99dc..532d5e9 100644
+--- a/crates/investigation-cli/src/main.rs
++++ b/crates/investigation-cli/src/main.rs
+@@ -2,6 +2,7 @@
+ 
+ mod capture;
+ mod evidence;
++mod first_use;
+ mod frontier;
+ mod guide;
+ mod lineage;
+@@ -49,12 +50,17 @@ const FIRST_STEPS: &str = "\
+ Use investigation when a question needs multiple observations, a comparison, or a handoff.
+ The workspace preserves evidence and attributed revisions. Writes return a durable receipt.
+ 
++Start a case from a local file in the working directory:
++  investigation init ./casework --no-vault --import-root . --format json
++  investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json
++
++Continue, record and hand off:
+   investigation onboard --format json
+-  investigation init ./casework --no-vault --format json
+-  investigation schema case.create --format json
++  investigation --workspace ./casework brief --format json
+   investigation --workspace ./casework next --format json
+   investigation case new 'Request latency' --format json
+   investigation source add ./results.log --case <ID> --format json
++  investigation schema case.create --format json
+   investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json
+   investigation note 'Check the clock source' --on <RECORD_ID> --format json
+   investigation --workspace ./casework record --input case.json --format json
+@@ -122,13 +128,19 @@ enum Format {
+ #[derive(Subcommand)]
+ enum Commands {
+     /// Create a local workspace and an optional Obsidian vault.
+-    #[command(after_help = "Example: investigation init ./casework --format json")]
++    #[command(
++        after_help = "Example: investigation init ./casework --no-vault --import-root . --format json"
++    )]
+     Init {
++        /// New or empty directory for the workspace.
+         #[arg(value_name = "PATH")]
+         path: PathBuf,
+         /// Skip creation of the optional Obsidian vault.
+         #[arg(long)]
+         no_vault: bool,
++        /// Let the workspace retain copies of files beneath DIR (read-only; repeatable).
++        #[arg(long = "import-root", value_name = "DIR")]
++        import_roots: Vec<PathBuf>,
+     },
+     /// Submit one atomic transaction using the operation catalog.
+     #[command(
+@@ -146,12 +158,18 @@ enum Commands {
+         input: PathBuf,
+     },
+     /// Open an exploratory case and retain one attachment atomically.
++    #[command(
++        after_help = "Example: investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\nFILE must lie beneath an import root of the workspace; use - to read the attachment from stdin."
++    )]
+     Start {
++        /// The question the case investigates.
+         question: String,
++        /// Local file to retain as the first source, or - for stdin.
+         #[arg(long, value_name = "FILE|-")]
+         attach: PathBuf,
++        /// Stable idempotency key; generated if omitted.
+         #[arg(long, value_name = "KEY")]
+-        command_id: String,
++        command_id: Option<String>,
+     },
+     /// Inspect retained source material explicitly.
+     #[command(subcommand)]
+@@ -316,7 +334,11 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
+     }
+     match cli.command {
+         Commands::Schema(args) => schema::describe(args, &global),
+-        Commands::Init { path, no_vault } => init(&path, !no_vault, global.workspace.as_deref()),
++        Commands::Init {
++            path,
++            no_vault,
++            import_roots,
++        } => init(&path, !no_vault, &import_roots, global.workspace.as_deref()),
+         Commands::Onboard => onboard::run(&global),
+         Commands::Guide(args) => guide::show(args, &global),
+         Commands::Method(command) => guide::method(command, &global),
+@@ -329,7 +351,13 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
+                     question,
+                     attach,
+                     command_id,
+-                } => evidence::start(&mut store, &global, &question, &attach, &command_id),
++                } => evidence::start(
++                    &mut store,
++                    &global,
++                    &question,
++                    &attach,
++                    command_id.as_deref(),
++                ),
+                 Commands::Evidence(command) => evidence::read(&mut store, &global, command),
+                 Commands::Capture(command) => capture::run(&mut store, &global, command),
+                 Commands::Receipt { key } => lookup_receipt(&mut store, &global, &key),
+@@ -557,7 +585,12 @@ fn brief(
+     Ok(Output::new(view, text))
+ }
+ 
+-fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output, Failure> {
++fn init(
++    path: &Path,
++    vault: bool,
++    import_roots: &[PathBuf],
++    override_path: Option<&Path>,
++) -> Result<Output, Failure> {
+     if override_path.is_some() {
+         return Err(Failure::new(
+             ErrorCode::InvalidInput,
+@@ -565,7 +598,31 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
+         )
+         .at("--workspace"));
+     }
+-    let (workspace, result) = match Workspace::init(path, vault) {
++    let import_roots = import_roots
++        .iter()
++        .map(|root| {
++            std::fs::canonicalize(root)
++                .ok()
++                .filter(|root| root.is_dir())
++                .ok_or_else(|| {
++                    let failure = Failure::new(
++                        ErrorCode::InvalidInput,
++                        format!(
++                            "Import root {} is not an existing directory. Name the directory that holds the files.",
++                            root.display()
++                        ),
++                    )
++                    .at("--import-root");
++                    match first_use::import_root_repair(root).and_then(|parent| {
++                        first_use::with_replaced_value(env::args_os(), "--import-root", root, &parent)
++                    }) {
++                        Some(argv) => failure.with_argv(argv),
++                        None => failure,
++                    }
++                })
++        })
++        .collect::<Result<Vec<_>, _>>()?;
++    let (workspace, result) = match Workspace::init_with_import_roots(path, vault, &import_roots) {
+         Ok(workspace) => (workspace, "initialized"),
+         Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
+             if path.join("investigation.toml").is_file() {
+@@ -581,18 +638,27 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
+     };
+     let vault = workspace.config().vault_policy.enabled;
+     let path = workspace.root().to_string_lossy();
+-    let mut next = workspace_argv(&workspace);
+-    next.extend(["schema", "case.create", "--format", "json"].map(str::to_owned));
+-    let text = format!(
+-        "{}  {result}  {path}\nstate/  canonical\ncache/  disposable\nlocal/  machine-local\n{}Next: {}",
++    let configured_roots = &workspace.config().import_roots;
++    let start = first_use::start_step(&path);
++    let mut text = format!(
++        "{}  {result}  {path}\nstate/  canonical\ncache/  disposable\nlocal/  machine-local\n{}",
+         workspace.id(),
+         if vault {
+             "vault/  optional projection\n"
+         } else {
+             ""
+         },
+-        display_argv(&next)
+     );
++    for root in configured_roots {
++        text.push_str(&format!("import root  {}\n", root.display()));
++    }
++    text.push_str(&first_use::start_text(&path, false));
++    if configured_roots.is_empty() {
++        text.push_str(&format!(
++            "\nNo import roots are configured, so FILE paths are refused. {}",
++            first_use::import_root_advice(&workspace)
++        ));
++    }
+     Ok(Output::success(
+         result,
+         json!({
+@@ -605,7 +671,8 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
+                 "machine_local": "local/",
+                 "projection": vault.then_some("vault/"),
+             },
+-            "next": [{ "kind": "local_read", "argv": next }]
++            "import_roots": configured_roots,
++            "next": [start]
+         }),
+         text,
+     ))
+@@ -613,9 +680,14 @@ fn init(path: &Path, vault: bool, override_path: Option<&Path>) -> Result<Output
+ 
+ pub(crate) fn read_input(path: &Path) -> Result<Vec<u8>, Failure> {
+     let read = |error| {
++        let hint = if path.to_string_lossy().trim_start().starts_with(['{', '[']) {
++            " --input takes a file path; pass - and pipe inline JSON on stdin."
++        } else {
++            ""
++        };
+         Failure::new(
+             ErrorCode::IoFailure,
+-            format!("Read input {}: {error}", path.display()),
++            format!("Read input {}: {error}.{hint}", path.display()),
+         )
+         .at("--input")
+     };
+diff --git a/crates/investigation-cli/src/onboard.rs b/crates/investigation-cli/src/onboard.rs
+index 4c30e2d..23f847c 100644
+--- a/crates/investigation-cli/src/onboard.rs
++++ b/crates/investigation-cli/src/onboard.rs
+@@ -5,11 +5,11 @@ use investigation_core::{
+     catalog::standard_catalog,
+     wire::{ErrorCode, Failure},
+ };
+-use investigation_store::Store;
++use investigation_store::{Store, Workspace};
+ use serde_json::json;
+ 
+ use crate::{
+-    Global, Output,
++    Global, Output, first_use,
+     selection::{open_workspace, select_case, workspace_argv},
+ };
+ 
+@@ -21,31 +21,54 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
+         Err(failure)
+             if global.workspace.is_none() && failure.error.code == ErrorCode::WorkspaceRequired =>
+         {
+-            let argv = [
+-                PROGRAM_NAME,
+-                "init",
+-                "./casework",
+-                "--no-vault",
+-                "--format",
+-                "json",
+-            ]
+-            .map(str::to_owned)
+-            .to_vec();
++            let nearby = first_use::nearby_workspaces();
++            // A single workspace beside the caller's files is the common
++            // handoff: report it as if --workspace had named it.
++            if let [(path, display)] = nearby.as_slice()
++                && let Ok(workspace) = open_workspace(Some(path))
++            {
++                return onboard_workspace(global, workspace, Some(display));
++            }
++            if !nearby.is_empty() {
++                let next: Vec<_> = nearby
++                    .iter()
++                    .map(|(_, display)| json!({"kind":"open_workspace","argv":[PROGRAM_NAME, "--workspace", display, "onboard", "--format", "json"]}))
++                    .collect();
++                let names: Vec<_> = nearby.iter().map(|(_, display)| display.as_str()).collect();
++                return Ok(Output::success(
++                    "onboarding",
++                    json!({"state":"workspace_selection_required","mental_model":MODEL,"nearby_workspaces":names,"next":next}),
++                    format!(
++                        "investigation — preserve evidence, test explanations, and evaluate options.\nWorkspaces in this directory: {}\nNext: {PROGRAM_NAME} --workspace {} onboard",
++                        names.join(", "),
++                        names[0]
++                    ),
++                ));
++            }
+             return Ok(Output::success(
+                 "onboarding",
+                 json!({
+                     "state":"no_workspace", "mental_model":MODEL,
+                     "when_to_use":"Use for questions needing multiple observations, a meaningful comparison, or a handoff; use a shell or notebook for one-shot facts and ordinary implementation work.",
+-                    "next":[{"kind":"initialize_workspace","argv":argv}],
++                    "next":[first_use::init_step(), first_use::start_step("./casework")],
+                     "supported_flows":["init","schema","start","ingest","record","receipt","check"]
+                 }),
+                 format!(
+-                    "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\nNext: investigation init ./casework --no-vault --format json"
++                    "investigation — preserve evidence, test explanations, and evaluate options.\n{MODEL}\nNo workspace here. {}",
++                    first_use::start_text("./casework", true)
+                 ),
+             ));
+         }
+         Err(failure) => return Err(failure),
+     };
++    onboard_workspace(global, workspace, None)
++}
++
++fn onboard_workspace(
++    global: &Global,
++    workspace: Workspace,
++    discovered: Option<&String>,
++) -> Result<Output, Failure> {
+     let mut store = Store::open(workspace);
+     let heads = store.list_cases()?;
+     let selection = global
+@@ -57,6 +80,7 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
+         .available()
+         .map(|d| d.info().name)
+         .collect();
++    let root = store.workspace().root().to_string_lossy().into_owned();
+     let next = if heads.is_empty() {
+         let argv = scoped(
+             &store,
+@@ -64,7 +88,7 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
+                 .map(str::to_owned)
+                 .to_vec(),
+         );
+-        json!([{"kind":"inspect_schema","argv":argv,"unresolved_fields":["case question", "actor", "command ID"]}])
++        json!([first_use::start_step(&root), {"kind":"inspect_schema","argv":argv,"unresolved_fields":["case question", "actor", "command ID"]}])
+     } else if let Some(case_id) =
+         selection.or_else(|| (heads.len() == 1).then_some(heads[0].case_id))
+     {
+@@ -80,7 +104,13 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
+                 .map(str::to_owned)
+                 .to_vec(),
+         );
+-        json!([{"kind":"rank_snapshot_gaps","argv":argv,"record_count":count}])
++        let brief = scoped(
++            &store,
++            ["--case", &case_id.to_string(), "brief", "--format", "json"]
++                .map(str::to_owned)
++                .to_vec(),
++        );
++        json!([{"kind":"rank_snapshot_gaps","argv":argv,"record_count":count},{"kind":"read_handoff","argv":brief}])
+     } else {
+         json!([{"kind":"select_case","required":true,"available_case_ids":heads.iter().map(|h| h.case_id).collect::<Vec<_>>()}])
+     };
+@@ -91,17 +121,45 @@ pub(crate) fn run(global: &Global) -> Result<Output, Failure> {
+     } else {
+         "case_selected"
+     };
+-    let value = json!({
++    let mut value = json!({
+         "state":state, "workspace_id":store.workspace().id(), "mental_model":MODEL,
+         "when_to_use":"Use for multi-step evidence, explanations, option comparisons, and handoffs; use a shell or notebook for one-shot facts and ordinary implementation work.",
+         "active_operations":active_ops, "next":next,
+         "limits":["Use the active catalog and keep uncertain results explicit.","External work remains user-managed."]
+     });
+-    let text = format!(
+-        "investigation — preserve evidence, test explanations, and evaluate options.\nState: {state}\n{MODEL}\nActive operations: {}\nNext: {}",
+-        active_ops.join(", "),
+-        serde_json::to_string(&value["next"]).unwrap_or_default()
++    let mut text = format!(
++        "investigation — preserve evidence, test explanations, and evaluate options.\nState: {state}\n"
+     );
++    if let Some(display) = discovered {
++        value["workspace"] = json!(root);
++        text.push_str(&format!(
++            "Workspace: {display} (found in the working directory)\n"
++        ));
++    }
++    text.push_str(&format!(
++        "{MODEL}\nActive operations: {}\n",
++        active_ops.join(", ")
++    ));
++    if heads.is_empty() {
++        text.push_str(&first_use::start_text(&root, false));
++        if store.workspace().config().import_roots.is_empty() {
++            text.push_str(&format!(
++                "\nNo import roots are configured, so FILE paths are refused. {}",
++                first_use::import_root_advice(store.workspace())
++            ));
++        }
++    } else {
++        for step in value["next"].as_array().into_iter().flatten() {
++            if let Some(argv) = step["argv"].as_array() {
++                let argv: Vec<String> = argv
++                    .iter()
++                    .filter_map(|part| part.as_str().map(str::to_owned))
++                    .collect();
++                text.push_str(&format!("Next: {}\n", crate::display_argv(&argv)));
++            }
++        }
++        text.push_str("Run next for open gaps and brief for the bounded handoff.");
++    }
+     Ok(Output::success("onboarding", value, text))
+ }
+ 
+diff --git a/crates/investigation-cli/src/selection.rs b/crates/investigation-cli/src/selection.rs
+index e52dfa8..b536f21 100644
+--- a/crates/investigation-cli/src/selection.rs
++++ b/crates/investigation-cli/src/selection.rs
+@@ -23,7 +23,26 @@ pub(crate) fn open_workspace(path: Option<&Path>) -> Result<Workspace, Failure>
+             let cwd = env::current_dir().map_err(|error| {
+                 Failure::new(ErrorCode::IoFailure, format!("Read working directory: {error}"))
+             })?;
+-            Workspace::discover(&cwd).map_err(workspace_failure)
++            Workspace::discover(&cwd).map_err(|error| {
++                let failure = workspace_failure(error);
++                match crate::first_use::nearby_workspaces().as_slice() {
++                    [(_, display), ..] if failure.error.code == ErrorCode::WorkspaceRequired => {
++                        Failure::new(
++                            ErrorCode::WorkspaceRequired,
++                            format!(
++                                "{} A workspace exists at {display}; pass --workspace {display}.",
++                                failure.error.message
++                            ),
++                        )
++                        .with_argv(
++                            [PROGRAM_NAME, "--workspace", display, "onboard", "--format", "json"]
++                                .map(str::to_owned)
++                                .to_vec(),
++                        )
++                    }
++                    _ => failure,
++                }
++            })
+         }
+     }
+ }
+@@ -96,11 +115,17 @@ pub(crate) fn select_actor(
+             failure.error.actual = Some(json!(envelope));
+             failure
+         }
+-        ActorResolutionError::Missing => Failure::new(
+-            ErrorCode::InvalidInput,
+-            "Specify an attributed actor with --actor, the workspace actor setting, or AGENT.",
+-        )
+-        .at("/actor"),
++        ActorResolutionError::Missing => {
++            let failure = Failure::new(
++                ErrorCode::InvalidInput,
++                "Specify an attributed actor with --actor, the workspace actor setting, or AGENT, for example --actor agent:investigator.",
++            )
++            .at("/actor");
++            match crate::first_use::with_example_actor(env::args_os()) {
++                Some(argv) => failure.with_argv(argv),
++                None => failure,
++            }
++        }
+     })
+ }
+ 
+@@ -116,7 +141,7 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
+     let mut failure = Failure::new(
+         ErrorCode::CaseRequired,
+         if heads.is_empty() {
+-            "Create a case with investigation schema case.create and investigation record."
++            "Create a case with investigation start QUESTION --attach FILE, or with investigation case new TITLE."
+         } else {
+             "Select a case with --case ID."
+         },
+diff --git a/crates/investigation-cli/src/shortcuts.rs b/crates/investigation-cli/src/shortcuts.rs
+index 091089a..439d8d8 100644
+--- a/crates/investigation-cli/src/shortcuts.rs
++++ b/crates/investigation-cli/src/shortcuts.rs
+@@ -509,14 +509,14 @@ pub(crate) fn run(store: &mut Store, shortcut: ParsedShortcut) -> Result<Output,
+     }
+ }
+ 
+-fn generated_command_id() -> String {
++pub(crate) fn generated_command_id() -> String {
+     SystemIdSource
+         .next_id(Kind::Transaction)
+         .expect("transaction id generation")
+         .to_string()
+ }
+ 
+-fn announce_generated_id(command_id: &str) -> Result<(), Failure> {
++pub(crate) fn announce_generated_id(command_id: &str) -> Result<(), Failure> {
+     writeln!(std::io::stderr().lock(), "command_id: {command_id}").map_err(|error| {
+         Failure::new(
+             ErrorCode::IoFailure,
+@@ -576,7 +576,8 @@ fn run_operation(
+     }
+     let receipt = store
+         .record(&bytes)
+-        .map_err(|failure| with_workspace_repair(store.workspace(), failure))?;
++        .map_err(|failure| with_workspace_repair(store.workspace(), failure))
++        .map_err(crate::first_use::explain_quote_failure)?;
+     Ok(receipt_output(store.workspace(), receipt))
+ }
+ 
+@@ -671,7 +672,10 @@ fn run_ingest(
+     command_id: &str,
+     generated: bool,
+ ) -> Result<Output, Failure> {
+-    let path = PathBuf::from(value(shortcut, "path"));
++    let path = crate::first_use::attachment_path(
++        store.workspace(),
++        &PathBuf::from(value(shortcut, "path")),
++    );
+     if path.as_os_str() == std::ffi::OsStr::new("-") {
+         return Err(Failure::new(
+             ErrorCode::InvalidInput,
+diff --git a/crates/investigation-cli/src/views.rs b/crates/investigation-cli/src/views.rs
+index 2f5d3b0..d392b11 100644
+--- a/crates/investigation-cli/src/views.rs
++++ b/crates/investigation-cli/src/views.rs
+@@ -439,6 +439,16 @@ fn project_record(
+         }
+         if record.header.id.kind() == Kind::Observation {
+             out.insert("summary_untrusted_data".into(), json!(true));
++            // A successor reading a summary or brief needs the recorded
++            // limitations, not only the statement and quote.
++            out.insert(
++                "recorded_limitations".into(),
++                record
++                    .body
++                    .get("limitations")
++                    .cloned()
++                    .unwrap_or_else(|| json!([])),
++            );
+             if let Ok(reference) =
+                 serde_json::from_value::<RevisionRef>(record.body["basis"]["artifact_ref"].clone())
+                 && let Some(artifact) = replay.state.revision(reference)
+diff --git a/crates/investigation-cli/tests/cli.rs b/crates/investigation-cli/tests/cli.rs
+index f000bd6..7bcfc50 100644
+--- a/crates/investigation-cli/tests/cli.rs
++++ b/crates/investigation-cli/tests/cli.rs
+@@ -320,8 +320,13 @@ fn onboarding_and_budget_repairs_follow_the_public_cli_contract() {
+     assert_eq!(missing["error"]["code"], "CASE_REQUIRED");
+     let onboard = follow(&root, &missing["error"]["repair"]["argv"]);
+     assert_eq!(onboard["state"], "empty_workspace");
++    assert_eq!(onboard["next"][0]["kind"], "start_case_with_source");
+     assert_eq!(
+-        follow(&root, &onboard["next"][0]["argv"])["name"],
++        onboard["next"][0]["unresolved_fields"],
++        json!(["QUESTION", "FILE"])
++    );
++    assert_eq!(
++        follow(&root, &onboard["next"][1]["argv"])["name"],
+         "case.create"
+     );
+     let (_, receipt) = create_case(&root, "repair-and-budget");
+diff --git a/crates/investigation-cli/tests/first_use.rs b/crates/investigation-cli/tests/first_use.rs
+new file mode 100644
+index 0000000..dca2d4a
+--- /dev/null
++++ b/crates/investigation-cli/tests/first_use.rs
+@@ -0,0 +1,177 @@
++//! A cold agent in an ordinary working directory reaches a receipt naming a
++//! case and its retained source by following onboarding, and a successor
++//! started in the same directory finds the workspace and its limitation.
++
++use std::{fs, path::Path, process::Command};
++
++use serde_json::Value;
++
++fn investigation(cwd: &Path, args: &[&str]) -> (i32, Value, String) {
++    let output = Command::new(env!("CARGO_BIN_EXE_investigation"))
++        .current_dir(cwd)
++        .env_remove("AGENT")
++        .env_remove("FORMAT")
++        .args(args)
++        .output()
++        .unwrap();
++    let stdout = String::from_utf8(output.stdout).unwrap();
++    let value = serde_json::from_str(&stdout).unwrap_or(Value::Null);
++    (
++        output.status.code().unwrap(),
++        value,
++        String::from_utf8(output.stderr).unwrap(),
++    )
++}
++
++fn argv(step: &Value) -> Vec<String> {
++    step["argv"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .skip(1)
++        .map(|part| part.as_str().unwrap().to_owned())
++        .collect()
++}
++
++#[test]
++fn onboarding_reaches_a_source_and_case_receipt_in_two_further_calls() {
++    let directory = tempfile::tempdir().unwrap();
++    let cwd = directory.path();
++    fs::write(cwd.join("source.txt"), "09:12 driver 4.2 installed\n").unwrap();
++    fs::write(cwd.join("NOTES.md"), "").unwrap();
++
++    let (code, onboard, _) = investigation(cwd, &["onboard", "--format", "json"]);
++    assert_eq!(code, 0);
++    assert_eq!(onboard["state"], "no_workspace");
++    let next = onboard["next"].as_array().unwrap();
++    assert_eq!(next[0]["kind"], "initialize_workspace");
++    assert_eq!(next[1]["kind"], "start_case_with_source");
++
++    let init: Vec<String> = argv(&next[0]);
++    let init: Vec<&str> = init.iter().map(String::as_str).collect();
++    let (code, initialized, _) = investigation(cwd, &init);
++    assert_eq!(code, 0, "{initialized}");
++    assert_eq!(initialized["result"], "initialized");
++    assert_eq!(
++        initialized["import_roots"][0].as_str().unwrap(),
++        fs::canonicalize(cwd).unwrap().to_str().unwrap()
++    );
++
++    // Fill only the declared unresolved fields of the onboarding template.
++    let start: Vec<String> = argv(&next[1])
++        .into_iter()
++        .map(|part| match part.as_str() {
++            "QUESTION" => "What stalled the jobs?".to_owned(),
++            "FILE" => "./source.txt".to_owned(),
++            _ => part,
++        })
++        .collect();
++    let start: Vec<&str> = start.iter().map(String::as_str).collect();
++    let (code, receipt, stderr) = investigation(cwd, &start);
++    assert_eq!(code, 0, "{receipt}");
++    assert!(stderr.starts_with("command_id: tx_"), "{stderr}");
++    let created: Vec<&str> = receipt["created"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .map(|change| change["id"].as_str().unwrap())
++        .collect();
++    assert!(created.iter().any(|id| id.starts_with("case_")));
++    let source = created
++        .iter()
++        .find(|id| id.starts_with("src_"))
++        .copied()
++        .unwrap();
++
++    let workspace = cwd.join("casework");
++    let (code, observed, _) = investigation(
++        cwd,
++        &[
++            "--workspace",
++            workspace.to_str().unwrap(),
++            "--actor",
++            "agent:investigator",
++            "observe",
++            "Driver 4.2 was installed at 09:12",
++            "--source",
++            source,
++            "--quote",
++            "driver 4.2 installed",
++            "--limitations",
++            r#"["Only one server log was exported."]"#,
++            "--format",
++            "json",
++        ],
++    );
++    assert_eq!(code, 0, "{observed}");
++
++    // A successor in the same directory is pointed at the workspace.
++    let (code, missing, _) = investigation(cwd, &["brief", "--format", "json"]);
++    assert_eq!(code, 3);
++    assert_eq!(missing["error"]["code"], "WORKSPACE_REQUIRED");
++    assert_eq!(
++        missing["error"]["repair"]["argv"][2].as_str().unwrap(),
++        "./casework"
++    );
++    let (code, onboard, _) = investigation(cwd, &["onboard", "--format", "json"]);
++    assert_eq!(code, 0);
++    assert_eq!(onboard["state"], "case_selected");
++    let handoff = onboard["next"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .find(|step| step["kind"] == "read_handoff")
++        .unwrap();
++    let brief: Vec<String> = argv(handoff);
++    let brief: Vec<&str> = brief.iter().map(String::as_str).collect();
++    let (code, brief, _) = investigation(cwd, &brief);
++    assert_eq!(code, 0);
++    let evidence = &brief["evidence"][0];
++    assert_eq!(evidence["source_ref"]["id"], source);
++    assert_eq!(
++        evidence["recorded_limitations"][0],
++        "Only one server log was exported."
++    );
++}
++
++#[test]
++fn paths_outside_import_roots_explain_the_repair() {
++    let directory = tempfile::tempdir().unwrap();
++    let cwd = directory.path();
++    fs::write(cwd.join("source.txt"), "x\n").unwrap();
++    let (code, _, _) = investigation(cwd, &["init", "casework", "--no-vault", "--format", "json"]);
++    assert_eq!(code, 0);
++    let (code, refused, _) = investigation(
++        cwd,
++        &[
++            "--workspace",
++            "casework",
++            "--actor",
++            "agent:investigator",
++            "start",
++            "Q?",
++            "--attach",
++            "source.txt",
++            "--format",
++            "json",
++        ],
++    );
++    assert_eq!(code, 2);
++    let message = refused["error"]["message"].as_str().unwrap();
++    assert!(message.contains("none are configured"), "{message}");
++    assert!(message.contains("--import-root"), "{message}");
++    let (code, refused, _) = investigation(
++        cwd,
++        &[
++            "init",
++            "other",
++            "--import-root",
++            "missing-directory",
++            "--format",
++            "json",
++        ],
++    );
++    assert_eq!(code, 2);
++    assert_eq!(refused["error"]["path"], "--import-root");
++    assert!(!cwd.join("other").exists());
++}
+diff --git a/crates/investigation-store/src/ingest.rs b/crates/investigation-store/src/ingest.rs
+index 692d520..3680ede 100644
+--- a/crates/investigation-store/src/ingest.rs
++++ b/crates/investigation-store/src/ingest.rs
+@@ -450,9 +450,16 @@ impl Store {
+         Err(Failure::new(
+             ErrorCode::InvalidInput,
+             failure.unwrap_or_else(|| {
++                let configured = &self.workspace.config().import_roots;
+                 format!(
+-                    "Path {} is outside configured import roots.",
+-                    path.display()
++                    "Path {} is outside configured import roots{}. Add the file's directory to import_roots in {}, or create the workspace with init PATH --import-root DIR.",
++                    path.display(),
++                    if configured.is_empty() {
++                        " (none are configured)"
++                    } else {
++                        ""
++                    },
++                    self.workspace.root().join("investigation.toml").display()
+                 )
+             }),
+         )
+diff --git a/crates/investigation-store/src/workspace.rs b/crates/investigation-store/src/workspace.rs
+index 8cdd814..7457bac 100644
+--- a/crates/investigation-store/src/workspace.rs
++++ b/crates/investigation-store/src/workspace.rs
+@@ -178,12 +178,40 @@ impl Workspace {
+         Self::init_with_detector(root, vault, &NativeFilesystemDetector)
+     }
+ 
++    /// Create a workspace whose config names these read-only import roots.
++    /// Each root must be an absolute path to an existing directory; nothing
++    /// else about the roots is checked or touched here.
++    pub fn init_with_import_roots(
++        root: &Path,
++        vault: bool,
++        import_roots: &[PathBuf],
++    ) -> Result<Self, WorkspaceError> {
++        for import_root in import_roots {
++            if !import_root.is_absolute() || !import_root.is_dir() {
++                return Err(WorkspaceError::InvalidConfig(format!(
++                    "import root {} must be an absolute path to an existing directory",
++                    import_root.display()
++                )));
++            }
++        }
++        Self::init_inner(root, vault, import_roots, &NativeFilesystemDetector)
++    }
++
+     /// Test and integration seam for filesystem policy. The detector must be
+     /// read-only; it runs before the first create operation.
+     pub fn init_with_detector(
+         root: &Path,
+         vault: bool,
+         detector: &impl FilesystemDetector,
++    ) -> Result<Self, WorkspaceError> {
++        Self::init_inner(root, vault, &[], detector)
++    }
++
++    fn init_inner(
++        root: &Path,
++        vault: bool,
++        import_roots: &[PathBuf],
++        detector: &impl FilesystemDetector,
+     ) -> Result<Self, WorkspaceError> {
+         let root = absolute_lexical(root)?;
+         preflight_target(&root)?;
+@@ -219,7 +247,8 @@ impl Workspace {
+         let id = SystemIdSource
+             .next_id(Kind::Workspace)
+             .map_err(|error| WorkspaceError::Identity(error.to_string()))?;
+-        let config = WorkspaceConfig::initial(vault);
++        let mut config = WorkspaceConfig::initial(vault);
++        config.import_roots = import_roots.to_vec();
+         let config_bytes = config_text(&config)?;
+ 
+         // The persistent lock is created once. Neither init nor open replaces it.
+@@ -846,6 +875,24 @@ mod tests {
+         }
+     }
+ 
++    #[test]
++    fn init_with_import_roots_persists_only_absolute_existing_directories() {
++        let temp = TempDir::new();
++        fs::create_dir(&temp.0).unwrap();
++        let inputs = fs::canonicalize(&temp.0).unwrap();
++        let root = temp.0.join("casework");
++        assert!(matches!(
++            Workspace::init_with_import_roots(&root, false, &[PathBuf::from("relative")]),
++            Err(WorkspaceError::InvalidConfig(_))
++        ));
++        assert!(!root.exists(), "a rejected import root creates nothing");
++        let created =
++            Workspace::init_with_import_roots(&root, false, std::slice::from_ref(&inputs)).unwrap();
++        assert_eq!(created.config().import_roots, vec![inputs.clone()]);
++        let reopened = Workspace::open(&root).unwrap();
++        assert_eq!(reopened.config().import_roots, vec![inputs]);
++    }
++
+     #[test]
+     fn init_open_verifies_immutable_marker_and_reports_genesis_sequence_zero() {
+         let temp = TempDir::new();
+diff --git a/fixtures/development/cli-goldens.json b/fixtures/development/cli-goldens.json
+index 11703c4..81b9132 100644
+--- a/fixtures/development/cli-goldens.json
++++ b/fixtures/development/cli-goldens.json
+@@ -314,7 +314,7 @@
+     "type": "object"
+   },
+   "help": {
+-    "help": "Preserve evidence, test explanations, and evaluate options.\n\nUsage: investigation [OPTIONS] <COMMAND>\n\nCommands:\n  init      Create a local workspace and an optional Obsidian vault\n  record    Submit one atomic transaction using the operation catalog\n  ingest    Preserve original local bytes and return their acquisition IDs\n  start     Open an exploratory case and retain one attachment atomically\n  evidence  Inspect retained source material explicitly\n  capture   Record an external producer's run through the inv.capture.v1 protocol\n  schema    Discover operation schemas, examples, and repairs\n  onboard   Learn the model and inspect the next valid local action\n  next      Rank up to three snapshot-bound investigative gaps\n  frontier  List every snapshot-bound gap with filters, paging and rule explanations\n  guide     Print one method card from the built-in pack or a pinned pack\n  method    List method packs and their cards\n  receipt   Look up a command without resubmitting its original input\n  show      Read a case record at title, summary, or full depth\n  brief     Read a bounded handoff from the verified case snapshot\n  search    Find records by text; results are labelled pointers, not evidence\n  check     Verify the journal, blobs, and index without repairing them\n  repair    Rebuild derived workspace data\n  observe   Record one source-bound text observation.\n  note      Attach one narrative note without evidentiary standing.\n  case      Create and inspect case-level items.\n  source    Add source material through verified ingest.\n  help      Print this message or the help of the given subcommand(s)\n\nOptions:\n      --workspace <PATH>  Open this workspace instead of discovering the nearest investigation.toml\n      --case <ID>         Select a case by full ID or unique case_ prefix\n      --actor <ACTOR>     Attribute actions to this actor, or use workspace settings or AGENT\n      --format <FORMAT>   Select text or a single machine-readable JSON object [possible values: text, json]\n      --read-only         Reject commands that write workspace data\n      --no-color          Suppress terminal colors\n      --no-pager          Write directly to stdout\n  -h, --help              Print help\n  -V, --version           Print version\n\nUse investigation when a question needs multiple observations, a comparison, or a handoff.\nThe workspace preserves evidence and attributed revisions. Writes return a durable receipt.\n\n  investigation onboard --format json\n  investigation init ./casework --no-vault --format json\n  investigation schema case.create --format json\n  investigation --workspace ./casework next --format json\n  investigation case new 'Request latency' --format json\n  investigation source add ./results.log --case <ID> --format json\n  investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json\n  investigation note 'Check the clock source' --on <RECORD_ID> --format json\n  investigation --workspace ./casework record --input case.json --format json\n  investigation --workspace ./casework receipt KEY --actor ACTOR --format json\n\nUse schema record for the transaction envelope and schema --list for operations.\nGenerated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.\nUse --print-envelope to inspect a shortcut request without writing.\n",
++    "help": "Preserve evidence, test explanations, and evaluate options.\n\nUsage: investigation [OPTIONS] <COMMAND>\n\nCommands:\n  init      Create a local workspace and an optional Obsidian vault\n  record    Submit one atomic transaction using the operation catalog\n  ingest    Preserve original local bytes and return their acquisition IDs\n  start     Open an exploratory case and retain one attachment atomically\n  evidence  Inspect retained source material explicitly\n  capture   Record an external producer's run through the inv.capture.v1 protocol\n  schema    Discover operation schemas, examples, and repairs\n  onboard   Learn the model and inspect the next valid local action\n  next      Rank up to three snapshot-bound investigative gaps\n  frontier  List every snapshot-bound gap with filters, paging and rule explanations\n  guide     Print one method card from the built-in pack or a pinned pack\n  method    List method packs and their cards\n  receipt   Look up a command without resubmitting its original input\n  show      Read a case record at title, summary, or full depth\n  brief     Read a bounded handoff from the verified case snapshot\n  search    Find records by text; results are labelled pointers, not evidence\n  check     Verify the journal, blobs, and index without repairing them\n  repair    Rebuild derived workspace data\n  observe   Record one source-bound text observation.\n  note      Attach one narrative note without evidentiary standing.\n  case      Create and inspect case-level items.\n  source    Add source material through verified ingest.\n  help      Print this message or the help of the given subcommand(s)\n\nOptions:\n      --workspace <PATH>  Open this workspace instead of discovering the nearest investigation.toml\n      --case <ID>         Select a case by full ID or unique case_ prefix\n      --actor <ACTOR>     Attribute actions to this actor, or use workspace settings or AGENT\n      --format <FORMAT>   Select text or a single machine-readable JSON object [possible values: text, json]\n      --read-only         Reject commands that write workspace data\n      --no-color          Suppress terminal colors\n      --no-pager          Write directly to stdout\n  -h, --help              Print help\n  -V, --version           Print version\n\nUse investigation when a question needs multiple observations, a comparison, or a handoff.\nThe workspace preserves evidence and attributed revisions. Writes return a durable receipt.\n\nStart a case from a local file in the working directory:\n  investigation init ./casework --no-vault --import-root . --format json\n  investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json\n\nContinue, record and hand off:\n  investigation onboard --format json\n  investigation --workspace ./casework brief --format json\n  investigation --workspace ./casework next --format json\n  investigation case new 'Request latency' --format json\n  investigation source add ./results.log --case <ID> --format json\n  investigation schema case.create --format json\n  investigation observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json\n  investigation note 'Check the clock source' --on <RECORD_ID> --format json\n  investigation --workspace ./casework record --input case.json --format json\n  investigation --workspace ./casework receipt KEY --actor ACTOR --format json\n\nUse schema record for the transaction envelope and schema --list for operations.\nGenerated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.\nUse --print-envelope to inspect a shortcut request without writing.\n",
+     "ok": true,
+     "result": "help",
+     "schema_version": "inv.response.v1"

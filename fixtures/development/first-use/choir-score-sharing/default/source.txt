@@ -1,0 +1,27 @@
+Community choir: how to share rehearsal scores
+Committee working paper, autumn term
+
+Hard requirement
+H1. Every singer must be able to get the current score without creating any online account. Several members have said they will not create accounts.
+
+Soft preferences
+S1. Scores update within a day of the director's changes.
+S2. Low volunteer effort.
+
+Option 1: shared cloud folder
+- Members open the folder after signing in with a personal account on the storage service.
+- Updates appear immediately.
+- Volunteer effort: low.
+
+Option 2: printed binder at rehearsals plus a public link to the PDF
+- The librarian prints changed pages each Thursday; the PDF link works without signing in.
+- Updates reach the binder within a week; the link is updated the same day.
+- Volunteer effort: about one hour a week.
+
+Option 3: email the PDF to the member list
+- Needs an email address, not an account on any service.
+- Two members have no email address.
+
+Member survey
+- 11 of 40 members replied. 4 of the 11 said they would not create an account.
+- The other 29 members did not reply, so the number unwilling or unable to use accounts is not known.

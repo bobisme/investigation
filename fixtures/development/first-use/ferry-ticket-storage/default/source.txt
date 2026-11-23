@@ -1,0 +1,23 @@
+Ticket storage options for the harbour ferry kiosks
+Prepared for the operations group
+
+Hard requirement
+R1. A kiosk must keep selling and validating tickets for a whole shift with the dock network down. Dock network outages have lasted up to 9 hours (operations log, last two winters).
+
+Preferences
+P1. Lower monthly cost.
+P2. Fewer moving parts for the two-person IT team.
+
+Option A: hosted ticket service
+- Every sale and validation is a call to the hosted service.
+- Vendor documentation: "Kiosks require connectivity. No offline mode is offered."
+- Cost: 310 per month.
+
+Option B: kiosk-local store with nightly upload
+- Each kiosk writes sales to a local database and uploads them when the network returns.
+- Offline trial: kiosk K3 sold and validated 212 tickets during a planned 2-hour disconnection on 3 February. Upload after reconnection completed with no missing sales.
+- No trial has run longer than 2 hours.
+- Cost: 420 per month including the upload service.
+
+Open items
+- Local storage on the kiosks is 8 GB; expected use for a 9-hour shift was not measured.

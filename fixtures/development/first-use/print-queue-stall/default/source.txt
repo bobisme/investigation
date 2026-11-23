@@ -1,0 +1,26 @@
+Print service incident notes, west office
+Collected by: facilities desk, 14 March
+Scope: spooler log exported from print server PS-2 only. PS-1 and PS-3 logs were not exported.
+
+Spooler log excerpt (PS-2, local time)
+08:41:07 job 5512 queued user=reception pages=2
+08:41:15 job 5512 printed
+08:57:30 job 5519 queued user=accounts pages=14
+08:57:52 job 5519 printed
+09:12:03 driver package "LaserLine 4.2" installed by update service
+09:12:40 spooler restarted
+09:18:11 job 5524 queued user=reception pages=1
+09:18:11 job 5524 state=held reason=render-timeout
+09:26:45 job 5530 queued user=design pages=6
+09:26:45 job 5530 state=held reason=render-timeout
+09:40:02 job 5533 queued user=accounts pages=3
+09:40:02 job 5533 state=held reason=render-timeout
+10:05:19 driver package rolled back to "LaserLine 4.1"
+10:05:51 spooler restarted
+10:07:30 job 5524 printed
+10:07:31 job 5530 printed
+10:07:33 job 5533 printed
+
+Desk notes
+- Staff on the second floor (served by PS-1) also reported stuck jobs between 09:00 and 10:00. No log was exported for PS-1.
+- Nobody reinstalled 4.2 to see whether the stall returns.
