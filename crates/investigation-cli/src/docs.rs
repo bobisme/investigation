@@ -23,6 +23,12 @@ use crate::Output;
 /// Version of the agent instructions (the `agents` snippet and the `skill`).
 pub(crate) const AGENT_INSTRUCTIONS_VERSION: &str = "inv.agent-instructions.v1";
 
+/// Version of the producer onboarding page.
+pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v1";
+
+/// Version of the consumer migration recipe.
+pub(crate) const MIGRATION_GUIDANCE_VERSION: &str = "inv.migration-guidance.v1";
+
 pub(crate) const AFTER_HELP: &str = "\
 Prints one embedded page as Markdown; without PAGE, lists the pages.
 Pages are compiled into the binary and need no workspace or network.
@@ -63,6 +69,8 @@ macro_rules! page {
 pub(crate) const PAGES: &[Page] = &[
     page!("agents", "agents.md", AGENT_INSTRUCTIONS_VERSION, "Agent instructions snippet for an AGENTS.md file: when to use the CLI and the main loop."),
     page!("skill", "skill.md", AGENT_INSTRUCTIONS_VERSION, "Optional installable skill: triggers and a compact main loop."),
+    page!("producer", "producer.md", PRODUCER_ONBOARDING_VERSION, "Producer-only onboarding: record a program run with the capture calls, no method knowledge needed."),
+    page!("migration", "migration.md", MIGRATION_GUIDANCE_VERSION, "Recipe for moving a producer's own journal onto the shared recorder."),
 ];
 
 pub(crate) fn page(name: &str) -> Option<&'static Page> {
@@ -105,7 +113,7 @@ pub(crate) fn run(args: Args) -> Result<Output, Failure> {
         let pages: Vec<_> = PAGES.iter().map(describe).collect();
         let text = PAGES
             .iter()
-            .map(|page| format!("{:<8}  {}  {}", page.name, page.version, page.summary))
+            .map(|page| format!("{:<9} {}  {}", page.name, page.version, page.summary))
             .collect::<Vec<_>>()
             .join("\n");
         return Ok(Output::success(
@@ -154,6 +162,16 @@ mod tests {
             "skill",
             "inv.agent-instructions.v1",
             "sha256:59e6ff3cc0f341620d0f309b851b70134272d263e1789a7b5719a90f17bf2e5f",
+        ),
+        (
+            "producer",
+            "inv.producer-onboarding.v1",
+            "sha256:e8905b26d3f6247306d381b42e0e6f020e3f3809ff270daab75c4d7377196ce1",
+        ),
+        (
+            "migration",
+            "inv.migration-guidance.v1",
+            "sha256:b2926052eabd0e70e0c2c36b93519ce382847fc42f1f73d70f7fdedd1f8c76c9",
         ),
     ];
 

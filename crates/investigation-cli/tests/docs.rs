@@ -51,9 +51,14 @@ fn pages_print_offline_from_an_empty_directory_even_in_read_only_mode() {
         .iter()
         .map(|page| page["page"].as_str().unwrap())
         .collect();
-    assert_eq!(names, ["agents", "skill"]);
+    assert_eq!(names, ["agents", "skill", "producer", "migration"]);
 
-    for (name, file) in [("agents", "agents.md"), ("skill", "skill.md")] {
+    for (name, file) in [
+        ("agents", "agents.md"),
+        ("skill", "skill.md"),
+        ("producer", "producer.md"),
+        ("migration", "migration.md"),
+    ] {
         let expected = page_file(file);
         let (code, text) = investigation(cwd, &["docs", name], &[("INVESTIGATION_READ_ONLY", "1")]);
         assert_eq!(code, 0);
@@ -184,4 +189,140 @@ fn a_cold_reader_can_run_every_command_of_the_agent_instructions_in_order() {
     assert_eq!(skipped.len(), 2, "{skipped:#?}");
     assert!(ran.iter().any(|c| c.contains(" observe ")), "{ran:#?}");
     assert!(ran.iter().any(|c| c.contains(" receipt KEY")), "{ran:#?}");
+}
+
+/// The text of `source` from the line starting with `from` up to the line
+/// starting with `to` (or the end).
+fn region<'a>(source: &'a str, from: &str, to: &str) -> &'a str {
+    let start = source.find(from).unwrap_or_else(|| panic!("no {from}"));
+    let rest = &source[start..];
+    let end = rest[1..].find(to).map_or(rest.len(), |at| at + 1);
+    &rest[..end]
+}
+
+fn identifier(text: &str) -> bool {
+    !text.is_empty()
+        && text.starts_with(|c: char| c.is_ascii_lowercase())
+        && text.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+}
+
+/// Every wire name the Python example uses: quoted dictionary keys,
+/// keyword arguments, response fields it reads, and the enumerated values of
+/// `kind`, `role`, `state`, `completion` and similar fields.
+fn python_example_vocabulary(source: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    for part in [
+        region(source, "class Recorder:", "# Scenarios."),
+        region(source, "def scenario(", "def write_result("),
+        region(source, "def run_scenario(", "# Replaying a producer-run"),
+    ] {
+        let quoted: Vec<&str> = part.split('"').collect();
+        for (index, text) in quoted.iter().enumerate().skip(1).step_by(2) {
+            let after = quoted.get(index + 1).copied().unwrap_or("");
+            let before = quoted[index - 1].trim_end();
+            let key = after.trim_start().starts_with(':') && !after.trim_start().starts_with("::");
+            let read = before.ends_with('[') || before.ends_with(".get(");
+            if identifier(text) && (key || read) {
+                found.push((*text).to_owned());
+            }
+            let name = if index >= 2 { quoted[index - 2] } else { "" };
+            let field = [
+                "kind",
+                "role",
+                "state",
+                "completion",
+                "completeness",
+                "producer_result",
+            ]
+            .iter()
+            .any(|field| {
+                (before == ":" && name == *field) || before.ends_with(&format!("{field}="))
+            });
+            if field && (identifier(text) || text.contains('-')) {
+                found.push((*text).to_owned());
+            }
+        }
+        for word in part.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '=')) {
+            if let Some((name, rest)) = word.split_once('=')
+                && identifier(name)
+                && !rest.starts_with('=')
+                && !matches!(
+                    name,
+                    "input" | "stdout" | "stderr" | "env" | "check" | "default" | "dest"
+                )
+            {
+                found.push(name.to_owned());
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    found
+}
+
+#[test]
+fn the_producer_page_names_everything_the_python_example_uses() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let source = fs::read_to_string(root.join("examples/python-producer/producer.py")).unwrap();
+    let page = page_file("producer.md");
+
+    let vocabulary = python_example_vocabulary(&source);
+    for expected in [
+        "expected_last_position",
+        "declared_artifacts",
+        "phase_changed",
+        "original-output",
+        "reported_pass",
+        "interrupted",
+        "last_position",
+        "commit_status",
+    ] {
+        assert!(
+            vocabulary.iter().any(|name| name == expected),
+            "extractor lost {expected}"
+        );
+    }
+    let missing: Vec<_> = vocabulary
+        .iter()
+        .filter(|name| !page.contains(name.as_str()))
+        // Names of the example's own report and opaque metadata contents.
+        .filter(|name| {
+            !["error_code", "faults", "payload", "rejected", "slot"].contains(&name.as_str())
+        })
+        .collect();
+    assert!(missing.is_empty(), "producer.md never mentions {missing:?}");
+
+    // The calls themselves: every operation and flag of the example's
+    // command lines, as the page writes them.
+    let operations = region(&source, "OPERATIONS = [", "\n")
+        .trim_start_matches("OPERATIONS = [")
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    assert_eq!(operations, ["begin", "append", "attach", "finalize"]);
+    for operation in operations.iter().map(String::as_str).chain(["recover"]) {
+        assert!(
+            page.contains(&format!(
+                "investigation --workspace ./cases capture {operation} "
+            )),
+            "producer.md shows no `capture {operation}` command"
+        );
+    }
+    for flag in ["--workspace", "--input -", "--format json", "--handle"] {
+        assert!(page.contains(flag), "producer.md never shows {flag}");
+    }
+    // Retry and resume steps the example takes.
+    for step in [
+        "identical request",
+        "same key",
+        "commit_status",
+        "recover",
+        "last_position",
+        "REVISION_CONFLICT",
+        "interrupted",
+    ] {
+        assert!(page.contains(step), "producer.md never explains {step}");
+    }
 }
