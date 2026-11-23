@@ -425,11 +425,18 @@ fn a_changed_criterion_unit_is_a_gap_never_a_conversion() {
         Some("comparison.revise")
     );
     // The values are never quoted, converted or compared.
-    let text = serde_json::to_string(finding).unwrap();
-    assert!(
-        !text.contains("110") && !text.contains("milliseconds"),
-        "{text}"
-    );
+    // Only the finding's prose and fact names are checked: ids are random and
+    // can contain any digit run, so the serialized document is not a safe
+    // haystack.
+    let mut prose = vec![finding.severity_reason.as_str(), finding.why.as_str()];
+    prose.extend(finding.facts.iter().map(|fact| fact.fact.as_str()));
+    prose.extend(finding.guide.as_deref());
+    for text in prose {
+        assert!(
+            !text.contains("110") && !text.contains("milliseconds"),
+            "{text}"
+        );
+    }
 }
 
 #[test]
