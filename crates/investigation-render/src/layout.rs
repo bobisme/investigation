@@ -70,8 +70,42 @@ pub fn record_note(case_id: Id, id: Id) -> Result<Option<PlanPath>, RenderError>
         .transpose()
 }
 
-/// A vault-relative wikilink. `display` must already be safe link text.
+/// The link target for a planned note: its vault-relative path without `.md`.
+/// Plan paths never contain link-breaking characters.
+pub fn link_target(path: &PlanPath) -> &str {
+    path.as_str().strip_suffix(".md").unwrap_or(path.as_str())
+}
+
+/// A vault-relative wikilink. `display` must already be safe link text, such
+/// as the output of [`crate::text::display_text`] or a record ID.
 pub fn wikilink(path: &PlanPath, display: &str) -> String {
-    let target = path.as_str().strip_suffix(".md").unwrap_or(path.as_str());
-    format!("[[{target}|{display}]]")
+    format!("[[{}|{display}]]", link_target(path))
+}
+
+/// Stable lowercase kind word for `inv_kind` and tags, independent of folder
+/// names and display labels.
+pub const fn kind_name(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Case => "case",
+        Kind::Question => "question",
+        Kind::Source => "source",
+        Kind::Artifact => "artifact",
+        Kind::Observation => "observation",
+        Kind::Hypothesis => "hypothesis",
+        Kind::Assumption => "assumption",
+        Kind::Option => "option",
+        Kind::Criterion => "criterion",
+        Kind::Comparison => "comparison",
+        Kind::Assessment => "assessment",
+        Kind::Conclusion => "conclusion",
+        Kind::Decision => "decision",
+        Kind::Review => "review",
+        Kind::Objection => "objection",
+        Kind::Annotation => "annotation",
+        Kind::Retrospective => "retrospective",
+        Kind::Inquiry => "inquiry",
+        Kind::Run => "run",
+        // Kinds without a note keep their ID prefix.
+        other => other.prefix(),
+    }
 }

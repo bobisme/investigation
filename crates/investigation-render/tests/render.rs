@@ -127,13 +127,16 @@ fn same_snapshot_and_policy_yield_a_byte_identical_plan() {
     assert_eq!(first.generation().renderer(), RENDERER_VERSION);
     assert_eq!(first.generation().heads().len(), 1);
 
-    // Authored text never reaches the skeleton templates.
+    // Every file carries the banner and its generation; authored titles appear
+    // only as escaped display text.
     for entry in entries {
         let text = std::str::from_utf8(entry.content()).unwrap();
-        assert!(!text.contains("Render fixture") && !text.contains("What changed first"));
         assert!(text.contains("tool-owned projection"));
         assert!(text.contains(first.generation().id()));
     }
+    let overview = std::str::from_utf8(first.entry(&overview).unwrap().content()).unwrap();
+    assert!(overview.contains("\n# Render fixture\n"));
+    assert!(overview.contains("|What changed first?]] (revision 1)"));
 
     // A different policy or a new commit is a different generation.
     let public = render(&snapshot, &ViewPolicy::for_audience(Audience::Public)).unwrap();
@@ -399,4 +402,149 @@ fn a_file_created_during_publication_is_not_overwritten() {
             .iter()
             .all(|path| !path.to_string_lossy().contains("inv-tmp"))
     );
+}
+
+fn note(plan: &RenderPlan, case_id: Id, id: Id) -> &str {
+    let path = investigation_render::layout::record_note(case_id, id)
+        .unwrap()
+        .unwrap();
+    std::str::from_utf8(plan.entry(path.as_str()).unwrap().content()).unwrap()
+}
+
+fn property<'a>(note: &'a str, key: &str) -> Option<&'a str> {
+    note.split("\n---\n")
+        .next()
+        .unwrap()
+        .lines()
+        .find_map(|line| line.strip_prefix(key)?.strip_prefix(": "))
+}
+
+#[test]
+fn recorded_title_changes_keep_identity_files_and_links() {
+    let directory = tempfile::tempdir().unwrap();
+    let (mut store, case_id) = workspace(directory.path());
+    let question_id = question(
+        &mut store,
+        "q-subject",
+        case_id,
+        "Why did requests time out?",
+    )
+    .created[0]
+        .id;
+    let hypothesis = submit(
+        &mut store,
+        "h1",
+        Some(case_id),
+        json!({"op":"hypothesis.create", "payload":{
+            "question_ref":{"id":question_id, "revision":1},
+            "statement":"Pool exhaustion precedes the timeouts",
+            "possible_falsifiers":[], "rival_refs":[], "assumption_refs":[]
+        }}),
+    );
+    let hypothesis_id = hypothesis.created[0].id;
+    let policy = ViewPolicy::default();
+    let before = render(&VerifiedSnapshot::read(&mut store).unwrap(), &policy).unwrap();
+
+    let amended = submit(
+        &mut store,
+        "h1-amend",
+        Some(case_id),
+        json!({"op":"hypothesis.amend", "payload":{
+            "hypothesis_ref":{"id":hypothesis_id, "revision":1},
+            "rationale":"Sharper wording",
+            "replacement":{
+                "question_ref":{"id":question_id, "revision":1},
+                "statement":"Renamed ]] | [[Other]] <b>x</b>\n---\ninv_id: forged",
+                "possible_falsifiers":[], "rival_refs":[], "assumption_refs":[]
+            }
+        }}),
+    );
+    assert_eq!(amended.result, CommitResult::Committed, "{amended:?}");
+    let after = render(&VerifiedSnapshot::read(&mut store).unwrap(), &policy).unwrap();
+
+    let paths = |plan: &RenderPlan| -> Vec<String> {
+        plan.entries()
+            .iter()
+            .map(|entry| entry.path().to_string())
+            .collect()
+    };
+    assert_eq!(
+        paths(&before),
+        paths(&after),
+        "a title change renames nothing"
+    );
+
+    let old_note = note(&before, case_id, hypothesis_id);
+    let new_note = note(&after, case_id, hypothesis_id);
+    let id = hypothesis_id.to_string();
+    for (text, revision, title) in [
+        (old_note, "1", "Pool exhaustion precedes the timeouts"),
+        (new_note, "2", "Renamed Other b x /b --- inv id: forged"),
+    ] {
+        assert_eq!(property(text, "inv_id"), Some(format!("\"{id}\"").as_str()));
+        assert_eq!(property(text, "inv_revision"), Some(revision));
+        assert_eq!(property(text, "inv_kind"), Some("\"hypothesis\""));
+        assert!(text.contains(&format!("\n  - \"{title}\"\n")), "{text}");
+        assert!(text.contains(&format!("\n# {title}\n")), "{text}");
+        assert!(text.contains("tool-owned projection"));
+    }
+    assert!(!new_note.contains("inv_id: forged") && !new_note.contains("[[Other"));
+
+    // The question's backlink keeps its target and shows the new title.
+    let target = format!("Cases/{case_id}/Hypotheses/{hypothesis_id}");
+    let question_note = note(&after, case_id, question_id);
+    assert!(
+        question_note.contains(&format!(
+            "- [[{target}|Renamed Other b x /b --- inv id: forged]] through `question_ref`, citing revision 1"
+        )),
+        "{question_note}"
+    );
+    let hypothesis_note = new_note;
+    assert!(hypothesis_note.contains(&format!("[[Cases/{case_id}/Questions/{question_id}|Why did requests time out?]] through `question_ref`")));
+
+    // Every link in every note resolves to a planned file.
+    for entry in after.entries() {
+        let text = std::str::from_utf8(entry.content()).unwrap();
+        for piece in text.split("[[").skip(1) {
+            let inner = piece.split("]]").next().unwrap();
+            let target = inner.split('|').next().unwrap().trim_end_matches('\\');
+            assert!(
+                after.entry(&format!("{target}.md")).is_some(),
+                "{target} in {}",
+                entry.path()
+            );
+        }
+    }
+}
+
+#[test]
+fn records_raised_above_the_audience_stay_withheld() {
+    let directory = tempfile::tempdir().unwrap();
+    let (mut store, case_id) = workspace(directory.path());
+    let secret = question(&mut store, "q-secret", case_id, "TOP-SECRET wording").created[0].id;
+    let raised = submit(
+        &mut store,
+        "raise",
+        Some(case_id),
+        json!({"op":"classification.raise", "payload":{
+            "subject_ref":{"id":secret, "revision":1},
+            "level":"restricted",
+            "reason":"Names a TOP-SECRET supplier"
+        }}),
+    );
+    assert_eq!(raised.result, CommitResult::Committed, "{raised:?}");
+    let snapshot = VerifiedSnapshot::read(&mut store).unwrap();
+    let plan = render(&snapshot, &ViewPolicy::default()).unwrap();
+    for entry in plan.entries() {
+        let text = std::str::from_utf8(entry.content()).unwrap();
+        assert!(!text.contains("TOP-SECRET"), "{}:\n{text}", entry.path());
+    }
+    let withheld = note(&plan, case_id, secret);
+    assert_eq!(property(withheld, "inv_withheld"), Some("true"));
+    assert_eq!(property(withheld, "aliases"), Some("[]"));
+    assert!(withheld.contains(&format!("\n# {secret}\n")));
+    assert!(withheld.contains("Content withheld by the view policy for the `internal` audience."));
+
+    let cleared = render(&snapshot, &ViewPolicy::for_audience(Audience::Restricted)).unwrap();
+    assert!(note(&cleared, case_id, secret).contains("\n# TOP-SECRET wording\n"));
 }

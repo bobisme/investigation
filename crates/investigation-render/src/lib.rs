@@ -24,8 +24,11 @@
 //!   [`CaseRenderer`] is the planner interface; [`VaultRenderer`] is the vault
 //!   implementation and [`render`] its entry point.
 //! - [`layout`] and [`templates`]: identity-based paths and the note bodies.
-//!   The current templates are a deliberately small skeleton that shows IDs,
-//!   kinds, revisions and snapshot markers only, never authored text.
+//!   [`note`] is the shared entity-note skeleton: flat `inv_` frontmatter
+//!   ([`yaml`]), display title and aliases, the tool-owned banner, the basis
+//!   table and fixed sections (summary and caveat, typed links with reasons,
+//!   evidence selectors with excerpt anchors, next action or blocker).
+//!   Authored text passes through the conservative escapers in [`text`].
 //! - [`policy`]: [`ViewPolicy`] carries the audience the plan is built for.
 //! - [`publish`]: [`Publisher`] applies a plan. Each path is checked against an
 //!   [`Ownership`] decision before any write. [`NoManifest`] is the
@@ -42,9 +45,12 @@
 //!
 //! Seams for later work:
 //!
-//! - Entity notes, Overview and `Start Here.md`: replace the bodies in
-//!   [`templates`]; paths stay in [`layout`]. Bump [`RENDERER_VERSION`]
-//!   whenever output bytes change for the same snapshot.
+//! - Per-type notes, Overview and `Start Here.md`: extend the bodies in
+//!   [`templates`] on top of [`note::NoteContext`]; paths stay in [`layout`].
+//!   Bump [`RENDERER_VERSION`] whenever output bytes change for the same
+//!   snapshot.
+//! - Safe Markdown rendering: replace [`text`] with context-specific escapers
+//!   behind the same call sites.
 //! - Render generations: [`Manifest::store`] is the last write of a render;
 //!   [`Manifest::updated`] already keeps the last complete generation and
 //!   accepts a partial report. [`Generation`] binds a plan to its snapshot heads,
@@ -56,8 +62,9 @@
 //!   the manifest hash; it is left in place and stays owned at the old hash,
 //!   so it is refused again on every render until reconciled. Drift handling
 //!   records the would-be content from the plan entry.
-//! - Classification-aware projection: extend [`ViewPolicy`] and consult it in
-//!   templates for every emitted field.
+//! - Classification-aware projection: notes ask the core `Classifier` per
+//!   field through [`note::NoteContext`]; extend [`ViewPolicy`] (and its
+//!   fingerprint) for further rules.
 //! - Incremental render: the planner still produces the full plan;
 //!   [`Ownership`] and the on-disk hash decide what to skip.
 //! - Exports: implement [`CaseRenderer`] for another layout and publish into a
@@ -70,11 +77,14 @@ pub mod error;
 pub mod layout;
 pub mod lock;
 pub mod manifest;
+pub mod note;
 pub mod plan;
 pub mod policy;
 pub mod publish;
 pub mod snapshot;
 pub mod templates;
+pub mod text;
+pub mod yaml;
 
 use std::time::Duration;
 

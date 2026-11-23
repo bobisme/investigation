@@ -1,6 +1,9 @@
 //! What a plan may show, and to whom. Pure data; part of every plan's generation.
 
-use investigation_core::header::{Classification, ClassificationLevel};
+use investigation_core::{
+    classification::{self, AudiencePolicy},
+    header::{Classification, ClassificationLevel},
+};
 
 /// The audience a plan is built for. Records classified above it are rendered
 /// as placeholders that reveal no authored content.
@@ -46,7 +49,24 @@ impl ViewPolicy {
         Self { audience }
     }
 
-    /// Whether a record with this classification may be shown in full.
+    /// The core audience policy templates pass to
+    /// [`investigation_core::classification::Classifier::may_show`]. The
+    /// working vault keeps ID-only placeholders for withheld records.
+    pub const fn audience_policy(&self) -> AudiencePolicy {
+        let audience = match self.audience {
+            Audience::Public => classification::Audience::Public,
+            Audience::Internal => classification::Audience::Internal,
+            Audience::Restricted => classification::Audience::Restricted,
+        };
+        AudiencePolicy {
+            audience,
+            placeholders: true,
+        }
+    }
+
+    /// Whether a record with this recorded classification may be shown in
+    /// full. Templates use the effective level from a `Classifier` instead,
+    /// which also accounts for derivation inputs, case floors and changes.
     pub fn admits(&self, classification: &Classification) -> bool {
         let level = match classification.level {
             ClassificationLevel::Public => Audience::Public,

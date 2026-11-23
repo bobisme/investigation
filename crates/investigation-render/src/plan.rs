@@ -1,8 +1,8 @@
 //! Pure planning: a verified snapshot and a view policy in, a path/hash/content
 //! plan out.
 //!
-//! Nothing in this module (or in [`crate::layout`], [`crate::templates`] and
-//! [`crate::policy`]) may touch the filesystem, read a clock, or use
+//! Nothing in this module (or in [`crate::layout`], [`crate::templates`],
+//! [`crate::note`], [`crate::text`], [`crate::yaml`] and [`crate::policy`]) may touch the filesystem, read a clock, or use
 //! randomness or hash-order iteration. A test scans these sources to keep it
 //! that way. Identical inputs therefore give byte-identical plans.
 
@@ -14,11 +14,11 @@ use investigation_core::{
 };
 use investigation_store::journal::hash_bytes;
 
-use crate::{RenderError, VerifiedSnapshot, ViewPolicy, layout, templates};
+use crate::{RenderError, VerifiedSnapshot, ViewPolicy, layout, note::NoteContext, templates};
 
 /// Identifies the vault renderer's output format. Bump it whenever the bytes
 /// produced for the same snapshot and policy change.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v0";
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v1";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
@@ -296,6 +296,7 @@ impl CaseRenderer for VaultRenderer {
         let generation = Generation::new(RENDERER_VERSION, snapshot, policy);
         let mut plan = PlanBuilder::new(generation.clone());
         for case in snapshot.cases() {
+            let notes = NoteContext::new(case, policy, &generation);
             for record in case.state().records() {
                 let id = record.header.id;
                 if id.kind() == Kind::Case {
@@ -304,10 +305,10 @@ impl CaseRenderer for VaultRenderer {
                 let Some(path) = layout::record_note(case.case_id(), id)? else {
                     continue;
                 };
-                let content = templates::record_note(case, record, policy, &generation)?;
+                let content = templates::record_note(&notes, record)?;
                 plan.add(Phase::Records, path, content, Some(id))?;
             }
-            let content = templates::case_overview(case, policy, &generation)?;
+            let content = templates::case_overview(&notes)?;
             plan.add(
                 Phase::Views,
                 layout::case_overview(case.case_id())?,
@@ -374,6 +375,9 @@ mod tests {
             ("layout.rs", include_str!("layout.rs")),
             ("templates.rs", include_str!("templates.rs")),
             ("policy.rs", include_str!("policy.rs")),
+            ("note.rs", include_str!("note.rs")),
+            ("text.rs", include_str!("text.rs")),
+            ("yaml.rs", include_str!("yaml.rs")),
         ];
         let forbidden = [
             ["std", "::fs"].concat(),

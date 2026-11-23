@@ -76,3 +76,36 @@ impl CaseSnapshot {
         &self.state
     }
 }
+
+#[cfg(test)]
+impl VerifiedSnapshot {
+    /// Unit tests build snapshots from synthetic states; production code can
+    /// only read verified ones from a store.
+    pub(crate) fn from_states(workspace_id: Id, cases: Vec<(Snapshot, State)>) -> Self {
+        let cases = cases
+            .into_iter()
+            .map(|(head, state)| {
+                let case_id = state
+                    .records()
+                    .find(|record| {
+                        record.header.id.kind() == investigation_core::identity::Kind::Case
+                    })
+                    .expect("a case record")
+                    .header
+                    .id;
+                (
+                    case_id,
+                    CaseSnapshot {
+                        case_id,
+                        head,
+                        state,
+                    },
+                )
+            })
+            .collect();
+        Self {
+            workspace_id,
+            cases,
+        }
+    }
+}
