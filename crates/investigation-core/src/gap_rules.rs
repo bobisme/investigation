@@ -238,14 +238,17 @@ pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure>
         }
     }
 
+    // Read once: every hypothesis is checked against every assessment.
+    let assessed: BTreeSet<RevisionRef> = assessments
+        .iter()
+        .filter_map(|assessment| exact_ref(field(&assessment.body, "subject_ref")))
+        .collect();
     for hypothesis in &hypotheses {
         if !is_live(hypothesis) {
             continue;
         }
         let hypothesis_ref = reference(hypothesis);
-        let has_assessment = assessments.iter().any(|assessment| {
-            exact_ref(field(&assessment.body, "subject_ref")) == Some(hypothesis_ref)
-        });
+        let has_assessment = assessed.contains(&hypothesis_ref);
         if !has_assessment {
             gaps.push(make_gap(GapFields {
                 rule_id: "hypothesis.no_assessment",

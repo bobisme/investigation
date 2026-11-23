@@ -50,9 +50,10 @@ pub fn open_objections(
     subjects: &BTreeSet<Id>,
 ) -> Result<Vec<OpenObjection>, Failure> {
     let mut found = Vec::new();
-    for record in state.records().filter(|record| {
-        record.header.case_id == case && record.header.id.kind() == Kind::Objection
-    }) {
+    for record in state
+        .records_of_kind(Kind::Objection)
+        .filter(|record| record.header.case_id == case)
+    {
         let body: ObjectionBody =
             serde_json::from_value(record.body.clone()).map_err(|_| integrity())?;
         if body.status == ObjectionStatus::Open && subjects.contains(&body.subject_ref.id) {

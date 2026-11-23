@@ -40,9 +40,7 @@ const BASIS_CHARS: usize = 60;
 /// has no eligible option or no active criterion to compare.
 pub(super) fn write(f: &mut Facts<'_, '_, '_>, question: Id) -> Result<(), RenderError> {
     let notes = f.notes;
-    let state = notes.case().state();
-    let case = notes.case().case_id();
-    let Ok(table) = weighting::consequences_table(state, case, question) else {
+    let Some(table) = notes.consequences_table(question) else {
         return Ok(());
     };
     if table.rows.is_empty() || table.criteria.is_empty() {
@@ -95,7 +93,7 @@ pub(super) fn write(f: &mut Facts<'_, '_, '_>, question: Id) -> Result<(), Rende
             table.criteria.len()
         );
     }
-    standing(f, question, &table)?;
+    standing(f, question, table)?;
     Ok(())
 }
 

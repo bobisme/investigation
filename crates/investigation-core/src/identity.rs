@@ -122,6 +122,17 @@ impl fmt::Display for IdError {
 }
 impl std::error::Error for IdError {}
 impl Id {
+    /// Every ID of `kind`, and no other, lies in this range: IDs order by
+    /// kind first. Its bounds are ordering sentinels, not valid IDs.
+    pub(crate) const fn kind_range(kind: Kind) -> std::ops::RangeInclusive<Self> {
+        Self {
+            kind,
+            uuid: Uuid::from_u128(0),
+        }..=Self {
+            kind,
+            uuid: Uuid::from_u128(u128::MAX),
+        }
+    }
     pub fn new(kind: Kind, uuid: Uuid) -> Result<Self, IdError> {
         if uuid.get_version_num() != 7 || uuid.get_variant() != Variant::RFC4122 {
             return Err(IdError::InvalidUuid);

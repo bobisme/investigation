@@ -103,10 +103,7 @@ fn rivals(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         &["rival_refs", "alternative_to"],
     ));
     if let Some(question) = text_at(&f.record.body, "question_ref.id") {
-        candidates.extend(state.records().filter(|record| {
-            record.header.id.kind() == Kind::Hypothesis
-                && text_at(&record.body, "question_ref.id") == Some(question)
-        }));
+        candidates.extend(f.notes.hypotheses_of(question).iter().copied());
     }
     let mut rivals: Vec<&Record> = Vec::new();
     for candidate in candidates {

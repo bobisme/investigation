@@ -19,6 +19,7 @@
 //! content; their titles, summaries, metadata and lineage never appear.
 
 use std::{
+    cell::OnceCell,
     collections::{BTreeMap, BTreeSet},
     fmt::Write as _,
 };
@@ -33,6 +34,7 @@ use investigation_core::{
     identity::{Id, Kind},
     inherited_trust::{self, Resolver},
     state::Record,
+    weighting::{self, ConsequencesTable},
     wire::Snapshot,
 };
 use investigation_store::journal::hash_bytes;
@@ -238,6 +240,14 @@ pub struct NoteContext<'a> {
     /// Gaps whose reason was computed from a record the audience may not
     /// see. Their reasons can quote its fields, so only the rule is named.
     withheld_gaps: BTreeSet<String>,
+    /// Reviews and objections of this case by kind and the `subject_ref.id`
+    /// text they name, each list in record order.
+    by_subject: BTreeMap<Kind, BTreeMap<&'a str, Vec<&'a Record>>>,
+    /// Hypotheses by the `question_ref.id` text they name, in record order.
+    hypotheses_by_question: BTreeMap<&'a str, Vec<&'a Record>>,
+    /// The consequences table of every question of this case with an active
+    /// criterion, judged against [`Self::freshness`] and built on first use.
+    tables: OnceCell<BTreeMap<Id, ConsequencesTable>>,
 }
 
 impl<'a> NoteContext<'a> {
@@ -245,7 +255,29 @@ impl<'a> NoteContext<'a> {
         let state = case.state();
         let mut cited_by: BTreeMap<Id, Vec<Citation>> = BTreeMap::new();
         let mut mentioned_by: BTreeMap<Id, Vec<Mention>> = BTreeMap::new();
+        let mut by_subject: BTreeMap<Kind, BTreeMap<&'a str, Vec<&'a Record>>> = BTreeMap::new();
+        let mut hypotheses_by_question: BTreeMap<&'a str, Vec<&'a Record>> = BTreeMap::new();
         for record in state.records() {
+            let kind = record.header.id.kind();
+            if matches!(kind, Kind::Review | Kind::Objection)
+                && record.header.case_id == case.case_id()
+                && let Some(subject) = text_at(&record.body, "subject_ref.id")
+            {
+                by_subject
+                    .entry(kind)
+                    .or_default()
+                    .entry(subject)
+                    .or_default()
+                    .push(record);
+            }
+            if kind == Kind::Hypothesis
+                && let Some(question) = text_at(&record.body, "question_ref.id")
+            {
+                hypotheses_by_question
+                    .entry(question)
+                    .or_default()
+                    .push(record);
+            }
             for mention in mentions(record) {
                 mentioned_by
                     .entry(mention.target)
@@ -297,7 +329,47 @@ impl<'a> NoteContext<'a> {
             mentioned_by,
             gaps,
             withheld_gaps,
+            by_subject,
+            hypotheses_by_question,
+            tables: OnceCell::new(),
         }
+    }
+
+    /// Reviews (or objections, by `kind`) of this case whose `subject_ref.id`
+    /// is `id`, in record order, before any view-policy filtering.
+    pub(crate) fn naming_subject(&self, kind: Kind, id: Id) -> &[&'a Record] {
+        self.by_subject
+            .get(&kind)
+            .and_then(|by_id| by_id.get(id.to_string().as_str()))
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// Hypotheses whose `question_ref.id` is `question`, in record order.
+    pub(crate) fn hypotheses_of(&self, question: &str) -> &[&'a Record] {
+        self.hypotheses_by_question
+            .get(question)
+            .map_or(&[], Vec::as_slice)
+    }
+
+    /// The consequences table of `question` at this snapshot, or `None` when
+    /// it has no active criterion, is not in this case or its table cannot be
+    /// computed. A table with no criterion is never shown, so leaving those
+    /// out changes no note. Every question's table is built on the first call,
+    /// in one pass over the case and against its one freshness index.
+    pub(crate) fn consequences_table(&self, question: Id) -> Option<&ConsequencesTable> {
+        self.tables
+            .get_or_init(|| {
+                let state = self.case.state();
+                weighting::consequences_tables_with(state, &self.freshness, self.case.case_id())
+                    .map(|tables| {
+                        tables
+                            .into_iter()
+                            .filter_map(|(id, table)| Some((id, table.ok()?)))
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            })
+            .get(&question)
     }
 
     /// Whether a gap's (or a `next` step's) reason must not be shown because

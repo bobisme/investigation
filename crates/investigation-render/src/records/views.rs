@@ -35,7 +35,7 @@ use investigation_core::{
     origin_ops::{self, OriginState},
     source_ops,
     state::Record,
-    weighting::{self, CellState, ConsequencesTable},
+    weighting::{CellState, ConsequencesTable},
 };
 use serde_json::Value;
 
@@ -126,7 +126,7 @@ struct Views<'n, 'a> {
     /// identity the audience may see, in record ID order.
     records: Vec<&'a Record>,
     /// Consequences tables of questions with at least one cell.
-    tables: BTreeMap<Id, ConsequencesTable>,
+    tables: BTreeMap<Id, &'n ConsequencesTable>,
     /// Questions shown in the comparison matrix view, in ID order.
     matrix_questions: Vec<&'a Record>,
     matrix_path: Option<PlanPath>,
@@ -152,7 +152,7 @@ impl<'n, 'a> Views<'n, 'a> {
             .filter(|record| record.header.id.kind() == Kind::Question)
         {
             let id = question.header.id;
-            let Ok(table) = weighting::consequences_table(state, case, id) else {
+            let Some(table) = notes.consequences_table(id) else {
                 continue;
             };
             if table.rows.is_empty() || table.criteria.is_empty() {
@@ -352,7 +352,6 @@ impl<'n, 'a> Views<'n, 'a> {
     // ----------------------------------------------------------- Hypotheses
 
     fn hypotheses(&self) -> Result<Option<Body>, RenderError> {
-        let state = self.notes.case().state();
         self.records_table(
             &[Kind::Hypothesis],
             |_| true,
@@ -394,12 +393,9 @@ impl<'n, 'a> Views<'n, 'a> {
                 );
                 if let Some(question) = text_at(&record.body, "question_ref.id") {
                     rivals.extend(
-                        state
-                            .records()
-                            .filter(|other| {
-                                other.header.id.kind() == Kind::Hypothesis
-                                    && text_at(&other.body, "question_ref.id") == Some(question)
-                            })
+                        self.notes
+                            .hypotheses_of(question)
+                            .iter()
                             .map(|other| other.header.id),
                     );
                 }

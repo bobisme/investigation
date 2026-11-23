@@ -10,6 +10,7 @@ use crate::{
     PROGRAM_NAME,
     basis::{
         MembershipBasis, MembershipRule, MembershipScope, ObjectionBody, basis_digest, membership,
+        membership_members,
     },
     catalog::{OperationDescriptor, OperationInfo},
     command::{Reference, RevisionRef},
@@ -495,15 +496,16 @@ fn dependency_closure(
             }
             let mut dependencies = links(record)?;
             dependencies.extend(causal_rivals_in(self.state, record, self.tolerant)?);
-            let assumption_basis = membership(
+            // Only the members are read here, so their basis is not hashed.
+            let assumptions = membership_members(
                 self.state,
                 MembershipRule::MaterialAssumptions,
-                MembershipScope::Subject {
+                &MembershipScope::Subject {
                     case_id: self.root.header.case_id,
                     subject_id: id,
                 },
             )?;
-            for assumption in assumption_basis.members {
+            for assumption in assumptions {
                 dependencies.push(
                     self.state
                         .current(assumption.id)

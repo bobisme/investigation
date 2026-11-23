@@ -519,6 +519,46 @@ fn values_outside_the_stated_range_are_not_scored() {
     assert!(analysis.scores[0].total.is_none());
 }
 
+#[test]
+fn tables_for_a_whole_case_equal_each_question_tabulated_alone() {
+    let mut table = Table::new();
+    let hard = table.criterion("hard", "ms", Value::Null);
+    let soft = table.criterion("soft", "ms", ranged("1", "50", "10"));
+    let first = table.option();
+    let second = table.option();
+    table.measured(first, hard, "20", "meets");
+    table.measured(first, soft, "30", "meets");
+    table.measured(second, soft, "40", "meets");
+    table.cell(second, hard, json!({"outcome":"unknown"}));
+    let retracted = table.cell(second, soft, json!({"outcome":"meets"}));
+    let mut body = table.state.current(retracted).unwrap().body.clone();
+    body["retracted"] = json!(true);
+    table.revise(retracted, body);
+    let mut body = table.state.current(soft).unwrap().body.clone();
+    body["weight"]["value"] = json!("4");
+    table.revise(soft, body);
+    let untabulated = table.id("q");
+    table.put(untabulated, json!({}));
+
+    let index = FreshnessIndex::build(&table.state, table.case);
+    let tables = consequences_tables_with(&table.state, &index, table.case).unwrap();
+    assert_eq!(tables.keys().copied().collect::<Vec<_>>(), [table.question]);
+    let alone = consequences_table(&table.state, table.case, table.question).unwrap();
+    let together = tables[&table.question].as_ref().unwrap();
+    assert_eq!(
+        serde_json::to_value(together).unwrap(),
+        serde_json::to_value(&alone).unwrap()
+    );
+    assert_eq!(alone.rows.len(), 2);
+    assert_eq!(alone.criteria.len(), 2);
+    assert!(
+        consequences_table(&table.state, table.case, untabulated)
+            .unwrap()
+            .criteria
+            .is_empty()
+    );
+}
+
 /// Operations through the standard catalog.
 struct Ops {
     state: State,

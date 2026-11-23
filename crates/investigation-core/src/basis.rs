@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Canonical objection shape shared with objection operations. Subject identity
 /// is stable across revision changes; the exact reviewed revision remains pinned.
@@ -327,7 +327,18 @@ pub fn membership(
     rule: MembershipRule,
     scope: MembershipScope,
 ) -> Result<MembershipBasis, Failure> {
-    let (case_id, target) = match &scope {
+    let members = membership_members(state, rule, &scope)?;
+    finish(rule, scope, members)
+}
+
+/// The members [`membership`] returns, in ID order, without hashing the
+/// basis: for a caller that needs only who the members are.
+pub(crate) fn membership_members(
+    state: &State,
+    rule: MembershipRule,
+    scope: &MembershipScope,
+) -> Result<Vec<MembershipMember>, Failure> {
+    let (case_id, target) = match scope {
         MembershipScope::Question {
             case_id,
             question_id,
@@ -385,8 +396,23 @@ pub fn membership(
             return Err(failure("Scoped option belongs to another question."));
         }
     }
+    if rule == MembershipRule::MaterialAssumptions {
+        return state
+            .material_assumptions()
+            .get(&case_id)
+            .map_or(Ok(Vec::new()), |index| index.members(target));
+    }
+    let kind = match rule {
+        MembershipRule::ActiveHardCriteria => Kind::Criterion,
+        MembershipRule::EligibleOptions => Kind::Option,
+        MembershipRule::OpenObjections => Kind::Objection,
+        MembershipRule::MaterialAssumptions => Kind::Assumption,
+    };
     let mut members = Vec::new();
-    for record in state.records().filter(|r| r.header.case_id == case_id) {
+    for record in state
+        .records_of_kind(kind)
+        .filter(|r| r.header.case_id == case_id)
+    {
         let include = match (rule, record.header.id.kind()) {
             (MembershipRule::ActiveHardCriteria, Kind::Criterion) => {
                 let c: CriterionBody = read(record)?;
@@ -412,22 +438,6 @@ pub fn membership(
                 let o: ObjectionBody = read(record)?;
                 o.status == ObjectionStatus::Open && o.subject_ref.id == target
             }
-            (MembershipRule::MaterialAssumptions, Kind::Assumption) => {
-                let a: AssumptionBody = read(record)?;
-                if a.materiality != Materiality::Material
-                    || a.status == AssumptionStatus::Superseded
-                {
-                    false
-                } else {
-                    let mut found = false;
-                    for r in &a.affected_refs {
-                        if exact_ref(r)?.id == target {
-                            found = true;
-                        }
-                    }
-                    found
-                }
-            }
             _ => false,
         };
         if include {
@@ -438,6 +448,15 @@ pub fn membership(
         }
     }
     members.sort_by_key(|m| m.id);
+    Ok(members)
+}
+
+fn finish(
+    rule: MembershipRule,
+    scope: MembershipScope,
+    mut members: Vec<MembershipMember>,
+) -> Result<MembershipBasis, Failure> {
+    members.sort_by_key(|m| m.id);
     let digest = hash(&json!({"version":1,"rule":rule,"scope":scope,"members":members}))?;
     Ok(MembershipBasis {
         rule,
@@ -446,6 +465,76 @@ pub fn membership(
         members,
         digest,
     })
+}
+
+/// [`MembershipRule::MaterialAssumptions`] for every subject of one case,
+/// computed in one pass over the case's assumptions so that membership for
+/// one subject is a lookup rather than a scan of the whole case. A State
+/// computes it once per snapshot ([`State::material_assumptions`]).
+///
+/// A lookup returns exactly what the per-subject scan returned, error
+/// included. That scan visited the case's records in ID order and stopped at
+/// the first failure: an unreadable assumption or a client alias among the
+/// affected references fails every subject, and a basis digest that cannot be
+/// formed fails only the subjects that assumption names. So the first failure
+/// that applies to the case, and each subject's own earlier failure, are kept.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct MaterialAssumptions {
+    /// Each named subject's members in ID order, or the failure the scan
+    /// stopped at for that subject.
+    by_subject: BTreeMap<Id, Result<Vec<MembershipMember>, Failure>>,
+    /// The failure that stopped the scan for every subject not stopped before.
+    failed: Option<Failure>,
+}
+
+impl MaterialAssumptions {
+    /// One index per case of `state`.
+    pub(crate) fn index(state: &State) -> BTreeMap<Id, Self> {
+        let mut cases: BTreeMap<Id, Self> = BTreeMap::new();
+        for record in state.records_of_kind(Kind::Assumption) {
+            let index = cases.entry(record.header.case_id).or_default();
+            if index.failed.is_none()
+                && let Err(failed) = index.add(record)
+            {
+                index.failed = Some(failed);
+            }
+        }
+        cases
+    }
+
+    /// Add one assumption, or the failure that applies to every subject.
+    fn add(&mut self, record: &Record) -> Result<(), Failure> {
+        let a: AssumptionBody = read(record)?;
+        if a.materiality != Materiality::Material || a.status == AssumptionStatus::Superseded {
+            return Ok(());
+        }
+        let mut subjects = BTreeSet::new();
+        for r in &a.affected_refs {
+            subjects.insert(exact_ref(r)?.id);
+        }
+        for subject in subjects {
+            let entry = self.by_subject.entry(subject).or_insert(Ok(Vec::new()));
+            if let Ok(members) = entry {
+                match basis_digest(record) {
+                    Ok(basis_digest) => members.push(MembershipMember {
+                        id: record.header.id,
+                        basis_digest,
+                    }),
+                    Err(failed) => *entry = Err(failed),
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Members for `subject`, in ID order.
+    fn members(&self, subject: Id) -> Result<Vec<MembershipMember>, Failure> {
+        match (self.by_subject.get(&subject), &self.failed) {
+            (Some(Err(failed)), _) | (_, Some(failed)) => Err(failed.clone()),
+            (Some(Ok(members)), None) => Ok(members.clone()),
+            (None, None) => Ok(Vec::new()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -657,6 +746,109 @@ mod tests {
                 .len(),
             1
         );
+    }
+    /// The per-subject scan the snapshot index replaced, kept as the oracle.
+    fn scanned(state: &State, case: Id, subject: Id) -> Result<Vec<MembershipMember>, Failure> {
+        let mut members = Vec::new();
+        for record in state.records().filter(|r| r.header.case_id == case) {
+            if record.header.id.kind() != Kind::Assumption {
+                continue;
+            }
+            let a: AssumptionBody = read(record)?;
+            if a.materiality != Materiality::Material || a.status == AssumptionStatus::Superseded {
+                continue;
+            }
+            let mut found = false;
+            for r in &a.affected_refs {
+                if exact_ref(r)?.id == subject {
+                    found = true;
+                }
+            }
+            if found {
+                members.push(MembershipMember {
+                    id: record.header.id,
+                    basis_digest: basis_digest(record)?,
+                });
+            }
+        }
+        members.sort_by_key(|m| m.id);
+        Ok(members)
+    }
+    #[test]
+    fn indexed_material_assumptions_equal_the_per_subject_scan() {
+        let case = id("case", 1);
+        let q = id("q", 2);
+        let other = id("q", 3);
+        let unnamed = id("q", 4);
+        let assumption = |materiality: &str, status: &str, refs: &[Id]| {
+            let refs: Vec<Value> = refs.iter().map(|r| json!({"id":r,"revision":1})).collect();
+            json!({"claim":"Workload remains stable","consequence":"The comparison remains applicable",
+                "materiality":materiality,"affected_refs":refs,"status":status})
+        };
+        let mut s = State::default();
+        add(&mut s, record(case, case, 1, json!({})));
+        add(&mut s, record(q, case, 2, json!({})));
+        add(&mut s, record(other, case, 3, json!({})));
+        add(&mut s, record(unnamed, case, 4, json!({})));
+        let check = |s: &State| {
+            for subject in [q, other, unnamed, case] {
+                let scope = MembershipScope::Subject {
+                    case_id: case,
+                    subject_id: subject,
+                };
+                let indexed = membership(s, MembershipRule::MaterialAssumptions, scope)
+                    .map(|basis| basis.members);
+                assert_eq!(indexed, scanned(s, case, subject), "{subject}");
+            }
+        };
+        check(&s);
+        let bodies = [
+            assumption("material", "unassessed", &[q, other, q]),
+            assumption("material", "superseded", &[q]),
+            assumption("nonmaterial", "unassessed", &[other]),
+            assumption("material", "supported", &[other]),
+        ];
+        for (n, body) in bodies.into_iter().enumerate() {
+            let n = n as u64;
+            add(&mut s, record(id("asm", 10 + n), case, 5 + n, body));
+            // Each new revision drops the index computed for the last one.
+            check(&s);
+        }
+        let scope = MembershipScope::Subject {
+            case_id: case,
+            subject_id: other,
+        };
+        let members = membership(&s, MembershipRule::MaterialAssumptions, scope.clone()).unwrap();
+        assert_eq!(members.members.len(), 2);
+        change(
+            &mut s,
+            id("asm", 13),
+            assumption("material", "superseded", &[other]),
+        );
+        check(&s);
+        let after = membership(&s, MembershipRule::MaterialAssumptions, scope).unwrap();
+        assert_eq!(after.members.len(), 1);
+        assert_ne!(members.digest, after.digest);
+        // An unreadable assumption fails every subject, as the scan did.
+        add(
+            &mut s,
+            record(id("asm", 20), case, 20, json!({"claim":"Unreadable"})),
+        );
+        check(&s);
+        assert!(scanned(&s, case, unnamed).is_err());
+        for kind in [
+            Kind::Assumption,
+            Kind::Question,
+            Kind::Case,
+            Kind::Objection,
+        ] {
+            assert!(
+                s.records_of_kind(kind)
+                    .eq(s.records().filter(|r| r.header.id.kind() == kind)),
+                "{kind}"
+            );
+        }
+        assert_eq!(s.records_of_kind(Kind::Assumption).count(), 5);
     }
     #[test]
     fn conclusion_review_basis_changes_for_scope_and_evidence_not_validation() {

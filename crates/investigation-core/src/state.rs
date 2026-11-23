@@ -1,11 +1,15 @@
 //! Ordered command validation and replay of accepted record revisions.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::OnceLock,
+};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
+    basis::MaterialAssumptions,
     catalog::Catalog,
     command::{Command, Reference, RevisionRef},
     guardrails::SessionEvidence,
@@ -50,6 +54,28 @@ pub struct State {
     sequence: u64,
     history: BTreeMap<Id, Vec<Record>>,
     verified_snapshots: BTreeMap<u64, Digest>,
+    derived: Derived,
+}
+
+/// Indexes computed from the history on first use and dropped whenever the
+/// history changes, so a read that asks the same question of many records
+/// pays for one pass over the snapshot. They are a function of the history
+/// alone: never part of equality, and a clone may keep them.
+#[derive(Clone, Default)]
+struct Derived {
+    material_assumptions: OnceLock<BTreeMap<Id, MaterialAssumptions>>,
+}
+
+impl PartialEq for Derived {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for Derived {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Derived")
+    }
 }
 
 impl State {
@@ -105,6 +131,7 @@ impl State {
                 .range(..=sequence)
                 .map(|(sequence, digest)| (*sequence, digest.clone()))
                 .collect(),
+            derived: Derived::default(),
         }
     }
 
@@ -123,6 +150,22 @@ impl State {
 
     pub fn records(&self) -> impl Iterator<Item = &Record> {
         self.history.values().filter_map(|records| records.last())
+    }
+
+    /// Current records of one kind, in ID order: the records of that kind
+    /// [`Self::records`] yields, without visiting the others.
+    pub fn records_of_kind(&self, kind: Kind) -> impl Iterator<Item = &Record> {
+        self.history
+            .range(Id::kind_range(kind))
+            .filter_map(|(_, records)| records.last())
+    }
+
+    /// Material-assumption membership of every subject, per case, at this
+    /// snapshot.
+    pub(crate) fn material_assumptions(&self) -> &BTreeMap<Id, MaterialAssumptions> {
+        self.derived
+            .material_assumptions
+            .get_or_init(|| MaterialAssumptions::index(self))
     }
 
     /// Apply already accepted images atomically, without a catalog, clock or ID source.
@@ -212,6 +255,7 @@ impl State {
     }
 
     fn record(&mut self, record: Record) {
+        self.derived = Derived::default();
         self.history
             .entry(record.header.id)
             .or_default()
@@ -712,6 +756,7 @@ impl OperationContext<'_> {
             requested,
         )?;
         self.images[index].header.extensions = extensions.clone();
+        self.state.derived = Derived::default();
         if let Some(latest) = self
             .state
             .history

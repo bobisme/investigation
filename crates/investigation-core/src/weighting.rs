@@ -32,7 +32,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    basis::{MembershipRule, MembershipScope, membership},
+    basis::{MembershipMember, MembershipRule, MembershipScope, membership_members},
     command::{Reference, RevisionRef},
     decision_ops::{EffectiveComparison, effective_comparison_with, verified},
     evaluate::{
@@ -607,22 +607,54 @@ fn active_criteria(
 /// the table [`weighted_analysis`] leads with.
 pub fn consequences_table(s: &State, case: Id, question: Id) -> Result<ConsequencesTable, Failure> {
     let criteria = active_criteria(s, case, question)?;
-    table_for(s, case, question, &criteria)
+    let members = eligible_options(s, case, question)?;
+    let cells = comparison_cells(s, case)?;
+    let index = FreshnessIndex::build(s, case);
+    table_for(s, &index, case, &criteria, &members, &cells)
 }
 
-fn table_for(
+/// The consequences table of every question of `case` that has at least one
+/// active criterion, keyed by question ID, each equal to what
+/// [`consequences_table`] returns for it (an `Err` included) when `index` is
+/// `FreshnessIndex::build(s, case)`. A question with no active criterion is
+/// left out: its table has no column. The criteria, comparisons and freshness
+/// index are read once for the whole case rather than once per question, so a
+/// caller tabulating every question of a large case stays linear in its
+/// records. An `Err` overall means every question's table would fail alike.
+pub fn consequences_tables_with(
     s: &State,
+    index: &FreshnessIndex,
     case: Id,
-    question: Id,
-    criteria: &[(RevisionRef, CriterionBody)],
-) -> Result<ConsequencesTable, Failure> {
-    let scope = MembershipScope::Question {
-        case_id: case,
-        question_id: question,
-        option_id: None,
-    };
-    let members = membership(s, MembershipRule::EligibleOptions, scope)?.members;
-    let mut cells: BTreeMap<(Id, Id), Vec<(&Record, ComparisonBody)>> = BTreeMap::new();
+) -> Result<BTreeMap<Id, Result<ConsequencesTable, Failure>>, Failure> {
+    let mut by_question: BTreeMap<Id, Vec<(RevisionRef, CriterionBody)>> = BTreeMap::new();
+    for record in s.records().filter(|r| r.header.case_id == case) {
+        if record.header.id.kind() == Kind::Criterion {
+            let body: CriterionBody = decode(record)?;
+            if body.lifecycle == CriterionLifecycle::Active {
+                by_question
+                    .entry(body.question_ref.id)
+                    .or_default()
+                    .push((record.reference(), body));
+            }
+        }
+    }
+    let cells = comparison_cells(s, case)?;
+    Ok(by_question
+        .into_iter()
+        .map(|(question, criteria)| {
+            let table = eligible_options(s, case, question)
+                .and_then(|members| table_for(s, index, case, &criteria, &members, &cells));
+            (question, table)
+        })
+        .collect())
+}
+
+/// Recorded comparisons of `case` that are not retracted, by option and
+/// criterion, in record order.
+type Cells<'s> = BTreeMap<(Id, Id), Vec<(&'s Record, ComparisonBody)>>;
+
+fn comparison_cells(s: &State, case: Id) -> Result<Cells<'_>, Failure> {
+    let mut cells: Cells<'_> = BTreeMap::new();
     for record in s.records().filter(|r| r.header.case_id == case) {
         if record.header.id.kind() == Kind::Comparison {
             let body: ComparisonBody = decode(record)?;
@@ -634,9 +666,31 @@ fn table_for(
             }
         }
     }
-    let index = FreshnessIndex::build(s, case);
+    Ok(cells)
+}
+
+/// The eligible options of `question`, in ID order.
+fn eligible_options(s: &State, case: Id, question: Id) -> Result<Vec<MembershipMember>, Failure> {
+    let scope = MembershipScope::Question {
+        case_id: case,
+        question_id: question,
+        option_id: None,
+    };
+    membership_members(s, MembershipRule::EligibleOptions, &scope)
+}
+
+/// One question's table from its active criteria, its eligible options and
+/// the case's recorded comparisons.
+fn table_for(
+    s: &State,
+    index: &FreshnessIndex,
+    case: Id,
+    criteria: &[(RevisionRef, CriterionBody)],
+    members: &[MembershipMember],
+    cells: &Cells<'_>,
+) -> Result<ConsequencesTable, Failure> {
     let mut rows = Vec::new();
-    for member in &members {
+    for member in members {
         let record = s
             .current(member.id)
             .ok_or_else(|| Failure::new(ErrorCode::IntegrityFailure, "Option disappeared."))?;
@@ -648,7 +702,7 @@ fn table_for(
                 .get(&(option.id, criterion.0.id))
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            let classified = classify(s, case, &index, option, criterion, found)?;
+            let classified = classify(s, case, index, option, criterion, found)?;
             let cell = classified.body.as_ref();
             row.push(TableCell {
                 criterion_ref: criterion.0,
@@ -694,7 +748,10 @@ pub fn weighted_analysis(
     if !weighted_criteria(&criteria) {
         return Ok(None);
     }
-    let table = table_for(s, case, question, &criteria)?;
+    let members = eligible_options(s, case, question)?;
+    let cells = comparison_cells(s, case)?;
+    let index = FreshnessIndex::build(s, case);
+    let table = table_for(s, &index, case, &criteria, &members, &cells)?;
 
     let ranged = |c: &CriterionBody| {
         c.kind == CriterionKind::Soft
