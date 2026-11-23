@@ -158,8 +158,11 @@
 //!   notes whose content changed. That is proven per note by comparing the
 //!   restamped bytes with the owned hash; nothing about what a note reads is
 //!   tracked or cached. [`PublishMode::Full`] restamps every note instead.
-//! - Exports: implement [`CaseRenderer`] for another layout and publish into a
-//!   fresh destination.
+//! - Exports ([`export`]): `export --kind KIND` pins one case to a verified
+//!   head, plans a registered kind's files with the same pure planning and
+//!   audience classification (strict, without placeholders), and writes them
+//!   with an `inv.export-manifest.v1` manifest into a fresh destination,
+//!   never over anything. Kinds plug in through [`export::KINDS`].
 //!
 //! Rendering works with any viewer application absent or closed. The
 //! filesystem is the only interface.
@@ -170,6 +173,7 @@ pub mod drift;
 pub(crate) mod entry;
 pub mod error;
 pub mod evidence;
+pub mod export;
 pub mod incremental;
 pub mod layout;
 pub mod lock;

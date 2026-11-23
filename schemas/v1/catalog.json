@@ -210,6 +210,7 @@
     "capture.recover.receipt": "capture.recover.receipt.schema.json",
     "error": "error.schema.json",
     "evidence-selector": "evidence-selector.schema.json",
+    "export-manifest": "export-manifest.schema.json",
     "ingest": "ingest.schema.json",
     "ingest-receipt": "ingest-receipt.schema.json",
     "method-pack": "method-pack.schema.json",

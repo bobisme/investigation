@@ -10,6 +10,7 @@ mod docs;
 mod doctor;
 mod evidence;
 mod explain;
+mod export;
 mod first_use;
 mod frontier;
 mod guide;
@@ -296,6 +297,9 @@ enum Commands {
     /// Publish the working vault and inspect its health and drift.
     #[command(subcommand, after_help = vault::AFTER_HELP)]
     Vault(vault::VaultCommand),
+    /// Write an immutable report or bundle of one case at one verified snapshot to a new directory.
+    #[command(after_help = export::after_help())]
+    Export(export::Args),
     /// Report versions, capabilities, limits, filesystem support and workspace health.
     #[command(after_help = doctor::AFTER_HELP)]
     Doctor(doctor::Args),
@@ -452,6 +456,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Vault(command) => vault::run(&mut store, &global, command),
+                Commands::Export(args) => export::run(&mut store, &global, args),
                 Commands::Repair(RepairCommand::Staging { handle }) => {
                     capture::retire(&mut store, handle.as_deref())
                 }

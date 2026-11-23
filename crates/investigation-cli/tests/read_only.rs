@@ -58,6 +58,7 @@ const WRITES: &[&[&str]] = &[
     &["note", "--on", "obs_x", "text"],
     &["case", "new", "title"],
     &["source", "add", "missing.log"],
+    &["export", "--kind", "case-report", "--audience", "internal"],
     &[
         "--case",
         "case_x",

@@ -74,6 +74,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("vault render", Effect::Write),
     ("vault status", Effect::Read),
     ("vault conflicts", Effect::Read),
+    // Writes files into a new directory, inside exports/ or outside the
+    // workspace; never changes canonical state.
+    ("export", Effect::Write),
     // `doctor bundle` requires --preview and writes no archive.
     ("doctor", Effect::Read),
     ("doctor bundle", Effect::Read),

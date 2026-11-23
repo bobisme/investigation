@@ -1,0 +1,331 @@
+{
+  "$defs": {
+    "Completeness": {
+      "enum": [
+        "complete",
+        "incomplete"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "FileDigest": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "Relative to the export directory, `/`-separated.",
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "bytes"
+      ],
+      "type": "object"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "ManifestPolicy": {
+      "additionalProperties": false,
+      "description": "The audience policy the export was built under.",
+      "properties": {
+        "audience": {
+          "description": "`public`, `internal` or `restricted`.",
+          "type": "string"
+        },
+        "placeholders": {
+          "description": "Whether withheld records appear as ID-only placeholders. Always\nfalse under this policy version.",
+          "type": "boolean"
+        },
+        "version": {
+          "description": "`inv.export-policy.v1`: positive inclusion by effective\nclassification at the pinned and the current revision.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "audience",
+        "placeholders"
+      ],
+      "type": "object"
+    },
+    "ManifestSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "$ref": "#/$defs/Id"
+        },
+        "head_hash": {
+          "$ref": "#/$defs/Digest"
+        },
+        "sequence": {
+          "description": "The case journal sequence of the verified head.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "case_id",
+        "sequence",
+        "head_hash"
+      ],
+      "type": "object"
+    },
+    "ManifestVersions": {
+      "additionalProperties": false,
+      "description": "The versions that determine the bytes of an export.",
+      "properties": {
+        "framework": {
+          "description": "The shared export pipeline (`inv.export.v1`).",
+          "type": "string"
+        },
+        "freshness_rules": {
+          "description": "The freshness rules that computed effective states.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "manifest_schema": {
+          "type": "string"
+        },
+        "renderer": {
+          "description": "The kind's renderer, bumped whenever its bytes change.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "framework",
+        "renderer",
+        "manifest_schema",
+        "freshness_rules"
+      ],
+      "type": "object"
+    },
+    "Product": {
+      "description": "What an export is for. Review exports and recovery archives have\ndifferent completeness and security guarantees (§16.3).",
+      "oneOf": [
+        {
+          "const": "report",
+          "description": "A rendered document about the case for a reader.",
+          "type": "string"
+        },
+        {
+          "const": "review",
+          "description": "A curated, browsable copy of the case for reviewers; not resumable.",
+          "type": "string"
+        },
+        {
+          "const": "archive",
+          "description": "The canonical state needed to recover the workspace; resumable.",
+          "type": "string"
+        },
+        {
+          "const": "bundle",
+          "description": "Structured records for another tool to read.",
+          "type": "string"
+        }
+      ]
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "SourceDigest": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef",
+          "description": "The Artifact revision at the pinned snapshot."
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest",
+          "description": "The recorded digest of its retained bytes."
+        }
+      },
+      "required": [
+        "artifact",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "Statements": {
+      "additionalProperties": false,
+      "description": "Fixed statements every export carries, so a reader of the files alone\nknows what they are and are not.",
+      "properties": {
+        "completeness": {
+          "type": "string"
+        },
+        "disclosure": {
+          "type": "string"
+        },
+        "distribution": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "identifiers": {
+          "type": "string"
+        },
+        "rendering": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "rendering",
+        "evidence",
+        "completeness",
+        "disclosure",
+        "identifiers",
+        "distribution"
+      ],
+      "type": "object"
+    },
+    "Supersession": {
+      "additionalProperties": false,
+      "properties": {
+        "record": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "superseded_by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supersedes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "record"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:export-manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "The manifest written as `export-manifest.json` in every export.",
+  "properties": {
+    "completeness": {
+      "$ref": "#/$defs/Completeness",
+      "description": "`incomplete` when the audience policy withheld any record of the\ncase. An incomplete export is never labelled complete."
+    },
+    "export_id": {
+      "description": "`exp_<sha256 hex>` over the kind, versions, policy, snapshot,\ncompleteness and file digests: identical exports share it.",
+      "type": "string"
+    },
+    "files": {
+      "description": "Every file of the export except this manifest, in publish order.",
+      "items": {
+        "$ref": "#/$defs/FileDigest"
+      },
+      "type": "array"
+    },
+    "generator": {
+      "description": "The program that rendered the export.",
+      "type": "string"
+    },
+    "kind": {
+      "description": "The export kind, as given to `export --kind`.",
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "#/$defs/ManifestPolicy"
+    },
+    "product": {
+      "$ref": "#/$defs/Product"
+    },
+    "resumable": {
+      "description": "Whether the export can restore canonical state. Only a workspace\narchive can; reports, review exports and bundles cannot.",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "description": "Always `inv.export-manifest.v1`.",
+      "type": "string"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/ManifestSnapshot",
+      "description": "The exact verified case snapshot the export was rendered from."
+    },
+    "sources": {
+      "description": "Digests of the retained artifacts the export includes.",
+      "items": {
+        "$ref": "#/$defs/SourceDigest"
+      },
+      "type": "array"
+    },
+    "statements": {
+      "$ref": "#/$defs/Statements"
+    },
+    "supersession": {
+      "description": "Supersession links between included records, so a superseded record\nis marked rather than rewritten.",
+      "items": {
+        "$ref": "#/$defs/Supersession"
+      },
+      "type": "array"
+    },
+    "versions": {
+      "$ref": "#/$defs/ManifestVersions"
+    }
+  },
+  "required": [
+    "schema_version",
+    "export_id",
+    "kind",
+    "product",
+    "resumable",
+    "generator",
+    "versions",
+    "snapshot",
+    "policy",
+    "completeness",
+    "sources",
+    "supersession",
+    "files",
+    "statements"
+  ],
+  "title": "ExportManifest",
+  "type": "object"
+}

@@ -17,7 +17,7 @@ SCOPES = (
     ("brief",), ("explain",), ("review-packet",), ("next",), ("frontier",), ("blindspots",), ("retrospective",), ("search",), ("guide",), ("method", "list"), ("onboard",), ("docs",), ("check",), ("repair", "index"), ("repair", "staging"), ("evidence", "read"),
     ("case", "new"), ("source", "add"), ("observe",), ("note",), ("capture", "begin"),
     ("capture", "append"), ("capture", "attach"), ("vault", "render"), ("vault", "status"),
-    ("vault", "conflicts"), ("doctor",), ("doctor", "bundle"),
+    ("vault", "conflicts"), ("export",), ("doctor",), ("doctor", "bundle"),
     ("integration", "show"), ("integration", "apply"), ("integration", "remove"), ("integration", "inspect"),
 )
 

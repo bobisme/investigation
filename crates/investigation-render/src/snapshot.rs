@@ -8,7 +8,7 @@ use investigation_core::{
     state::State,
     wire::{Digest, Snapshot},
 };
-use investigation_store::{Store, durable::DurableFs};
+use investigation_store::{Store, durable::DurableFs, journal::CaseReplay};
 
 use crate::RenderError;
 
@@ -43,25 +43,21 @@ impl VerifiedSnapshot {
             .cases()
             .map_err(RenderError::Snapshot)?
             .into_iter()
-            .map(|(case_id, replay)| {
-                let case = CaseSnapshot {
-                    case_id,
-                    sessions: replay.session_ledger(),
-                    chain: replay
-                        .events
-                        .iter()
-                        .map(|event| event.hash.clone())
-                        .collect(),
-                    head: replay.snapshot,
-                    state: replay.state,
-                };
-                (case_id, case)
-            })
+            .map(|(case_id, replay)| (case_id, CaseSnapshot::from_replay(case_id, replay)))
             .collect();
         Ok(Self {
             workspace_id,
             cases,
         })
+    }
+
+    /// A snapshot holding one case: `replay`, which the caller read from a
+    /// verified store and may have pinned to an earlier verified head.
+    pub(crate) fn single_case(workspace_id: Id, case_id: Id, replay: CaseReplay) -> Self {
+        Self {
+            workspace_id,
+            cases: BTreeMap::from([(case_id, CaseSnapshot::from_replay(case_id, replay))]),
+        }
     }
 
     pub const fn workspace_id(&self) -> Id {
@@ -79,6 +75,20 @@ impl VerifiedSnapshot {
 }
 
 impl CaseSnapshot {
+    fn from_replay(case_id: Id, replay: CaseReplay) -> Self {
+        Self {
+            case_id,
+            sessions: replay.session_ledger(),
+            chain: replay
+                .events
+                .iter()
+                .map(|event| event.hash.clone())
+                .collect(),
+            head: replay.snapshot,
+            state: replay.state,
+        }
+    }
+
     pub const fn case_id(&self) -> Id {
         self.case_id
     }

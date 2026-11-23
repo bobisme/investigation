@@ -637,6 +637,7 @@ dependencies = [
  "investigation-store",
  "pulldown-cmark",
  "rustix",
+ "schemars",
  "serde",
  "serde_json",
  "tempfile",
