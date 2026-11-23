@@ -80,14 +80,10 @@ fn submission(handle: Id, request: Value) -> FinalizeSubmission {
 }
 
 /// A recorder-shaped plan: every retained attachment becomes an Artifact, and
-/// the manifest lists each item with its digest and the sealed snapshot.
+/// the manifest binds the item map and the sealed snapshot.
 fn plan(context: &FinalizeContext<'_>) -> Result<FinalizePlan, Failure> {
     let mut artifacts = Vec::new();
-    let mut items = Vec::new();
     for item in context.items {
-        items.push(
-            json!({"position": item.position, "key": item.key, "digest": item.request_digest}),
-        );
         let Some(outcome) = AttachOutcome::of(item)? else {
             continue;
         };
@@ -110,7 +106,7 @@ fn plan(context: &FinalizeContext<'_>) -> Result<FinalizePlan, Failure> {
     let manifest = serde_json::to_vec(&json!({
         "run_id": context.run_id,
         "snapshot": context.snapshot,
-        "items": items,
+        "items": crate::store::capture::late::item_map(context.items),
     }))
     .unwrap();
     Ok(FinalizePlan {

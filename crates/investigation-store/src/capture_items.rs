@@ -48,7 +48,7 @@ use investigation_core::{
     wire::Digest,
 };
 
-use super::*;
+use super::{late::is_finalized, *};
 use crate::{
     durable::sync_existing_file,
     journal::{hash_bytes, replay_case},
@@ -62,7 +62,7 @@ pub const KEYS_DIRECTORY: &str = "keys";
 pub const HANDLE_LOCK_FILE: &str = "handle.lock";
 /// Seal marker that finalization publishes. Its presence closes the handle.
 pub const SEAL_FILE: &str = "sealed.json";
-const ITEM_VERSION: &str = "inv.capture-item.v1";
+pub(crate) const ITEM_VERSION: &str = "inv.capture-item.v1";
 const KEY_VERSION: &str = "inv.capture-key.v1";
 /// Item file names have twelve digits, like journal events.
 const MAX_POSITION: u64 = 999_999_999_999;
@@ -169,6 +169,9 @@ pub(crate) struct ResolvedHandle {
     pub directory: PathBuf,
     /// Effective classification of the declared Run: the floor for its items.
     pub classification: ClassificationLevel,
+    /// Whether the journal holds the Run's `capture.finalize`. Its manifest
+    /// then answers for the handle, whatever staging holds.
+    pub finalized: bool,
 }
 
 /// The fields of `handle.json` that locate a handle.
@@ -211,13 +214,17 @@ impl<F: DurableFs> Store<F> {
         O: FnOnce(&mut Self, &ResolvedHandle) -> Result<Option<Value>, Failure>,
     {
         self.gate.check().map_err(durability_failure)?;
-        let located = self.locate_handle(submission.handle)?;
-        let _handle = self.lock_handle(&located.directory)?;
-        let handle = self.verify_handle(located)?;
-        let limits = handle.binding.limits;
         let request = serde_json::to_vec(&submission.request)
             .map_err(|_| integrity("Could not encode the capture item."))?;
         let digest = hash_bytes(&request);
+        let located = match self.locate_handle(submission.handle) {
+            Ok(located) => located,
+            // A finalized handle whose staging is retired answers from its manifest.
+            Err(refusal) => return self.retired_item(submission, &digest, refusal),
+        };
+        let _handle = self.lock_handle(&located.directory)?;
+        let handle = self.verify_handle(located)?;
+        let limits = handle.binding.limits;
         let items = handle.directory.join(ITEMS_DIRECTORY);
         let keys = handle.directory.join(KEYS_DIRECTORY);
 
@@ -248,13 +255,10 @@ impl<F: DurableFs> Store<F> {
             return Err(key_reused(&item, submission, &digest));
         }
 
-        if self.exists(&handle.directory.join(SEAL_FILE))? {
-            return Err(Failure::new(
-                ErrorCode::RevisionConflict,
-                "This capture handle is sealed and accepts no new items. Call recover for its seal state, and preserve late evidence through an explicit linked reconciliation.",
-            )
-            .at("/handle")
-            .with_argv(recover_argv(submission.handle)));
+        // Under the handle lock, so a racing finalize either sealed before this
+        // check or seals after this item is durable and includes it.
+        if let Some(answer) = self.closed_item(&handle, submission, &digest)? {
+            return answer;
         }
         if u64::try_from(request.len()).unwrap_or(u64::MAX) > limits.max_event_bytes {
             let mut failure = Failure::new(
@@ -499,6 +503,7 @@ impl<F: DurableFs> Store<F> {
             binding: declared.binding.clone(),
             directory,
             classification: effective_classification(state, run).level,
+            finalized: is_finalized(run),
         })
     }
 
@@ -534,6 +539,7 @@ impl<F: DurableFs> Store<F> {
             binding,
             directory: located.directory,
             classification,
+            finalized: is_finalized(run),
         })
     }
 
@@ -738,7 +744,11 @@ fn read_bounded(fs: &impl DurableFs, path: &Path, limit: u64) -> io::Result<Vec<
     Ok(bytes)
 }
 
-fn key_reused(item: &StagedItem, submission: &ItemSubmission, digest: &Digest) -> Failure {
+pub(crate) fn key_reused(
+    item: &StagedItem,
+    submission: &ItemSubmission,
+    digest: &Digest,
+) -> Failure {
     let mut failure = Failure::new(
         ErrorCode::IdempotencyKeyReused,
         format!(

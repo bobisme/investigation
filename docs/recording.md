@@ -100,7 +100,7 @@ Ordering and idempotency:
 - The same key with a different request, including another position, is refused with `IDEMPOTENCY_KEY_REUSED` at `/key`. `expected` holds the accepted item's `position` and `request_digest`.
 - A handle that was never declared is refused with `UNKNOWN_REFERENCE` at `/handle`. A handle whose staging a crash left unallocated is refused with `OBJECT_REQUIRED`; resend the identical `begin`, then the item.
 - A position above `max_items` (100000) is refused with `INVALID_INPUT` at `/position`.
-- A sealed handle refuses new items with `REVISION_CONFLICT` at `/handle`. An identical retry of an accepted item still returns its receipt.
+- A sealed or finalized handle refuses new items with `REVISION_CONFLICT` at `/handle`, the closed-handle response. An identical retry of an accepted item still returns its receipt, also after staging is retired. See [Late items](#late-items-after-sealing).
 
 Appending records a report. It does not start, cancel or rerun anything; a `cancelled` fact cancels nothing.
 
@@ -217,6 +217,8 @@ Under the handle lock, finalize seals the handle, then commits one transaction, 
 - The manifest Artifact, role `manifest`. Its bytes are an `inv.capture-manifest.v1` document: the stream seal, the case snapshot before finalization, execution, retained and missing artifacts, per-channel completeness, the producer's statements, and every staged item with its position, key, operation, request digest, acceptance time, request and outcome. That item map lets an identical retry resolve after staging is retired, and keeps every fact, including the exact text of an `error` fact. The manifest names neither itself nor its own transaction.
 - The next revision of the Run: `execution_status` as reported, `evidence_completeness` as computed, `manifest_digest`, `started_at` and `finished_at` when reported, the new Artifacts appended to `artifact_refs`, and the section `capture_finalization`. The event binds the manifest digest. Every retained byte is copied into the canonical blob store before the event; staging keeps its copies.
 
+Finalize refuses, before sealing, a manifest whose `items` map does not equal the staged items.
+
 `capture_finalization` holds `attribution: producer_reported`, the finalize `command_id`, the begin `producer` and `external_run_id`, `manifest` (`source_ref`, `artifact_ref`, `digest`, `size_bytes`), `snapshot`, `completion`, `expected_last_position`, `sealed_position`, `missing_positions`, `finalization`, `execution`, `evidence_completeness`, `artifacts`, `channels`, and the producer's `assertions`, `controls`, `receipts`, `limitations` and `metadata` exactly as sent. The names follow the `producer_run` section of an envelope Run where both describe the same thing. Each `artifacts` entry has `key`, `position`, `role`, `channel`, `media_type`, `declared` and `retention`: `retained` with `source_ref`, `artifact_ref`, `digest`, `size_bytes` and, for a derivative, `derived_from`; or `missing` with `cause` (`declared`, `not_found` or `not_attached`) and the producer's `reason`.
 
 Completeness states what survived, never more than the producer claims:
@@ -253,7 +255,7 @@ Each entry in `handles` holds:
 | `seal` | `open` (accepting items), `sealed` (`sealed.json` is published and no `capture.finalize` is committed), or `finalized`. |
 | `staging` | `present`, `unallocated` (a crash after the declaration left no staging; resend the identical `begin`), or `retired` (finalized and the directory is gone). `staging_dir` is set while staging is present. |
 | `last_position` | The last accepted position. After finalization it is the receipt's `sealed_position`, also when staging is retired. |
-| `items`, `artifacts` | The receipt of every staged fact and every staged artifact, in position order, with its original position, key, request digest and acceptance time. `result` is `already_accepted`: an earlier call made the item durable. Each artifact reports `availability` `staged`, with its digest and size, or `missing`. Read from staging; empty once staging is retired, when the manifest Artifact holds every item. |
+| `items`, `artifacts` | The receipt of every staged fact and every staged artifact, in position order, with its original position, key, request digest and acceptance time. `result` is `already_accepted`: an earlier call made the item durable. Each artifact reports `availability` `staged`, with its digest and size, or `missing`, as its original receipt did. Read from staging, or from the finalized manifest Artifact once staging is retired. |
 | `finalized` | The original finalize receipt, read from the journal, as an identical retry returns it (`commit.result` `already_committed`). Present also after staging is retired. |
 | `execution` | The external execution state as recorded: `unknown` until a finalize commits the producer's report, then that report. Recover never infers it from lifecycle facts or from the absence of a record. |
 | `next_position` | The position the next item must take, while the handle is open. |
@@ -273,6 +275,28 @@ Every step records, reads or resends a recording call. No step reruns, resumes o
 Recover is a read. It takes no handle lock and creates, changes or removes nothing: no seal, item, key entry, lock file, staged blob or temporary, and no index refresh. It reads the journal, then the seal, then the items, so a sealed handle's items are final and an open handle's items are a durable prefix. An item accepted during the read appears in the next one.
 
 A handle that was never declared is refused with `UNKNOWN_REFERENCE` at `/handle`. Refusals that depend on what a handle accepted carry `capture recover --handle …` as their repair argv: a position conflict (`/position`), a reused item key (`/key`), a sealed handle (`/handle`), a stale finalize cursor (`/expected_last_position`), and a handle sealed by another finalize request.
+
+## Late items after sealing
+
+A finalized manifest is immutable. Accepting a late item quietly would falsify it, and dropping the item would lose evidence. The recorder does neither.
+
+**Closed-handle response.** Once `sealed.json` is published, `append` and `attach` refuse every new item with `REVISION_CONFLICT` at `/handle`, whatever its position. The repair argv is `capture recover --handle …`. `actual` holds the item's `key`, `position`, `operation` and `request_digest`. `expected` names what closed the handle:
+
+| `expected.seal` | Other fields |
+|---|---|
+| `sealed` (no `capture.finalize` committed yet) | `command_id` and `request_digest` of the sealing finalize request, `sealed_position`, and the `manifest_digest` that request will commit. |
+| `finalized` | `command_id` of the finalize transaction, `sealed_position`, `manifest_digest`, `manifest_ref` (the manifest Artifact revision), `case_id` and `run_id`. |
+
+**The race with sealing.** Finalize seals while it holds the handle lock, and an item checks the seal while it holds the same lock. If the item wins, it is durable before the seal; finalize then includes it, or refuses a stale `complete` cursor without sealing. If finalize wins, the item gets the closed-handle response. No acknowledged item is left out of the manifest.
+
+**Linked reconciliation.** Late evidence is preserved as a new attributed record linked to the Run, never written into the manifest:
+
+1. Ingest the late bytes into the Run's case with an `inv.ingest.v1` manifest that sets `case_id`. This records a new Source with its own acquisition time, attributed to the submitting actor.
+2. Link the new Artifact with `run.reconcile`: the Run's current outcome with the Artifact appended to `artifact_refs`, and a `rationale` that says why it arrived late.
+
+`run.reconcile` keeps the Run's `capture_finalization` section unchanged and refuses any change to `manifest_digest` on a finalized capture (`GATE_FAILED` at `/outcome/manifest_digest`). On a Run with a terminal execution state and `complete` evidence it accepts further artifact references and nothing else. The late Artifact is not in `capture_finalization.artifacts`, so a reader can tell it from what the capture retained.
+
+**After staging retirement.** The manifest's `items` map binds every accepted item: position, key, operation, request digest, acceptance time, request and outcome. When staging is gone, an identical `append` or `attach` retry is answered from that map with its original receipt (`already_accepted`, the original position and `accepted_at`). The same key with a different request is refused with `IDEMPOTENCY_KEY_REUSED` at `/key`, and a new item gets the closed-handle response. None of these writes anything. Resending the identical `begin` for a finalized handle returns its receipt and allocates no staging.
 
 ## Staging
 

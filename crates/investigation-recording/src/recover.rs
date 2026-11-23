@@ -73,7 +73,7 @@ pub enum StagingState {
     /// identical `begin` request to allocate it.
     Unallocated,
     /// The handle is finalized and its staging is gone. The manifest Artifact
-    /// holds every accepted item.
+    /// holds every accepted item, and recovery reads their receipts from it.
     Retired,
 }
 
@@ -210,25 +210,27 @@ fn handle_recovery(recovered: RecoveredHandle) -> Result<HandleRecovery, Failure
     let mut artifacts = Vec::new();
     let mut last_position = None;
     let mut sealed_by = None;
-    if let RecoveredStaging::Present {
-        items: staged,
-        seal,
-    } = &recovered.staging
-    {
-        for item in staged {
-            // An earlier call made the item durable; this is that call's receipt.
-            let accepted = ItemAcceptance {
-                result: ItemResult::AlreadyAccepted,
-                case_id: declared.case_id,
-                item: item.clone(),
-            };
-            match item.operation {
-                ItemOperation::Append => items.push(item_receipt(&accepted)?),
-                ItemOperation::Attach => artifacts.push(artifact_ref(&accepted)?),
-            }
-            last_position = Position::new(item.position);
+    let staged = match &recovered.staging {
+        RecoveredStaging::Present { items, seal } => {
+            sealed_by = seal.as_ref();
+            items.as_slice()
         }
-        sealed_by = seal.as_ref();
+        // The finalized manifest binds every item, so its receipts survive.
+        RecoveredStaging::Retired { items } => items.as_slice(),
+        _ => &[],
+    };
+    for item in staged {
+        // An earlier call made the item durable; this is that call's receipt.
+        let accepted = ItemAcceptance {
+            result: ItemResult::AlreadyAccepted,
+            case_id: declared.case_id,
+            item: item.clone(),
+        };
+        match item.operation {
+            ItemOperation::Append => items.push(item_receipt(&accepted)?),
+            ItemOperation::Attach => artifacts.push(artifact_ref(&accepted)?),
+        }
+        last_position = Position::new(item.position);
     }
     if let Some(finalized) = &finalized {
         // Also after staging is retired, the receipt names the sealed position.
@@ -243,7 +245,7 @@ fn handle_recovery(recovered: RecoveredHandle) -> Result<HandleRecovery, Failure
     let staging = match &recovered.staging {
         RecoveredStaging::Present { .. } => StagingState::Present,
         RecoveredStaging::Unallocated => StagingState::Unallocated,
-        _ => StagingState::Retired,
+        RecoveredStaging::Retired { .. } => StagingState::Retired,
     };
     let mut next_position = None;
     let mut next = Vec::new();

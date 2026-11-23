@@ -250,14 +250,25 @@ impl<F: DurableFs> Store<F> {
             Some(case_id) => case_id,
             None => created(&receipt, Kind::Case)?,
         };
-        let binding = match declared {
-            Some(binding) => binding,
+        let (binding, finalized) = match declared {
+            Some(binding) => (binding, false),
             // An identical earlier request: read the binding it committed.
             None => {
                 let replay = self.case(case_id)?;
-                binding_of(&replay.state, run_id)?
+                let finalized = replay.state.current(run_id).is_some_and(late::is_finalized);
+                (binding_of(&replay.state, run_id)?, finalized)
             }
         };
+        // A finalized handle never gets staging again: its manifest answers for
+        // it, and an empty directory would read as an open handle.
+        if finalized {
+            return Ok(DeclaredCapture {
+                receipt,
+                case_id,
+                run_id,
+                binding,
+            });
+        }
         self.allocate_staging(&StagingBinding {
             schema_version: STAGING_VERSION,
             handle: binding.handle,
@@ -646,6 +657,9 @@ pub mod finalize;
 
 #[path = "capture_recover.rs"]
 pub mod recover;
+
+#[path = "capture_late.rs"]
+pub mod late;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

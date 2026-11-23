@@ -780,7 +780,7 @@
         },
         {
           "const": "retired",
-          "description": "The handle is finalized and its staging is gone. The manifest Artifact\nholds every accepted item.",
+          "description": "The handle is finalized and its staging is gone. The manifest Artifact\nholds every accepted item, and recovery reads their receipts from it.",
           "type": "string"
         }
       ]

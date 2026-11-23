@@ -1036,13 +1036,32 @@ fn run_reconcile(mut payload: RunReconcile, ctx: &mut OperationContext<'_>) -> R
             "Preserve the original terminal execution status.",
         ));
     }
+    // A finalized capture's manifest is immutable: late evidence is linked
+    // beside it, never written into it.
+    if record
+        .body
+        .get(crate::producer_run::CAPTURE_FINALIZATION_KEY)
+        .is_some_and(|section| !section.is_null())
+        && payload.outcome.manifest_digest != old.manifest_digest
+    {
+        return Err(blocked(
+            "/outcome/manifest_digest",
+            "Preserve the manifest digest of a finalized capture. Link late evidence as further artifact references instead.",
+        ));
+    }
+    // Linking further artifacts, such as late evidence, leaves a complete
+    // outcome as recorded; every other field must stay as it is.
+    let linked_only = RunRecord {
+        artifact_refs: old.artifact_refs.clone(),
+        ..payload.outcome.clone()
+    } == old;
     if !open_execution
         && old.evidence_completeness == EvidenceCompleteness::Complete
-        && old != payload.outcome
+        && !linked_only
     {
         return Err(blocked(
             "/outcome",
-            "The recorded outcome is already complete.",
+            "The recorded outcome is already complete. Only further artifact references can be linked to it.",
         ));
     }
     if old

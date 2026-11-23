@@ -75,9 +75,11 @@ fn plan(context: &FinalizeContext<'_>) -> Result<FinalizePlan, Failure> {
         }
     }
     Ok(FinalizePlan {
-        manifest: serde_json::to_vec(
-            &json!({"run_id": context.run_id, "snapshot": context.snapshot}),
-        )
+        manifest: serde_json::to_vec(&json!({
+            "run_id": context.run_id,
+            "snapshot": context.snapshot,
+            "items": crate::store::capture::late::item_map(context.items),
+        }))
         .unwrap(),
         artifacts,
         execution_status: ExecutionStatus::Unknown,
@@ -292,10 +294,13 @@ fn a_finalized_handle_reports_its_original_receipt_also_after_staging_is_gone() 
     ));
     assert_eq!(fs::read_dir(&blobs).unwrap().count(), 1);
 
-    // Retired staging: the journal still answers.
+    // Retired staging: the journal still answers, and the manifest holds the items.
+    let RecoveredStaging::Present { items: staged, .. } = recovered.staging.clone() else {
+        unreachable!()
+    };
     fs::remove_dir_all(fixture.staging()).unwrap();
     let retired = fixture.only(Some(fixture.handle()));
-    assert_eq!(retired.staging, RecoveredStaging::Retired);
+    assert_eq!(retired.staging, RecoveredStaging::Retired { items: staged });
     assert_eq!(retired.finalized, recovered.finalized);
     assert!(fixture.store.capture_recovery(None).unwrap().is_empty());
 }

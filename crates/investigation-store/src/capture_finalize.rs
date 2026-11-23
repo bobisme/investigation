@@ -294,6 +294,13 @@ impl<F: DurableFs> Store<F> {
             items: &items,
             snapshot: &snapshot,
         })?;
+        // The manifest must bind every staged item, so identical retries still
+        // resolve once staging is retired.
+        if super::late::bound_items(&plan.manifest, submission.handle, handle.run_id)? != items {
+            return Err(integrity(
+                "The planned capture manifest does not bind the staged item map.",
+            ));
+        }
         let manifest_digest = hash_bytes(&plan.manifest);
         match &seal {
             Some(seal) if seal.manifest_digest != manifest_digest => {

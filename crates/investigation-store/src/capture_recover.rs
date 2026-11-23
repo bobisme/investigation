@@ -15,7 +15,8 @@
 //! The order of the reads keeps each report consistent: the journal first, then
 //! the seal, then the items. A sealed handle accepts no item, so its items are
 //! final once the seal is read. An open handle's items are a durable prefix; an
-//! item accepted after the read is reported by the next one.
+//! item accepted after the read is reported by the next one. Once staging is
+//! retired, the finalized manifest Artifact supplies the items.
 
 use super::{
     finalize::{CaptureSeal, FinalizedCapture, finalization_of},
@@ -37,8 +38,8 @@ pub enum RecoveredStaging {
     /// identical begin allocates it.
     Unallocated,
     /// Finalized, and the staging directory is gone. The manifest Artifact
-    /// holds every item.
-    Retired,
+    /// holds every item; these are its items, as they were staged.
+    Retired { items: Vec<StagedItem> },
 }
 
 /// One declared handle and what is durable about it.
@@ -94,7 +95,12 @@ impl<F: DurableFs> Store<F> {
                 section,
             });
             let staging = match declared.staging {
-                StagingState::Missing if finalized.is_some() => RecoveredStaging::Retired,
+                StagingState::Missing if finalized.is_some() => RecoveredStaging::Retired {
+                    items: self
+                        .finalized_manifest(&case.state, declared.run_id, declared.binding.handle)?
+                        .ok_or_else(|| integrity("The finalized Run has no manifest."))?
+                        .items,
+                },
                 StagingState::Missing => RecoveredStaging::Unallocated,
                 StagingState::Present => {
                     let resolved = self.resolve_declared(&declared, &case.state)?;

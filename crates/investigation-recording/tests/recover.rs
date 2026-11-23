@@ -302,6 +302,9 @@ fn recover_after_a_lost_finalize_acknowledgement_reports_the_original_receipt() 
     assert_eq!(retired.seal, SealState::Finalized);
     assert_eq!(retired.finalized, Some(original));
     assert_eq!(retired.last_position, Some(position(3)));
+    // The finalized manifest binds every item, so the receipts survive too.
+    assert_eq!(retired.items, recovered.items);
+    assert_eq!(retired.artifacts, recovered.artifacts);
 }
 
 #[test]
