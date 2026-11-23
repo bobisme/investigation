@@ -7,3 +7,4 @@
 | [0003](0003-a-gate.md) | Paired pilot and iteration threshold |
 | [0004](0004-product-boundaries.md) | Executable name, material closure, and supported durability claims |
 | [0005](0005-milestone-a-qualification.md) | Alpha evidence, import, recovery, and qualification boundaries |
+| [0006](0006-a-gate-catalog-disposition.md) | Pilot outcome and record-type disposition |

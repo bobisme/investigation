@@ -2,7 +2,7 @@
 
 ![Investigation — Trace conclusions back to their sources. A hooded investigator aligns a carved stone fragment with its matching broken edge above a gorge.](docs/investigation.webp)
 
-**Milestone A alpha.** The CLI runs the timeout and architecture-choice walkthroughs. Its versioned JSON contracts use `v0-alpha`. Use this milestone to evaluate the workflow before relying on it for consequential work.
+**The A-gate pilot met its decision rule.** With the CLI available, successor accuracy was 76.7% versus 64.2% with Markdown notes. This checkout still uses the `v0-alpha` contracts pending the v1 freeze. [Pilot results](docs/a-gate.md)
 
 `investigation` is an offline workbench for questions that need multiple observations, competing explanations or options, and a handoff. It retains original bytes, binds observations to selectors, and records attributed claims, comparisons, reviews, objections, and retrospectives. A successor can trace a finding to the exact revisions and select the next useful observation from the committed case.
 
