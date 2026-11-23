@@ -83,6 +83,28 @@ def criterion(question, name, kind, unit, threshold=None):
             "threshold": threshold, "weighting_rationale": None}
 
 
+def blindspots(d, case):
+    """The read-only inv.audit.v1 response, which has no receipt `ok` field."""
+    result = subprocess.run(
+        [str(d.binary), "--workspace", str(d.workspace), "--format", "json", "--case", case, "blindspots"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=d.workspace, check=True)
+    audit = json.loads(result.stdout)
+    assert audit["schema_version"] == "inv.audit.v1", audit
+    return audit
+
+
+def hard_unmeasured(d, case):
+    """criterion.hard_unmeasured findings of the current audit, by criterion ID."""
+    audit = blindspots(d, case)
+    return {entry["subject_refs"][0]["id"]: entry for entry in audit["checks"]
+            if entry["check_id"] == "criterion.hard_unmeasured"}
+
+
+def missing_options(entry):
+    return {reference["id"] for fact in entry["facts"] if fact["fact"] == "hard_cell:missing"
+            for reference in fact["refs"]}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--bin", required=True, type=pathlib.Path)
@@ -116,6 +138,14 @@ def main():
         soft = created(d.record(case, "criterion.create", criterion(question, "Operational cost estimate", "soft", "USD/month")))
         latency = created(d.record(case, "criterion.create", criterion(question, "Enqueue latency (small synthetic benchmark)", "soft", "milliseconds")))
         complexity = created(d.record(case, "criterion.create", criterion(question, "Team implementation effort", "soft", "engineer-weeks")))
+
+        # Before the recovery measurement the audit names each hard criterion
+        # with no evidence-backed disposition, keyed by the criterion itself.
+        unmeasured = hard_unmeasured(d, case)
+        assert set(unmeasured) == {hard, loss}, unmeasured
+        assert all(entry["subject_refs"] == [ref(key)] and entry["suggested_schema"] == "comparison.add"
+                   and missing_options(entry) == {option["id"] for option in options}
+                   for key, entry in unmeasured.items()), unmeasured
 
         # Ingestion uses the selected workspace as an explicit import root; no
         # target code, parser command or network service is executed.
@@ -246,6 +276,13 @@ def main():
         d.record(case, "criterion.retire", {"criterion_ref": ref(late), "reason": "Temporary phantom test is complete"})
         accepted = d.record(case, "decision.accept", {"decision_ref": ref(decision), "review_ref": ref(review)})
         assert accepted["updated"][0]["revision"] == 2
+        # After acceptance the audit still shows what the conditional choice
+        # rests on: unknown hard cells and the untested traffic assumption.
+        audit = blindspots(d, case)
+        assert set(hard_unmeasured(d, case)) == {hard, loss}, audit
+        untested = [entry for entry in audit["checks"] if entry["check_id"] == "promoted.material_assumption_unsupported"]
+        assert len(untested) == 1 and untested[0]["subject_refs"] == [ref(decision, 2)], audit
+        assert {"fact": "assumption_status:unassessed", "refs": [ref(assumption)]} in untested[0]["facts"], untested
         frontier = d.show(case, question)["pareto"]
         assert {entry["option_ref"]["id"] for entry in frontier} == {option["id"] for option in options}, frontier
         assert all(entry["status"] == "uncertain_frontier" for entry in frontier), frontier

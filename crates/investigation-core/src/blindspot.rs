@@ -31,6 +31,7 @@
 //! classification placeholders and ordering. The tests in this module check
 //! every registered spec (unique IDs, known schemas, cards and gap rules).
 
+mod evaluative;
 mod seed;
 #[cfg(test)]
 mod tests;
@@ -63,7 +64,7 @@ pub const LIMITS: &str = "Checks cover recorded objects and typed fields only, u
 pub const MAX_SUBJECT_READ_SET: usize = 4096;
 
 /// Every registered check family. A later family adds one entry here.
-const FAMILIES: &[&[CheckSpec]] = &[seed::CHECKS];
+const FAMILIES: &[&[CheckSpec]] = &[seed::CHECKS, evaluative::CHECKS];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub enum AuditVersion {

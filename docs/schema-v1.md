@@ -84,6 +84,13 @@ Checks of `builtin-blindspot.v1`:
 - `promoted.basis_not_current`: a validated Conclusion or accepted Decision is `needs_review` or `disputed` for a reason that is not an Objection. The facts name each freshness trigger and its cause.
 - `measurement.advisory_flags`: an advisory measurement flag. `rule_id` is the flag ID.
 - `conclusion.causal_claim_without_rival_account`, `decision.accepted_with_unresolved_hard_cell` and `case.ready_to_close_without_retrospective`: the gap rules of the same names.
+- `criterion.hard_unmeasured`: an active hard Criterion has an applicable Option with no Comparison or with an `unknown` one. There is one finding for each Criterion. The facts list the Options and Comparisons and the `gap:` IDs that `frontier` shows for each cell.
+- `comparison.unit_mismatch`: a measured Comparison value has a unit other than the one the current Criterion revision declares. The audit does not convert units.
+- `decision.preference_without_tradeoff`: a proposed or accepted Decision cites a Comparison with a `preference` basis and records no tradeoff.
+- `promoted.material_assumption_unsupported`: a validated Conclusion or accepted Decision, or a record it relies on, cites or is named by a material Assumption that is `unassessed`, `challenged` or `rejected`.
+- `promoted.open_material_objection`: a validated Conclusion or accepted Decision has an open material Objection that was recorded after the transaction that promoted it.
+- `case.collection_without_consequence`: in an open case, the last 4 or more transactions that created evidence records have no recorded consequence after or among them. A consequence is a supporting or contradicting Assessment, a known Comparison outcome, a Conclusion or Decision revision, or a disposition that rejects, retires, rules out or assesses. The facts cite each counted transaction by sequence. The check counts transactions and does not use a clock.
+- `case.material_closure_without_current_retrospective`: an open case with material work shows a closure signal, and no Retrospective covers its current state. A closure signal is a declared ready flag, an accepted Decision on every Question, or a recorded Retrospective.
 
 To add a check, add a `CheckSpec` to a family in `crates/investigation-core/src/blindspot/` and list the family in `FAMILIES`. The module documentation gives the rules, and its tests check every registered spec.
 
