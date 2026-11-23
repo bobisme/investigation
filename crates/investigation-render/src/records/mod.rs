@@ -22,6 +22,10 @@
 //!   verdict, basis and freshness (a stale review says so prominently); the
 //!   objection's severity and status; the closure account; the note text.
 //!
+//! - Case: [`overview`] writes the Overview body after the shared opening:
+//!   the bounded opening summary, the title/synopsis/full ladder, the
+//!   case's own reviews and the section its contents call for.
+//!
 //! [`reviews`] adds `## Reviews and objections` to every reviewable or
 //! challenged record, so a stale review reads as stale on its own note and on
 //! its subject's note. Authored text goes through [`crate::text`]; links come
@@ -61,6 +65,7 @@ mod hypothesis;
 mod inquiry;
 mod objection;
 mod option;
+pub(crate) mod overview;
 mod question;
 mod retrospective;
 mod review;
@@ -148,6 +153,7 @@ pub(crate) fn properties(notes: &NoteContext<'_>, record: &Record, front: &mut F
     match record.header.id.kind() {
         Kind::Review => review::properties(notes, record, front),
         Kind::Retrospective => retrospective::properties(notes, record, front),
+        Kind::Case => overview::properties(notes, record, front),
         Kind::Objection => {
             if let Some(severity) = text_at(&record.body, "severity") {
                 front.text("inv_severity", &wire(severity));

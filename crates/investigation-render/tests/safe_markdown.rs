@@ -543,6 +543,19 @@ const SECTIONS: &[&str] = &[
     "Question",
     "Addressed by",
     "Reviews and objections",
+    // The case Overview (W08.05).
+    "Opening summary",
+    "Answer and caveat",
+    "Evidence and assessments",
+    "Sources",
+    "Artifacts",
+    "Reviews and retrospectives",
+    "Reviews of the case",
+    "Research",
+    "Source matrix",
+    "Contradicting accounts",
+    "Open questions",
+    "Resume",
 ];
 
 #[test]

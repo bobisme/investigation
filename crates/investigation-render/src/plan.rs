@@ -20,7 +20,7 @@ use crate::{
 
 /// Identifies the vault renderer's output format. Bump it whenever the bytes
 /// produced for the same snapshot and policy change.
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v5";
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v6";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

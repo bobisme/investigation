@@ -66,9 +66,19 @@
 //!   subject's note (`inv_review_freshness`). Every reference in a body links
 //!   both ways: dependency edges under "Relies on"/"Cited by", other named
 //!   records under "Also names" and "names it in".
-//! - Overview and `Start Here.md`: extend the bodies in [`templates`] on top
-//!   of [`note::NoteContext`]; paths stay in [`layout`]. Reviews whose
-//!   subject is the case itself belong on the Overview. Bump
+//! - Case Overview: after the shared opening, `records::overview` writes the
+//!   bounded opening summary (question, decision, answer or choice, scope,
+//!   strongest original evidence, strongest outstanding objection, the step
+//!   `next` ranks first), the title/synopsis/full ladder (answer with the
+//!   brief's caveat, contradiction and freshness and a current or stale
+//!   synopsis; what the answer cites; its exact Sources and Artifacts), the
+//!   case's own reviews with the latest blindspot review and retrospective,
+//!   one section chosen by what the case holds (`inv_focus`: explanation,
+//!   measurement, evaluation or research), and the `brief`/`frontier`
+//!   commands to resume. It reuses core rules (freshness overview, objection
+//!   policy, synopsis status, `next` ranking) and never the CLI crate.
+//! - `Start Here.md`: extend the body in [`templates`] on top of
+//!   [`note::NoteContext`]; paths stay in [`layout`]. Bump
 //!   [`RENDERER_VERSION`] whenever output bytes change for the same snapshot.
 //! - Evidence-family notes: [`evidence`] adds Source, Artifact and
 //!   Observation sections (acquisition, source assessment, role, integrity,

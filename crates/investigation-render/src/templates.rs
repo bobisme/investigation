@@ -3,8 +3,10 @@
 //! Record notes use the shared skeleton in [`crate::note`]: flat frontmatter,
 //! display title, projection banner, basis table and the fixed sections.
 //! Per-type templates extend [`record_note`] with their own sections. The case
-//! Overview and `Start Here.md` are still deliberately small; their full
-//! content is separate work behind the same functions.
+//! Overview opens with the bounded summary and ladder written by
+//! `records::overview`, and ends with the record index. `Start Here.md` is
+//! still deliberately small; its full content is separate work behind the
+//! same function.
 //!
 //! Authored text reaches these notes only through [`crate::text`] and
 //! [`crate::yaml`], and only for records the view policy admits.
@@ -47,7 +49,10 @@ pub fn case_overview(notes: &NoteContext<'_>) -> Result<String, RenderError> {
     let state = case.state();
     let mut out = String::new();
     match state.current(case_id) {
-        Some(record) => notes.open_note(&mut out, record)?,
+        Some(record) => {
+            notes.open_note(&mut out, record)?;
+            crate::records::overview::sections(notes, &mut out, record)?;
+        }
         None => heading(&mut out, &case_id.to_string()),
     }
     out.push_str("\n## Records\n");

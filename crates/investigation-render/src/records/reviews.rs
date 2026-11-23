@@ -163,6 +163,29 @@ pub(crate) fn section(
     Ok(())
 }
 
+/// The reviews whose subject is the case itself, one line each with its
+/// freshness, for the case Overview. Returns how many there are.
+pub(crate) fn case_reviews(
+    notes: &NoteContext<'_>,
+    out: &mut String,
+    case: &Record,
+) -> Result<usize, RenderError> {
+    let reviews = naming_subject(notes, case.header.id, Kind::Review);
+    if !reviews.is_empty() {
+        out.push_str(
+            "Each review is judged at this snapshot. A `stale` review no longer covers the current \
+             basis of the case and cannot stand in for a fresh one.\n\n",
+        );
+    }
+    for review in reviews.iter().take(MAX_LISTED) {
+        review_line(notes, out, case, review)?;
+    }
+    if reviews.len() > MAX_LISTED {
+        let _ = writeln!(out, "- and {} more reviews", reviews.len() - MAX_LISTED);
+    }
+    Ok(reviews.len())
+}
+
 fn review_line(
     notes: &NoteContext<'_>,
     out: &mut String,
