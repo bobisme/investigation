@@ -42,6 +42,43 @@
       ],
       "type": "object"
     },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
+    "EquivalencePlan": {
+      "additionalProperties": false,
+      "description": "A practical-equivalence specification stated on an inquiry plan before\nresults. Freezing the plan fixes it.",
+      "properties": {
+        "aggregation": {
+          "type": "string"
+        },
+        "margin": {
+          "$ref": "#/$defs/Margin"
+        },
+        "population": {
+          "type": "string"
+        },
+        "replication_unit": {
+          "type": "string"
+        },
+        "timeout_exclusion_policy": {
+          "type": "string"
+        },
+        "unit": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "population",
+        "unit",
+        "aggregation",
+        "replication_unit",
+        "timeout_exclusion_policy",
+        "margin"
+      ],
+      "type": "object"
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -79,6 +116,23 @@
           "type": "object"
         }
       ]
+    },
+    "Margin": {
+      "additionalProperties": false,
+      "description": "A decision-relevant band, in the plan's unit.",
+      "properties": {
+        "lower": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "upper": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "lower",
+        "upper"
+      ],
+      "type": "object"
     },
     "Reference": {
       "anyOf": [
@@ -141,6 +195,17 @@
         "type": "string"
       },
       "type": "array"
+    },
+    "equivalence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EquivalencePlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A practical-equivalence specification stated before results. Freezing\nthe plan fixes the margin. See `absence_gate`."
     },
     "inquiry": {
       "$ref": "#/$defs/InquiryMode"

@@ -155,6 +155,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "limitations",
                 "uncertainty",
                 "rationale",
+                "absence",
             ],
             &["retracted", "change_reason"],
         ),
@@ -197,6 +198,9 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "confidence",
                 "likelihood",
                 "basis_digest",
+                "frozen_basis",
+                "absence",
+                "equivalence",
             ],
             &[
                 "status",
@@ -205,6 +209,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "supersedes",
                 "rationale_for_status",
                 "change_reason",
+                "equivalence_evaluation",
             ],
         ),
         Kind::Conclusion => (
@@ -219,6 +224,7 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
                 "causal_test",
                 "confidence",
                 "likelihood",
+                "claim_form",
             ],
             &[
                 "status",
@@ -275,7 +281,10 @@ pub fn basis_digest(record: &Record) -> Result<Digest, Failure> {
     for key in substantive {
         let optional = matches!(
             (record.header.id.kind(), *key),
-            (Kind::Assumption, "rationale" | "evidence_refs") | (Kind::Conclusion, "causal_test")
+            (Kind::Assumption, "rationale" | "evidence_refs")
+                | (Kind::Conclusion, "causal_test" | "claim_form")
+                | (Kind::Assessment, "frozen_basis" | "absence" | "equivalence")
+                | (Kind::Comparison, "absence")
         );
         if !object.contains_key(*key) && !optional {
             return Err(failure("Record is missing a substantive basis field."));

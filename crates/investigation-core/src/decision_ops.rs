@@ -568,7 +568,8 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
             if cell.option_ref != selected || cell.criterion_ref != cr.reference() {
                 return Err(fail("/comparison_refs", "Selected comparison is stale."));
             }
-            if verified(s, case, cell) {
+            if verified(s, case, cell) && crate::absence_gate::comparison_basis_holds(s, case, cell)
+            {
                 cell.outcome
             } else {
                 ComparisonOutcome::Unknown

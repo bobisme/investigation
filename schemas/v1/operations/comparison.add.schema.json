@@ -1,5 +1,85 @@
 {
   "$defs": {
+    "AbsenceBasis": {
+      "additionalProperties": false,
+      "description": "The basis of a record that treats \"nothing was seen\" as evidence. Every\nfield is optional so that the absence itself is always recordable; the gate\nreports what is missing.",
+      "properties": {
+        "detection_limit": {
+          "description": "The recorder's statement of the detection limits. Shown with the human\nquestion; the core does not judge it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_signal": {
+          "description": "What would have been observed if the effect, fact or difference were\npresent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "justified_equivalent": {
+          "description": "A justified substitute for an instrument or control validity\njudgment, used only where the cited Observations have none. It never\noverrides an `invalid` or `partial` judgment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opportunity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbsenceOpportunity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sampling or search that would have shown the signal."
+        }
+      },
+      "type": "object"
+    },
+    "AbsenceOpportunity": {
+      "additionalProperties": false,
+      "description": "The Runs or Observations that would have shown the expected signal, and\nthe adequacy standard they had to meet.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "minimum_observation_window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Smallest observation window each cited record must record, in the\nrecorded unit. Units are not converted."
+        },
+        "minimum_sample_count": {
+          "description": "Smallest sample count each cited record must record.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "refs": {
+          "default": [],
+          "description": "Exact Run or Observation revisions.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "type": "object"
+    },
     "ClientRef": {
       "additionalProperties": false,
       "description": "An alias of a record created by an earlier operation in this transaction.",
@@ -131,6 +211,23 @@
       ],
       "type": "object"
     },
+    "Quantity": {
+      "additionalProperties": false,
+      "description": "A decimal quantity with its unit.",
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "type": "object"
+    },
     "Reference": {
       "anyOf": [
         {
@@ -165,6 +262,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "absence": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AbsenceBasis"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Marks the comparison as resting on an absence. See `absence_gate`."
+    },
     "assumption_refs": {
       "items": {
         "$ref": "#/$defs/EvidenceInput"

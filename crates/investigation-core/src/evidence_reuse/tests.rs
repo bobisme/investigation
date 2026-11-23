@@ -590,3 +590,63 @@ fn frozen_basis_inputs_feed_freshness_edges() {
     let closure = crate::freshness::closure_links(record).unwrap();
     assert!(!closure.contains(&study.plan));
 }
+
+#[test]
+fn a_conclusion_citing_a_frozen_basis_assessment_can_request_review() {
+    let mut study = study("unseen_declared");
+    let source = study.case.source();
+    let fresh = study.case.original(source, DIGEST_N);
+    let observation = study.case.observe(fresh, DIGEST_N, None);
+    let basis = study.basis(json!([{"input_ref": observation, "partition": "Trace 12"}]));
+    let payload = study.assessment(observation, basis);
+    let accepted = study.case.submit("assessment.add", payload).unwrap();
+    let assessment = accepted.records.last().unwrap().clone();
+    assert!(assessment.body.get("frozen_basis").is_some());
+    // `frozen_basis` is a classified substantive field: the digest is
+    // computable, stable, and changes when the frozen basis is removed.
+    let digest = crate::basis::basis_digest(&assessment).unwrap();
+    assert_eq!(crate::basis::basis_digest(&assessment).unwrap(), digest);
+    let mut without = assessment.clone();
+    without.body.as_object_mut().unwrap().remove("frozen_basis");
+    assert_ne!(crate::basis::basis_digest(&without).unwrap(), digest);
+
+    let conclusion = study.case.create(
+        "conclusion.create",
+        json!({
+            "statement": "The local queue grows under the frozen test.",
+            "scope": "Held-out synthetic traces.",
+            "significance": "Selects which queue to tune.",
+            "support_refs": [assessment.reference()], "contradiction_refs": [],
+            "caveats": ["Synthetic traces only."],
+        }),
+    );
+    let record = study.case.state.revision(conclusion).unwrap();
+    let mut reads = crate::review_ops::required_read_set(&study.case.state, record).unwrap();
+    assert!(reads.contains(&assessment.reference()));
+    reads.push(conclusion);
+    let sequence = study.case.state.sequence() + 1;
+    let command: Command = serde_json::from_value(json!({
+        "schema_version": "inv.command.v0-alpha",
+        "command_id": format!("command-{sequence}"),
+        "case_id": study.case.case,
+        "actor": "agent:test",
+        "preconditions": reads,
+        "operations": [{"op": "conclusion.request_review", "payload": {"conclusion_ref": conclusion}}],
+    }))
+    .unwrap();
+    let ready = validate_and_apply(
+        &study.case.state,
+        &command,
+        &standard_catalog(),
+        Acceptance {
+            sequence,
+            clock: &mut SystemClock,
+            ids: &mut SystemIdSource,
+        },
+    )
+    .unwrap();
+    assert_eq!(ready.records[0].body["status"], "review_ready");
+    study.case.state.apply(&ready).unwrap();
+    let current = study.case.state.current(assessment.header.id).unwrap();
+    assert_eq!(crate::basis::basis_digest(current).unwrap(), digest);
+}

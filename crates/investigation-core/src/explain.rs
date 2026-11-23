@@ -115,6 +115,10 @@ pub struct InquiryCreate {
     pub limits: Vec<String>,
     pub desired_observations: Vec<String>,
     pub inquiry: InquiryMode,
+    /// A practical-equivalence specification stated before results. Freezing
+    /// the plan fixes the margin. See `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence: Option<crate::absence_gate::EquivalencePlan>,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

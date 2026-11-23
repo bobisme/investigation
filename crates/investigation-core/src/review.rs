@@ -184,6 +184,14 @@ pub struct AssessmentAdd {
     /// chronology of the Runs behind the inputs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frozen_basis: Option<crate::evidence_reuse::FrozenBasis>,
+    /// Marks the assessment as resting on an absence: "nothing was seen".
+    /// See `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absence: Option<crate::absence_gate::AbsenceBasis>,
+    /// Compares an externally supplied interval with a margin. See
+    /// `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equivalence: Option<crate::absence_gate::EquivalenceBasis>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -234,6 +242,10 @@ pub struct ConclusionCreate {
     pub causal_factors: Vec<CausalFactor>,
     pub confidence: Option<Confidence>,
     pub likelihood: Option<Likelihood>,
+    /// Declares an absence or practical-equivalence claim. Promotion then
+    /// needs a supportive assessment whose basis holds. See `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claim_form: Option<crate::absence_gate::ClaimForm>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

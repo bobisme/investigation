@@ -439,6 +439,24 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
             out.add(body, "subject_ref", "subject_ref", ChangeOnly)?;
             out.add(body, "evidence_refs", "evidence_refs", Inherit)?;
             out.add(body, "assumption_refs", "assumption_refs", Inherit)?;
+            out.add(
+                &body["absence"]["opportunity"],
+                "refs",
+                "absence.opportunity.refs",
+                Inherit,
+            )?;
+            out.add(
+                &body["equivalence"],
+                "inquiry_ref",
+                "equivalence.inquiry_ref",
+                Inherit,
+            )?;
+            out.add(
+                &body["equivalence"]["interval"],
+                "run_ref",
+                "equivalence.interval.run_ref",
+                Inherit,
+            )?;
             // Frozen-basis links (W10.06): outside the promotion closure.
             out.closure = false;
             let frozen = &body["frozen_basis"];
@@ -523,6 +541,12 @@ pub fn dependency_edges(record: &Record) -> Result<Vec<DependencyEdge>, Failure>
             out.add(body, "criterion_ref", "criterion_ref", Inherit)?;
             out.add(body, "evidence_refs", "evidence_refs", Inherit)?;
             out.add(body, "assumption_refs", "assumption_refs", Inherit)?;
+            out.add(
+                &body["absence"]["opportunity"],
+                "refs",
+                "absence.opportunity.refs",
+                Inherit,
+            )?;
         }
         Kind::Decision => {
             out.add(&body["choice"], "option_ref", "choice.option_ref", Inherit)?;

@@ -1,5 +1,85 @@
 {
   "$defs": {
+    "AbsenceBasis": {
+      "additionalProperties": false,
+      "description": "The basis of a record that treats \"nothing was seen\" as evidence. Every\nfield is optional so that the absence itself is always recordable; the gate\nreports what is missing.",
+      "properties": {
+        "detection_limit": {
+          "description": "The recorder's statement of the detection limits. Shown with the human\nquestion; the core does not judge it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expected_signal": {
+          "description": "What would have been observed if the effect, fact or difference were\npresent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "justified_equivalent": {
+          "description": "A justified substitute for an instrument or control validity\njudgment, used only where the cited Observations have none. It never\noverrides an `invalid` or `partial` judgment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "opportunity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbsenceOpportunity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The sampling or search that would have shown the signal."
+        }
+      },
+      "type": "object"
+    },
+    "AbsenceOpportunity": {
+      "additionalProperties": false,
+      "description": "The Runs or Observations that would have shown the expected signal, and\nthe adequacy standard they had to meet.",
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "minimum_observation_window": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Quantity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Smallest observation window each cited record must record, in the\nrecorded unit. Units are not converted."
+        },
+        "minimum_sample_count": {
+          "description": "Smallest sample count each cited record must record.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "refs": {
+          "default": [],
+          "description": "Exact Run or Observation revisions.",
+          "items": {
+            "$ref": "#/$defs/Reference"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "type": "object"
+    },
     "ActualInput": {
       "additionalProperties": false,
       "description": "One input the analysis actually read.",
@@ -31,6 +111,17 @@
     "AssessmentAdd": {
       "additionalProperties": false,
       "properties": {
+        "absence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AbsenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Marks the assessment as resting on an absence: \"nothing was seen\".\nSee `absence_gate`."
+        },
         "assumption_refs": {
           "default": [],
           "items": {
@@ -47,6 +138,17 @@
               "type": "null"
             }
           ]
+        },
+        "equivalence": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EquivalenceBasis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Compares an externally supplied interval with a margin. See\n`absence_gate`."
         },
         "evidence_refs": {
           "items": {
@@ -172,6 +274,10 @@
       ],
       "type": "string"
     },
+    "DecimalString": {
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+      "type": "string"
+    },
     "Deviation": {
       "additionalProperties": false,
       "description": "One departure from the frozen plan.",
@@ -271,6 +377,41 @@
         "directness",
         "precision",
         "completeness"
+      ],
+      "type": "object"
+    },
+    "EquivalenceBasis": {
+      "additionalProperties": false,
+      "description": "An assessment of practical equivalence.",
+      "properties": {
+        "inquiry_ref": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reference"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A frozen inquiry whose `equivalence` block states the margin."
+        },
+        "interval": {
+          "$ref": "#/$defs/IntervalSource"
+        },
+        "stated_margin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StatedMargin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "A margin stated now, instead of an inquiry."
+        }
+      },
+      "required": [
+        "interval"
       ],
       "type": "object"
     },
@@ -390,6 +531,23 @@
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
     },
+    "IntervalSource": {
+      "additionalProperties": false,
+      "description": "The producer assertion that reports the interval: a Run revision and the\nassertion name. The assertion value must hold `lower` and `upper` as\nnumbers or decimal strings, and the assertion must record its unit.",
+      "properties": {
+        "assertion": {
+          "type": "string"
+        },
+        "run_ref": {
+          "$ref": "#/$defs/Reference"
+        }
+      },
+      "required": [
+        "run_ref",
+        "assertion"
+      ],
+      "type": "object"
+    },
     "Likelihood": {
       "additionalProperties": false,
       "properties": {
@@ -433,6 +591,23 @@
       "maximum": 1,
       "minimum": 0,
       "type": "number"
+    },
+    "Quantity": {
+      "additionalProperties": false,
+      "description": "A decimal quantity with its unit.",
+      "properties": {
+        "unit": {
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "value",
+        "unit"
+      ],
+      "type": "object"
     },
     "Reference": {
       "anyOf": [
@@ -484,6 +659,27 @@
         "rival_ref",
         "expectation",
         "rationale"
+      ],
+      "type": "object"
+    },
+    "StatedMargin": {
+      "additionalProperties": false,
+      "description": "A margin stated with the assessment. It is always recorded as stated after\nthe interval and never counts as prespecified.",
+      "properties": {
+        "lower": {
+          "$ref": "#/$defs/DecimalString"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "upper": {
+          "$ref": "#/$defs/DecimalString"
+        }
+      },
+      "required": [
+        "unit",
+        "lower",
+        "upper"
       ],
       "type": "object"
     }

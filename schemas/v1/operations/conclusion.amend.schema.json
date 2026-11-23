@@ -48,6 +48,14 @@
       ],
       "type": "object"
     },
+    "ClaimForm": {
+      "description": "What a Conclusion claims when it asserts that something is absent or that\ntwo conditions are practically equivalent.",
+      "enum": [
+        "absence",
+        "equivalence"
+      ],
+      "type": "string"
+    },
     "ClientRef": {
       "additionalProperties": false,
       "description": "An alias of a record created by an earlier operation in this transaction.",
@@ -88,6 +96,17 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "claim_form": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClaimForm"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Declares an absence or practical-equivalence claim. Promotion then\nneeds a supportive assessment whose basis holds. See `absence_gate`."
         },
         "confidence": {
           "anyOf": [

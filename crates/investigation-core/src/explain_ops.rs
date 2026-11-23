@@ -535,6 +535,9 @@ fn inquiry_shape(payload: &InquiryCreate) -> Result<(), Failure> {
             text(item, &format!("{path}/{index}"))?;
         }
     }
+    if let Some(plan) = &payload.equivalence {
+        crate::absence_gate::plan_shape(plan, "/equivalence")?;
+    }
     Ok(())
 }
 
@@ -1107,7 +1110,7 @@ fn assessment_shape(payload: &AssessmentAdd) -> Result<(), Failure> {
             &format!("/rival_expectations/{index}/rationale"),
         )?;
     }
-    Ok(())
+    crate::absence_gate::assessment_shape(payload)
 }
 
 fn ensure_observation_usable(
@@ -1347,6 +1350,7 @@ fn assessment_body(
     if let Some(frozen) = &mut payload.frozen_basis {
         crate::evidence_reuse::pin_frozen_basis(ctx, frozen, "/frozen_basis")?;
     }
+    crate::absence_gate::pin_assessment(ctx, &mut payload)?;
     let sorted_refs = |references: &[Reference]| -> Result<Vec<RevisionRef>, Failure> {
         let mut refs = references
             .iter()
@@ -1371,6 +1375,7 @@ fn assessment_body(
         &mut body,
         json!({"basis_digest": basis, "status": "current"}),
     )?;
+    crate::absence_gate::record_assessment(ctx, &mut body)?;
     Ok(body)
 }
 
@@ -1378,6 +1383,7 @@ fn assessment_add(payload: AssessmentAdd, ctx: &mut OperationContext<'_>) -> Res
     let body = assessment_body(payload, ctx)?;
     let reference = ctx.create(Kind::Assessment, body)?;
     crate::evidence_reuse::warn_recorded(ctx, reference);
+    crate::absence_gate::warn_recorded(ctx, reference);
     Ok(())
 }
 
@@ -1408,6 +1414,7 @@ fn assessment_supersede(
     let mut old = record.body.clone();
     let new_ref = ctx.create(Kind::Assessment, successor)?;
     crate::evidence_reuse::warn_recorded(ctx, new_ref);
+    crate::absence_gate::warn_recorded(ctx, new_ref);
     metadata(
         &mut old,
         json!({

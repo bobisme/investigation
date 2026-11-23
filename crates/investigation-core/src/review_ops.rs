@@ -827,6 +827,7 @@ fn ready(state: &State, record: &Record) -> Result<Vec<RevisionRef>, Failure> {
         failure.error.actual = Some(json!(missing));
         return Err(failure);
     }
+    crate::absence_gate::promotion_gate(state, record)?;
     let basis = required_read_set(state, record)?;
     let case = record.header.case_id;
     let mut direct = false;

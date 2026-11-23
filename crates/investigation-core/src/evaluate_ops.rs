@@ -99,6 +99,9 @@ pub struct ComparisonInput {
     pub limitations: Option<String>,
     pub uncertainty: String,
     pub rationale: String,
+    /// Marks the comparison as resting on an absence. See `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absence: Option<crate::absence_gate::AbsenceBasis>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -116,6 +119,9 @@ pub struct ComparisonBody {
     pub rationale: String,
     pub retracted: bool,
     pub change_reason: Option<String>,
+    /// Marks the comparison as resting on an absence. See `absence_gate`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub absence: Option<crate::absence_gate::AbsenceBasis>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -325,8 +331,12 @@ fn resolve_inputs(
         })
         .collect()
 }
-fn compare(ctx: &OperationContext<'_>, p: ComparisonInput) -> Result<ComparisonBody, Failure> {
+fn compare(ctx: &OperationContext<'_>, mut p: ComparisonInput) -> Result<ComparisonBody, Failure> {
     text(&p.method, "/method")?;
+    if let Some(absence) = &mut p.absence {
+        crate::absence_gate::absence_shape(absence, "/absence")?;
+        crate::absence_gate::pin_absence(ctx, absence, "/absence")?;
+    }
     text(&p.uncertainty, "/uncertainty")?;
     text(&p.rationale, "/rationale")?;
     let option_ref = resolve(ctx, &p.option_ref, Kind::Option, "/option_ref")?;
@@ -464,6 +474,7 @@ fn compare(ctx: &OperationContext<'_>, p: ComparisonInput) -> Result<ComparisonB
         rationale: p.rationale,
         retracted: false,
         change_reason: None,
+        absence: p.absence,
     })
 }
 
@@ -633,6 +644,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 let b = compare(c, p)?;
                 let created = c.create(Kind::Comparison, body(b)?)?;
                 crate::measurement_flags::warn_recorded(c, created);
+                crate::absence_gate::warn_recorded(c, created);
                 Ok(())
             },
         ),
@@ -662,6 +674,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 next.change_reason = Some(p.reason);
                 let revised = c.update(p.comparison_ref, body(next)?)?;
                 crate::measurement_flags::warn_recorded(c, revised);
+                crate::absence_gate::warn_recorded(c, revised);
                 Ok(())
             },
         ),

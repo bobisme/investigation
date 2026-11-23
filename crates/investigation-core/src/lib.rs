@@ -3,6 +3,7 @@
 /// The name used by the standalone command.
 pub const PROGRAM_NAME: &str = "investigation";
 
+pub mod absence_gate;
 pub mod basis;
 pub mod blindspot;
 pub mod blindspot_review;
