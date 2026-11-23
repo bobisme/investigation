@@ -353,6 +353,12 @@ fn lessons_cross_cases_only_by_admission_and_explicit_consultation() {
         entry["trust"]["cited_inputs"],
         "includes_untrusted_evidence"
     );
+    // The level travels from the source case with its limit (W10.18).
+    assert_eq!(
+        entry["trust"]["inherited_trust"]["level"],
+        "untrusted_external"
+    );
+    assert!(entry["trust"]["inherited_trust"]["limits"].is_string());
     assert_eq!(entry["admission"]["admission_ref"]["id"], admission);
     assert_eq!(entry["admission"]["actor_kind_self_reported"], "human");
     assert!(entry.get("guidance").is_none());

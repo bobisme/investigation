@@ -105,6 +105,13 @@
         "revision"
       ],
       "type": "object"
+    },
+    "Session": {
+      "description": "Self-reported session label. Evidence reads made through investigation by the same actor under this label before the commit are recorded on the transaction for inherited trust.",
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9:_.-]+$",
+      "type": "string"
     }
   },
   "$id": "urn:investigation:schema:v1:wire:record",
@@ -155,6 +162,17 @@
     },
     "schema_version": {
       "$ref": "#/$defs/CommandVersion"
+    },
+    "session": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Session"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Self-reported session. At commit the store records on the transaction\nthe evidence reads this actor made through investigation under it, for\nthe inherited trust of authored text. Absent means unknown."
     }
   },
   "required": [

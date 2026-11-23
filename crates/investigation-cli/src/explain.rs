@@ -507,6 +507,7 @@ const PROJECTED: &[&str] = &[
     "lineage",
     "choice",
     "objection",
+    "inherited_trust",
 ];
 
 /// Small enumerated body fields recorded on the node, as stored.
@@ -942,7 +943,11 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         .walk(root, args.depth, usize::from(args.max_nodes));
     let mut nodes = graph.nodes.iter().map(|node| context.node(node, &graph));
     let mut subject = nodes.next().expect("the walk holds its root");
-    let rest: Vec<Value> = nodes.collect();
+    let mut rest: Vec<Value> = nodes.collect();
+    // Each node keeps its level; the limit is stated once below.
+    for node in std::iter::once(&mut subject).chain(&mut rest) {
+        crate::inherited_trust::compact(node);
+    }
     let mut caps = brief::Caps::default();
     caps.cap("subject", &mut subject, Some(context.argv.show(root)));
     let more: Vec<Value> = graph
@@ -989,7 +994,9 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             "--max-nodes",
             &args.max_nodes.to_string(),
             "--max-bytes",
-            &bytes.to_string(),
+            &bytes
+                .saturating_add(crate::inherited_trust::BRIEF_MARGIN)
+                .to_string(),
         ])
     };
     let view = brief::fill(
@@ -1006,6 +1013,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         failure.error.actual = Some(json!({"requested_bytes":args.max_bytes}));
         failure.with_argv(complete(minimum))
     })?;
+    let view = crate::inherited_trust::brief_limits(view, budget);
     let text = text(&view);
     Ok(Output::new(view, text))
 }
@@ -1048,6 +1056,9 @@ fn text(view: &Value) -> String {
         if let Some(relation) = node["recorded"]["relation"].as_str() {
             entry.push_str(&format!("  relation {relation}"));
         }
+        if let Some(level) = node["inherited_trust"]["level"].as_str() {
+            entry.push_str(&format!("  inherited trust {level}"));
+        }
         if let Some(read) = node["evidence"]["evidence_read"]
             .get("argv")
             .or_else(|| node["bytes"]["evidence_read"].get("argv"))
@@ -1083,6 +1094,9 @@ fn text(view: &Value) -> String {
         lines.push(format!(
             "More: {more} record(s) beyond the walk bounds; each entry in more has an argv."
         ));
+    }
+    if let Some(limits) = view["inherited_trust"]["limits"].as_str() {
+        lines.push(format!("Trust limits: {limits}"));
     }
     if let Some(argv) = view["complete_read_argv"].as_array() {
         let argv: Vec<String> = argv

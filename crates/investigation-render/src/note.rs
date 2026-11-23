@@ -31,6 +31,7 @@ use investigation_core::{
     gap_rules::{Gap, GapStatus, enumerate_gaps},
     header::ClassificationLevel,
     identity::{Id, Kind},
+    inherited_trust::{self, Resolver},
     state::Record,
 };
 use investigation_store::journal::hash_bytes;
@@ -540,6 +541,23 @@ impl<'a> NoteContext<'a> {
                 "| Classification | {} (effective) |",
                 level_word(effective.level)
             );
+            if inherited_trust::is_authored(kind) {
+                let trust =
+                    Resolver::new(self.case.state(), self.case.sessions()).inherited(record);
+                let _ = writeln!(
+                    out,
+                    "| Inherited trust | {} (declared inputs {}, session reads {}, revisions without a session {}) |",
+                    inline_code(trust.level.as_str()),
+                    trust.inputs.len(),
+                    trust.session_reads_total(),
+                    trust.undeclared_sessions()
+                );
+                let _ = writeln!(
+                    out,
+                    "| Trust limits | {} |",
+                    inline_text(inherited_trust::LIMITS, inherited_trust::LIMITS.len())
+                );
+            }
         }
         let _ = writeln!(
             out,

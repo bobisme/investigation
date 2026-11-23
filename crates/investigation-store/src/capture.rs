@@ -220,6 +220,7 @@ impl<F: DurableFs> Store<F> {
                         command_id: &declaration.command_id,
                         preconditions: &[],
                         manifest_digest: None,
+                        session_reads: None,
                     },
                     request: SemanticRequest {
                         input,
@@ -429,6 +430,7 @@ fn declare(
         actor_descriptor: None,
         preconditions: Vec::new(),
         operations,
+        session: None,
     };
     let result = if new_case {
         validate_and_apply_composed(state, &command, catalog, acceptance)

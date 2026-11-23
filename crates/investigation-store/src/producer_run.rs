@@ -367,6 +367,7 @@ impl Store {
                     command_id: &command_id,
                     preconditions: &[],
                     manifest_digest: Some(envelope_digest.clone()),
+                    session_reads: None,
                 },
                 request: SemanticRequest {
                     input: request_input,

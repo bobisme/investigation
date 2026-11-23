@@ -33,6 +33,11 @@ pub struct Command {
     pub preconditions: Vec<RevisionRef>,
     #[schemars(length(min = 1, max = 128))]
     pub operations: Vec<Operation>,
+    /// Self-reported session. At commit the store records on the transaction
+    /// the evidence reads this actor made through investigation under it, for
+    /// the inherited trust of authored text. Absent means unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<crate::inherited_trust::Session>,
 }
 
 fn required_case<'de, D: Deserializer<'de>>(decoder: D) -> Result<Option<Id>, D::Error> {

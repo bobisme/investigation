@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use investigation_core::{identity::Id, state::State, wire::Snapshot};
+use investigation_core::{
+    identity::Id, inherited_trust::SessionLedger, state::State, wire::Snapshot,
+};
 use investigation_store::{Store, durable::DurableFs};
 
 use crate::RenderError;
@@ -22,6 +24,8 @@ pub struct CaseSnapshot {
     case_id: Id,
     head: Snapshot,
     state: State,
+    /// Evidence reads stamped on the case's journal events, for inherited trust.
+    sessions: SessionLedger,
 }
 
 impl VerifiedSnapshot {
@@ -36,6 +40,7 @@ impl VerifiedSnapshot {
             .map(|(case_id, replay)| {
                 let case = CaseSnapshot {
                     case_id,
+                    sessions: replay.session_ledger(),
                     head: replay.snapshot,
                     state: replay.state,
                 };
@@ -75,6 +80,12 @@ impl CaseSnapshot {
     pub const fn state(&self) -> &State {
         &self.state
     }
+
+    /// Session reads by acceptance sequence; a sequence without one declared
+    /// no session.
+    pub const fn sessions(&self) -> &SessionLedger {
+        &self.sessions
+    }
 }
 
 #[cfg(test)]
@@ -99,6 +110,7 @@ impl VerifiedSnapshot {
                         case_id,
                         head,
                         state,
+                        sessions: SessionLedger::new(),
                     },
                 )
             })

@@ -132,8 +132,11 @@ fn admission_view(record: &Record, body: &AdmissionBody) -> Value {
 }
 
 /// The trust of a lesson's text: authored, and resting on evidence that may
-/// be untrusted when it cites evidence records.
-fn trust(state: &State, lesson: &Value) -> Value {
+/// be untrusted when it cites evidence records. `inherited_trust` is its
+/// Retrospective's level, computed in the source case, so it travels with
+/// the lesson to other cases.
+fn trust(replay: &CaseReplay, retrospective: &Record, lesson: &Value) -> Value {
+    let state = &replay.state;
     let cites_evidence = lesson["support_refs"]
         .as_array()
         .into_iter()
@@ -151,6 +154,7 @@ fn trust(state: &State, lesson: &Value) -> Value {
         "rendering":"quoted_data",
         "cited_inputs":if cites_evidence { "includes_untrusted_evidence" } else { "authored_records_only" },
         "limits":"Investigation cannot see what else the authoring session read.",
+        "inherited_trust":crate::inherited_trust::lesson_view(retrospective, replay),
     })
 }
 
@@ -218,7 +222,7 @@ pub(crate) fn read_case(
                     "review_status":if admission.is_some() { "admitted" } else { "proposed_unreviewed" },
                     "visibility":if admission.is_some() { "admitted_for_other_cases" } else { "source_case_only" },
                     "admission":admission.map(|(record, body)| admission_view(record, body)),
-                    "trust":trust(&replay.state, content),
+                    "trust":trust(replay, record, content),
                 });
                 let uses = usage.get(&key).map_or(&[][..], Vec::as_slice);
                 if let (Some(fields), Value::Object(more)) =
@@ -359,6 +363,7 @@ struct Visible<'a> {
     source: Id,
     key: LessonKey,
     state: &'a State,
+    replay: &'a CaseReplay,
     classifier: Classifier<'a>,
     retrospective: &'a Record,
     content: &'a Value,
@@ -393,6 +398,7 @@ fn visible_lessons<'a>(
                 source: *source,
                 key,
                 state,
+                replay,
                 classifier,
                 retrospective,
                 content,
@@ -488,7 +494,7 @@ pub(crate) fn read_others(
                 "source_case_classification":lesson.state.current(lesson.source)
                     .map(|case| lesson.classifier.effective(case).level),
                 "classification":lesson.classifier.effective(lesson.retrospective).level,
-                "trust":trust(lesson.state, lesson.content),
+                "trust":trust(lesson.replay, lesson.retrospective, lesson.content),
                 "admission":admission_view(lesson.admission, &lesson.body),
                 "source_retrospective":source_status,
                 "applies_when":quoted("applies_when", &json!(bounded(&lesson.content["applies_when"]))),
@@ -617,6 +623,7 @@ fn consult(
         actor_descriptor: None,
         preconditions: vec![],
         operations,
+        session: crate::inherited_trust::select_session(global)?,
     };
     let bytes = serde_json::to_vec(&command).expect("consultation envelope serializes");
     if generated {

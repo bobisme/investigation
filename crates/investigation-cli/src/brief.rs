@@ -308,6 +308,8 @@ pub fn brief(
             // The brief states gaps and freshness once, at the top level.
             object.remove("gaps");
             object.remove("freshness");
+            // Its level is stated with the limit in the inherited_trust section.
+            object.remove("inherited_trust");
         }
         view
     });
@@ -352,7 +354,7 @@ pub fn brief(
     if let Some(label) = &inputs.historical {
         output["historical_read"] = label.clone();
     }
-    let sections = vec![
+    let mut sections = vec![
         Section::new(
             "deeper_read_commands",
             inputs.next_actions.iter().take(3).cloned().collect(),
@@ -363,9 +365,12 @@ pub fn brief(
         Section::new("evidence", evidence),
         inquiries,
     ];
+    crate::inherited_trust::brief_compact(&mut sections);
     let level_name = level.as_str();
     fill(output, sections, max_bytes, |bytes| {
-        let bytes = bytes.to_string();
+        let bytes = bytes
+            .saturating_add(crate::inherited_trust::BRIEF_MARGIN)
+            .to_string();
         let mut tail = vec![
             "brief",
             "--level",
@@ -376,6 +381,7 @@ pub fn brief(
         tail.extend(pin.iter().map(String::as_str));
         follow_up(prefix, &tail)
     })
+    .map(|output| crate::inherited_trust::brief_limits(output, max_bytes))
 }
 
 /// Lists capped inside the minimum envelope, reported once per section.

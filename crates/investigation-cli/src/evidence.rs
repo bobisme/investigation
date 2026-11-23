@@ -252,6 +252,8 @@ pub(crate) fn read(
     let evidence = store
         .evidence_read(&replay, record, selector)
         .map_err(|failure| with_workspace_repair(store.workspace(), failure))?;
+    let session_read =
+        crate::inherited_trust::record_read(store, global, case, record.reference())?;
     let text = match &evidence.excerpt {
         Excerpt::Text { text, .. } => text
             .chars()
@@ -275,9 +277,11 @@ pub(crate) fn read(
     // The excerpt is delimited by a fence longer than any backtick run inside
     // it, so no excerpt line can close it.
     let fence = "`".repeat((longest_backtick_run(&text) + 1).max(3));
+    let mut value = json!(evidence);
+    value["session_read"] = session_read;
     Ok(Output::success(
         "evidence_read",
-        json!(evidence),
+        value,
         format!(
             "{id}  untrusted evidence, quoted data between the fences\n{fence}text\n{}\n{fence}",
             text.strip_suffix('\n').unwrap_or(&text)

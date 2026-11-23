@@ -59,6 +59,9 @@ mod lessons;
 #[path = "search.rs"]
 pub mod search;
 
+#[path = "session_reads.rs"]
+pub mod session_reads;
+
 #[cfg(test)]
 #[path = "crash_tests.rs"]
 mod crash_tests;
@@ -190,6 +193,11 @@ impl<F: DurableFs> Store<F> {
         ids: &mut dyn IdSource,
     ) -> Result<Receipt, Failure> {
         let observations = self.prepare_observations(command);
+        let session_reads = command
+            .session
+            .as_ref()
+            .map(|session| self.session_reads(&command.actor, session))
+            .transpose()?;
         self.commit_plan(
             CommitPlan {
                 case_id: command.case_id,
@@ -198,6 +206,7 @@ impl<F: DurableFs> Store<F> {
                     command_id: &command.command_id,
                     preconditions: &command.preconditions,
                     manifest_digest: None,
+                    session_reads,
                 },
                 request,
                 blobs,

@@ -11,6 +11,7 @@ use investigation_core::{
     command::{Command, CommandVersion, RevisionRef, SemanticRequest},
     header::{Actor, UtcTimestamp},
     identity::{Id, Kind},
+    inherited_trust::{SessionLedger, SessionReads, SessionSource},
     input::{self, MAX_REQUEST_BYTES},
     state::{AcceptedTransaction, State},
     wire::{Digest, ErrorCode, Failure, Snapshot},
@@ -197,6 +198,11 @@ pub struct Event {
     pub manifest_digest: Option<Digest>,
     #[serde(rename = "accepted_operations")]
     pub accepted: AcceptedTransaction,
+    /// The evidence reads recorded for the actor under the session the
+    /// command declared, as known at commit. Absent when no session was
+    /// declared. See [`investigation_core::inherited_trust`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_reads: Option<SessionReads>,
 }
 
 pub(crate) struct EventInput<'a> {
@@ -204,6 +210,7 @@ pub(crate) struct EventInput<'a> {
     pub command_id: &'a str,
     pub preconditions: &'a [RevisionRef],
     pub manifest_digest: Option<Digest>,
+    pub session_reads: Option<SessionReads>,
 }
 
 impl Event {
@@ -238,6 +245,7 @@ impl Event {
             request,
             manifest_digest: input.manifest_digest,
             accepted,
+            session_reads: input.session_reads,
         };
         event.validate_metadata(path)?;
         Ok(event)
@@ -364,6 +372,30 @@ pub struct CaseReplay {
     pub state: State,
     pub snapshot: Snapshot,
     pub events: Vec<VerifiedEvent>,
+}
+
+impl SessionSource for CaseReplay {
+    fn session_reads(&self, sequence: u64) -> Option<&SessionReads> {
+        let offset = usize::try_from(sequence.checked_sub(1)?).ok()?;
+        let event = &self.events.get(offset)?.event;
+        (event.sequence == sequence)
+            .then_some(event.session_reads.as_ref())
+            .flatten()
+    }
+}
+
+impl CaseReplay {
+    /// Session reads stamped on this case's events, by acceptance sequence,
+    /// for the inherited trust of authored text.
+    pub fn session_ledger(&self) -> SessionLedger {
+        self.events
+            .iter()
+            .filter_map(|verified| {
+                let event = &verified.event;
+                Some((event.sequence, event.session_reads.clone()?))
+            })
+            .collect()
+    }
 }
 
 pub fn hash_bytes(bytes: &[u8]) -> Digest {

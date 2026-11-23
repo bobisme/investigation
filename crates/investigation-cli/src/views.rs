@@ -665,6 +665,9 @@ pub(crate) fn project_record(
             );
         }
     }
+    if let Some(trust) = crate::inherited_trust::view(record, replay, depth) {
+        out.insert("inherited_trust".into(), trust);
+    }
     if depth == ViewDepth::Full {
         if record
             .body

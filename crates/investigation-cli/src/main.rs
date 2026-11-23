@@ -11,6 +11,7 @@ mod explain;
 mod first_use;
 mod frontier;
 mod guide;
+mod inherited_trust;
 mod lessons;
 mod lineage;
 mod next;
@@ -112,6 +113,9 @@ pub(crate) struct Global {
     /// Attribute actions to this actor, or use workspace settings or AGENT.
     #[arg(long, global = true, value_name = "ACTOR")]
     pub(crate) actor: Option<Actor>,
+    /// Self-reported session label for evidence reads and writes, or INVESTIGATION_SESSION.
+    #[arg(long, global = true, value_name = "LABEL")]
+    pub(crate) session: Option<investigation_core::inherited_trust::Session>,
     /// Select text or a single machine-readable JSON object.
     #[arg(
         long,
@@ -503,6 +507,7 @@ fn show(
             record,
             depth,
         );
+        inherited_trust::synopsis_fields(&mut view, replay, depth);
     }
     if depth == ViewDepth::Full
         && at.is_none()
@@ -537,6 +542,7 @@ fn show(
     let mut text = format!("{id}  {text}");
     text.push_str(&views::challenges_text(&view));
     text.push_str(&synopsis::text_line(&view));
+    text.push_str(&inherited_trust::text(&view));
     text.push_str(&investigation_core::confidence::text(&view));
     text.push_str(&investigation_core::likelihood::text(&view));
     text.push_str(&investigation_core::review_independence::text(&view));
@@ -812,7 +818,8 @@ pub(crate) fn read_input(path: &Path) -> Result<Vec<u8>, Failure> {
 
 fn record(store: &mut Store, global: &Global, input: &Path) -> Result<Output, Failure> {
     let input = read_input(input)?;
-    let (command, _) = RecordCommand::parse(&input)?;
+    let (mut command, _) = RecordCommand::parse(&input)?;
+    let input = inherited_trust::declare_session(global, &mut command, input)?;
     select_actor(
         store.workspace(),
         global.actor.as_ref(),

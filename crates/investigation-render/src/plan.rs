@@ -35,7 +35,9 @@ use crate::{
 /// name only their rule, and `Start Here.md` counts withheld records (W08.13).
 /// v12: projection health in `Start Here.md` names the `vault status` and
 /// `vault conflicts` commands (W08.11).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v12";
+/// v13: authored record notes show their inherited trust level and its
+/// stated limit in the basis table (W10.18).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v13";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

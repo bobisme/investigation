@@ -34,6 +34,7 @@ pub mod gap_rules;
 pub mod guidance;
 pub mod header;
 pub mod identity;
+pub mod inherited_trust;
 pub mod input;
 pub mod lessons;
 pub mod lessons_ops;

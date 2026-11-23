@@ -404,6 +404,7 @@ impl<F: DurableFs> Store<F> {
                     command_id: &manifest.command_id,
                     preconditions: &[],
                     manifest_digest: Some(manifest_digest.clone()),
+                    session_reads: None,
                 },
                 request: SemanticRequest {
                     input: raw,
