@@ -13,9 +13,10 @@
 //!   the evaluative case's pins are byte-identical before admission and after
 //!   consultation, even though the admitted lesson's text urges a pack change.
 //!
-//! The public-report leak assertion for restricted lessons lands with the
-//! review export (W11.16); this drill only checks that a restricted source
-//! case withdraws its lesson from the default cross-case listing.
+//! This drill only checks that a restricted source case withdraws its lesson
+//! from the default cross-case listing. The restricted-lesson leak checks
+//! (§20.1 Y28) are render/restricted_lessons.rs and
+//! lessons.rs::a_restricted_lesson_is_not_revealed_to_another_case.
 use std::{
     collections::BTreeMap,
     fs,

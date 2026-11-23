@@ -600,3 +600,287 @@ fn lessons_cross_cases_only_by_admission_and_explicit_consultation() {
         }
     }
 }
+
+/// Record a Retrospective of `case` from a fresh draft whose every string
+/// starts with `marker`, and return its ID.
+fn marked_retrospective(
+    root: &Path,
+    key: &str,
+    case: &Value,
+    support: &Value,
+    marker: &str,
+) -> Value {
+    let draft = run(
+        root,
+        &[
+            "--case",
+            case.as_str().unwrap(),
+            "retrospective",
+            "--draft",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let mut payload = draft["record_template"].clone();
+    let text = |field: &str| format!("{marker} {field}");
+    payload.as_object_mut().unwrap().extend(
+        json!({
+            "methods_attempted":[{"name":text("method")}],"effective_steps":[],
+            "invalid_or_misleading_steps":[{"description":text("misleading step"),"support_refs":[support]}],
+            "costs_or_constraints":text("costs"),"residual_unknowns":[text("unknown")],
+            "lessons":[{"guidance":text("guidance"),"applies_when":text("applies when"),
+                "support_refs":[support],"transfer_limits":text("transfer limits")}],
+        })
+        .as_object()
+        .unwrap()
+        .clone(),
+    );
+    record(
+        root,
+        key,
+        AUTHOR,
+        case,
+        json!([{"op":"retrospective.record","payload":payload}]),
+        0,
+    )["created"][0]["id"]
+        .clone()
+}
+
+fn admit_first_lesson(root: &Path, key: &str, case: &Value, retrospective: &Value) -> Value {
+    submit(
+        root,
+        json!({
+            "schema_version":"inv.command.v1","command_id":key,"case_id":case,
+            "actor":"human:reviewer","actor_descriptor":{"kind":"human"},"preconditions":[],
+            "operations":[{"op":"lesson.admit","payload":{
+                "retrospective_ref":{"id":retrospective,"revision":1},"lesson_index":0,
+                "basis":{"kind":"human_review","rationale":"Checked the cited run; the limit is stated."}}}],
+        }),
+        0,
+    )["created"][0]["id"]
+        .clone()
+}
+
+/// §20.1 Y28, export half, for cross-case consultation: once a lesson's
+/// Retrospective is raised to restricted, another case reading lessons at the
+/// default audience (the strictest the CLI offers, with no placeholders)
+/// gets no text, key, ID, digest, count or distinct refusal for it, even
+/// though it consulted the lesson before the raise. A lesson cleared for
+/// `public` in the same source case stays readable.
+#[test]
+#[allow(clippy::too_many_lines)]
+fn a_restricted_lesson_is_not_revealed_to_another_case() {
+    const SECRET: &str = "Zebralesson";
+    const CLEARED: &str = "Puffinlesson";
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let source = create_case(root, "source", "Why is the stage slow?");
+    let reader = create_case(root, "reader", "Why does the batch stall?");
+    let reader_arg = reader.as_str().unwrap();
+    let failed = record(
+        root,
+        "run",
+        AUTHOR,
+        &source,
+        json!([{"op":"run.record","payload":{
+            "intent":{"kind":"exploration","intent":"Trace one burst."},"producer":"agent:producer",
+            "artifact_refs":[],"execution_status":"failed","evidence_completeness":"missing",
+            "evidence_kind":"observational","variables_changed":[]}}]),
+        0,
+    )["created"][0]["id"]
+        .clone();
+
+    // A lesson cleared for public by a reviewed downgrade.
+    let cleared = marked_retrospective(root, "cleared-retro", &source, &failed, CLEARED);
+    admit_first_lesson(root, "admit-cleared", &source, &cleared);
+    let subject = json!({"id":cleared,"revision":1});
+    submit(
+        root,
+        json!({
+            "schema_version":"inv.command.v1","command_id":"clear","case_id":source,
+            "actor":"human:reviewer","actor_descriptor":{"kind":"human"},"preconditions":[],
+            "operations":[{"op":"classification.downgrade","payload":{
+                "subject_ref":subject,"level":"public",
+                "reason":"The account names no system, person or figure.",
+                "transformation":{"inputs":[{"input_ref":subject,"digest":null}],
+                    "transformation":"manual_review","version":"1",
+                    "redaction_decisions":[{"scope":"Whole account","action":"retained",
+                        "rationale":"Nothing in it is sensitive."}],
+                    "output_digest":null},
+                "review":{"method":"Read the whole account.","coverage":"whole_output",
+                    "examined":[subject]}}}],
+        }),
+        0,
+    );
+
+    // A lesson the reader consults, then raised to restricted.
+    let secret = marked_retrospective(root, "secret-retro", &source, &failed, SECRET);
+    let admission = admit_first_lesson(root, "admit-secret", &source, &secret);
+    let secret_key = format!("lesson:{}:0", secret.as_str().unwrap());
+    let cleared_key = format!("lesson:{}:0", cleared.as_str().unwrap());
+    let consult = |key: &str, command: &str| {
+        run_raw(
+            root,
+            &[
+                "--case",
+                reader_arg,
+                "--actor",
+                READER,
+                "retrospective",
+                "--lessons",
+                "--consult",
+                key,
+                "--command-id",
+                command,
+                "--json",
+            ],
+            None,
+            0,
+        )
+    };
+    let before: Value = serde_json::from_str(&consult(&secret_key, "consult-secret")).unwrap();
+    assert_eq!(before["lessons"][0]["content_state"], "shown");
+    let digest = before["lessons"][0]["pointer"]["lesson_digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    record(
+        root,
+        "raise",
+        AUTHOR,
+        &source,
+        json!([{"op":"classification.raise","payload":{
+            "subject_ref":{"id":secret,"revision":1},"level":"restricted",
+            "reason":"Names an unreleased system.","tags":[]}}]),
+        0,
+    );
+
+    // Nothing the reading case can read at the default audience names it.
+    let secret_id = secret.as_str().unwrap();
+    let admission_id = admission.as_str().unwrap();
+    let hidden = |output: &str, what: &str| {
+        for needle in [SECRET, secret_id, admission_id, digest.as_str()] {
+            assert!(!output.contains(needle), "{what}: {needle} in {output}");
+        }
+    };
+    let listed = run_raw(
+        root,
+        &["--case", reader_arg, "retrospective", "--lessons", "--json"],
+        None,
+        0,
+    );
+    hidden(&listed, "lesson list");
+    let listed: Value = serde_json::from_str(&listed).unwrap();
+    assert_eq!(listed["audience"], "internal");
+    let lessons = listed["lessons"].as_array().unwrap();
+    assert_eq!(lessons.len(), 1, "{listed}");
+    assert_eq!(lessons[0]["lesson_key"], cleared_key);
+    assert_eq!(lessons[0]["classification"], "public");
+    let text = run_raw(
+        root,
+        &[
+            "--case",
+            reader_arg,
+            "retrospective",
+            "--lessons",
+            "--format",
+            "text",
+        ],
+        None,
+        0,
+    );
+    hidden(&text, "text list");
+    assert!(
+        text.starts_with("1 admitted lesson(s) of other cases"),
+        "{text}"
+    );
+
+    // Consulting it is refused exactly as a key that never existed is.
+    let refusal = |key: &str| {
+        run_raw(
+            root,
+            &[
+                "--case",
+                reader_arg,
+                "retrospective",
+                "--lessons",
+                "--consult",
+                key,
+                "--json",
+            ],
+            None,
+            3,
+        )
+    };
+    let unknown_key = "lesson:retro_019acd16-0000-7000-8000-000000000002:0";
+    assert_eq!(
+        refusal(&secret_key).replace(&secret_key, unknown_key),
+        refusal(unknown_key)
+    );
+
+    // Search across cases finds the public lesson by pointer and nothing of
+    // the restricted one.
+    for scope in [
+        vec!["search", SECRET, "--all-cases", "--json"],
+        vec!["--case", reader_arg, "search", SECRET, "--json"],
+    ] {
+        let raw = run_raw(root, &scope, None, 0);
+        let mut found: Value = serde_json::from_str(&raw).unwrap();
+        // The query echoes the searched word; everything else must not.
+        found.as_object_mut().unwrap().remove("query");
+        hidden(&found.to_string(), "search");
+        assert_eq!(found["counts"]["matching_records"], 0, "{raw}");
+    }
+    let found = search(root, &["search", CLEARED, "--all-cases"]);
+    assert_eq!(found["counts"]["matching_records"], 1, "{found}");
+    let pointer = found["results"][0]["matches"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find_map(|matched| matched.get("lesson_pointer"))
+        .unwrap_or_else(|| panic!("{found}"));
+    assert_eq!(pointer["lesson_key"], cleared_key);
+
+    // The public lesson stays readable; its read carries nothing of the other.
+    let read = consult(&cleared_key, "consult-cleared");
+    hidden(&read, "public read");
+    let read: Value = serde_json::from_str(&read).unwrap();
+    assert!(
+        read["lessons"][0]["guidance"]["text"]
+            .as_str()
+            .unwrap()
+            .starts_with(CLEARED)
+    );
+
+    // The reading case's brief and audit do not name it either. (Its own
+    // consultation record, written before the raise, keeps the pointer.)
+    for command in ["brief", "blindspots"] {
+        let out = run_raw(root, &["--case", reader_arg, command, "--json"], None, 0);
+        hidden(&out, command);
+    }
+
+    // Not vacuous: a reader cleared for restricted material sees both.
+    let cleared_read = run(
+        root,
+        &[
+            "--case",
+            reader_arg,
+            "retrospective",
+            "--lessons",
+            "--include-restricted",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let keys: Vec<&Value> = cleared_read["lessons"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|lesson| &lesson["lesson_key"])
+        .collect();
+    assert_eq!(keys.len(), 2, "{cleared_read}");
+    assert!(keys.contains(&&json!(secret_key)));
+}
