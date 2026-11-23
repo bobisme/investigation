@@ -84,12 +84,7 @@ A text Observation on a `table_cell` or `code_span` that the core checked also g
 
 `selector.attest` records an attributed check by a named reader: the exact current `observation_ref`, the exact selector request the Observation records, an `outcome` (`verified`, `ambiguous` or `not_found`), the `validator` name and version, an optional `extraction_ref` (a derivative of the cited Artifact) and a rationale. Each attestation is a new Annotation with role `selector_validation`. The Observation is not revised, and its recorded validation does not change. Only a selector recorded `unavailable` or `unverified` can be attested. The core's own result always stands. `show` and `explain` give each source-backed Observation a `selector_validation` with the displayed `state`, `recorded` (what the core computed), `basis` (`core` or `attested`), the current attestations (the latest per actor and validator name), `attestations_kept` and `disagreement`. When attestations disagree, the least favourable outcome is shown. Vault notes label an attested state "not checked by the core". Attestation never satisfies direct support: promotion gates still require the core's verification of retained bytes.
 
-Interchange mapping, for the W3C Web Annotation export (internal identity stays digest-bound):
-
-- `table_cell` maps to an RFC 7111 `FragmentSelector`. RFC 7111 counts from one and counts the header line as row 1, so `row = row_index + 2` and `col` is the one-based position of the `column` header. `row_identity` and `key_column` have no RFC 7111 form: resolve them to the row first, or keep them as an extension.
-- `time_window` maps to a Media Fragments `FragmentSelector` (`t=start,end`) only when `unit` is seconds and `coordinate_origin` is the media start. `channel` and other units stay an extension.
-- `code_span` maps to an RFC 5147 `FragmentSelector` (`line=start_line-1,end_line`), applied to the blob identified by `blob_digest`. `repository`, `commit` and `path` go on the source as a claim.
-- `external_selector` has no W3C equivalent. Export it as an extension selector that carries `namespace`, `schema_uri`, `schema_version` and `value` unchanged.
+The mapping from these selectors to W3C Web Annotation selectors and related standards is on its own page: [Selector interchange mapping](selector-mapping.md).
 
 ## Informative absence and practical equivalence
 

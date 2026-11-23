@@ -1,0 +1,38 @@
+# Selector interchange mapping
+
+This page maps each evidence selector (see [Evidence selectors](schema-v1.md#evidence-selectors)) to the [W3C Web Annotation Data Model](https://www.w3.org/TR/annotation-model/) and to related standards. It is documentation only. **No exporter ships in v1.** Selector exporters, including Web Annotation interchange, are on the [deferred register](deferred.md). The mapping exists so that the internal selector shapes stay compatible with a future exporter.
+
+Internal identity stays digest-bound. Every stored selector carries the `artifact_digest` of the bytes it was computed against and a core-computed `validation`. Web Annotation selectors have no such binding: they are relative to whatever resource the `source` names. An exporter must therefore emit the artifact digest (for example on the `source`) next to the selector, and a consumer that drops it can no longer tell which bytes were selected. `validation` is not exported. It is the core's statement about retained bytes, not a property of the selector.
+
+## Mapping table
+
+Section numbers refer to the Web Annotation Data Model unless stated otherwise.
+
+| Internal selector | Standard counterpart | Mapping | Lossy or non-equivalent aspects |
+| --- | --- | --- | --- |
+| `whole` | No selector. A target that is the `source` with no selector selects the whole resource. | Export the specific resource without a selector. | The artifact digest is the only part of the identity that survives. |
+| `byte_range` | `DataPositionSelector` ([4.2.6](https://www.w3.org/TR/annotation-model/#data-position-selector)). | `start` and `end` map one to one. Both are zero-based byte offsets and `end` is excluded. | The model's text for `start` says "character position 0" although the unit is bytes. Consumers must read it as a byte offset. |
+| `text_lines` | `FragmentSelector` ([4.2.1](https://www.w3.org/TR/annotation-model/#fragment-selector)) with `value` `line=start_line-1,end_line` and `conformsTo` `http://tools.ietf.org/rfc/rfc5147` ([RFC 5147, section 2.2.3 and the example in section 5](https://www.rfc-editor.org/rfc/rfc5147)). | RFC 5147 positions fall between lines and count from zero, so `line=10,20` is lines 11 to 20. Internal lines are one-based and inclusive, so subtract one from the start and keep the end. | `encoding` and `parser_version` have no counterpart. They name the exact decoded-text derivative, and the line numbers depend on it. The core splits lines on LF only. RFC 5147 also ends a line at CR and CRLF, so an exporter must check that the text has no bare CR, or the numbers differ. RFC 5147 integrity checks (`length`, `md5`, section 3) can be added as an option. They are not part of the internal selector. |
+| `text_quote` | `TextQuoteSelector` ([4.2.4](https://www.w3.org/TR/annotation-model/#text-quote-selector)). | `exact`, `prefix` and `suffix` map one to one. | The model selects "after normalization". The core compares byte for byte with no normalization, so a consumer that normalizes may match differently. The model counts text in Unicode code points. The core resolves against a named decoded-text derivative, and the derivative's identity is not exported. The core's `ambiguous` result (more than one match without disambiguating context) has no field. A consumer applies its own rule. |
+| `json_pointer` | None in the Web Annotation model. [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) defines the pointer ([section 3, syntax](https://www.rfc-editor.org/rfc/rfc6901#section-3); [section 4, evaluation](https://www.rfc-editor.org/rfc/rfc6901#section-4)). | Export as an extension selector that carries the RFC 6901 string unchanged. A `FragmentSelector` with `conformsTo` RFC 6901 is not correct: [section 6](https://www.rfc-editor.org/rfc/rfc6901#section-6) says the fragment syntax of `application/json` is not JSON Pointer. | `parser` (the parser identity used where interpretation is ambiguous, for example duplicate keys) has no counterpart. The extension must carry it. |
+| `table_cell` | `FragmentSelector` with `value` `cell=row,col` and `conformsTo` `http://tools.ietf.org/rfc/rfc7111` ([RFC 7111, section 2.3 for `cell=`, section 3 for the syntax, section 4.2 for the semantics](https://www.rfc-editor.org/rfc/rfc7111)). | RFC 7111 counts from one, and the header line is row 1. Use `row = row_index + 2`. Use `col` = the one-based position of the `column` header. | `row_identity` and `key_column` have no RFC 7111 form. Resolve them to a row first, or keep them as an extension. `table` and `extraction_version` have no counterpart. RFC 7111 selects from the CSV text itself and has no notion of an extracted table. The core reads TSV as well, and RFC 7111 covers `text/csv` only. |
+| `code_span` | `FragmentSelector` with `line=start_line-1,end_line` and `conformsTo` RFC 5147, as for `text_lines`. | Apply it to the blob identified by `blob_digest`. | `repository`, `commit` and `path` are recorded claims. They go on the `source` as a claim and are not part of the selector. Lines must be checked for bare CR, as for `text_lines`. |
+| `time_window` | `FragmentSelector` with `value` `t=start,end` and `conformsTo` `http://www.w3.org/TR/media-frags/` ([Media Fragments URI 1.0, section 4.2.1, Temporal Dimension](https://www.w3.org/TR/media-frags/)). | Only when `unit` is seconds and `coordinate_origin` is the media start. The time scheme is Normal Play Time, in seconds with an optional fraction, and the interval includes the begin time and excludes the end time. | `channel` and other units have no counterpart and stay an extension. The core never checks a time window. Its meaning comes from source metadata. |
+| `external_selector` | None. | Export as an extension selector that carries `namespace`, `schema_uri`, `schema_version`, `value` and `validator` unchanged. | Opaque by design. An exporter cannot translate it. |
+
+## Combining selectors
+
+The model's `RangeSelector` ([4.2.8](https://www.w3.org/TR/annotation-model/#range-selector)) selects from the start of one selector to the start of another, with the end excluded. No internal selector needs it. A text Observation carries a positional selector and a `text_quote`. Export both with `refinedBy` ([4.2.9](https://www.w3.org/TR/annotation-model/#refinement-of-selection)), which says the second selector "SHOULD" apply to the result of the first. The model has no way to say that both must agree. The core's check that the quote lies inside the selection is not exported.
+
+`TextPositionSelector` ([4.2.5](https://www.w3.org/TR/annotation-model/#text-position-selector)) counts Unicode code points. The core has no selector that counts them, so it has no internal source for this selector. An exporter must not turn `byte_range` into it.
+
+## Summary of what is lost
+
+- The artifact digest and `validation` have no selector field. The digest has to travel on the `source`.
+- Derivative identity (`encoding`, `parser_version`, `table`, `extraction_version`, `parser`) has no field in the standard selectors.
+- The `FragmentSelector` forms select from the text that a consumer sees. They do not say which derivative or parser produced it.
+- The core's `ambiguous` and `unavailable` states have no counterpart.
+
+## Verification
+
+Each citation was checked against the published text of [Web Annotation Data Model](https://www.w3.org/TR/annotation-model/), [RFC 5147](https://www.rfc-editor.org/rfc/rfc5147), [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901), [RFC 7111](https://www.rfc-editor.org/rfc/rfc7111) and [Media Fragments URI 1.0](https://www.w3.org/TR/media-frags/) when this page was written. The `conformsTo` IRIs are the ones in the model's own Fragment Selector examples. An exporter should copy the model's values.
