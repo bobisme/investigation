@@ -841,15 +841,11 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(failure.error.code, ErrorCode::RetrospectiveRequired);
-        assert!(
-            failure
-                .error
-                .repair
-                .unwrap()
-                .argv
-                .unwrap()
-                .iter()
-                .any(|argument| argument == "retrospective.record")
+        let repair = failure.error.repair.clone().unwrap();
+        assert_eq!(repair.schema.as_deref(), Some("retrospective.record"));
+        assert_eq!(
+            repair.argv,
+            Some(crate::retrospective_digest::draft_argv(expected.id))
         );
         assert_eq!(failure.error.actual, Some(json!([run])));
         assert_eq!(case.state, before);

@@ -13,6 +13,7 @@ use crate::{
     identity::{Id, Kind},
     input,
     pack_policy::{self, Gate, Subject},
+    retrospective_digest::draft_argv,
     retrospective_ops::{check_retrospective, material_revisions, retrospective_failure},
     state::{OperationContext, State},
     wire::{ErrorCode, Failure},
@@ -198,7 +199,8 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
                 ErrorCode::RetrospectiveRequired,
                 "A material case needs a current Retrospective.",
             )
-            .at("/retrospective_ref");
+            .at("/retrospective_ref")
+            .with_argv(draft_argv(case));
             failure.error.actual = Some(json!(triggers));
             if !pack_triggers.is_empty() {
                 failure.error.expected = Some(json!({"policy_blockers": pack_triggers}));
@@ -218,7 +220,7 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
         .transpose()?;
     if let Some(retrospective) = retrospective {
         check_retrospective(context.state(), case, retrospective)
-            .map_err(|failure| failure.at("/retrospective_ref"))?;
+            .map_err(|failure| draft_repair(failure.at("/retrospective_ref"), case))?;
     }
     let mut unresolved = Vec::new();
     let mut seen = BTreeSet::new();
@@ -263,7 +265,8 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
         policy.recheck(state, &actor, case)?;
         if retrospective.is_none() && !policy.closure_blockers(state).is_empty() {
             let mut failure = retrospective_failure(ErrorCode::RetrospectiveRequired, "The final transaction state meets a pinned pack's closure trigger, which needs a current Retrospective.")
-                .at("/retrospective_ref");
+                .at("/retrospective_ref")
+                .with_argv(draft_argv(case));
             failure.error.expected = Some(json!({"policy_blockers": policy.closure_blockers(state)}));
             return Err(failure);
         }
@@ -271,18 +274,33 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
             unresolved_question(state, case, reference, &format!("/unresolved_questions/{index}"))?;
         }
         if let Some(retrospective) = retrospective {
-            return check_retrospective(state, case, retrospective).map_err(|failure| failure.at("/retrospective_ref"));
+            return check_retrospective(state, case, retrospective)
+                .map_err(|failure| draft_repair(failure.at("/retrospective_ref"), case));
         }
         let triggers = material_revisions(state, case);
         if !triggers.is_empty() {
             let mut failure = retrospective_failure(ErrorCode::RetrospectiveRequired, "The final transaction state includes material work that needs a current Retrospective.")
-                .at("/retrospective_ref");
+                .at("/retrospective_ref")
+                .with_argv(draft_argv(case));
             failure.error.actual = Some(json!(triggers));
             return Err(failure);
         }
         Ok(())
     });
     Ok(())
+}
+
+/// A closure refused for a missing or stale account points at the process
+/// digest: its `record_template` carries the current case revision and the
+/// verified snapshot a `retrospective.record` needs, which the operation
+/// schema's illustrative example cannot. The schema stays named in the repair.
+fn draft_repair(failure: Failure, case: Id) -> Failure {
+    match failure.error.code {
+        ErrorCode::RetrospectiveRequired | ErrorCode::RetrospectiveStale => {
+            failure.with_argv(draft_argv(case))
+        }
+        _ => failure,
+    }
 }
 
 fn unresolved_question(
