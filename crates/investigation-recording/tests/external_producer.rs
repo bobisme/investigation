@@ -262,7 +262,10 @@ fn every_unimplemented_local_operation_reports_unsupported_and_records_nothing()
         ArtifactRole::Log,
         root.join("absent.log"),
     );
-    assert_unsupported(recorder.attach(&artifact), Operation::Attach);
+    // So is `attach`.
+    let error = recorder.attach(&artifact).unwrap_err();
+    assert_eq!(error.code(), Some(ErrorCode::UnknownReference));
+    assert_eq!(error.commit_status(), CommitStatus::NotCommitted);
     let summary = FinalizeCapture::new(
         handle,
         key("finalize"),

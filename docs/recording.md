@@ -14,7 +14,7 @@ A producer is an external program that runs something under its own authority an
 
 The crate documentation states the same limits on each method. Run `cargo doc -p investigation-recording --open` to read it.
 
-**Status.** The types and signatures are fixed. `begin` and `append` are durable and have their CLI commands, `capture begin` and `capture append`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
+**Status.** The types and signatures are fixed. `begin`, `append` and `attach` are durable and have their CLI commands, `capture begin`, `capture append` and `capture attach`. The other `LocalRecorder` calls return `RecordingError::Unsupported` and record nothing. Each operation's durable behaviour and its CLI command land separately, without changing the signatures.
 
 ## `capture begin`
 
@@ -105,6 +105,57 @@ Before the receipt is returned, the item file is written, synced, published with
 
 Calls on one handle are serialized by a persistent lock file in its staging directory. That lock is separate from the workspace commit lock and is always taken first.
 
+## `capture attach`
+
+```sh
+investigation --workspace ./cases capture attach --input artifact.json --format json
+```
+
+`--input` takes a file, or `-` for stdin. The request is the JSON form of `StableArtifact`:
+
+```json
+{
+  "handle": "handle_…",
+  "key": "result",
+  "position": 4,
+  "role": "original-output",
+  "source": {"kind": "file", "path": "run-0001/result.json"},
+  "channel": "results",
+  "media_type": "application/json",
+  "expected_digest": "sha256:…",
+  "expected_size_bytes": 2048,
+  "classification": "internal",
+  "metadata": {"example-org.host": {"slot": 3}}
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `role` | `original-output`, `derivative`, `log` or `receipt`. A `derivative` must set `derived_from`; no other role may. |
+| `source` | `{"kind": "file", "path": …}`, or `{"kind": "missing", "reason": …}` (1–4096 characters) for a declared artifact the producer could not supply. The path is at most 4096 bytes. |
+| `derived_from` | `{"from": <item key>, "transform": <name/version>}`. `from` names an earlier attachment on the same handle that has retained bytes. `transform` has 1–256 characters, no control characters. |
+| `channel` | Optional, 1–256 characters, no control characters. |
+| `media_type` | Optional hint such as `application/json`, at most 255 printable ASCII characters. It never selects a parser. |
+| `expected_digest`, `expected_size_bytes` | Optional. A mismatch refuses the item. |
+| `classification` | Optional. It may be stricter than the Run's effective level, never looser. The default is the Run's level. |
+
+Stdout is the `ArtifactRef` (`receipt`, `role`, `availability`, and `digest` and `size_bytes` when the bytes are retained), the same value `Recorder::attach` returns. `receipt` is an `ItemReceipt`. Positions, keys, replay, the sealed-handle refusal and the `max_event_bytes` bound on the serialized request work as for `append`; the two share one position sequence and one key space.
+
+How the bytes are taken:
+
+1. The path is resolved only beneath the workspace's `import_roots` in `investigation.toml`. A relative path is tried beneath each root in order. An absolute path must lie beneath one. No symlink is followed at any component. A path with `..`, a file that is not regular, a file with more than one hard link, or a file over `max_attachment_bytes` (64 MiB) is refused with `INVALID_INPUT` at `/source/path`. With no import root configured, every `file` source is refused.
+2. The file is opened once. Its bytes are copied into the handle's staging while they are hashed. The same descriptor is then read again and hashed again. Both passes, the copied length and the descriptor's inode, size, link count, and modification and change times must agree. Otherwise the item is refused with `REVISION_CONFLICT` at `/source/path`, with `retry` set. Retry the identical request after the producer has closed and flushed the file.
+3. `expected_size_bytes` is compared before the copy, and `expected_digest` after it. A mismatch is refused with `INVALID_INPUT` at that field. `actual` holds what was read.
+4. The verified copy is published by exclusive link as `blobs/<sha256>` in staging. It is read-only, has one link, and only the recorder wrote it. A producer path is never linked into the store.
+
+A refusal stages no item and no bytes, and the position stays free, so the handle is still usable. The workspace commit lock is not held during the copy. The handle lock is, so other calls on the same handle wait.
+
+A path that no import root holds is recorded as `availability: missing`, like a `missing` source. No empty file stands in for it. A later identical request returns the same `missing` receipt even if the file appears. Attach the file under a new key to retain it.
+
+What the checks cannot see: a writer that stops for the whole copy and writes again afterwards. Declare `expected_size_bytes` or `expected_digest` to close that gap. An identical retry returns the first receipt without reading the file again, so it does not describe bytes written to the path later.
+
+Attaching runs no parser, extractor or command, and does not start, cancel or rerun anything.
+
 ## Staging
 
 ```text
@@ -113,13 +164,14 @@ state/staging/<run-id>/          0700
   handle.lock                    per-handle lock; never removed or renamed
   items/<position>.json          0400, one accepted item; twelve-digit position
   keys/<sha256-of-key>.json      0400, item key to position
+  blobs/<sha256>                 0400, verified bytes of one or more attachments
 ```
 
 `staging_dir` in the receipt is this directory, relative to the workspace root. Begin commits the declaration first and then allocates the directory, under the workspace commit lock and with every file and directory synced. `handle.json` holds `schema_version` (`inv.capture-staging.v1`), `handle`, `run_id`, `case_id`, `transaction_id`, `command_id`, `actor`, `producer` and `external_run_id`. Its bytes are a function of the committed declaration only. A retry verifies them, and refuses to overwrite a file bound to another declaration.
 
 Later capture operations add their own entries beside `handle.json` and never rewrite it. A transient `handle.json.tmp` exists only while the binding is published.
 
-An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. Transient `*.tmp` files exist only while one entry is published. `sealed.json` is reserved for finalization. Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
+An item file holds `schema_version` (`inv.capture-item.v1`), `operation` (`capture.append`, or `capture.attach` for an attachment descriptor), `handle`, `run_id`, `position`, `key`, `request_digest`, `accepted_at`, the normalized `request`, and an optional operation-specific `outcome`. `request_digest` is the SHA-256 of the request's compact JSON with sorted keys. A key file holds `schema_version` (`inv.capture-key.v1`), `key` and `position`. Every accepting call first restores the key file of the last item, which a crash may have left unpublished. An attachment item's `outcome` holds `availability` (`staged` or `missing`), `classification`, and either `digest`, `size_bytes` and `blob` (the path relative to the staging directory) or `missing` (`declared` or `not_found`). A derivative's outcome adds `derived_from` with the original's key and position. A blob is durable before the item that names it. A crash between the two leaves an unreferenced blob, which a retry reuses after checking its bytes. Finalization will move referenced blobs into the canonical blob store. Transient `*.tmp` files exist only while one entry is published or one copy is verified. `sealed.json` is reserved for finalization. Reading the items checks that positions are contiguous, keys are unique, and each request matches its digest.
 
 Staging is durable recovery material, not cache. No cleanup path removes it: publication-temporary reclamation reads only `state/tmp`. A crash after the commit and before allocation leaves a declared handle without staging. Recovery reports that state, and resending the identical `begin` allocates the directory. The canonical binding is on the Run record under `capture` (`protocol`, `handle`, `producer`, `external_run_id`, `limits`, `staging`, and `external_plan_digest` when given), so staging can always be checked against the journal.
 
@@ -128,7 +180,7 @@ Staging is durable recovery material, not cache. No cleanup path removes it: pub
 - **Keys.** Every mutating call carries an idempotency key. `begin` and `finalize` keys are journal command IDs. `append` and `attach` keys are item keys, unique within the handle. Derive keys from your own run state, never from the clock or a random source at retry time.
 - **Retries.** After a timeout, a crash, or a failure whose `commit_status` is `unknown`, resend the identical request with the same key. You get the original receipt. The same key with different content is a conflict.
 - **Positions.** Appended facts and attachments share one sequence per handle, starting at 1. The recorder accepts only the next position, and refuses any other with the expected position. After a restart, resend the identical `begin` to get the same handle, call `recover`, and continue after `last_position`.
-- **Stable bytes.** Close and flush a file before you attach it. Do not write into the staging directory.
+- **Stable bytes.** Close and flush a file before you attach it, and keep it beneath an import root. Do not write into the staging directory.
 - **Assertions.** Your results are recorded as your assertions. An exit code of 0 or a `reported_pass` control sets no measurement validity.
 - **Readiness.** If your policy requires durable recording and `begin` fails, do not start a new effectful unit. If the recorder fails midrun, keep a bounded local spool and reconcile later. These are producer obligations; Investigation does not enforce them.
 

@@ -185,8 +185,8 @@ impl Recorder for LocalRecorder {
         crate::append::append(&self.workspace, event)
     }
 
-    fn attach(&self, _artifact: &StableArtifact) -> Result<ArtifactRef, RecordingError> {
-        Err(unsupported(Operation::Attach))
+    fn attach(&self, artifact: &StableArtifact) -> Result<ArtifactRef, RecordingError> {
+        crate::attach::attach(&self.workspace, artifact)
     }
 
     fn finalize(&self, _summary: &FinalizeCapture) -> Result<FinalizeReceipt, RecordingError> {

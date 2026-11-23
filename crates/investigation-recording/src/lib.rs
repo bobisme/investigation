@@ -50,9 +50,10 @@
 //!
 //! # Implementation status
 //!
-//! This build fixes the public types and signatures. [`Recorder::begin`] and
-//! [`Recorder::append`] are durable on [`LocalRecorder`] and are also the
-//! `capture begin` and `capture append` CLI commands. The other operations
+//! This build fixes the public types and signatures. [`Recorder::begin`],
+//! [`Recorder::append`] and [`Recorder::attach`] are durable on
+//! [`LocalRecorder`] and are also the `capture begin`, `capture append` and
+//! `capture attach` CLI commands. The other operations
 //! return [`RecordingError::Unsupported`] and record nothing; each one's durable
 //! behaviour lands separately without changing these signatures.
 //! `docs/recording.md` documents the staging layout.

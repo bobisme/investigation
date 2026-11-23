@@ -12,6 +12,7 @@ use investigation_core::{
 };
 use investigation_recording::{
     BeginCapture, CaptureEvent, CaseTarget, LocalRecorder, ReceiptResult, Recorder, RecordingError,
+    StableArtifact, StagedAvailability,
 };
 use investigation_store::Store;
 
@@ -49,6 +50,26 @@ anything.
 
 Example: investigation capture append --input event.json --format json";
 
+const ATTACH_HELP: &str = "\
+Reads one inv.capture.v1 attach request: handle, key, position, role, source,
+and optional channel, derived_from, media_type, expected_digest,
+expected_size_bytes, classification and metadata. Prints the artifact
+receipt: the item receipt, role, availability, and the digest and size of the
+retained bytes.
+
+source is {\"kind\": \"file\", \"path\": ...} or {\"kind\": \"missing\",
+\"reason\": ...}. A file is read only beneath the workspace's import_roots,
+never through a symlink, and is copied into the handle's staging while it is
+hashed, then read again. A file that changes during the copy, or that does not
+match expected_digest or expected_size_bytes, is refused; nothing is staged
+and the position stays free. A path that no import root holds is recorded as
+missing, never as an empty file.
+
+Close and flush the file before attaching it. Attaching runs no parser or
+command and does not start, cancel or rerun anything.
+
+Example: investigation capture attach --input artifact.json --format json";
+
 #[derive(clap::Subcommand)]
 pub(crate) enum CaptureCommand {
     /// Declare one Run before an external action and allocate its staging.
@@ -65,6 +86,13 @@ pub(crate) enum CaptureCommand {
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
     },
+    /// Copy one closed artifact into a handle's staging and verify it, or record it as missing.
+    #[command(after_help = ATTACH_HELP)]
+    Attach {
+        /// Read the attach request from FILE, or - for stdin.
+        #[arg(long, value_name = "FILE|-")]
+        input: PathBuf,
+    },
 }
 
 pub(crate) fn run(
@@ -75,6 +103,7 @@ pub(crate) fn run(
     match command {
         CaptureCommand::Begin { input } => begin(store, global, &input),
         CaptureCommand::Append { input } => append(store, &input),
+        CaptureCommand::Attach { input } => attach(store, &input),
     }
 }
 
@@ -132,6 +161,32 @@ fn append(store: &mut Store, path: &Path) -> Result<Output, Failure> {
         receipt.run_id,
         receipt.request_digest,
         receipt.accepted_at,
+    );
+    Ok(Output::new(receipt, text))
+}
+
+/// Like `append`, the handle names the Run, its case and its actor.
+fn attach(store: &mut Store, path: &Path) -> Result<Output, Failure> {
+    let request: StableArtifact = input::parse_request(&read_input(path)?)
+        .and_then(|value| input::decode(&value))
+        .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?;
+    let receipt = LocalRecorder::open(store.workspace().root())
+        .and_then(|recorder| recorder.attach(&request))
+        .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
+    let item = &receipt.receipt;
+    let result = match item.result {
+        ReceiptResult::AlreadyAccepted => "already_accepted",
+        _ => "accepted",
+    };
+    let retained = match (receipt.availability, &receipt.digest, receipt.size_bytes) {
+        (StagedAvailability::Staged, Some(digest), Some(size)) => {
+            format!("staged   {digest}  {size} bytes")
+        }
+        _ => "missing  no bytes retained".to_owned(),
+    };
+    let text = format!(
+        "{}  {result}  position {}  key {}\nrun      {}\n{retained}\naccepted {}\nStaged only: nothing was parsed, started or rerun.",
+        item.handle, item.position, item.key, item.run_id, item.accepted_at,
     );
     Ok(Output::new(receipt, text))
 }

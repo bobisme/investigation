@@ -1,13 +1,29 @@
 //! `capture.attach`: snapshot a completed artifact into staging.
+//!
+//! The local recorder copies the file into the handle's staging while hashing,
+//! reads it again to confirm it did not change, checks any declared digest and
+//! size, and only then accepts the descriptor at its position. A refusal stages
+//! nothing and leaves the position free.
 
 use std::path::PathBuf;
 
-use investigation_core::{header::ClassificationLevel, wire::Digest};
+use investigation_core::{
+    header::{ClassificationLevel, SystemClock},
+    wire::{Digest, ErrorCode, Failure},
+};
+use investigation_store::{
+    Store, Workspace,
+    store::capture::{
+        attach::{AttachAvailability, AttachOutcome, AttachSource, AttachSubmission},
+        items::{ItemAcceptance, ItemOperation, ItemSubmission},
+    },
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    append::ItemReceipt,
+    append::{ItemReceipt, item_receipt},
+    error::RecordingError,
     key::{CaptureHandle, IdempotencyKey, Metadata, Position},
 };
 
@@ -138,6 +154,11 @@ pub enum ArtifactSource {
     /// A closed file the recorder copies and verifies.
     File {
         /// Path to the file. The implementation defines which roots it may read.
+        /// [`LocalRecorder`](crate::LocalRecorder) reads only beneath the
+        /// workspace's configured `import_roots`: a relative path is tried
+        /// beneath each root in order, and an absolute path must lie beneath
+        /// one. No symlink is followed, and a file with more than one hard link
+        /// is refused. A path that no root holds is recorded as missing.
         path: PathBuf,
     },
     /// The artifact was declared but is absent.
@@ -196,4 +217,168 @@ pub struct ArtifactRef {
     /// Size of the retained bytes, when staged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size_bytes: Option<u64>,
+}
+
+const MAX_NAME_CHARS: usize = 256;
+const MAX_REASON_CHARS: usize = 4096;
+const MAX_MEDIA_TYPE_CHARS: usize = 255;
+const MAX_PATH_BYTES: usize = 4096;
+
+/// Copy one artifact into staging and accept its descriptor at the next
+/// position of its handle, or record it as missing.
+pub(crate) fn attach(
+    workspace: &Workspace,
+    artifact: &StableArtifact,
+) -> Result<ArtifactRef, RecordingError> {
+    validate(artifact)?;
+    // The normalized form, so an identical retry compares equal however its
+    // JSON was spelled.
+    let request = serde_json::to_value(artifact).map_err(|_| {
+        Failure::new(
+            ErrorCode::InvalidInput,
+            "Could not encode the attach request; use a UTF-8 path.",
+        )
+        .at("/source/path")
+    })?;
+    let source = match &artifact.source {
+        ArtifactSource::File { path } => AttachSource::File(path.clone()),
+        ArtifactSource::Missing { .. } => AttachSource::Missing,
+    };
+    let accepted = Store::open(workspace.clone()).stage_capture_attachment(
+        &AttachSubmission {
+            item: ItemSubmission {
+                operation: ItemOperation::Attach,
+                handle: artifact.handle.id(),
+                key: artifact.key.as_str().to_owned(),
+                position: artifact.position.get(),
+                request,
+                outcome: None,
+            },
+            source,
+            expected_digest: artifact.expected_digest.clone(),
+            expected_size_bytes: artifact.expected_size_bytes,
+            classification: artifact.classification,
+            derived_from: artifact
+                .derived_from
+                .as_ref()
+                .map(|derivation| derivation.from.as_str().to_owned()),
+        },
+        &mut SystemClock,
+    )?;
+    Ok(artifact_ref(&accepted)?)
+}
+
+/// The receipt of a staged attachment, from what was durably accepted.
+fn artifact_ref(accepted: &ItemAcceptance) -> Result<ArtifactRef, Failure> {
+    let receipt = item_receipt(accepted)?;
+    let invalid = || {
+        Failure::new(
+            ErrorCode::IntegrityFailure,
+            "A staged capture attachment does not hold a valid receipt.",
+        )
+    };
+    let outcome = AttachOutcome::of(&accepted.item)?.ok_or_else(invalid)?;
+    let role = accepted
+        .item
+        .request
+        .get("role")
+        .cloned()
+        .and_then(|role| serde_json::from_value(role).ok())
+        .ok_or_else(invalid)?;
+    Ok(ArtifactRef {
+        receipt,
+        role,
+        availability: match outcome.availability {
+            AttachAvailability::Staged => StagedAvailability::Staged,
+            AttachAvailability::Missing => StagedAvailability::Missing,
+        },
+        digest: outcome.digest,
+        size_bytes: outcome.size_bytes,
+    })
+}
+
+fn validate(artifact: &StableArtifact) -> Result<(), Failure> {
+    let invalid = |path: &str, message: String| {
+        Failure::new(ErrorCode::InvalidInput, message).at(path.to_owned())
+    };
+    let name = |path: &str, value: &str| {
+        if value.trim().is_empty()
+            || value.chars().count() > MAX_NAME_CHARS
+            || value.chars().any(char::is_control)
+        {
+            Err(invalid(
+                path,
+                format!("Use 1 to {MAX_NAME_CHARS} characters without control characters."),
+            ))
+        } else {
+            Ok(())
+        }
+    };
+    match (&artifact.role, &artifact.derived_from) {
+        (ArtifactRole::Derivative, None) => {
+            return Err(invalid(
+                "/derived_from",
+                "A derivative names the item it derives from and the transform. Set derived_from, or use another role.".into(),
+            ));
+        }
+        (ArtifactRole::Derivative, Some(derivation)) => {
+            if derivation.from == artifact.key {
+                return Err(invalid(
+                    "/derived_from/from",
+                    "A derivative cannot derive from itself.".into(),
+                ));
+            }
+            name("/derived_from/transform", &derivation.transform)?;
+        }
+        (_, Some(_)) => {
+            return Err(invalid(
+                "/derived_from",
+                "Only a derivative names derived_from. Use role derivative, or omit derived_from."
+                    .into(),
+            ));
+        }
+        (_, None) => {}
+    }
+    match &artifact.source {
+        ArtifactSource::File { path } => {
+            let bytes = path.as_os_str().len();
+            if bytes == 0 || bytes > MAX_PATH_BYTES {
+                return Err(invalid(
+                    "/source/path",
+                    format!("Use a path of 1 to {MAX_PATH_BYTES} bytes."),
+                ));
+            }
+        }
+        ArtifactSource::Missing { reason } => {
+            if reason.trim().is_empty() || reason.chars().count() > MAX_REASON_CHARS {
+                return Err(invalid(
+                    "/source/reason",
+                    format!("Use 1 to {MAX_REASON_CHARS} characters."),
+                ));
+            }
+        }
+    }
+    if let Some(channel) = &artifact.channel {
+        name("/channel", channel)?;
+    }
+    if let Some(media_type) = &artifact.media_type {
+        let shaped = media_type
+            .split_once('/')
+            .is_some_and(|(kind, rest)| !kind.is_empty() && !rest.is_empty());
+        if !shaped
+            || media_type.len() > MAX_MEDIA_TYPE_CHARS
+            || !media_type
+                .chars()
+                .all(|c| c.is_ascii() && !c.is_ascii_control())
+        {
+            return Err(invalid(
+                "/media_type",
+                format!(
+                    "Use a media type such as application/json: up to {MAX_MEDIA_TYPE_CHARS} printable ASCII characters. It is a hint only."
+                ),
+            ));
+        }
+    }
+    investigation_store::opaque::validate_metadata(&artifact.metadata)
+        .map_err(|(message, key)| invalid(&format!("/metadata{key}"), message))
 }

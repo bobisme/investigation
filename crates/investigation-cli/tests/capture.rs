@@ -9,7 +9,8 @@ use std::{
 };
 
 use investigation_recording::{
-    BeginCapture, BeginReceipt, CaptureEvent, ItemReceipt, LocalRecorder, Recorder,
+    ArtifactRef, BeginCapture, BeginReceipt, CaptureEvent, ItemReceipt, LocalRecorder, Recorder,
+    StableArtifact,
 };
 use serde_json::{Value, json};
 
@@ -402,4 +403,147 @@ fn capture_append_stages_facts_in_order_and_replays_receipts() {
         })
         .sum::<usize>();
     assert_eq!(events, 1);
+}
+
+#[test]
+fn capture_attach_retains_verified_bytes_and_refuses_mismatches_without_staging() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path();
+    json_run(
+        root,
+        &["init", "ws", "--no-vault", "--format", "json"],
+        None,
+        0,
+    );
+    let outputs = root.join("outputs");
+    fs::create_dir(&outputs).unwrap();
+    let config = root.join("ws/investigation.toml");
+    let contents = fs::read_to_string(&config).unwrap();
+    fs::write(
+        &config,
+        contents.replace(
+            "import_roots = []",
+            &format!("import_roots = [{:?}]", outputs.display().to_string()),
+        ),
+    )
+    .unwrap();
+    let begun = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "capture",
+            "begin",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&serde_json::to_vec(&begin_request()).unwrap()),
+        0,
+    );
+    let handle = begun["handle"].as_str().unwrap();
+    fs::write(outputs.join("result.json"), b"{\"p99\": 18.7}\n").unwrap();
+    let args = [
+        "--workspace",
+        "ws",
+        "capture",
+        "attach",
+        "--input",
+        "-",
+        "--format",
+        "json",
+    ];
+    let request = |key: &str, position: u64, extra: Value| {
+        let mut value = json!({
+            "handle": handle,
+            "key": key,
+            "position": position,
+            "role": "original-output",
+            "source": {"kind": "file", "path": "result.json"},
+            "media_type": "application/json",
+        });
+        value
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::to_vec(&value).unwrap()
+    };
+
+    // A digest mismatch is refused and stages nothing.
+    let wrong = request(
+        "result",
+        1,
+        json!({"expected_digest": format!("sha256:{}", "0".repeat(64))}),
+    );
+    let failure = json_run(root, &args, Some(&wrong), 2);
+    assert_eq!(failure["error"]["code"], "INVALID_INPUT");
+    assert_eq!(failure["error"]["path"], "/expected_digest");
+    assert_eq!(failure["commit_status"], "not_committed");
+
+    let first = json_run(root, &args, Some(&request("result", 1, json!({}))), 0);
+    let receipt: ArtifactRef = serde_json::from_value(first.clone()).unwrap();
+    assert_eq!(first["receipt"]["result"], "accepted");
+    assert_eq!(first["receipt"]["position"], 1);
+    assert_eq!(first["availability"], "staged");
+    assert_eq!(first["role"], "original-output");
+    assert_eq!(first["size_bytes"], 14);
+    assert_eq!(receipt.receipt.handle.to_string(), handle);
+
+    // A Rust producer resending the same request gets the identical receipt.
+    let parsed: StableArtifact = serde_json::from_slice(&request("result", 1, json!({}))).unwrap();
+    let native = LocalRecorder::open(root.join("ws"))
+        .unwrap()
+        .attach(&parsed)
+        .unwrap();
+    let mut replayed = first.clone();
+    replayed["receipt"]["result"] = json!("already_accepted");
+    assert_eq!(serde_json::to_value(&native).unwrap(), replayed);
+
+    // An absent file is recorded as missing.
+    let absent = serde_json::to_vec(&json!({
+        "handle": handle, "key": "trace", "position": 2, "role": "log",
+        "source": {"kind": "file", "path": "trace.log"},
+    }))
+    .unwrap();
+    let output = invoke(
+        root,
+        &["--workspace", "ws", "capture", "attach", "--input", "-"],
+        Some(&absent),
+    );
+    assert_eq!(output.status.code(), Some(0));
+    let text = String::from_utf8(output.stdout).unwrap();
+    assert!(text.contains("accepted  position 2  key trace"), "{text}");
+    assert!(text.contains("missing  no bytes retained"), "{text}");
+    assert!(
+        text.contains("nothing was parsed, started or rerun"),
+        "{text}"
+    );
+
+    let read_only = json_run(
+        root,
+        &[
+            "--workspace",
+            "ws",
+            "--read-only",
+            "capture",
+            "attach",
+            "--input",
+            "-",
+            "--format",
+            "json",
+        ],
+        Some(&request("other", 3, json!({}))),
+        2,
+    );
+    assert_eq!(read_only["error"]["path"], "--read-only");
+
+    // Attachments are staged: the journal holds only the declaration.
+    let check = json_run(
+        root,
+        &["--workspace", "ws", "check", "--format", "json"],
+        None,
+        0,
+    );
+    assert_eq!(check["ok"], true);
 }

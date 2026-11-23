@@ -18,7 +18,7 @@ const ACTOR: &str = "agent:example-producer";
 
 /// A clock that never repeats, so a replayed receipt is distinguishable from a
 /// fresh acceptance.
-struct Ticks(u32);
+pub(crate) struct Ticks(pub(crate) u32);
 impl Clock for Ticks {
     fn now_utc(&mut self) -> UtcTimestamp {
         self.0 += 1;
@@ -28,7 +28,7 @@ impl Clock for Ticks {
     }
 }
 
-fn declaration() -> CaptureDeclaration {
+pub(crate) fn declaration() -> CaptureDeclaration {
     CaptureDeclaration {
         command_id: "run-0001/begin".into(),
         actor: ACTOR.parse().unwrap(),
@@ -100,7 +100,7 @@ impl Fixture {
     }
 }
 
-fn code_and_path(failure: &Failure) -> (ErrorCode, Option<&str>) {
+pub(crate) fn code_and_path(failure: &Failure) -> (ErrorCode, Option<&str>) {
     (failure.error.code, failure.error.path.as_deref())
 }
 
@@ -373,7 +373,7 @@ fn a_staging_binding_that_disagrees_with_the_journal_is_refused() {
 // Crash schedules over the in-memory filesystem model, where directory
 // entries and file data become durable separately.
 
-struct LocalDetector;
+pub(crate) struct LocalDetector;
 impl FilesystemDetector for LocalDetector {
     fn detect(&self, _: &Path) -> io::Result<FilesystemInfo> {
         Ok(FilesystemInfo {
@@ -384,7 +384,7 @@ impl FilesystemDetector for LocalDetector {
     }
 }
 
-fn memory_store() -> (Store<MemoryFs>, PathBuf) {
+pub(crate) fn memory_store() -> (Store<MemoryFs>, PathBuf) {
     static SERIAL: AtomicU64 = AtomicU64::new(0);
     let root = std::env::temp_dir().join(format!(
         "inv-capture-items-{}-{}",
@@ -412,7 +412,7 @@ fn memory_store() -> (Store<MemoryFs>, PathBuf) {
     )
 }
 
-fn restart(store: &mut Store<MemoryFs>) {
+pub(crate) fn restart(store: &mut Store<MemoryFs>) {
     store.fs.crash();
     store.gate = WriteGate::isolated();
 }

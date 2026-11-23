@@ -30,7 +30,8 @@
 //! the identical `begin` allocates it.
 //!
 //! Appended facts and attachment descriptors are staged items with per-handle
-//! positions; see [`items`] for their layout and durability rules.
+//! positions; see [`items`] for their layout and durability rules, and
+//! [`attach`] for how an attachment's bytes are copied and verified.
 
 use std::io::ErrorKind;
 
@@ -538,6 +539,9 @@ fn read_all(fs: &impl DurableFs, path: &Path) -> io::Result<Vec<u8>> {
 
 #[path = "capture_items.rs"]
 pub mod items;
+
+#[path = "capture_attach.rs"]
+pub mod attach;
 
 #[cfg(test)]
 #[path = "capture_tests.rs"]

@@ -43,6 +43,7 @@
 use std::io::{ErrorKind, Read as _};
 
 use investigation_core::{
+    classification::effective_classification,
     header::{Clock, UtcTimestamp},
     wire::Digest,
 };
@@ -166,6 +167,8 @@ pub(crate) struct ResolvedHandle {
     pub run_id: Id,
     pub binding: CaptureBinding,
     pub directory: PathBuf,
+    /// Effective classification of the declared Run: the floor for its items.
+    pub classification: ClassificationLevel,
 }
 
 /// The fields of `handle.json` that locate a handle.
@@ -188,6 +191,25 @@ impl<F: DurableFs> Store<F> {
         submission: &ItemSubmission,
         clock: &mut dyn Clock,
     ) -> Result<ItemAcceptance, Failure> {
+        let outcome = submission.outcome.clone();
+        self.stage_item_with(submission, clock, move |_, _| Ok(outcome))
+    }
+
+    /// Accept one item, deciding its outcome only once the item is known to be
+    /// new, in order and within bounds, and while the handle lock is held.
+    ///
+    /// `outcome` runs at most once, never for a replay, and never under the
+    /// commit lock; an error from it stages nothing and leaves the position
+    /// free. It replaces `submission.outcome`.
+    pub(crate) fn stage_item_with<O>(
+        &mut self,
+        submission: &ItemSubmission,
+        clock: &mut dyn Clock,
+        outcome: O,
+    ) -> Result<ItemAcceptance, Failure>
+    where
+        O: FnOnce(&mut Self, &ResolvedHandle) -> Result<Option<Value>, Failure>,
+    {
         self.gate.check().map_err(durability_failure)?;
         let located = self.locate_handle(submission.handle)?;
         let _handle = self.lock_handle(&located.directory)?;
@@ -246,15 +268,6 @@ impl<F: DurableFs> Store<F> {
             failure.error.actual = Some(json!({"bytes": request.len()}));
             return Err(failure);
         }
-        let outcome = submission
-            .outcome
-            .as_ref()
-            .map(serde_json::to_vec)
-            .transpose()
-            .map_err(|_| integrity("Could not encode the capture item outcome."))?;
-        if outcome.is_some_and(|bytes| bytes.len() > MAX_OUTCOME_BYTES) {
-            return Err(integrity("A capture item outcome exceeds its bound."));
-        }
         let next = last.map_or(1, |last| last + 1);
         if submission.position > limits.max_items.min(MAX_POSITION) {
             let mut failure = Failure::new(
@@ -272,6 +285,15 @@ impl<F: DurableFs> Store<F> {
         if submission.position != next {
             return Err(position_conflict(submission.position, next, last));
         }
+        let outcome = outcome(self, &handle)?;
+        let encoded = outcome
+            .as_ref()
+            .map(serde_json::to_vec)
+            .transpose()
+            .map_err(|_| integrity("Could not encode the capture item outcome."))?;
+        if encoded.is_some_and(|bytes| bytes.len() > MAX_OUTCOME_BYTES) {
+            return Err(integrity("A capture item outcome exceeds its bound."));
+        }
 
         self.ensure_directory(&handle.directory, &items)?;
         self.ensure_directory(&handle.directory, &keys)?;
@@ -285,7 +307,7 @@ impl<F: DurableFs> Store<F> {
             request_digest: digest,
             accepted_at: clock.now_utc(),
             request: submission.request.clone(),
-            outcome: submission.outcome.clone(),
+            outcome,
         };
         let mut bytes = serde_json::to_vec(&item)
             .map_err(|_| integrity("Could not encode the capture item."))?;
@@ -457,11 +479,17 @@ impl<F: DurableFs> Store<F> {
                 "The staging binding disagrees with the declared capture handle.",
             ));
         }
+        let run = replay
+            .state
+            .current(located.run_id)
+            .ok_or_else(|| integrity("The declared Run is missing."))?;
+        let classification = effective_classification(&replay.state, run).level;
         Ok(ResolvedHandle {
             case_id: located.case_id,
             run_id: located.run_id,
             binding,
             directory: located.directory,
+            classification,
         })
     }
 
@@ -521,7 +549,11 @@ impl<F: DurableFs> Store<F> {
         Ok(Some(low))
     }
 
-    fn read_item(&self, handle: &ResolvedHandle, position: u64) -> Result<StagedItem, Failure> {
+    pub(crate) fn read_item(
+        &self,
+        handle: &ResolvedHandle,
+        position: u64,
+    ) -> Result<StagedItem, Failure> {
         let path = handle
             .directory
             .join(ITEMS_DIRECTORY)
@@ -547,7 +579,7 @@ impl<F: DurableFs> Store<F> {
         Ok(item)
     }
 
-    fn key_position(&self, keys: &Path, key: &str) -> Result<Option<u64>, Failure> {
+    pub(crate) fn key_position(&self, keys: &Path, key: &str) -> Result<Option<u64>, Failure> {
         let path = keys.join(key_name(key));
         let bytes = match read_bounded(&self.fs, &path, MAX_KEY_FILE_BYTES) {
             Ok(bytes) => bytes,
@@ -603,7 +635,11 @@ impl<F: DurableFs> Store<F> {
     }
 
     /// Create a staging subdirectory if needed and make its entry durable.
-    fn ensure_directory(&mut self, parent: &Path, directory: &Path) -> Result<(), Failure> {
+    pub(crate) fn ensure_directory(
+        &mut self,
+        parent: &Path,
+        directory: &Path,
+    ) -> Result<(), Failure> {
         match self.fs.create_dir(directory) {
             Ok(()) => {}
             Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
@@ -625,7 +661,7 @@ impl<F: DurableFs> Store<F> {
         sync_directory(&mut self.fs, staging, &self.gate).map_err(durability_failure)
     }
 
-    fn exists(&self, path: &Path) -> Result<bool, Failure> {
+    pub(crate) fn exists(&self, path: &Path) -> Result<bool, Failure> {
         match self.fs.read(path) {
             Ok(_) => Ok(true),
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
@@ -697,4 +733,4 @@ fn position_conflict(sent: u64, next: u64, last: Option<u64>) -> Failure {
 
 #[cfg(test)]
 #[path = "capture_items_tests.rs"]
-mod tests;
+pub(crate) mod tests;

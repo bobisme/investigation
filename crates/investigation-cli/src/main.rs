@@ -313,7 +313,9 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 | Commands::Ingest { .. }
                 | Commands::Start { .. }
                 | Commands::Capture(
-                    capture::CaptureCommand::Begin { .. } | capture::CaptureCommand::Append { .. }
+                    capture::CaptureCommand::Begin { .. }
+                        | capture::CaptureCommand::Append { .. }
+                        | capture::CaptureCommand::Attach { .. }
                 )
                 | Commands::Repair(_)
         )
