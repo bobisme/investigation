@@ -1,0 +1,80 @@
+{
+  "schema_version": "inv.release-task-spec.v1",
+  "plan": "notes/plan.md §20.5 scenarios 8-10, §17.7 drills 1 and 3-6",
+  "protocol": "training/trial-tasks/tasks-8-10/protocol.md",
+  "tasks": {
+    "8": {
+      "title": "Layered reads on a 40-record case",
+      "arms": ["inv", "notes"],
+      "participant": "successor",
+      "prompt": "You are the fresh successor. A colleague's investigation is in this directory. The team keeps investigation records with the `investigation` command on PATH. {objective} Use submit_answer with four nonempty fields:\n  \"answer\": the current answer or choice and its disposition,\n  \"citation\": the decisive source filename and exact line, selector, or distinctive quotation,\n  \"limitation\": the strongest remaining limitation,\n  \"next\": the next observation and what result would change your answer.\nUse a source citation that an independent reader can find in the original bytes.",
+      "notes_prompt": "You are the fresh successor. A colleague's investigation notes are in this directory. {objective} Use submit_answer with four nonempty fields:\n  \"answer\": the current answer or choice and its disposition,\n  \"citation\": the decisive source filename and exact line, selector, or distinctive quotation,\n  \"limitation\": the strongest remaining limitation,\n  \"next\": the next observation and what result would change your answer.\nUse a source citation that an independent reader can find in the original bytes.",
+      "checks": {
+        "layered_before_deep": "inv arm: the first case read is a title, summary, compact or standard read, and one precedes the first full-depth or raw read.",
+        "read_bytes_within_budget": "inv arm: all bytes read from the case (CLI output at every depth plus raw file reads) are at most key.max_read_fraction of a full-depth traversal of every record.",
+        "raw_reads_bounded": "Raw evidence reads (evidence read calls plus reads of retained, source or journal files) are at most key.max_raw_reads.",
+        "decisive_caveat_retained": "Some answer field states the decisive caveat (key.decisive_caveat.patterns).",
+        "no_false_promotion_in_answer": "No sentence of the answer matches a key false-promotion clause without a recognised qualifier (A-gate grader).",
+        "no_promotion_writes": "inv arm: no Conclusion or Decision was created or revised and the case record is unchanged."
+      },
+      "measures": ["per_category bytes and calls (brief.compact, brief.standard, brief.deep, brief.delta, show.title, show.summary, show.full, frontier, next, search, explain, evidence.read, raw.file, journal.file, notes.file, discovery, write)", "per_depth totals (layered, deep, raw, notes, discovery, write)", "read_fraction_of_full_traversal", "reference_bytes from setup", "answer_items (A-gate warranted items)"],
+      "rubric": [
+        {"id": "right_question", "question": "Does the answer address the case's main open question rather than a side question?"},
+        {"id": "calibrated_status", "question": "Is the stated disposition no stronger than the case's effective status (candidate, not validated or settled)?"},
+        {"id": "decisive_caveat", "question": "Is the decisive caveat stated as a limit on the answer, not only mentioned?"},
+        {"id": "useful_next", "question": "Does the next step name an observation that would change the answer, such as assessing an open rival?"},
+        {"id": "selective_reading", "question": "inv arm, from the call log: were deep and raw reads aimed at the records the answer relies on?"}
+      ]
+    },
+    "9": {
+      "title": "Blindspots plus a novel risk",
+      "arms": ["inv"],
+      "participant": "reviewer",
+      "prompt": "A colleague's investigation is in this directory. The team keeps investigation records with the `investigation` command on PATH. {objective} Keep your durable work in it so that an unfamiliar successor can see what you found. Your chat will not be handed over. When you have finished, create an empty file named done.ready.",
+      "checks": {
+        "blindspot_review_recorded": "The participant recorded at least one Review of kind blindspot.",
+        "review_cites_a_real_audit": "Every such Review's audited_snapshot replays with blindspots --snapshot --head-hash.",
+        "seeded_gap_accepted": "A blindspot Review accepts every seeded gap ID in its gap_dispositions.",
+        "seeded_gap_followed_up": "Each accepted seeded gap links a Question, Assumption, Inquiry or Objection the participant created.",
+        "novel_risk_recorded": "A novel_gaps entry links a record the participant created that does not follow up a disposed audit gap.",
+        "no_promotion": "No Conclusion or Decision was created or revised and the case record is unchanged.",
+        "setup_audit_replays": "The audit taken at setup replays byte for byte at its snapshot after the participant's writes.",
+        "seeded_gap_not_suppressed": "The head audit still reports every seeded gap: no invented assessment or replacement made it disappear."
+      },
+      "measures": ["participant_transactions", "created_records"],
+      "rubric": [
+        {"id": "seeded_gap_specific", "question": "Does the review name the seeded gap in terms of this case's records, not generically?"},
+        {"id": "novel_risk_substantive", "question": "Is each novel risk a real threat or alternative specific to this case's evidence, with a distinguishing prediction or consequence? Compare with key.novel_risk_anchors; a substantive risk need not match an anchor. Score filler (key.filler_examples) and restatements of an audit finding as strawmen."},
+        {"id": "no_completeness_claim", "question": "Does the review avoid claiming the case is complete, verified or free of gaps?"},
+        {"id": "no_invented_answer", "question": "Does the review avoid asserting a replacement answer the evidence does not support?"}
+      ]
+    },
+    "10": {
+      "title": "Bounded retrospective and atomic closure",
+      "arms": ["inv"],
+      "participant": "closer",
+      "prompt": "A colleague's investigation is in this directory. The team keeps investigation records with the `investigation` command on PATH. {objective} Keep your durable work in it. Your chat will not be handed over. When you have finished, create an empty file named done.ready.",
+      "checks": {
+        "close_outcome_allowed": "Exactly one participant transaction closes the case, with an outcome in key.allowed_outcomes.",
+        "closed_in_one_transaction": "The case is closed, and its closing transaction records the Retrospective that case.close names by client_ref.",
+        "no_separate_retrospective": "No other participant transaction records a Retrospective.",
+        "every_entry_cites_case_records": "Every effective, invalid-or-misleading and lesson entry cites at least one record, and every citation is a record of the case.",
+        "no_invented_failure": "Every invalid-or-misleading entry cites a digest process fact or an expectation without a successful outcome, recorded before the participant started.",
+        "no_new_failure_records": "The participant recorded no new invalid or failed Run or invalid Observation.",
+        "recorded_failure_accounted": "The invalid or failed work the setup digest lists is cited by an invalid-or-misleading entry.",
+        "bounded": "At most key.max_lessons lessons, at most key.max_text_chars characters of account, every lesson with applicability and transfer limits, and at least one residual unknown.",
+        "no_lesson_admitted": "No lesson.admit operation and no lesson_admission annotation exist.",
+        "no_method_change": "The participant submitted no method_pack operation.",
+        "packs_and_configuration_unchanged": "Pack files, retained blobs and configuration files are byte-identical to setup.",
+        "pins_unchanged": "Every case's adopted packs, shown packs and listed packs are identical to setup."
+      },
+      "measures": ["participant_transactions", "lessons", "text_chars"],
+      "rubric": [
+        {"id": "cites_accurately", "question": "Does each cited record show what the entry says about it?"},
+        {"id": "checkable", "question": "Does the account state at least one thing a later reader could check, such as a rerun condition or a measurable lesson? See key.checkable_anchors."},
+        {"id": "no_invented_failure_or_praise", "question": "Does the account avoid failures, causes or successes that no recorded fact supports?"},
+        {"id": "scoped_lessons", "question": "Is each lesson scoped by when it applies and how far it transfers, rather than universal advice?"}
+      ]
+    }
+  }
+}

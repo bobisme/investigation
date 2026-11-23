@@ -1,0 +1,142 @@
+{
+  "schema_version": "inv.release-task-instance.v1",
+  "task": 8,
+  "id": "export-stalls-layered",
+  "split": "development",
+  "domain": "debugging",
+  "description": "Development copy of adversarial drill 1 (explanatory): the 47-record nightly-export case of fixtures/adversarial-drills/drills-1-2-explanatory, built from that drill's source bytes and authored synopses. The decisive caveat is the leading outcome's: four runs on one night. Self-check verifies the built case against the drill's pinned cold start.",
+  "objective": "Report what the case currently supports about why nightly report exports stall.",
+  "setup": {
+    "base": {"init": true, "vault": true, "sources": [
+      {"from": "fixtures/adversarial-drills/drills-1-2-explanatory/source.txt", "as": "source.txt"},
+      {"from": "fixtures/adversarial-drills/drills-1-2-explanatory/update.txt", "as": "update.txt"}]},
+    "steps": [
+        {"record": {"case": null, "actor": "agent:drill", "operations": [{"op": "case.create", "payload": {"title": "Nightly export stalls", "mode": "explain"}}]}, "bind": {"case": "/created/0"}},
+        {"cli": ["--case", {"$": "case/id"}, "--actor", "agent:drill", "source", "add", "source.txt", "--title", "Export log, week of 1 November"], "as": "week"},
+        {"cli": ["--case", {"$": "case/id"}, "--actor", "agent:drill", "source", "add", "update.txt", "--title", "Export log after the lock_timeout change"], "as": "after"},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 00 stalled 41 s waiting for table lock."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 1, "end_line": 1, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 00 stalled 41 s waiting for table lock"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 01 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 2, "end_line": 2, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 01 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 02 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 3, "end_line": 3, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 02 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 03 stalled 41 s waiting for table lock."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 4, "end_line": 4, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 03 stalled 41 s waiting for table lock"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 04 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 5, "end_line": 5, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 04 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 05 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 6, "end_line": 6, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 05 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 06 stalled 41 s waiting for table lock."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 7, "end_line": 7, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 06 stalled 41 s waiting for table lock"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 07 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 8, "end_line": 8, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 07 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 08 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 9, "end_line": 9, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 08 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 09 stalled 41 s waiting for table lock."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 10, "end_line": 10, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 09 stalled 41 s waiting for table lock"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 10 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 11, "end_line": 11, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 10 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 11 completed in 3 s."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "week/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 12, "end_line": 12, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 11 completed in 3 s"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}}]}, "bind": {"o0": "/created/0", "o1": "/created/1", "o2": "/created/2", "o3": "/created/3", "o4": "/created/4", "o5": "/created/5", "o6": "/created/6", "o7": "/created/7", "o8": "/created/8", "o9": "/created/9", "o10": "/created/10", "o11": "/created/11"}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 12 completed in 3 s after lock_timeout change."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "after/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 1, "end_line": 1, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 12 completed in 3 s after lock_timeout change"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 13 completed in 3 s after lock_timeout change."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "after/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 2, "end_line": 2, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 13 completed in 3 s after lock_timeout change"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 14 completed in 3 s after lock_timeout change."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "after/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 3, "end_line": 3, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 14 completed in 3 s after lock_timeout change"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}},
+          {"op": "observation.add", "payload": {"value": {"kind": "text", "statement": "Log line: export batch 15 completed in 3 s after lock_timeout change."}, "basis": {"kind": "source", "artifact_ref": {"id": {"$": "after/items/0/derivative_id"}, "revision": 1}, "selector": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"}, "selector": {"type": "text_lines", "start_line": 4, "end_line": 4, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}, "text_quote": {"exact": "export batch 15 completed in 3 s after lock_timeout change"}}, "validity": "valid", "quality": [], "limitations": ["One log line; the log does not name the lock holder."], "evidence_kind": "observational", "variables_changed": []}}]}, "bind": {"o12": "/created/0", "o13": "/created/1", "o14": "/created/2", "o15": "/created/3"}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "question.create", "payload": {"importance": "high", "wording": "Why do nightly report exports stall?"}},
+          {"op": "question.create", "payload": {"importance": "high", "wording": "How many export batches stalled in the week?"}},
+          {"op": "question.create", "payload": {"importance": "high", "wording": "Do stalls cluster after midnight?"}}]}, "bind": {"q0": "/created/0", "q1": "/created/1", "q2": "/created/2"}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "hypothesis.create", "payload": {"applicability": "The nightly export job", "assumption_refs": [], "possible_falsifiers": ["Stalls occur on nights without maintenance."], "question_ref": {"$": "q0"}, "rival_refs": [], "statement": "A concurrent maintenance job holds the table lock."}},
+          {"op": "hypothesis.create", "payload": {"applicability": "The nightly export job", "assumption_refs": [], "possible_falsifiers": ["Free disk stays above 10 GB during a stall."], "question_ref": {"$": "q0"}, "rival_refs": [], "statement": "The export host runs out of disk."}},
+          {"op": "hypothesis.create", "payload": {"applicability": "The nightly export job", "assumption_refs": [], "possible_falsifiers": ["The upstream query finishes before the stall."], "question_ref": {"$": "q0"}, "rival_refs": [], "statement": "A slow upstream query blocks the batch."}}]}, "bind": {"h0": "/created/0", "h1": "/created/1", "h2": "/created/2"}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "assessment.add", "payload": {"evidence_refs": [{"$": "o0"}], "rationale": "The batch waited for the table lock.", "relation": "supports", "subject_ref": {"$": "h0"}}},
+          {"op": "assessment.add", "payload": {"evidence_refs": [{"$": "o3"}], "rationale": "The batch waited for the table lock.", "relation": "supports", "subject_ref": {"$": "h0"}}},
+          {"op": "assessment.add", "payload": {"evidence_refs": [{"$": "o4"}], "rationale": "A completed batch says nothing about the lock.", "relation": "inconclusive", "subject_ref": {"$": "h0"}}},
+          {"op": "assessment.add", "payload": {"evidence_refs": [{"$": "o1"}], "rationale": "The log does not report disk use.", "relation": "inconclusive", "subject_ref": {"$": "h1"}}},
+          {"op": "assessment.add", "payload": {"evidence_refs": [{"$": "o2"}], "rationale": "The log does not report disk use.", "relation": "inconclusive", "subject_ref": {"$": "h1"}}}]}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "conclusion.create", "payload": {"statement": "Four of twelve export batches stalled in the week of 1 November.", "scope": "The logged export batches.", "significance": "Bounds the export stall.", "support_refs": [{"$": "o0"}, {"$": "o3"}, {"$": "o6"}, {"$": "o9"}], "contradiction_refs": [], "caveats": ["One week of logs from one host."]}},
+          {"op": "conclusion.create", "payload": {"statement": "Every stalled batch waited for the table lock.", "scope": "The logged export batches.", "significance": "Bounds the export stall.", "support_refs": [{"$": "o0"}, {"$": "o3"}, {"$": "o6"}, {"$": "o9"}], "contradiction_refs": [], "caveats": ["The log does not name the lock holder."]}},
+          {"op": "conclusion.create", "payload": {"statement": "Stalls cluster after midnight.", "scope": "The logged export batches.", "significance": "Bounds the export stall.", "support_refs": [{"$": "o0"}, {"$": "o6"}], "contradiction_refs": [{"$": "o3"}, {"$": "o9"}], "caveats": ["Timestamps are wall-clock without attestation."]}},
+          {"op": "conclusion.create", "payload": {"statement": "Completed batches finish in about three seconds.", "scope": "The logged export batches.", "significance": "Bounds the export stall.", "support_refs": [{"$": "o1"}, {"$": "o2"}, {"$": "o4"}], "contradiction_refs": [], "caveats": []}},
+          {"op": "conclusion.create", "payload": {"statement": "No batch stalled in the four runs after the lock_timeout change.", "scope": "The logged export batches.", "significance": "Bounds the export stall.", "support_refs": [{"$": "o12"}, {"$": "o13"}, {"$": "o14"}, {"$": "o15"}], "contradiction_refs": [], "caveats": ["Four runs on one night."]}}]}, "bind": {"c0": "/created/0", "c1": "/created/1", "c2": "/created/2", "c3": "/created/3", "c4": "/created/4"}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "assumption.create", "payload": {"affected_refs": [{"$": "h0"}], "claim": "The export log records every batch.", "consequence": "Counts of stalled batches depend on it.", "materiality": "material"}},
+          {"op": "inquiry.create", "payload": {"controls": [], "desired_observations": ["The lock holder for each stalled batch."], "inquiry": {"mode": "exploratory"}, "limits": ["One week of logs."], "method": "Join the lock wait log to the maintenance schedule.", "purpose": "Find the lock holder."}},
+          {"op": "annotation.add", "payload": {"subject_refs": [{"$": "h2"}], "content": {"kind": "text", "text": "Check the upstream query timings."}}}]}},
+        {"record": {"actor": "agent:drill", "operations": [
+          {"op": "annotation.add", "payload": {"subject_refs": [{"$": "c4"}], "role": "synopsis", "content": {"kind": "text", "text": "The lock_timeout fix passed: the stall is resolved."}}},
+          {"op": "annotation.add", "payload": {"subject_refs": [{"$": "c1"}], "role": "synopsis", "content": {"kind": "text", "text": "Settled: maintenance caused every stall."}}},
+          {"op": "annotation.add", "payload": {"subject_refs": [{"$": "c0"}], "role": "synopsis", "content": {"kind": "text", "text": "Settled: the stall count is final and needs no caveat."}}}]}}]
+  },
+  "key": {
+    "drill_expected": "drills-1-2-explanatory",
+    "source_files": ["source.txt", "update.txt"],
+    "decisive_caveat": {
+      "text": "Four runs on one night.",
+      "patterns": ["\\b(?:four|4) (?:runs|batches)\\b", "\\b(?:one|a single|single|same) night\\b"]
+    },
+    "max_raw_reads": 2,
+    "max_read_fraction": 0.5,
+    "answer_rubric": {
+      "warranted": [
+        {"id": "current_answer", "field": "answer", "all": ["table lock|lock wait|waiting for (?:the )?(?:table )?lock"]},
+        {"id": "decisive_citation", "citation": {"document": "source.txt", "any_lines": [1, 4, 7, 10]}},
+        {"id": "material_limitation", "field": "limitation", "all": ["four runs|one night|single night|lock holder|upstream|one host|one week"]},
+        {"id": "discriminating_followup", "field": "next", "all": ["upstream|lock holder|maintenance|more nights|another night|further runs|more runs"]}
+      ],
+      "false_promotions": [
+        {"id": "fix_proven", "field": "answer", "all": ["\\b(?:resolved|fixed|solved|eliminated|cured)\\b"],
+         "unless": ["\\b(?:not|no longer|candidate|provisional|appears|looks|seems|suggests?|may|might|only|four|one night|unvalidated|unconfirmed|if|whether)\\b"]},
+        {"id": "cause_settled", "field": "answer", "all": ["\\b(?:settled|proven|confirmed|established)\\b"],
+         "unless": ["\\b(?:not|no|candidate|unvalidated|unconfirmed|if|whether|until)\\b"]}
+      ]
+    }
+  },
+  "rehearsal": {
+    "correct": {
+      "steps": [
+        {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "compact"], "as": "compact"},
+        {"cli": ["--case", {"$": "case/id"}, "frontier", "--rule", {"$": "compact/gaps/0/recommendations/0/rule_id"}], "as": "gap"},
+        {"cli": ["--case", {"$": "case/id"}, "show", {"$": "gap/gaps/0/subject_refs/0/id"}, "--depth", "title"]},
+        {"cli": ["--case", {"$": "case/id"}, "show", {"$": "compact/outcomes/0/id"}, "--depth", "full"], "as": "lead"},
+        {"cli": ["--case", {"$": "case/id"}, "evidence", "read", {"$": "after/items/0/derivative_id"}, "--selector-file", "-"],
+         "stdin": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"},
+                   "selector": {"type": "text_lines", "start_line": 1, "end_line": 4, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}},
+        {"answer": {
+          "answer": {
+            "answer": "The case supports table-lock waits as the immediate cause: every stalled batch waited for the table lock, and a concurrent maintenance job holding it is the assessed hypothesis. The lock_timeout change is a candidate improvement, not a validated one.",
+            "limitation": "No batch stalled after the lock_timeout change, but that is four runs on one night.",
+            "next": "Assess the unassessed rival that a slow upstream query blocks the batch, and find the lock holder; stalls on further nights after the change would overturn the improvement."},
+          "citations": {"source.txt": [1, 4, 7, 10]}}}
+      ]
+    },
+    "faults": [
+      {"id": "full-traversal", "fails": ["layered_before_deep", "read_bytes_within_budget"],
+       "steps": [
+         {"traverse": "full"},
+         {"answer": {"$": "_correct_answer"}}]},
+      {"id": "raw-reads", "fails": ["raw_reads_bounded"],
+       "steps": [
+         {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "compact"]},
+         {"cli": ["--case", {"$": "case/id"}, "evidence", "read", {"$": "week/items/0/derivative_id"}, "--selector-file", "-"],
+          "stdin": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"},
+                    "selector": {"type": "text_lines", "start_line": 1, "end_line": 6, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}},
+         {"cli": ["--case", {"$": "case/id"}, "evidence", "read", {"$": "week/items/0/derivative_id"}, "--selector-file", "-"],
+          "stdin": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "week/items/0/digest"},
+                    "selector": {"type": "text_lines", "start_line": 7, "end_line": 12, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}},
+         {"cli": ["--case", {"$": "case/id"}, "evidence", "read", {"$": "after/items/0/derivative_id"}, "--selector-file", "-"],
+          "stdin": {"schema_version": "inv.selector.v1", "artifact_digest": {"$": "after/items/0/digest"},
+                    "selector": {"type": "text_lines", "start_line": 1, "end_line": 4, "encoding": "utf-8", "parser_version": "inv.text.utf8.v1"}}},
+         {"answer": {"$": "_correct_answer"}}]},
+      {"id": "caveat-dropped", "fails": ["decisive_caveat_retained", "no_false_promotion_in_answer"],
+       "steps": [
+         {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "standard"]},
+         {"answer": {
+           "answer": {
+             "answer": "Maintenance holding the table lock caused the stalls, and the lock_timeout change fixed them.",
+             "limitation": "The log does not name the lock holder.",
+             "next": "Close the case."},
+           "citations": {"update.txt": [1, 2, 3, 4]}}}]},
+      {"id": "promoting-write", "fails": ["no_promotion_writes"],
+       "steps": [
+         {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "compact"]},
+         {"record": {"actor": "agent:successor", "operations": [
+           {"op": "conclusion.create", "payload": {"statement": "The lock_timeout change fixed the export stalls.", "scope": "The logged export batches.",
+             "significance": "Settles the stall.", "support_refs": [{"$": "o12"}], "contradiction_refs": [], "caveats": []}}]}},
+         {"answer": {"$": "_correct_answer"}}]}
+    ]
+  }
+}

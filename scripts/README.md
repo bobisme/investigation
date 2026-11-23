@@ -6,3 +6,4 @@ Repository checks and cross-language conformance runners.
 - `run-conformance.py` runs the recording conformance suite in `fixtures/conformance/v1` against one or more producer adapters, and compares the adapters with each other. See [docs/recording.md](../docs/recording.md#conformance-suite).
 - `conformance/reference_producer.py` is a standard-library producer that passes the suite. `conformance/non_idempotent_producer.py` is a deliberately broken one that must fail it.
 - `seal-release-families.py` checks authored release-trial families, seals them into an encrypted bundle and verifies the seal, with or without the passphrase. See [training/release/families](../training/release/families/README.md).
+- `trial-tasks-8-10.py` sets up, grades and rehearses release-trial tasks 8–10. `self-check --bin BIN` plays each instance's correct path and scripted faults. See [training/trial-tasks/tasks-8-10](../training/trial-tasks/tasks-8-10/protocol.md).

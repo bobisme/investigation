@@ -80,3 +80,7 @@ The responses are scripted transactions, not model runs. MCP parity (W13.05) and
 ## Trial tasks 5 to 7
 
 `development/trial-tasks/` holds the source bytes for release-trial tasks 5 to 7 (plan §20.5), one directory per registered variant: `tide-gauge-dropout/stale-resume`, `proofer-temperature-drift/lost-response-conflict`, and `door-alarm-delay/stage-1` (a support-folder export with a planted `AGENTS.md`, imperative text and a schema-valid record payload, all inside `source.txt`) and `stage-2` (the notes-arm handoff). Setup, faults, journal checks and rubric keys live in [training/trial-tasks](../training/trial-tasks/protocol.md); `crates/investigation-cli/tests/trial_tasks.rs` replays them against the built binary.
+
+## Trial tasks 8 to 10
+
+Release-trial tasks 8–10 use the adversarial drills as development instances: task 8 builds drill 1's explanatory case from its source bytes and synopses, and task 9 replays the drill 3 files up to their scripted response. See [training/trial-tasks/tasks-8-10](../training/trial-tasks/tasks-8-10/protocol.md).

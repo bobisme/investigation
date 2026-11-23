@@ -1,0 +1,54 @@
+{
+  "schema_version": "inv.release-task-instance.v1",
+  "task": 9,
+  "id": "queue-recovery-blindspot",
+  "split": "development",
+  "domain": "architecture",
+  "description": "Development copy of adversarial drill 3 (evaluative). Setup replays fixtures/adversarial-drills/drill-3-evaluative.json up to its scripted response: the checked-in Scenario C case is reopened with a proposed broker choice that cites only enqueue-latency cells, while the hard criterion that no acknowledged job is lost is unknown for every option. The seeded structural gap is criterion.hard_unmeasured on that criterion.",
+  "objective": "Review the case's proposed queue choice before it is accepted, and record the review in the workspace.",
+  "setup": {"drill": "drill-3-evaluative.json"},
+  "key": {
+    "seeded_gaps": [{"check_id": "criterion.hard_unmeasured", "subject": "recovery_guarantee"}],
+    "novel_risk_anchors": [
+      "The broker's consumer-restart trial cannot stand in for the specified failure model, an abrupt host stop (drill 3's scripted response).",
+      "An append-only log with consumer offsets is an alternative the choice never compared, and it keeps acknowledged jobs by design (drill 4).",
+      "The small synthetic latency benchmark may not reflect production load or payload sizes, so the latency ranking the choice rests on could reverse."
+    ],
+    "filler_examples": [
+      "More benchmarking is needed.",
+      "The recovery guarantee is unmeasured (a restatement of the seeded finding).",
+      "Costs may change."
+    ]
+  },
+  "rehearsal": {
+    "correct": {
+      "steps": [
+        {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "compact"]},
+        {"audit": {}, "as": "audit"},
+        {"drill_response": "drill-3-evaluative.json"}
+      ]
+    },
+    "faults": [
+      {"id": "no-novel-risk", "fails": ["novel_risk_recorded"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"drill_response": "drill-3-evaluative.json", "set": {"/record/operations/2/payload/novel_gaps": []}}]},
+      {"id": "gap-not-followed", "fails": ["seeded_gap_followed_up"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"drill_response": "drill-3-evaluative.json",
+          "set": {"/record/operations/2/payload/gap_dispositions/0/record_refs": []}}]},
+      {"id": "replacement-choice", "fails": ["no_promotion"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"drill_response": "drill-3-evaluative.json"},
+         {"record": {"actor": "agent:reviewer", "operations": [
+           {"op": "decision.propose", "payload": {
+             "question_ref": {"$": "question"}, "choice": {"kind": "select", "option_ref": {"$": "managed_queue"}},
+             "compared_alternatives": [{"$": "database_queue"}, {"$": "managed_queue"}, {"$": "broker"}],
+             "comparison_refs": {"$": "latency_cells"}, "hard_conditions": [], "evidence_refs": [], "assumption_refs": [],
+             "tradeoffs": ["The managed queue is assumed to keep acknowledged jobs."], "consequences": ["Adopt the managed queue."],
+             "reopen_trigger": "A recovery test loses an acknowledged job.", "reversal_conditions": []}}]}}]}
+    ]
+  }
+}

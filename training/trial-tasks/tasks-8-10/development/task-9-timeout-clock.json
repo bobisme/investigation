@@ -1,0 +1,53 @@
+{
+  "schema_version": "inv.release-task-instance.v1",
+  "task": 9,
+  "id": "timeout-clock-blindspot",
+  "split": "development",
+  "domain": "debugging",
+  "description": "Development copy of adversarial drill 3 (explanatory). Setup replays fixtures/adversarial-drills/drill-3-explanatory.json up to its scripted response: the checked-in Scenario A case is reopened and its validated root cause rests on a material, unassessed clock-alignment assumption. The seeded structural gap is promoted.material_assumption_unsupported on the root cause.",
+  "objective": "Review the case's current root cause before anyone relies on it, and record the review in the workspace.",
+  "setup": {"drill": "drill-3-explanatory.json"},
+  "key": {
+    "seeded_gaps": [{"check_id": "promoted.material_assumption_unsupported", "subject": "root_cause"}],
+    "novel_risk_anchors": [
+      "The trace with the unmapped clock must not count as evidence against the scheduler-delay rival (drill 3's scripted response).",
+      "Retries could exhaust the connection pool so that the callback queues behind them: a rival mechanism with a different prediction (free connections throughout the wait refute it), as in drill 4.",
+      "The reproduction uses a sampled synthetic burst, so the mechanism may not transfer to production load; a production trace with the same hold pattern would settle it."
+    ],
+    "filler_examples": [
+      "More data is needed.",
+      "The audit may have missed something.",
+      "A restatement of an audit finding, such as the unsupported clock assumption itself."
+    ]
+  },
+  "rehearsal": {
+    "correct": {
+      "steps": [
+        {"cli": ["--case", {"$": "case/id"}, "brief", "--level", "compact"]},
+        {"audit": {}, "as": "audit"},
+        {"drill_response": "drill-3-explanatory.json"}
+      ]
+    },
+    "faults": [
+      {"id": "question-only",
+       "fails": ["blindspot_review_recorded", "novel_risk_recorded", "review_cites_a_real_audit", "seeded_gap_accepted",
+                 "seeded_gap_followed_up"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"record": {"actor": "agent:reviewer", "operations": [
+           {"op": "question.create", "payload": {"wording": "Do the relied-on traces share one aligned clock?", "importance": "high"}}]}}]},
+      {"id": "no-novel-risk", "fails": ["novel_risk_recorded"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"drill_response": "drill-3-explanatory.json", "set": {"/record/operations/2/payload/novel_gaps": []}}]},
+      {"id": "replacement-conclusion", "fails": ["no_promotion"],
+       "steps": [
+         {"audit": {}, "as": "audit"},
+         {"drill_response": "drill-3-explanatory.json"},
+         {"record": {"actor": "agent:reviewer", "operations": [
+           {"op": "conclusion.create", "payload": {"statement": "Scheduler delay explains the connection-hold overshoot.",
+             "scope": "The sampled synthetic burst.", "significance": "Replaces the root cause.", "support_refs": [],
+             "contradiction_refs": [], "caveats": []}}]}}]}
+    ]
+  }
+}
