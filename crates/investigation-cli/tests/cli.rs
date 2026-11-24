@@ -489,9 +489,10 @@ fn ingest_and_read_verify_original_bytes_before_accepting_an_observation() {
     let original = command.clone();
     command["command_id"] = json!("wrong-excerpt");
     command["operations"][0]["payload"]["basis"]["text_quote"]["exact"] = json!("Trace from José");
+    // The quote is in the source, outside the selected line (bn-2yy4).
     assert_eq!(
         accept(&command, 2)["error"]["message"],
-        "OBSERVATION_TEXT_QUOTE_NOT_FOUND"
+        "OBSERVATION_TEXT_QUOTE_NOT_FOUND The quote is in the source from line 1, outside the selected lines 2-2. Widen the selector to cover it, or cite the whole source."
     );
     let sha = digest.as_str().unwrap().strip_prefix("sha256:").unwrap();
     fs::remove_file(root.join("state/blobs/sha256").join(&sha[..2]).join(sha)).unwrap();

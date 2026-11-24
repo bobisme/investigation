@@ -180,7 +180,12 @@ fn with_several_cases_case_selects_the_subject() {
     // Without --case the case is not guessed; the refusal says how.
     let refused = json(cwd, &["note", "Which case?", "--command-id", "n1"], 3);
     assert_eq!(refused["error"]["code"], "CASE_REQUIRED");
-    assert_eq!(refused["error"]["message"], "Select a case with --case ID.");
+    assert_eq!(
+        refused["error"]["message"],
+        format!(
+            "Select a case with --case ID. The workspace has 2 cases: {first} \"Why are Monday batches overbaked?\", {second} \"Second question\"."
+        )
+    );
     let cases = refused["error"]["actual"].to_string();
     assert!(cases.contains(&first) && cases.contains(&second), "{cases}");
 

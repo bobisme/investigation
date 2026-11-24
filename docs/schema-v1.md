@@ -83,6 +83,14 @@ the retained artifact's size and digest before returning a selection.
 byte offsets with `0 <= start < end <= size_bytes`. A read can return at most
 32 KiB of selected bytes from an artifact at most 64 MiB in size.
 
+`--whole` and `--lines START:END` replace the selector file
+(`investigation evidence read ARTIFACT --whole`). They build a `whole` or a
+`text_lines` selector (1-based, inclusive) over the Artifact's recorded digest
+and text derivative, and the read is the same verified read with the same
+restriction, retention and withdrawal refusals. `--whole` on an artifact over
+32 KiB is refused at `--whole` with its `size_bytes`, and the repair reads the
+most whole lines one read holds (`--lines 1:N`).
+
 For selected bytes containing NUL or invalid UTF-8, `excerpt.availability` is
 `binary` and `excerpt.bytes_base64` contains exactly the bytes from
 `excerpt.start` up to `excerpt.end`, in standard RFC 4648 base64 with padding

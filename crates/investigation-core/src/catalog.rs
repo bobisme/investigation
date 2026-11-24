@@ -176,7 +176,7 @@ const OBSERVE_ARGS: &[ShortcutArgument] = &[
         long: Some("quote"),
         positional: false,
         value_name: "TEXT",
-        help: "Exact source quote to verify and record.",
+        help: "Exact source quote to verify and record; evidence read ARTIFACT_ID --whole prints the source to copy it from.",
         payload_paths: &["basis.text_quote", "basis.selector"],
         required: false,
     },

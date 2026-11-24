@@ -42,6 +42,7 @@ mod search;
 mod selection;
 mod shortcuts;
 mod snapshot;
+mod source_text;
 mod synopsis;
 mod vault;
 mod vault_copy_map;
@@ -968,9 +969,11 @@ fn record(store: &mut Store, global: &Global, input: &Path) -> Result<Output, Fa
         Some(&command.actor),
     )?;
     require_case_agreement(store, global.case.as_deref(), command.case_id)?;
-    let mut receipt = store
-        .record(&input)
-        .map_err(|failure| record_repair(store, &command, failure))?;
+    let mut receipt = store.record(&input).map_err(|failure| {
+        let failure = record_repair(store, &command, failure);
+        let envelope = serde_json::to_value(&command).unwrap_or_default();
+        quote_hint::point_record_at_nearest_passage(store, &envelope, failure)
+    })?;
     if receipt.next.is_empty()
         && let (Some(case), Some(change)) = (command.case_id, receipt.updated.first())
     {

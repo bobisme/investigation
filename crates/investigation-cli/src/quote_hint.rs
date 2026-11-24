@@ -12,10 +12,14 @@ use investigation_core::{
     PROGRAM_NAME,
     command::RevisionRef,
     evidence::{SelectorKind, SelectorRequest},
-    wire::Failure,
+    identity::Id,
+    state::Record,
+    wire::{Digest, Failure},
 };
-use investigation_store::{Store, store::evidence_read::Excerpt};
+use investigation_store::{Store, journal::CaseReplay, store::evidence_read::Excerpt};
 use serde_json::{Value, json};
+
+use crate::source_text::{self, SourceText};
 
 /// Longer quotes get the generic advice only; the search is O(quote × source).
 const MAX_QUOTE_CHARS: usize = 1_000;
@@ -24,6 +28,13 @@ const NEAR_NUMERATOR: usize = 1;
 const NEAR_DENOMINATOR: usize = 3;
 /// A suggested line longer than this is shown but not offered as a retry.
 const MAX_SUGGESTED_CHARS: usize = 2_048;
+/// The largest source the hint reads, in chunks of one excerpt each. A larger
+/// source gets a line-range read as its repair instead of a named line.
+pub(crate) const MAX_HINT_SOURCE_BYTES: u64 = 512 * 1024;
+/// Bound on the closest-line search, in quote characters times source bytes:
+/// past it only the longest-prefix search runs. A 1,000-character quote
+/// against a 32 KiB source stays inside it.
+const MAX_EDIT_WORK: usize = 1 << 26;
 
 /// One source line near a refused quote.
 #[derive(Debug, PartialEq, Eq)]
@@ -57,7 +68,11 @@ pub(crate) fn nearest_line(source: &str, quote: &str) -> Option<NearLine> {
     if chars == 0 || chars > MAX_QUOTE_CHARS {
         return None;
     }
-    longest_prefix(source, quote, chars).or_else(|| closest_line(source, quote))
+    longest_prefix(source, quote, chars).or_else(|| {
+        (chars.saturating_mul(source.len()) <= MAX_EDIT_WORK)
+            .then(|| closest_line(source, quote))
+            .flatten()
+    })
 }
 
 fn longest_prefix(source: &str, quote: &str, chars: usize) -> Option<NearLine> {
@@ -109,7 +124,13 @@ fn closest_line(source: &str, quote: &str) -> Option<NearLine> {
             continue;
         }
         let line: Vec<char> = text.chars().collect();
-        let mut candidates = vec![(substring_distance(&quote, &line), quote.len())];
+        let mut candidates = Vec::new();
+        // The quote inside the line needs at least one edit per character
+        // the line lacks; skip the search when that alone is too many.
+        if quote.len().saturating_sub(line.len()) * NEAR_DENOMINATOR <= quote.len() * NEAR_NUMERATOR
+        {
+            candidates.push((substring_distance(&quote, &line), quote.len()));
+        }
         // A short line inside a long quote is weak evidence: "2022" is inside
         // most quotes about that year. It must cover a third of the quote.
         if line.len() * 3 >= quote.len() {
@@ -156,13 +177,90 @@ fn substring_distance(pattern: &[char], text: &[char]) -> usize {
     previous.into_iter().min().unwrap_or(pattern.len())
 }
 
-/// Add the nearest source passage to a refused quote, when the source text can
-/// be read here: it is retained, decoded text, not restricted, and within the
-/// whole-excerpt bound. Otherwise the failure is returned unchanged.
+/// Add the nearest source passage to a refused `observe` quote, when the
+/// source text can be read here (see [`hint`]). The retry repeats the call
+/// with that line as `--quote`.
 pub(crate) fn point_at_nearest_passage(
     store: &mut Store,
     envelope: &Value,
     quote: Option<&str>,
+    failure: Failure,
+) -> Failure {
+    hint(store, envelope, 0, quote, Caller::Shortcut, failure)
+}
+
+/// Add the nearest source passage to a refused quote in a raw `record`
+/// request. The operation is the one the failure path names. A request is a
+/// file, so no retry is offered for a near line: the message names the
+/// JSON Pointer to change.
+pub(crate) fn point_record_at_nearest_passage(
+    store: &mut Store,
+    envelope: &Value,
+    failure: Failure,
+) -> Failure {
+    let index = failure
+        .error
+        .path
+        .as_deref()
+        .and_then(|path| {
+            path.strip_prefix("/operations/")?
+                .split('/')
+                .next()?
+                .parse()
+                .ok()
+        })
+        .unwrap_or(0);
+    let quote = envelope
+        .pointer(&format!(
+            "/operations/{index}/payload/basis/text_quote/exact"
+        ))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
+    hint(
+        store,
+        envelope,
+        index,
+        quote.as_deref(),
+        Caller::Record { index },
+        failure,
+    )
+}
+
+/// Who refused the quote, which decides the form of the advice.
+#[derive(Clone, Copy)]
+enum Caller {
+    Shortcut,
+    Record { index: usize },
+}
+
+/// The text a refused quote was checked against, read the way `evidence
+/// read` reads it. The hint reveals one line of it in a refusal; it records
+/// no session read, because nothing is written.
+struct Cited<'a> {
+    case: Id,
+    record: &'a Record,
+    /// The whole source, or the lines a `text_lines` selector names.
+    text: SourceText,
+    /// Source line number of the first line of `text`.
+    first_line: usize,
+    /// Whether `text` is the whole source.
+    whole: bool,
+    /// The digest the cited selector names.
+    digest: Digest,
+}
+
+/// Add the nearest passage to a refused quote: the source text is read
+/// through `evidence_read` (retained, decoded text, not restricted or
+/// withdrawn), whole or in bounded chunks up to [`MAX_HINT_SOURCE_BYTES`].
+/// A quote cited inside a `text_lines` selection is compared with those
+/// lines only; other positional selectors get no hint. Otherwise the failure
+/// is returned unchanged. What is accepted never changes.
+fn hint(
+    store: &mut Store,
+    envelope: &Value,
+    index: usize,
+    quote: Option<&str>,
+    caller: Caller,
     mut failure: Failure,
 ) -> Failure {
     if !failure
@@ -172,15 +270,109 @@ pub(crate) fn point_at_nearest_passage(
     {
         return failure;
     }
-    let (Some(quote), Some(source)) = (quote, source_text(store, envelope)) else {
+    let Some(quote) = quote else {
         return failure;
     };
-    let Some(near) = nearest_line(&source, quote) else {
-        failure.error.message.push_str(
-            " No line of the source is near this quote, so it reads as reworded; copy a passage from the source file as it stands.",
-        );
+    let Some(basis) = envelope.pointer(&format!("/operations/{index}/payload/basis")) else {
         return failure;
     };
+    let Some(case) = envelope
+        .get("case_id")
+        .and_then(Value::as_str)
+        .and_then(|case| case.parse::<Id>().ok())
+    else {
+        return failure;
+    };
+    let Ok(replay) = store.case(case) else {
+        return failure;
+    };
+    let Some(cited) = cited(store, &replay, case, basis) else {
+        return failure;
+    };
+    let read_argv = || source_text::read_argv(store, &replay, cited.case, cited.record);
+    let source = match &cited.text {
+        SourceText::Read(text) => text,
+        SourceText::Unreadable => return failure,
+        SourceText::TooLarge { size } => {
+            failure.error.message.push_str(&format!(
+                " The source holds {size} bytes, more than the {MAX_HINT_SOURCE_BYTES} this hint searches, so no nearest line is named. Read it in line ranges with investigation evidence read {} --lines START:END and copy a passage as it stands.",
+                cited.record.header.id
+            ));
+            if let Some(argv) = read_argv() {
+                failure = failure.with_argv(argv);
+            }
+            return failure;
+        }
+    };
+    let scope = if cited.whole {
+        "the source".to_owned()
+    } else {
+        format!(
+            "the selected lines {}-{}",
+            cited.first_line,
+            cited.first_line + source.split_inclusive('\n').count().max(1) - 1
+        )
+    };
+    let quote_pointer = match caller {
+        Caller::Shortcut => None,
+        Caller::Record { index } => Some(format!("/operations/{index}/payload/basis/text_quote")),
+    };
+    // A record quote may carry a prefix or suffix: the exact text can be
+    // present while the text around it differs.
+    if let Some(pointer) = &quote_pointer
+        && let Some(start) = source.find(quote)
+    {
+        failure.error.message.push_str(&format!(
+            " The exact text is in {scope} from line {}, so {pointer}/prefix or {pointer}/suffix does not match the text beside it there. Copy them from the source as it stands, or omit them.",
+            cited.first_line + source[..start].matches('\n').count()
+        ));
+        return failure;
+    }
+    // A quote the source holds outside a text_lines selection is not a near
+    // miss: the selection does not cover it.
+    if !cited.whole
+        && let SourceText::Read(whole) = source_text::read(
+            store,
+            &replay,
+            cited.record,
+            &cited.digest,
+            MAX_HINT_SOURCE_BYTES,
+        )
+        && let Some(start) = whole.find(quote)
+    {
+        failure.error.message.push_str(&format!(
+            " The quote is in the source from line {}, outside {scope}. Widen the selector to cover it, or cite the whole source.",
+            whole[..start].matches('\n').count() + 1
+        ));
+        return failure;
+    }
+    let Some(near) = nearest_line(source, quote) else {
+        failure.error.message.push_str(&format!(
+            " No line of {scope} is near this quote, so it reads as reworded."
+        ));
+        if let Some(argv) = read_argv() {
+            // `--whole`, or `--lines 1:N` for a source over one read.
+            let range: Vec<&str> = argv
+                .iter()
+                .map(String::as_str)
+                .skip_while(|part| !matches!(*part, "--whole" | "--lines"))
+                .take_while(|part| *part != "--format")
+                .collect();
+            let range = range.join(" ");
+            failure.error.message.push_str(&format!(
+                " Read the source with investigation evidence read {} {range} and copy a passage as it stands.",
+                cited.record.header.id
+            ));
+            failure = failure.with_argv(argv);
+        } else {
+            failure
+                .error
+                .message
+                .push_str(" Copy a passage from the source file as it stands.");
+        }
+        return failure;
+    };
+    let number = cited.first_line + near.number - 1;
     let shown: String = near
         .text
         .chars()
@@ -194,9 +386,8 @@ pub(crate) fn point_at_nearest_passage(
         .collect();
     let found = match near.found {
         Found::Prefix { matched, next } => format!(
-            "The first {matched} of {} characters of the quote are in the source, from line {}, where the source continues with {}. ",
+            "The first {matched} of {} characters of the quote are in {scope}, from line {number}, where {scope} continues with {}. ",
             quote.chars().count(),
-            near.number,
             match next {
                 None => "its end".to_owned(),
                 Some('\n' | '\r') => "a line break".to_owned(),
@@ -205,16 +396,20 @@ pub(crate) fn point_at_nearest_passage(
         ),
         Found::Closest => String::new(),
     };
+    let advice = match &quote_pointer {
+        None => "quote that line or an exact part of it.".to_owned(),
+        Some(pointer) => format!("set {pointer}/exact to that line or an exact part of it."),
+    };
     failure.error.message.push_str(&format!(
-        " {found}The nearest source passage is line {}: \"{shown}\". If it supports the statement, quote that line or an exact part of it.",
-        near.number
+        " {found}The nearest source passage is line {number}: \"{shown}\". If it supports the statement, {advice}"
     ));
     failure.error.expected = Some(json!({
-        "nearest_source_line": near.number,
+        "nearest_source_line": number,
         "text": near.text,
     }));
     // Offer a retry only when that line is a quote the source holds once.
-    let offered = shown == near.text
+    let offered = matches!(caller, Caller::Shortcut)
+        && shown == near.text
         && near.text.chars().count() <= MAX_SUGGESTED_CHARS
         && source.matches(near.text.as_str()).count() == 1;
     if offered && let Some(argv) = with_quote(env::args_os(), &near.text) {
@@ -223,26 +418,43 @@ pub(crate) fn point_at_nearest_passage(
     failure
 }
 
-/// The decoded text of the observation's source, read the way `evidence read`
-/// reads it. The hint reveals one line of it in a refusal; it records no
-/// session read, because nothing is written.
-fn source_text(store: &mut Store, envelope: &Value) -> Option<String> {
-    let case = envelope
-        .get("case_id")
-        .and_then(Value::as_str)?
-        .parse()
-        .ok()?;
-    let basis = envelope.pointer("/operations/0/payload/basis")?;
+/// The cited Artifact and the text its quote was checked against.
+fn cited<'a>(store: &Store, replay: &'a CaseReplay, case: Id, basis: &Value) -> Option<Cited<'a>> {
     let reference: RevisionRef = serde_json::from_value(basis.get("artifact_ref")?.clone()).ok()?;
-    let mut selector: SelectorRequest =
-        serde_json::from_value(basis.get("selector")?.clone()).ok()?;
-    selector.selector = SelectorKind::Whole;
-    let replay = store.case(case).ok()?;
+    let selector: SelectorRequest = serde_json::from_value(basis.get("selector")?.clone()).ok()?;
     let record = replay.state.revision(reference)?;
-    match store.evidence_read(&replay, record, selector).ok()?.excerpt {
-        Excerpt::Text { text, .. } => Some(text),
-        _ => None,
-    }
+    let (text, first_line, whole) = match &selector.selector {
+        SelectorKind::Whole => (
+            source_text::read(
+                store,
+                replay,
+                record,
+                &selector.artifact_digest,
+                MAX_HINT_SOURCE_BYTES,
+            ),
+            1,
+            true,
+        ),
+        SelectorKind::TextLines { start_line, .. } => {
+            let text = match store.evidence_read(replay, record, selector.clone()) {
+                Ok(read) => match read.excerpt {
+                    Excerpt::Text { text, .. } => SourceText::Read(text),
+                    _ => SourceText::Unreadable,
+                },
+                Err(_) => SourceText::Unreadable,
+            };
+            (text, usize::try_from(*start_line).ok()?, false)
+        }
+        _ => return None,
+    };
+    Some(Cited {
+        case,
+        record,
+        text,
+        first_line,
+        whole,
+        digest: selector.artifact_digest,
+    })
 }
 
 /// The current invocation with `--quote` set to `quote`.

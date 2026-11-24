@@ -2,6 +2,7 @@ use std::{env, io, path::Path};
 
 use investigation_core::{
     PROGRAM_NAME,
+    classification::{AudiencePolicy, Classifier, Field},
     header::{Actor, ActorResolutionError, resolve_actor},
     identity::{Id, Kind, ResolveError, resolve_prefix},
     wire::{ErrorCode, Failure},
@@ -267,19 +268,63 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
         return Ok(*case);
     }
 
-    let mut failure = Failure::new(
-        ErrorCode::CaseRequired,
-        if cases.is_empty() {
-            "Create a case with investigation start QUESTION --attach FILE, or with investigation case new TITLE."
-        } else {
-            "Select a case with --case ID."
-        },
-    )
-    .at("/case_id");
+    let message = if cases.is_empty() {
+        "Create a case with investigation start QUESTION --attach FILE, or with investigation case new TITLE.".to_owned()
+    } else {
+        format!(
+            "Select a case with --case ID. The workspace has {} cases: {}.",
+            cases.len(),
+            listed_cases(store, &cases)
+        )
+    };
+    let mut failure = Failure::new(ErrorCode::CaseRequired, message).at("/case_id");
     failure.error.actual = Some(json!(cases));
     let mut argv = workspace_argv(store.workspace());
     argv.extend(["onboard", "--format", "json"].map(str::to_owned));
     Err(failure.with_argv(argv))
+}
+
+/// Cases a `CASE_REQUIRED` message lists by ID; `error.actual` holds all.
+const MAX_LISTED_CASES: usize = 8;
+/// Characters of a case title the list shows.
+const MAX_LISTED_TITLE_CHARS: usize = 60;
+
+/// The first [`MAX_LISTED_CASES`] case IDs, each with its title when the
+/// default audience may see it, and how many were omitted. A case that does
+/// not verify is listed by ID alone; selecting it reports why.
+fn listed_cases(store: &mut Store, cases: &[Id]) -> String {
+    let policy = AudiencePolicy::default();
+    let mut parts: Vec<String> = cases
+        .iter()
+        .take(MAX_LISTED_CASES)
+        .map(|&case| {
+            let Ok(replay) = store.case(case) else {
+                return case.to_string();
+            };
+            let Some(record) = replay.state.current(case) else {
+                return case.to_string();
+            };
+            if !Classifier::new(&replay.state).may_show(record, Field::Title, &policy) {
+                return format!("{case} (title restricted)");
+            }
+            match record.body.get("title").and_then(|title| title.as_str()) {
+                Some(title) => {
+                    let mut shown: String = title.chars().take(MAX_LISTED_TITLE_CHARS).collect();
+                    if title.chars().count() > MAX_LISTED_TITLE_CHARS {
+                        shown.push('…');
+                    }
+                    format!("{case} {shown:?}")
+                }
+                None => case.to_string(),
+            }
+        })
+        .collect();
+    if let Some(omitted) = cases.len().checked_sub(MAX_LISTED_CASES).filter(|n| *n > 0) {
+        parts.push(format!(
+            "and {omitted} more (error.actual lists every case ID)"
+        ));
+    }
+    parts.join(", ")
 }
 
 fn resolve_case_prefix(selector: &str, ids: impl Iterator<Item = Id>) -> Result<Id, Failure> {
