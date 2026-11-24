@@ -1132,6 +1132,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli commit_kill.rs::a_writer_killed_at_every_commit_point_recovers_its_receipt_or_commits_once_on_retry",
+          "note": "A real `start --attach` process (new case, attachment and manifest blobs) is sent SIGKILL at 11 commit points through a debug-only pause (investigation_store::test_pause, the bn-f97f pattern): lock, verify_tail, idempotency, validate, blob_publish, journal_write, directory_sync, journal_publish, journal_linked (event in the journal, directory not synced), index_update and receipt. At each one, `check` finds at most a stale index. The receipt lookup finds the command exactly when its event is in the journal. The identical retry commits it once, or returns the original transaction and created IDs. Leftover temporaries are recognizable and outside the journal. Not covered: a process kill keeps the page cache, so a power loss during the directory sync stays with the crash models (and the LazyFS variant stays #[ignore]); the export boundary is unchanged."
+        }
       ]
     },
     {
@@ -1188,6 +1197,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli promotion_race.rs (5 tests)",
+          "note": "Two real processes. `decision.accept` or `conclusion.validate`, carrying the read set its caller read, is paused before the commit lock. A second process then commits a new hard criterion (GATE_FAILED), a retraction of a cited comparison (REVISION_CONFLICT) or a retraction of the supporting observation (REVISION_CONFLICT), and the promotion is resumed. The promotion is refused and commits nothing. Control runs pause and resume with no change, and they commit."
+        }
       ]
     },
     {
@@ -1202,6 +1220,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli late_criterion.rs::a_hard_criterion_added_late_blocks_acceptance_then_turns_the_accepted_decision_needs_review, ::a_material_objection_blocks_acceptance_then_disputes_the_accepted_decision",
+          "note": "Through the binary: a late hard criterion blocks `decision.accept` with a repair and commits nothing. After acceptance, a new hard criterion of the Decision's question turns it `needs_review` (membership_changed, active_hard_criteria) and `brief` counts it. A criterion of another question changes nothing, and retirement restores `current`. Every step gives the same standing after `repair index` rebuilds the index. A material Objection blocks acceptance; raised after acceptance it marks the Decision `disputed` (objection_raised_after_review), a stronger state than the item's `needs_review`."
+        }
       ]
     },
     {
@@ -1272,6 +1299,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli bounded_errors.rs::every_refused_request_at_the_size_limit_gets_a_bounded_error",
+          "note": "14 refused requests at the 512 KiB request limit, or over it, carry their bulk in a value, an unknown or duplicate key, an operation name, a reference, the command ID, the actor, a number, nesting, invalid UTF-8, or thousands of invalid operations. They are sent by standard input and by file, in JSON and in text. Every response and every standard error is at most 2 KiB, every error path at most 256 bytes, and no output echoes 160 bytes of the input. The largest response seen was 388 bytes."
+        }
       ]
     },
     {
@@ -1389,6 +1425,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli commit_kill.rs::a_closure_batch_killed_at_every_commit_point_leaves_both_or_neither",
+          "note": "Drill 6's batch (`retrospective.record` + `case.close` on a material case) is run as a real `record` process and sent SIGKILL at 10 commit points. At each one, the case is closed and cites its one Retrospective, or it is open with none. The identical retry closes it once, with the acknowledged IDs."
+        }
       ]
     },
     {
@@ -1539,6 +1584,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "demonstrated",
+          "evidence": "cli vault_reconcile.rs::a_proposal_from_a_stale_note_is_checked_against_the_fresh_case",
+          "note": "A note rendered at case revision 1 is edited, another writer closes the case (revision 2), and the vault is not rendered again. `propose-change` from that note carries precondition revision 2 and only the stated value; nothing is read from the note. It is refused against the closed case (GATE_FAILED), nothing is committed, and no file changes. Finding, not changed here: because the precondition is the fresh revision, a stated title replaces one that another writer changed after the render, and the response does not flag the note as stale; the dry run does not evaluate gates (its preview passed where the real run was refused)."
+        }
       ]
     },
     {
@@ -1618,6 +1672,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "limited",
+          "evidence": "cli export_review_vault.rs::every_audience_copy_reads_without_a_community_plugin",
+          "note": "Every audience copy of every case of scenarios A-D (more than 100 notes) is scanned for community-plugin code blocks (dataview, tasks and others), inline queries and inline fields, template tags, plugin frontmatter keys, scripts, embedded frames and an application settings folder. Nothing is found. A planted control finds all 7 kinds, and plain text finds none. Still limited: whether a mobile or offline reader understands the copy needs the human gate (bn-3ijp OWNER)."
+        }
       ]
     },
     {
@@ -1632,6 +1695,15 @@
       "runs": [
         "R1",
         "R7"
+      ],
+      "updates": [
+        {
+          "bone": "bn-dla3",
+          "commit": "3137c168a633bc01625645a83655654869a98be2",
+          "status": "limited",
+          "evidence": "cli obsidian_setup.rs::apply_into_a_custom_configuration_folder_changes_only_its_app_json",
+          "note": "Apply into a custom configuration folder, detected and named, changes only that folder's app.json, and only the previewed keys. A second apply changes nothing. Named beside an existing default folder, only the named one changes. Still limited: there is no plugin to install, and no uninstall or revert (W15, Milestone D), which needs the release-note disclosure."
+        }
       ]
     },
     {
@@ -2666,7 +2738,14 @@
       },
       {
         "bones": "new tests or dispositions",
-        "text": "P1 and P19 (real process kill or a recorded disposition, bn-f97f), P5 (a real promotion race), P6 (end-to-end late criterion), P11 (bounded error size), V10 (stale-note proposal checked against fresh state), V14 (plugin-syntax scan of review copies), V15 (apply into a custom config folder)"
+        "text": "P1 and P19 (real process kill or a recorded disposition, bn-f97f), P5 (a real promotion race), P6 (end-to-end late criterion), P11 (bounded error size), V10 (stale-note proposal checked against fresh state), V14 (plugin-syntax scan of review copies), V15 (apply into a custom config folder)",
+        "updates": [
+          {
+            "bone": "bn-dla3",
+            "commit": "3137c168a633bc01625645a83655654869a98be2",
+            "note": "Each of the seven has a test. P1, P19, P5, P6, P11 and V10 are now demonstrated; V14 and V15 stay limited by the human gate and the plugin's absence."
+          }
+        ]
       },
       {
         "bones": "bn-gef3",

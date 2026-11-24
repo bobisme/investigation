@@ -471,8 +471,21 @@ pub fn publish(
     target: &Path,
     gate: &WriteGate,
 ) -> Result<(), DurableError> {
+    publish_then(fs, temp, target, gate, || {})
+}
+
+/// [`publish`], calling `linked` after the link and before the directory
+/// sync.
+pub fn publish_then(
+    fs: &mut impl DurableFs,
+    temp: &Path,
+    target: &Path,
+    gate: &WriteGate,
+    linked: impl FnOnce(),
+) -> Result<(), DurableError> {
     gate.check()?;
     fs.link_no_replace(temp, target)?;
+    linked();
     let parent = target
         .parent()
         .filter(|p| !p.as_os_str().is_empty())

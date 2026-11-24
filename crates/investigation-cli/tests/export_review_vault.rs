@@ -9,7 +9,11 @@
 //! - an existing destination is refused and left as it was;
 //! - every wiki link of the copy resolves to a file inside it;
 //! - nothing of the working vault (stale notes, conflict copies, the
-//!   person-owned folders) reaches the copy.
+//!   person-owned folders) reaches the copy;
+//! - the copy needs no community plugin, script or shell: no plugin code
+//!   block, inline query, template tag, plugin frontmatter key, inline
+//!   field, script or embedded frame, and no `.obsidian` folder (bn-dla3,
+//!   plan §20.4 V14).
 //!
 //! Every run clears the environment, so nothing outside the workspace can
 //! be reached.
@@ -424,6 +428,146 @@ fn no_audience_copy_names_a_withheld_record_title_or_attachment_over_a_c_and_d()
         probes > 0 && blobs > 0,
         "the scan looked for withheld titles ({probes}) and retained bytes ({blobs})"
     );
+}
+
+/// Code block languages that only a community plugin renders.
+const PLUGIN_FENCES: [&str; 12] = [
+    "dataview",
+    "dataviewjs",
+    "tasks",
+    "button",
+    "tracker",
+    "chart",
+    "kanban",
+    "excalidraw",
+    "meta-bind",
+    "templater",
+    "query-js",
+    "jsx",
+];
+/// Frontmatter keys that hand a note to a community plugin.
+const PLUGIN_KEYS: [&str; 4] = ["kanban-plugin", "excalidraw-plugin", "dg-publish", "banner"];
+
+/// Every place in the files of a copy that needs a community plugin, a
+/// script or an application setting to be read: "path: what".
+fn plugin_syntax(out: &BTreeMap<String, Vec<u8>>) -> Vec<String> {
+    let mut found = Vec::new();
+    for (path, bytes) in out {
+        if path.starts_with(".obsidian/") || path.contains("/.obsidian/") {
+            found.push(format!("{path}: an application settings folder"));
+            continue;
+        }
+        if !path.ends_with(".md") {
+            continue;
+        }
+        let text = String::from_utf8(bytes.clone()).unwrap();
+        let mut fenced = false;
+        let mut frontmatter = text.starts_with("---\n");
+        for (number, line) in text.lines().enumerate() {
+            let at = format!("{path}:{}", number + 1);
+            if number > 0 && frontmatter && line == "---" {
+                frontmatter = false;
+                continue;
+            }
+            if frontmatter {
+                let key = line.split(':').next().unwrap_or_default().trim();
+                if PLUGIN_KEYS.contains(&key) {
+                    found.push(format!("{at}: plugin frontmatter key {key}"));
+                }
+                continue;
+            }
+            let trimmed = line.trim_start();
+            if let Some(info) = trimmed
+                .strip_prefix("```")
+                .or_else(|| trimmed.strip_prefix("~~~"))
+            {
+                if !fenced {
+                    let language = info.split_whitespace().next().unwrap_or_default();
+                    if PLUGIN_FENCES.contains(&language.to_ascii_lowercase().as_str()) {
+                        found.push(format!("{at}: a {language} code block"));
+                    }
+                }
+                fenced = !fenced;
+                continue;
+            }
+            if fenced {
+                continue;
+            }
+            for (pattern, what) in [
+                ("`= ", "an inline query"),
+                ("`$=", "an inline script query"),
+                ("<%", "a template tag"),
+                ("%>", "a template tag"),
+                ("<script", "a script"),
+                ("<iframe", "an embedded frame"),
+                ("javascript:", "a script link"),
+            ] {
+                if line.to_ascii_lowercase().contains(pattern) {
+                    found.push(format!("{at}: {what}"));
+                }
+            }
+            // An inline field (`key:: value`) is read only by a query plugin.
+            let field = line.split_once("::").is_some_and(|(key, _)| {
+                let key = key.trim_start_matches(['-', '*', ' ', '[', '(']);
+                !key.is_empty()
+                    && key
+                        .chars()
+                        .all(|c| c.is_alphanumeric() || matches!(c, ' ' | '_' | '-'))
+            });
+            if field {
+                found.push(format!("{at}: an inline field"));
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn every_audience_copy_reads_without_a_community_plugin() {
+    let mut planted = BTreeMap::new();
+    planted.insert(
+        "Cases/x/Overview.md".to_owned(),
+        b"---\nkanban-plugin: basic\n---\n# T\n\n```dataview\nLIST\n```\n\nStatus:: open\n`= this.file.name`\n<% tp.date.now() %>\n"
+            .to_vec(),
+    );
+    planted.insert(
+        ".obsidian/community-plugins.json".to_owned(),
+        b"[]".to_vec(),
+    );
+    // The scan finds each kind it looks for, and nothing in plain text.
+    assert_eq!(
+        plugin_syntax(&planted).len(),
+        7,
+        "{:#?}",
+        plugin_syntax(&planted)
+    );
+    let mut plain = BTreeMap::new();
+    plain.insert(
+        "Cases/x/Overview.md".to_owned(),
+        b"---\ntitle: T\n---\n# T\n\n```json\n{\"a\": 1}\n```\n\nSee [[Cases/x/Overview|the case]]. Ratio 1:2, time 12:30.\n"
+            .to_vec(),
+    );
+    assert_eq!(plugin_syntax(&plain), Vec::<String>::new());
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let mut notes = 0;
+    for scenario in SCENARIOS {
+        let workspace = fixtures::workspace(scenario, &root.join(scenario), false);
+        for case in cases(&workspace) {
+            for audience in AUDIENCES {
+                let out = root.join(format!("{scenario}-{audience}-plugins"));
+                let (exit, value) = export(root, &workspace, &case, audience, &out);
+                assert_eq!(exit, 0, "{value}");
+                let copy = files(&out);
+                notes += copy.keys().filter(|path| path.ends_with(".md")).count();
+                let found = plugin_syntax(&copy);
+                assert!(found.is_empty(), "{scenario} {audience}: {found:#?}");
+                fs::remove_dir_all(&out).unwrap();
+            }
+        }
+    }
+    assert!(notes > 100, "{notes} notes scanned");
 }
 
 #[test]

@@ -28,7 +28,7 @@ use crate::{
     blob::{BlobError, StagedBlob, publish_blob, verify_existing},
     diag::{CommitTrace, Outcome, Stage},
     durable::{
-        DurableError, DurableFile, DurableFs, LocalFs, LockError, WriteGate, publish,
+        DurableError, DurableFile, DurableFs, LocalFs, LockError, WriteGate, publish, publish_then,
         sync_directory, sync_file,
     },
     journal::{
@@ -36,6 +36,7 @@ use crate::{
         replay_case_from,
     },
     projection::{Claim, IndexEvent, Projection},
+    test_pause,
     workspace::Workspace,
 };
 
@@ -688,11 +689,12 @@ impl<F: DurableFs> Store<F> {
             trace.enter(Stage::JournalWrite);
             write_private(&mut self.fs, &self.gate, &staged, bytes, true)?;
             trace.enter(Stage::JournalPublish);
-            let result = publish(
+            let result = publish_then(
                 &mut self.fs,
                 &staged,
                 &directory.join("events").join(name),
                 &self.gate,
+                || test_pause::at(test_pause::JOURNAL_LINKED),
             );
             if result.is_ok() {
                 let _ = self.fs.remove(&staged);
@@ -728,6 +730,7 @@ impl<F: DurableFs> Store<F> {
         self.fs
             .rename_no_replace(&staged, &directory)
             .map_err(|error| exclusive_publication_failure(DurableError::Io(error)))?;
+        test_pause::at(test_pause::JOURNAL_LINKED);
         trace.enter(Stage::DirectorySync);
         sync_directory(&mut self.fs, Path::new(CASES), &self.gate).map_err(durability_failure)
     }

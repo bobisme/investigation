@@ -98,6 +98,7 @@ impl CommitTrace {
     }
 
     pub(crate) fn enter(&mut self, stage: Stage) {
+        crate::test_pause::at(stage.name());
         self.stage = stage;
         tracing::debug!(
             target: TARGET,

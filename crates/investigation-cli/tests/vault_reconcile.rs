@@ -484,3 +484,80 @@ fn help_teaches_the_dispositions_with_examples_and_the_next_step() {
         assert!(help.contains(needle), "{needle}\n{help}");
     }
 }
+
+/// V10 (bn-dla3): a proposal from a note rendered before another writer
+/// changed the case is built and checked against the case as it is now.
+/// The note shows an open case at revision 1; the case was closed at
+/// revision 2 and the vault not rendered since. The proposal carries the
+/// fresh revision and only the stated value, and the store checks it
+/// against the closed case: refused, nothing committed, no file changed.
+#[test]
+fn a_proposal_from_a_stale_note_is_checked_against_the_fresh_case() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    let title = casework.title();
+    casework.edit(
+        &overview,
+        "\nA better title would be: Why do lookups stall?\n",
+    );
+    let rendered = casework.run(&["show", &casework.case], 0)["basis_revision"].clone();
+    assert_eq!(rendered, 1);
+
+    // Another writer closes the case; nothing renders the vault again.
+    let close = serde_json::json!({"schema_version":"inv.command.v1","command_id":"close",
+        "case_id":casework.case,"actor":"agent:other-writer",
+        "preconditions":[{"id":casework.case,"revision":1}],
+        "operations":[{"op":"case.close","payload":{"outcome":"inconclusive",
+            "reason":"Nothing more to learn.","reopen_condition":"A new timeout.",
+            "retrospective_waived":"No material work occurred.","unresolved_questions":[]}}]});
+    let path = casework.root.join("local/close.json");
+    fs::write(&path, serde_json::to_vec(&close).unwrap()).unwrap();
+    casework.run(&["record", "--input", path.to_str().unwrap()], 0);
+    fs::remove_file(&path).unwrap();
+    let status = casework.run(&["vault", "status"], 0);
+    assert_eq!(status["freshness"], "stale", "{status}");
+    assert_eq!(status["cases"][0]["rendered"]["sequence"], 1, "{status}");
+    assert_eq!(status["cases"][0]["current"]["sequence"], 2, "{status}");
+
+    let args = [
+        "--actor",
+        "agent:reconcile-test",
+        "vault",
+        "reconcile",
+        overview.as_str(),
+        "--disposition",
+        "propose-change",
+        "--field",
+        "title",
+        "--value",
+        "Why do lookups stall?",
+        "--command-id",
+        "retitle-stale",
+    ];
+    let before = casework.files();
+    let mut dry = args.to_vec();
+    dry.push("--dry-run");
+    let preview = casework.run(&dry, 0);
+    let envelope = &preview["proposal"]["envelope"];
+    assert_eq!(
+        envelope["preconditions"],
+        serde_json::json!([{"id":casework.case,"revision":2}]),
+        "the fresh revision, not the note's: {preview}"
+    );
+    let payload = &envelope["operations"][0]["payload"];
+    assert_eq!(payload["title"], "Why do lookups stall?");
+    assert!(
+        !payload.to_string().contains("A better title"),
+        "nothing is read from the note: {payload}"
+    );
+
+    let refused = casework.run(&args, 5);
+    assert_eq!(refused["commit_status"], "not_committed", "{refused}");
+    assert_eq!(refused["error"]["code"], "GATE_FAILED", "{refused}");
+    assert_eq!(casework.title(), title);
+    assert_eq!(
+        casework.files(),
+        before,
+        "a refused proposal changes no file"
+    );
+}

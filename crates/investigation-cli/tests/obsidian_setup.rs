@@ -219,6 +219,72 @@ fn a_custom_configuration_folder_is_detected_or_named() {
     );
 }
 
+/// V15 (bn-dla3): an apply into a custom configuration folder, detected and
+/// named, changes only that folder's app.json, and only the previewed keys;
+/// a default `.obsidian` folder beside it is never touched.
+#[test]
+fn apply_into_a_custom_configuration_folder_changes_only_its_app_json() {
+    for named in [false, true] {
+        let directory = vault(".config-custom");
+        let mut args = vec!["obsidian", "setup", "--vault", path(&directory)];
+        if named {
+            args.extend(["--config-dir", ".config-custom"]);
+        }
+        let before = tree(directory.path());
+        let preview = ok(&args);
+        args.push("--apply");
+        let value = ok(&args);
+        assert_eq!(value["written"], true, "{value}");
+        assert_eq!(value["config_dir"], ".config-custom", "{value}");
+        let source = if named { "flag" } else { "detected" };
+        assert_eq!(value["config_dir_source"], source, "{value}");
+        assert_eq!(value["diff"], preview["diff"]);
+        let after = tree(directory.path());
+        let changed: Vec<&PathBuf> = before
+            .keys()
+            .filter(|key| before[*key] != after[*key])
+            .collect();
+        assert_eq!(changed, [&PathBuf::from(".config-custom/app.json")]);
+        assert_eq!(before.len(), after.len(), "no file was created or removed");
+        assert!(!directory.path().join(".obsidian").exists());
+        let text = String::from_utf8(
+            after[&PathBuf::from(".config-custom/app.json")]
+                .clone()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            text,
+            "{\n\t\"showLineNumber\": true,\n\t\"newLinkFormat\": \"absolute\",\n\t\"nested\": {\"useMarkdownLinks\": 1},\n\t\"useMarkdownLinks\": false\n}"
+        );
+        let again = ok(&args);
+        assert_eq!(again["changed"], false);
+        assert_eq!(tree(directory.path()), after);
+    }
+
+    // Named beside an existing default folder, only the named one changes.
+    let directory = vault(".obsidian");
+    let custom = directory.path().join(".config-custom");
+    fs::create_dir(&custom).unwrap();
+    fs::write(custom.join("app.json"), APP_JSON).unwrap();
+    let before = tree(directory.path());
+    ok(&[
+        "obsidian",
+        "setup",
+        "--vault",
+        path(&directory),
+        "--config-dir",
+        ".config-custom",
+        "--apply",
+    ]);
+    let after = tree(directory.path());
+    let changed: Vec<&PathBuf> = before
+        .keys()
+        .filter(|key| before[*key] != after[*key])
+        .collect();
+    assert_eq!(changed, [&PathBuf::from(".config-custom/app.json")]);
+}
+
 #[test]
 fn no_folder_or_file_is_created() {
     let directory = tempfile::tempdir().unwrap();

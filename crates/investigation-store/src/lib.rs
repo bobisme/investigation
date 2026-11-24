@@ -19,6 +19,7 @@ pub mod pinned;
 pub mod projection;
 pub mod selectors;
 pub mod store;
+pub mod test_pause;
 pub mod utf8;
 pub mod workspace;
 
