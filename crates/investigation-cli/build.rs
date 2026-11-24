@@ -22,9 +22,12 @@ use std::{
 const SCENARIOS: [&str; 4] = ["scenario-a", "scenario-b", "scenario-c", "scenario-d"];
 
 /// Documents outside `docs/` and `methods/` that the REL.02 checks read.
-const DOCUMENTS: [&str; 8] = [
+/// The draft release notes are among them, so they never name a command
+/// the binary lacks (REL.03).
+const DOCUMENTS: [&str; 9] = [
     "README.md",
     "AGENTS.md",
+    "notes/release/DRAFT-release-notes.md",
     "obsidian/README.md",
     "schemas/README.md",
     "scripts/README.md",

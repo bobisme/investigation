@@ -1,6 +1,6 @@
 # Deliberately deferred features
 
-This register mirrors plan §22 (revision 4, 2026-11-21) and records the later revision-4 deferrals alongside it. REL.03 uses this register as the source for the release's public deferred-feature list. Deferred means absent from the implementation contract until its stated condition is met; it is not a hidden stub or a successful no-op. Revisit a binding decision only for an observed conflict, with a recorded ADR and corresponding tests.
+This register mirrors plan §22 (revision 4, 2026-11-21) and records the later revision-4 deferrals alongside it. [Deferred work packages and commands](#deferred-work-packages-and-commands) adds the deferrals of plan revision 4.1 and of the build sequence (§19.2-§19.3), each with its plan citation. REL.03 uses this register as the source for the release's public deferred-feature list ([draft release notes](../notes/release/DRAFT-release-notes.md)). Deferred means absent from the implementation contract until its stated condition is met; it is not a hidden stub or a successful no-op. Revisit a binding decision only for an observed conflict, with a recorded ADR and corresponding tests.
 
 | Deferred feature | Why / entry condition |
 |---|---|
@@ -13,8 +13,8 @@ This register mirrors plan §22 (revision 4, 2026-11-21) and records the later r
 | Mandatory vector search | FTS + exact provenance first; embedding optional later. |
 | Autonomous blindspot agents or universal semantic gap detection | Core supports deterministic structure checks and external attributed challenge reviews; no LLM or false completeness guarantees. |
 | Automatic method-pack self-improvement / cross-case doctrine promotion | Retrospectives are case-scoped; a future explicit, reviewed and sensitivity-aware pack-authoring workflow may adopt proposed lessons. |
-| Distributed CRDT multiwriter or cloud case sync | Need real conflict policy, identity and consistency semantics; local multi-process first. |
-| Always-on daemon or generic local REST API | CLI and optional stdio MCP suffice initially. |
+| Distributed CRDT multiwriter or cloud case sync | Need real conflict policy, identity and consistency semantics; local multi-process first. Plan §10.8: V1 rejects diverged journals and supports inspecting or importing external evidence, or forking a case (`investigation archive fork`); a distributed design needs branch identity, causal parents, semantic conflicts, read-set validation, idempotency scope and reconciliation specified separately. |
+| Always-on daemon or generic local REST API | The CLI suffices initially. Plan §22 also names an optional stdio MCP server, which is itself deferred (W13, below). |
 | Full automatic two-way Markdown editing | Generated notes + human notes + explicit reconciliation protects canonical state. |
 | Required Obsidian community plugins | Native Bases, Canvas and Markdown cover a useful baseline. |
 | Formal custody or authenticity attestation | Hashes are integrity checks, not legal authentication; add verified trust anchors only for actual need. |
@@ -29,5 +29,16 @@ This register mirrors plan §22 (revision 4, 2026-11-21) and records the later r
 | Large and archived captures | The alpha retains bounded snapshots. Revisit with the streaming and archive suites. |
 | Automatic qualification of named statistics and sampled measurements | Require typed observation evidence for the chosen statistic and denominator. Comparisons can already record these as attributed claims. |
 | Reclaim abandoned import preparation | Capture preparation runs outside the commit lock. Revisit with an explicit ownership and expiration protocol. |
+
+## Deferred work packages and commands
+
+Plan §19.3 puts Milestone C (W08, W11, W12, W14, W17) in the first release. The rows below are outside it. None of them is in this binary as a stub: a command the plan names for them is absent from `investigation --help`, and the binary refuses it as an unrecognized subcommand with `INVALID_INPUT`, `commit_status: not_committed` and the repair `investigation --help --format json`.
+
+| Deferred feature | Plan citation | Why / entry condition | Tracker |
+|---|---|---|---|
+| Typed MCP frontend (W13): the `mcp` command over stdio, its read-only mode, the `core` and `expanded` tool profiles and MCP resources | Revision 4.1 note (2026-11-23); §9.7; §19.2 row W13; §19.3 Milestone C; §20.7 ("when MCP is included in the release") | Owner decision, 2026-11-23: W13 is parked outside every milestone and may be dropped. The CLI, learnable from `--help` alone (W17), is the agent interface. Entry condition: the owner re-opens W13. Its acceptance is then CLI/MCP parity and error conformance in independent tests, with the `core` profile's `tools/list` under 12 KiB in CI (§9.7). `crates/investigation-mcp` holds a README only and is not a workspace member. | bn-17k |
+| Optional Obsidian companion plugin (W15), including the companion install and uninstall of §13.3 steps 2-4 | §19.2 row W15; §19.3 Milestone D; §13.3 | Milestone D is optional polish: the companion "earns itself through human testing" (§19.3), so the entry condition is the §20.6 human gate showing a need the native vault does not meet. Acceptance: controlled mutations, cancel, revision and stale-editor gates (§19.2). This release ships `investigation obsidian setup`, which previews or applies two named native viewer settings; it installs no plugin and has no uninstall or revert. | bn-tjq, bn-3cm |
+| Local action claims, extension SDK conveniences, pack-authoring docs, and packaging and portability beyond the qualified platform (W16) | §19.2 row W16; §19.3 Milestone D | W16 depends on W14 and on a demonstrated need, recorded per item before it is built (bn-fpa3). Acceptance: no duplicate external effects claimed, and platform gates reported correctly. The release candidate package exists for Linux x86_64 with glibc only ([packaging](packaging.md)); other platforms are unqualified ([support matrix](support-matrix.md)). | bn-3mg |
+| A complete recovery archive that includes unfinalized capture staging | §10.7 | The plan has the archive refuse or wait until those Runs are finalized or recovered as interrupted; "a later consistent staging-snapshot protocol may include them". `investigation export --kind workspace-archive` is refused while capture staging holds evidence the journal does not reference (`workspace_archive.rs::an_archive_is_only_for_the_restricted_audience_covers_every_case_and_waits_for_staging`). Entry condition: a specified and tested staging-snapshot protocol. | — |
 
 The baseline tool must report unsupported/deferred operations honestly. It must not accept a command as successful when the requested feature is absent.
