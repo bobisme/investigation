@@ -19,17 +19,20 @@ use std::collections::BTreeSet;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::{
     catalog::{OperationDescriptor, OperationInfo, standard_catalog},
     command::{Command, RevisionRef},
     evidence::{ArtifactAvailability, ArtifactBody},
     freshness::{Freshness, FreshnessIndex, Trigger},
+    guardrails::SessionEvidence,
     header::{Actor, SystemClock},
     identity::{Id, Kind, SystemIdSource},
+    inherited_trust::Session,
     input, method_pack_ops,
-    state::{Acceptance, OperationContext, Record, State, validate_and_apply},
+    pack_policy::PackSource,
+    state::{Acceptance, OperationContext, Record, State, validate_and_apply_guarded},
     wire::{Digest, ErrorCode, Failure},
 };
 
@@ -243,6 +246,11 @@ pub struct ReferenceLoss {
     /// quote copies part of the bytes into their own record text, which a
     /// withdrawal leaves in place.
     pub quoting_observations: Vec<RevisionRef>,
+    /// Warnings the commit would give, such as a pinned pack whose bytes are
+    /// unavailable so its guardrails are not applied. Only a preview with
+    /// pack bytes reports them.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -260,6 +268,47 @@ pub enum LossOutcome {
 pub struct Refusal {
     pub code: ErrorCode,
     pub message: String,
+    /// The commit's own `expected`: for a guardrail refusal, the
+    /// `guardrail_blockers`, each with what is unmet and its repair.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<Value>,
+}
+
+/// The write a preview simulates: the actor and declared session the real
+/// `artifact.expire` would carry, the case's retained method pack bytes and
+/// the session evidence the store would supply. With them the simulation
+/// runs the same write-side guardrails as the commit, so a guardrail refusal
+/// is predicted with the commit's code and repair (bn-r6ig). The preview
+/// cannot know a human confirmation the real command may carry; it simulates
+/// a command without one.
+pub struct PreviewWriter<'a> {
+    pub actor: Actor,
+    pub session: Option<Session>,
+    pub packs: Option<&'a dyn PackSource>,
+    pub sessions: Option<&'a SessionEvidence>,
+}
+
+impl PreviewWriter<'_> {
+    /// A writer with no pack bytes: pinned packs resolve as unavailable and
+    /// supply no guardrail, as before bn-r6ig. For callers that need only the
+    /// availability and dependents.
+    pub fn unguarded() -> Self {
+        Self {
+            actor: "agent:retention-preview".parse().expect("a valid actor"),
+            session: None,
+            packs: None,
+            sessions: None,
+        }
+    }
+}
+
+/// A pack source with no bytes.
+struct NoPacks;
+
+impl PackSource for NoPacks {
+    fn pack_bytes(&self, _: &Digest) -> Option<Vec<u8>> {
+        None
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -276,15 +325,33 @@ pub struct DependentLoss {
 /// reports. The index is built once, for `state`, and updated for each
 /// withdrawal. Nothing is written. Unknown IDs are the caller's to report.
 pub fn preview(state: &State, case: Id, artifacts: &[Id]) -> Vec<ReferenceLoss> {
+    preview_as(state, case, artifacts, &PreviewWriter::unguarded())
+}
+
+/// [`preview`] as `writer`: each simulated withdrawal is the command that
+/// writer would commit, so a pinned pack's `artifact.expire` guardrail
+/// refuses it here exactly when it would refuse the commit.
+pub fn preview_as(
+    state: &State,
+    case: Id,
+    artifacts: &[Id],
+    writer: &PreviewWriter<'_>,
+) -> Vec<ReferenceLoss> {
     let before = FreshnessIndex::build(state, case);
     artifacts
         .iter()
         .filter_map(|id| state.current(*id).filter(|r| r.header.case_id == case))
-        .map(|record| loss(state, &before, case, record))
+        .map(|record| loss(state, &before, case, record, writer))
         .collect()
 }
 
-fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> ReferenceLoss {
+fn loss(
+    state: &State,
+    before: &FreshnessIndex,
+    case: Id,
+    record: &Record,
+    writer: &PreviewWriter<'_>,
+) -> ReferenceLoss {
     let body: Option<ArtifactBody> = input::decode(&record.body).ok();
     let id = record.header.id;
     let mut loss = ReferenceLoss {
@@ -299,6 +366,7 @@ fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> Re
         dependents: Vec::new(),
         derivatives: Vec::new(),
         quoting_observations: Vec::new(),
+        warnings: Vec::new(),
     };
     loss.derivatives = derivatives(state, case, id);
     let copies: BTreeSet<Id> = std::iter::once(id)
@@ -309,8 +377,11 @@ fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> Re
         loss.outcome = LossOutcome::AlreadyUnavailable;
         return loss;
     }
-    match simulate(state, case, record.reference()) {
-        Ok(after) => {
+    match simulate(state, case, record.reference(), writer) {
+        Ok((after, warnings)) => {
+            if writer.packs.is_some() {
+                loss.warnings = warnings;
+            }
             // The index of `state`, brought forward to the one withdrawal:
             // only records it can affect are reassessed, and the result
             // equals a full build of `after` (bn-5h3z).
@@ -341,6 +412,7 @@ fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> Re
             loss.refusal = Some(Refusal {
                 code: failure.error.code,
                 message: failure.error.message,
+                expected: failure.error.expected,
             });
         }
     }
@@ -348,22 +420,31 @@ fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> Re
 }
 
 /// The state one accepted `artifact.expire` of `reference` would leave.
-fn simulate(state: &State, case: Id, reference: RevisionRef) -> Result<State, Failure> {
+fn simulate(
+    state: &State,
+    case: Id,
+    reference: RevisionRef,
+    writer: &PreviewWriter<'_>,
+) -> Result<(State, Vec<String>), Failure> {
     let sequence = state.sequence() + 1;
-    let command: Command = input::decode(&json!({
+    let mut command = json!({
         "schema_version": "inv.command.v1",
         "command_id": "retention-preview",
         "case_id": case,
-        "actor": "agent:retention-preview",
+        "actor": writer.actor,
         "preconditions": [],
         "operations": [{"op": OPERATION, "payload": {
             "artifact_ref": reference,
             "reason": "other",
             "rationale": "Preview only; nothing is committed.",
         }}],
-    }))
-    .map_err(|error| Failure::new(ErrorCode::IntegrityFailure, error.message))?;
-    let accepted = validate_and_apply(
+    });
+    if let Some(session) = &writer.session {
+        command["session"] = json!(session);
+    }
+    let command: Command = input::decode(&command)
+        .map_err(|error| Failure::new(ErrorCode::IntegrityFailure, error.message))?;
+    let accepted = validate_and_apply_guarded(
         state,
         &command,
         &standard_catalog(),
@@ -372,10 +453,13 @@ fn simulate(state: &State, case: Id, reference: RevisionRef) -> Result<State, Fa
             clock: &mut SystemClock,
             ids: &mut SystemIdSource,
         },
+        &std::collections::BTreeMap::new(),
+        writer.packs.unwrap_or(&NoPacks),
+        writer.sessions,
     )?;
     let mut after = state.clone();
     after.apply(&accepted)?;
-    Ok(after)
+    Ok((after, accepted.warnings))
 }
 
 /// Current Artifacts in `case` derived directly or transitively from `id`.

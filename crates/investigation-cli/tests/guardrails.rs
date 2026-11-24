@@ -807,3 +807,92 @@ fn the_session_that_read_untrusted_evidence_cannot_expire_the_artifact() {
     assert_eq!(guardrail["operation"], "artifact.expire");
     assert_eq!(guardrail["rules"][0]["guardrail"], "separate-expiry");
 }
+
+/// `retention preview` runs the same `artifact.expire` guardrail as the
+/// commit, as the actor and session it is given, and writes nothing
+/// (bn-r6ig). Where the commit is refused the preview reports the same code,
+/// message and blockers with their repair; where the commit is accepted the
+/// preview predicts the loss of availability.
+#[test]
+fn retention_preview_predicts_the_guardrail_refusal_of_artifact_expire() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+
+    let preview = |case: &Case<'_>, session: &str| -> Value {
+        let id = case.attachment["artifact_id"].as_str().unwrap();
+        let previewed = run(
+            root,
+            &[
+                "--case",
+                &case.id,
+                "--actor",
+                ACTOR,
+                "--session",
+                session,
+                "retention",
+                "preview",
+                id,
+                "--json",
+            ],
+            None,
+            0,
+        );
+        assert_eq!(
+            previewed["simulated_writer"]["session"], session,
+            "{previewed}"
+        );
+        assert_eq!(previewed["simulated_writer"]["actor"], ACTOR, "{previewed}");
+        previewed["references"][0].clone()
+    };
+    let expire = |case: &Case<'_>, key: &str, session: &str, exit| {
+        let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+        case.submit(
+            key,
+            "artifact.expire",
+            json!({"artifact_ref":artifact,"reason":"sensitive_content",
+                "rationale":"The bytes must stop being readable here."}),
+            Envelope {
+                session: Some(session),
+                ..Envelope::default()
+            },
+            exit,
+        )
+    };
+
+    // Unguarded: no pinned pack, so the reading session's preview predicts
+    // the withdrawal and the commit is accepted.
+    let solo = start(root, "solo-preview");
+    solo.read_evidence("solo-reader");
+    let predicted = preview(&solo, "solo-reader");
+    assert_eq!(predicted["outcome"], "becomes_unavailable", "{predicted}");
+    assert!(predicted.get("refusal").is_none(), "{predicted}");
+    expire(&solo, "expire", "solo-reader", 0);
+
+    // Guarded: the reading session's preview predicts the commit's refusal,
+    // with the same code, message and blockers (each with its repair).
+    let case = start(root, "guarded-preview");
+    adopt(&case);
+    case.read_evidence("reader");
+    let predicted = preview(&case, "reader");
+    assert_eq!(predicted["outcome"], "refused", "{predicted}");
+    assert_eq!(predicted["evidence_read_after"], "unchanged", "{predicted}");
+    let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+    assert_eq!(case.revision(&artifact), 1, "the preview wrote nothing");
+    let refused = expire(&case, "expire", "reader", 5);
+    let refusal = &predicted["refusal"];
+    assert_eq!(refusal["code"], refused["error"]["code"], "{refused}");
+    assert_eq!(refusal["message"], refused["error"]["message"], "{refused}");
+    assert_eq!(
+        refusal["expected"], refused["error"]["expected"],
+        "{refused}"
+    );
+    let unmet = blocker(&refused, "separate-expiry", "distinct_context");
+    assert_eq!(unmet["repair"]["change"], "session", "{unmet}");
+
+    // A clean session's preview predicts acceptance, and the commit agrees.
+    let predicted = preview(&case, "expirer");
+    assert_eq!(predicted["outcome"], "becomes_unavailable", "{predicted}");
+    assert!(predicted.get("refusal").is_none(), "{predicted}");
+    expire(&case, "expire", "expirer", 0);
+}

@@ -312,11 +312,16 @@ impl<F: DurableFs> Store<F> {
     /// from one verified load under one hold of the coordination lock. The
     /// preview of a withdrawal needs both; loading them together replays the
     /// journal once instead of twice, and the obligations then describe
-    /// exactly the snapshot of the returned replay.
+    /// exactly the snapshot of the returned replay. `plan` also gets the
+    /// retained method pack bytes the commit's guardrails read, under the
+    /// same hold, so a simulated withdrawal is guarded as the commit is.
     pub fn case_with_obligations(
         &mut self,
         case_id: Id,
-        plan: impl FnOnce(&CaseReplay) -> Result<(BTreeSet<Digest>, BTreeSet<Id>), Failure>,
+        plan: impl FnOnce(
+            &CaseReplay,
+            &dyn investigation_core::pack_policy::PackSource,
+        ) -> Result<(BTreeSet<Digest>, BTreeSet<Id>), Failure>,
     ) -> Result<(CaseReplay, Vec<DigestObligations>), Failure> {
         let _lock = self.coordinate()?;
         let mut verified = super::FreeLater::new(self.load_verified()?);
@@ -324,7 +329,7 @@ impl<F: DurableFs> Store<F> {
             .cases
             .get(&case_id)
             .ok_or_else(|| super::missing_case(case_id))?;
-        let (digests, released) = plan(replay)?;
+        let (digests, released) = plan(replay, &super::method_packs::RetainedPacks(&self.fs))?;
         let obligations = self.obligations_locked(&verified, &released, |_| digests)?;
         let replay = verified
             .cases

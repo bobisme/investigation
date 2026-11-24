@@ -12,6 +12,12 @@
 //! and known downstream copies. References in other cases are counted, never
 //! named: deduplication grants no cross-case read.
 //!
+//! The simulated withdrawal is the command the caller would commit: it
+//! carries the selected actor and declared session, and is checked with the
+//! retained method pack bytes and the session evidence the commit reads, so a
+//! pinned pack's `artifact.expire` guardrail refuses it here with the
+//! commit's code and repair (bn-r6ig).
+//!
 //! Nothing is reclaimed by the preview or by `artifact.expire`: a withdrawn
 //! reference is reported unavailable while its bytes stay stored.
 //!
@@ -38,8 +44,9 @@ use std::{
 use clap::Subcommand;
 use investigation_core::{
     PROGRAM_NAME,
+    guardrails::SessionEvidence,
     identity::{Id, Kind, resolve_prefix},
-    retention_ops::{self, LossOutcome, ReferenceLoss},
+    retention_ops::{self, LossOutcome, PreviewWriter, ReferenceLoss},
     wire::{Digest, ErrorCode, Failure},
 };
 use investigation_store::{
@@ -49,7 +56,11 @@ use investigation_store::{
 };
 use serde_json::{Value, json};
 
-use crate::{Global, Output, exposure as exposure_cli, selection::select_case};
+use crate::{
+    Global, Output, exposure as exposure_cli,
+    inherited_trust::select_session,
+    selection::{select_actor, select_case},
+};
 
 pub(crate) const AFTER_HELP: &str = "\
 preview lists, before anything changes, what artifact.expire would do to each
@@ -76,6 +87,10 @@ separate reclamation finds nothing else holding them. Other references to the
 same bytes, in this case or another, keep their own availability; those in
 other cases are counted, never named. Quoted text, derivatives, rendered notes
 and exports made earlier are copies a withdrawal leaves in place.
+
+The withdrawal is simulated as the --actor and --session you pass, the ones
+the commit should carry, so a method pack guardrail on artifact.expire refuses
+here with the commit's code and repair. A human confirmation is not simulated.
 
 Commit with a record command whose operation is artifact.expire, citing the
 artifact_ref this preview lists.
@@ -210,12 +225,33 @@ fn resolve_artifacts(
 
 fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Output, Failure> {
     let case = select_case(store, global.case.as_deref())?;
+    // The writer the commit would have: the selected actor (or the preview's
+    // own when none is configured; the commit would then need one) and the
+    // declared session, with the reads recorded for them.
+    let actor = select_actor(store.workspace(), global.actor.as_ref(), None)
+        .unwrap_or_else(|_| PreviewWriter::unguarded().actor);
+    let session = select_session(global)?;
+    let current = session
+        .as_ref()
+        .map(|session| store.session_reads(&actor, session))
+        .transpose()?;
+    let writer_view = json!({"actor": actor, "session": session, "human_confirmation": null});
     // One verified load gives the case and the obligations under one hold of
     // the coordination lock (the holder scan, timed by the bench).
     let mut losses = Vec::new();
-    let (replay, obligations) = store.case_with_obligations(case, |replay| {
+    let (replay, obligations) = store.case_with_obligations(case, |replay, packs| {
         let ids = resolve_artifacts(&replay.state, case, &args.artifacts)?;
-        losses = retention_ops::preview(&replay.state, case, &ids);
+        let sessions = SessionEvidence {
+            current,
+            ledger: replay.session_ledger(),
+        };
+        let writer = PreviewWriter {
+            actor,
+            session,
+            packs: Some(packs),
+            sessions: Some(&sessions),
+        };
+        losses = retention_ops::preview_as(&replay.state, case, &ids, &writer);
         let releasing = losses
             .iter()
             .filter(|loss| loss.outcome == LossOutcome::BecomesUnavailable);
@@ -276,6 +312,23 @@ fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
         if let Some(refusal) = &loss.refusal {
             line.push_str(&format!("  ({})", refusal.message));
         }
+        let blockers = loss
+            .refusal
+            .as_ref()
+            .and_then(|refusal| refusal.expected.as_ref())
+            .and_then(|expected| expected["guardrail_blockers"].as_array());
+        for blocker in blockers.into_iter().flatten() {
+            line.push_str(&format!(
+                "\n  guardrail {}/{} requires {}; repair: {}",
+                blocker["pack_id"].as_str().unwrap_or("?"),
+                blocker["guardrail"].as_str().unwrap_or("?"),
+                blocker["requirement"].as_str().unwrap_or("?"),
+                blocker["repair"]
+            ));
+        }
+        for warning in &loss.warnings {
+            line.push_str(&format!("\n  warning: {warning}"));
+        }
         if !loss.dependents.is_empty() {
             line.push_str(&format!(
                 "  {} record(s) would need review",
@@ -318,6 +371,7 @@ fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
             "writes": "nothing",
             "case_id": case,
             "snapshot": snapshot,
+            "simulated_writer": writer_view,
             "references": references,
             "logical_loss": {
                 "references": releasing.len(),
