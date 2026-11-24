@@ -16,7 +16,11 @@ use investigation_core::{
     state::Record,
     wire::{Digest, Failure},
 };
-use investigation_store::{Store, journal::CaseReplay, store::evidence_read::Excerpt};
+use investigation_store::{
+    Store,
+    journal::CaseReplay,
+    store::evidence_read::{Excerpt, characters_within},
+};
 use serde_json::{Value, json};
 
 use crate::source_text::{self, SourceText};
@@ -252,8 +256,8 @@ struct Cited<'a> {
 /// Add the nearest passage to a refused quote: the source text is read
 /// through `evidence_read` (retained, decoded text, not restricted or
 /// withdrawn), whole or in bounded chunks up to [`MAX_HINT_SOURCE_BYTES`].
-/// A quote cited inside a `text_lines` selection is compared with those
-/// lines only; other positional selectors get no hint. Otherwise the failure
+/// A quote cited inside a `text_lines` or `byte_range` selection is compared
+/// with that selection only; other positional selectors get no hint. Otherwise the failure
 /// is returned unchanged. What is accepted never changes.
 fn hint(
     store: &mut Store,
@@ -444,6 +448,38 @@ fn cited<'a>(store: &Store, replay: &'a CaseReplay, case: Id, basis: &Value) -> 
                 Err(_) => SourceText::Unreadable,
             };
             (text, usize::try_from(*start_line).ok()?, false)
+        }
+        // The decoded characters the range holds entirely, which is where
+        // the quote was looked for (bn-1xnl).
+        SelectorKind::ByteRange { start, end } => {
+            let whole = source_text::read(
+                store,
+                replay,
+                record,
+                &selector.artifact_digest,
+                MAX_HINT_SOURCE_BYTES,
+            );
+            let SourceText::Read(whole) = whole else {
+                return Some(Cited {
+                    case,
+                    record,
+                    text: whole,
+                    first_line: 1,
+                    whole: false,
+                    digest: selector.artifact_digest,
+                });
+            };
+            let (start, end) = (usize::try_from(*start).ok()?, usize::try_from(*end).ok()?);
+            if end > whole.len() {
+                return None;
+            }
+            let (start, end) = characters_within(whole.as_bytes(), start, end);
+            let first_line = whole[..start].matches('\n').count() + 1;
+            (
+                SourceText::Read(whole[start..end].to_owned()),
+                first_line,
+                false,
+            )
         }
         _ => return None,
     };

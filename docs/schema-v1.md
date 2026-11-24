@@ -91,6 +91,16 @@ restriction, retention and withdrawal refusals. `--whole` on an artifact over
 32 KiB is refused at `--whole` with its `size_bytes`, and the repair reads the
 most whole lines one read holds (`--lines 1:N`).
 
+An Observation's quote is checked when it is accepted, in the decoded text of
+its selection. For an original Artifact that text comes from its recorded text
+derivative, under `whole` and `byte_range` as under `text_lines` and
+`text_quote`, with the same retention and withdrawal checks. A `byte_range`
+that cuts a character is narrowed to the characters it holds entirely. A quote
+the text does not hold is refused with `OBSERVATION_TEXT_QUOTE_NOT_FOUND` and
+the nearest source line. A quote over bytes with no usable text derivative is
+recorded as `unavailable`. A recorded state never changes: replay does not
+check quotes again.
+
 For selected bytes containing NUL or invalid UTF-8, `excerpt.availability` is
 `binary` and `excerpt.bytes_base64` contains exactly the bytes from
 `excerpt.start` up to `excerpt.end`, in standard RFC 4648 base64 with padding
@@ -364,7 +374,7 @@ A migration backup is a workspace archive: it holds an archive pin while it is w
 
 Without `--format json`, `brief` prints a text form of the same bounded view, so it lists the same items; the text is not a schema. Each record is one line that starts with its ID and state and ends with its labelled title. Caveats, limitations, contradictions and cited evidence follow on indented lines. Authored text is quoted and labelled `authored_data` or `untrusted_evidence`, and a restricted record shows only its placeholder. The gap limits and the inherited-trust limit are kept. Omissions and the complete read come next, and the output ends with `Next:` lines for the deeper reads. `show ID --depth full` prints the summary lines, the computed states and IDs, the record header and one `body.PATH` line per recorded field, then a `Next:` line that reads the same view as JSON.
 
-`--level` sets depth, not size. `compact` lists outcomes and evidence as index entries: ID, title, effective status, a freshness label, caveat, contradiction, cited evidence and evidentiary use, without synopses or inquiries. `standard` (the default) gives bounded synopses. `deep` also adds each outcome's full record in `full_outcomes` when it fits.
+`--level` sets depth, not size. `compact` lists outcomes and evidence as index entries: ID, title, effective status, a freshness label, caveat, contradiction, cited evidence and evidentiary use, without synopses or inquiries. `standard` (the default) gives bounded synopses. `deep` also adds each outcome's full record in `full_outcomes` when it fits. Every level fills the same `--max-bytes`, and a section keeps only whole items, so a `compact` brief can be larger than a `standard` one of the same case: its short entries all fit, while `standard` leaves out items that do not fit and counts them in `omitted`. Without a binding budget `compact` is the smaller.
 
 `brief --since TRANSACTION_ID` returns `result: brief_delta`: what changed in meaning after that transaction, up to the read snapshot. `newly_stale` lists records that became `needs_review` or `disputed`, with their reason chains. `retracted_evidence` lists evidence whose status or evidentiary use changed. `disposition_changes` compares the effective status of conclusions and decisions, and the recorded status of other records, including new ones. `new_gaps` lists gaps that the gap rules did not emit at the earlier snapshot. The delta also lists `retrospectives` with their lessons, `stale_synopses` (authored synopses that became stale since the transaction, by ID and subject, never their text), `new_evidence`, `no_longer_stale` and counts of `other_changes`. The case caveat, contradiction and freshness are always included. The delta uses the same byte budget as a brief.
 

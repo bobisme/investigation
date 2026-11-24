@@ -4,6 +4,10 @@
 //! gates, and the output names the derivative it read.
 //!
 //! Each test takes the argv a response printed and executes it unchanged.
+//!
+//! bn-1xnl: a quote under a `whole` or `byte_range` selector over an
+//! original is verified through the same derivative, and a refusal carries
+//! the nearest-passage hint.
 
 use std::{
     io::Write as _,
@@ -140,6 +144,26 @@ impl Fixture {
         lines: (u64, u64),
         quote: &str,
     ) -> Value {
+        self.observation_of_original_under(
+            cwd,
+            key,
+            json!({
+                "type": "text_lines", "start_line": lines.0, "end_line": lines.1,
+                "encoding": "utf-8", "parser_version": "inv.text.utf8.v1",
+            }),
+            quote,
+        )
+    }
+
+    /// An `observation.add` envelope whose basis cites the original Artifact
+    /// with `selector` and `quote`.
+    fn observation_of_original_under(
+        &self,
+        cwd: &Path,
+        key: &str,
+        selector: Value,
+        quote: &str,
+    ) -> Value {
         let (code, mut envelope) = json(
             cwd,
             &[
@@ -165,10 +189,7 @@ impl Fixture {
             "selector": {
                 "schema_version": "inv.selector.v1",
                 "artifact_digest": self.digest,
-                "selector": {
-                    "type": "text_lines", "start_line": lines.0, "end_line": lines.1,
-                    "encoding": "utf-8", "parser_version": "inv.text.utf8.v1",
-                },
+                "selector": selector,
             },
             "text_quote": {"exact": quote, "prefix": null, "suffix": null},
         });
@@ -340,4 +361,179 @@ fn the_reworded_quote_repair_for_an_original_runs_as_printed() {
         f.source
             .starts_with(read["excerpt"]["text"].as_str().unwrap())
     );
+}
+
+/// Record `envelope` and return the exit code and response.
+fn record(cwd: &Path, envelope: &Value) -> (i32, Value) {
+    json(
+        cwd,
+        &["record", "--input", "-"],
+        Some(&serde_json::to_vec(envelope).unwrap()),
+    )
+}
+
+/// The quote state recorded on the Observation a receipt created.
+fn recorded_quote_state(cwd: &Path, receipt: &Value) -> Value {
+    let id = receipt["created"][0]["id"].as_str().unwrap();
+    let (code, shown) = json(cwd, &["show", id, "--depth", "full"], None);
+    assert_eq!(code, 0, "{shown}");
+    let mut states = Vec::new();
+    find_all(&shown, "text_quote", &mut states);
+    states
+        .iter()
+        .find_map(|quote| quote.get("state").cloned())
+        .unwrap_or_else(|| panic!("no recorded quote state: {shown}"))
+}
+
+/// bn-1xnl: a quote under a `whole` or `byte_range` selector over an
+/// original is checked in the text its recorded derivative decodes, the same
+/// lookup and gates as a line selector; before, it was recorded unchecked as
+/// `unavailable`.
+#[test]
+fn a_quote_under_whole_or_byte_range_over_an_original_is_verified() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = fixture(cwd);
+    let line = |number: usize| f.lines(number, number).trim_end().to_owned();
+    let start = f.lines(1, 4).len();
+    let end = f.lines(1, 6).len();
+    for (key, selector, quote) in [
+        ("whole-found", json!({"type": "whole"}), line(700)),
+        (
+            "range-found",
+            json!({"type": "byte_range", "start": start, "end": end}),
+            line(6),
+        ),
+    ] {
+        let envelope = f.observation_of_original_under(cwd, key, selector, &quote);
+        let (code, receipt) = record(cwd, &envelope);
+        assert_eq!(code, 0, "{key}: {receipt}");
+        assert_eq!(recorded_quote_state(cwd, &receipt), "verified", "{key}");
+    }
+}
+
+#[test]
+fn a_quote_the_whole_original_does_not_hold_is_refused_with_its_nearest_line() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = fixture(cwd);
+    // One word changed in line 700.
+    let near = f.lines(700, 700).trim_end().replace("weir", "wier");
+    let envelope =
+        f.observation_of_original_under(cwd, "whole-near", json!({"type": "whole"}), &near);
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("OBSERVATION_TEXT_QUOTE_NOT_FOUND"),
+        "{refused}"
+    );
+    assert_eq!(
+        refused["error"]["expected"]["nearest_source_line"], 700,
+        "{refused}"
+    );
+    // A reworded quote gets the read of the source, which runs as printed.
+    let envelope = f.observation_of_original_under(
+        cwd,
+        "whole-reworded",
+        json!({"type": "whole"}),
+        "Völlig anders formuliert, ohne jeden Bezug zur Quelle",
+    );
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(message.contains("reads as reworded"), "{refused}");
+    let read = runs_as_printed(cwd, &refused["error"]["repair"]["argv"], None);
+    assert_eq!(read["text_derivative"]["id"], f.derivative);
+}
+
+#[test]
+fn a_quote_outside_an_original_byte_range_is_refused_and_located() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = fixture(cwd);
+    let (start, end) = (f.lines(1, 4).len(), f.lines(1, 6).len());
+    let range = json!({"type": "byte_range", "start": start, "end": end});
+    // In the source at line 9, outside the range of lines 5-6.
+    let outside = f.lines(9, 9).trim_end().to_owned();
+    let envelope = f.observation_of_original_under(cwd, "range-outside", range.clone(), &outside);
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("The quote is in the source from line 9, outside the selected lines 5-6."),
+        "{refused}"
+    );
+    // A near miss inside the range names its line in the source.
+    let near = f.lines(6, 6).trim_end().replace("weir", "wier");
+    let envelope = f.observation_of_original_under(cwd, "range-near", range, &near);
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    assert_eq!(
+        refused["error"]["expected"]["nearest_source_line"], 6,
+        "{refused}"
+    );
+}
+
+/// A byte range over an original may cut a character of its decoded text:
+/// the quote is looked for among the characters the range holds entirely.
+#[test]
+fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let source = "Größe des Pegels: 41 cm über Null\n";
+    std::fs::write(cwd.join("pegel.txt"), source).unwrap();
+    let init = invoke(
+        cwd,
+        &["init", "casework", "--import-root", ".", "--no-vault"],
+        None,
+    );
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+    let (code, started) = json(
+        cwd,
+        &[
+            "--actor",
+            ACTOR,
+            "start",
+            "Wie hoch?",
+            "--attach",
+            "pegel.txt",
+        ],
+        None,
+    );
+    assert_eq!(code, 0, "{started}");
+    let item = &started["items"][0];
+    let f = Fixture {
+        source: source.to_owned(),
+        case: started["created"][0]["id"].as_str().unwrap().to_owned(),
+        source_id: item["source_id"].as_str().unwrap().to_owned(),
+        original: item["artifact_id"].as_str().unwrap().to_owned(),
+        derivative: item["derivative_id"].as_str().unwrap().to_owned(),
+        digest: item["digest"].as_str().unwrap().to_owned(),
+    };
+    // Bytes 3..: the second byte of "ö" onwards; the range ends inside "ü".
+    let cut = source.find("über").unwrap() + 1;
+    assert!(!source.is_char_boundary(3) && !source.is_char_boundary(cut));
+    let range = json!({"type": "byte_range", "start": 3, "end": cut});
+    for (key, quote, verified) in [
+        ("cut-held", "e des Pegels: 41 cm", true),
+        ("cut-first", "öße", false),
+        ("cut-last", "cm ü", false),
+    ] {
+        let envelope = f.observation_of_original_under(cwd, key, range.clone(), quote);
+        let (code, receipt) = record(cwd, &envelope);
+        if verified {
+            assert_eq!(code, 0, "{key}: {receipt}");
+            assert_eq!(recorded_quote_state(cwd, &receipt), "verified", "{key}");
+        } else {
+            assert_ne!(code, 0, "{key}: {receipt}");
+            assert!(
+                receipt["error"]["message"]
+                    .as_str()
+                    .unwrap()
+                    .starts_with("OBSERVATION_TEXT_QUOTE_NOT_FOUND"),
+                "{key}: {receipt}"
+            );
+        }
+    }
 }

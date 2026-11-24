@@ -931,7 +931,29 @@ fn cold_start(built: &mut Built, variant: &str) -> Bytes {
     );
 
     // ---- the comparison reads
-    let (_, standard_bytes) = drill.brief(&["--level", "standard"]);
+    let (standard, standard_bytes) = drill.brief(&["--level", "standard"]);
+    // Depth and budget are orthogonal (plan §8.3): every level fills the
+    // same --max-bytes with whole items. A compact entry is never larger
+    // than the standard one, so unbounded the compact brief is the smaller;
+    // within the default budget it can be larger only because standard left
+    // out items that did not fit (bn-1xnl).
+    let unbounded = |level: &str| drill.brief(&["--level", level, "--max-bytes", "1000000"]);
+    let ((_, compact_all), (_, standard_all)) = (unbounded("compact"), unbounded("standard"));
+    assert!(
+        compact_all < standard_all,
+        "{variant}: {compact_all} >= {standard_all}"
+    );
+    if compact_bytes > standard_bytes {
+        assert!(
+            standard["omitted"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|section| section["cause"] == "budget"),
+            "{variant}: {}",
+            standard["omitted"]
+        );
+    }
     let mut full_traversal = 0;
     let mut titles = 0;
     for id in &drill.records {

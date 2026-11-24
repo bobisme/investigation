@@ -293,11 +293,20 @@ fn a_quote_the_core_did_not_verify_is_shown_as_recorded_with_no_line() {
     let mut work = FirstUse::start();
     // The quote occurs twice, so it identifies no one location.
     let ambiguous = work.observe("The old site readings", "(old site)");
-    // The original bytes have no text reader, so the quote was not checked.
+    // Bytes that are not UTF-8 have no text derivative, so the quote was
+    // not checked. (A text original's quote is checked through its
+    // derivative, bn-1xnl.)
+    fs::write(work.root.join("reading.bin"), b"\xff\xfe2024  6.1\n").unwrap();
+    let added = json_of(&work.root, &work.args(&["source", "add", "reading.bin"]));
+    let binary = &added["items"][0];
+    assert!(
+        binary.get("derivative_id").is_none_or(Value::is_null),
+        "{added}"
+    );
     let unchecked = work.record(json!({
         "value":{"kind":"text","statement":"The 2024 reading"},
-        "basis":{"kind":"source","artifact_ref":{"id":work.original,"revision":1},
-            "selector":{"schema_version":"inv.selector.v1","artifact_digest":work.digest,
+        "basis":{"kind":"source","artifact_ref":{"id":binary["artifact_id"],"revision":1},
+            "selector":{"schema_version":"inv.selector.v1","artifact_digest":binary["digest"],
                 "selector":{"type":"whole"}},
             "text_quote":{"exact":"2024  6.1","prefix":null,"suffix":null}},
         "validity":"unknown","quality":[],"limitations":[],"evidence_kind":"observational",

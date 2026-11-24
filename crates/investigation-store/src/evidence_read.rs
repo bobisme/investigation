@@ -120,6 +120,22 @@ pub(super) fn text_reading<'a>(
     (text, Some(record))
 }
 
+/// The byte range of the characters of UTF-8 `text` wholly inside
+/// `start..end`: the range narrowed to the nearest character boundaries.
+pub fn characters_within(text: &[u8], start: usize, end: usize) -> (usize, usize) {
+    // A continuation byte is 0b10xx_xxxx; every other byte starts a character.
+    let boundary = |at: usize| at >= text.len() || (text[at] & 0xC0) != 0x80;
+    let mut first = start.min(end);
+    while first < end && !boundary(first) {
+        first += 1;
+    }
+    let mut last = end;
+    while last > first && !boundary(last) {
+        last -= 1;
+    }
+    (first, last)
+}
+
 /// Refusal of a text selector over an Artifact with no decoded text.
 const NO_TEXT_DERIVATIVE: &str = "This Artifact has no recorded UTF-8 text derivative: its bytes were not decoded as text at import, so line and quote selectors cannot read them. Read it whole or by byte_range instead.";
 
@@ -593,13 +609,24 @@ impl<F: DurableFs> Store<F> {
         // A line or quote selector over an original reads its recorded text
         // derivative, when that reference is retained and not withdrawn.
         let (text, through) = text_reading(state, artifact, &body, &selector.selector);
-        let text = text.filter(|_| {
-            through.is_none_or(|record| {
-                !investigation_core::retention_ops::bytes_withdrawn(state, None, record.header.id)
-                    && artifact_body(record)
-                        .is_ok_and(|body| body.availability == ArtifactAvailability::Retained)
-            })
-        });
+        let usable = |record: &Record| {
+            !investigation_core::retention_ops::bytes_withdrawn(state, None, record.header.id)
+                && artifact_body(record)
+                    .is_ok_and(|body| body.availability == ArtifactAvailability::Retained)
+        };
+        let text = text.filter(|_| through.is_none_or(usable));
+        // A quote under a whole or byte_range selector over an original is
+        // checked in the text its recorded derivative decodes, through the
+        // same lookup and gates as a line or quote selector (bn-1xnl). That
+        // derivative records the original's digest, so its text is exactly
+        // these bytes: the selection is the same range of it.
+        let decoded = text.is_none()
+            && quote.is_some()
+            && matches!(
+                selector.selector,
+                SelectorKind::Whole | SelectorKind::ByteRange { .. }
+            )
+            && recorded_text_derivative(state, artifact).is_some_and(usable);
         let selection = match selectors::resolve(
             Some(&bytes),
             &selector.selector,
@@ -618,11 +645,20 @@ impl<F: DurableFs> Store<F> {
         // A quote is checked inside a selection the reader already proved to
         // be text: a decoded-text derivative, a table cell or a code blob.
         let textual = text.is_some()
+            || decoded
             || matches!(
                 selector.selector,
                 SelectorKind::TableCell { .. } | SelectorKind::CodeSpan { .. }
             );
         if let (Some(quote), true, Selection::Bytes { start, end }) = (quote, textual, selection) {
+            // A byte range may cut a character of the decoded text. A quote
+            // is whole characters, so it can only be found among the
+            // characters the range holds entirely.
+            let (start, end) = if decoded {
+                characters_within(&bytes, start, end)
+            } else {
+                (start, end)
+            };
             let result = selectors::verify_quote(
                 Some(&bytes[start..end]),
                 &quote.exact,
