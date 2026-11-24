@@ -467,16 +467,9 @@ pub(crate) fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
         else {
             return false;
         };
-        // Stored Observation bodies carry lifecycle and assessment metadata that
-        // the strict content type rejects; strip it before decoding.
-        let mut content = rec.body.clone();
-        let Some(object) = content.as_object_mut() else {
-            return false;
-        };
-        for key in crate::observation_ops::OBSERVATION_METADATA {
-            object.remove(*key);
-        }
-        let Ok(o) = decode::<ObservationBody>(&content) else {
+        // Stored Observation bodies carry lifecycle and assessment metadata
+        // beside the typed body; read the typed body only.
+        let Ok(o) = ObservationBody::from_stored(&rec.body) else {
             return false;
         };
         if crate::measurement_ops::effective_validity(s, rec) != MeasurementValidity::Valid {

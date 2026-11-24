@@ -656,3 +656,89 @@ fn withheld_records_appear_by_id_only_and_are_not_walked() {
         assert_ne!(hypothesis["via"]["from"], chain.supporting.as_str());
     }
 }
+
+/// A corrected Observation keeps `corrects` and `revision_reason` beside its
+/// typed body, and later operations add `measurement_assessment` and
+/// `claim_origin`. Each path that reads its typed body for a gate still reads
+/// it: a supportive assessment with diagnostic weight, and a conclusion's
+/// direct-support qualification on review (bn-eaz1).
+#[test]
+fn a_corrected_assessed_and_traced_observation_still_supports_and_qualifies() {
+    let mut chain = chain();
+    let root = chain.work.root().to_owned();
+    let observation = chain.observations[0].clone();
+    let mut correction = chain.work.observation("18.7", 1);
+    correction["observation_ref"] = exact(&observation, 2);
+    correction["revision_reason"] = json!("Re-read the retained line.");
+    correction["run_ref"] = Value::Null;
+    chain.work.record(vec![("observation.correct", correction)]);
+    chain.work.record(vec![(
+        "measurement.assess",
+        json!({"observation_ref":exact(&observation, 3),"channel":null,"validity":"valid",
+            "verification":[{"kind":"equivalent",
+                "justification":"The setup reproduced a known reference value."}],
+            "rationale":"Judged from the recorded setup.","limits":[]}),
+    )]);
+    chain.work.record(vec![(
+        "origin.trace",
+        json!({"observation_ref":exact(&observation, 4),"origin":{"kind":"original"},
+            "rationale":"The benchmark's own run."}),
+    )]);
+    let shown = run(
+        &root,
+        &["show", &observation, "--depth", "full", "--json"],
+        0,
+    );
+    let body = &shown["record"]["body"];
+    for key in [
+        "corrects",
+        "revision_reason",
+        "measurement_assessment",
+        "claim_origin",
+    ] {
+        assert!(!body[key].is_null(), "{key} missing: {body:#}");
+    }
+
+    let mut supports = example(&root, "assessment.add");
+    supports["subject_ref"] = exact(&chain.hypothesis, 1);
+    supports["evidence_refs"] = json!([exact(&observation, 5)]);
+    supports["relation"] = json!("supports");
+    supports["rationale"] = json!("The corrected run stays under the limit.");
+    let assessment = chain.work.record(vec![("assessment.add", supports)]);
+    let conclusion = chain.work.record(vec![(
+        "conclusion.create",
+        json!({
+            "statement":"The queue met the latency limit in the corrected run.",
+            "scope":"The recorded benchmark.","significance":"Informs the queue choice.",
+            "support_refs":[exact(&observation, 5), exact(&assessment[0], 1)],
+            "contradiction_refs":[exact(&chain.rival, 1)],
+            "caveats":["One synthetic workload."]
+        }),
+    )]);
+    // Request review with the current read set as preconditions.
+    let candidate = run(
+        &root,
+        &["show", &conclusion[0], "--depth", "full", "--json"],
+        0,
+    );
+    let basis = &candidate["review_basis"];
+    let mut preconditions = basis["read_set"].as_array().cloned().unwrap();
+    preconditions.push(basis["subject_ref"].clone());
+    let (receipt, _) = call(
+        &root,
+        &["record", "--input", "-", "--json"],
+        Some(&json!({
+            "schema_version":"inv.command.v1","command_id":"request-review",
+            "case_id":chain.work.case,"actor":ACTOR,"preconditions":preconditions,
+            "operations":[{"op":"conclusion.request_review",
+                "payload":{"conclusion_ref":exact(&conclusion[0], 1)}}]
+        })),
+        0,
+    );
+    assert_eq!(
+        receipt["updated"][0]["id"],
+        conclusion[0].as_str(),
+        "{receipt:#}"
+    );
+    assert_eq!(receipt["updated"][0]["revision"], 2, "{receipt:#}");
+}

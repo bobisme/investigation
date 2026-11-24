@@ -1162,23 +1162,9 @@ fn ensure_observation_usable(
     if !diagnostic {
         return Ok(());
     }
-    let body: ObservationBody = content(
-        &observation.body,
-        &[
-            "status",
-            "lifecycle",
-            "retracted",
-            "rationale",
-            "revision_reason",
-            "correction_reason",
-            "retraction_reason",
-            "corrects",
-            "measurement_assessment",
-            "run_ref",
-            crate::origin_ops::CLAIM_ORIGIN_KEY,
-            crate::observation_ops::GUARDRAIL_KEY,
-        ],
-    )?;
+    // Read the typed body only: corrections, assessments, origin traces and
+    // guardrails keep their keys beside it.
+    let body = ObservationBody::from_stored(&observation.body).map_err(|_| integrity())?;
     let usable = match &body.basis {
         ObservationBasis::Assertion { .. } => false,
         ObservationBasis::Source {

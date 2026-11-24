@@ -708,19 +708,9 @@ fn qualification(
             "Use an active observation in the same case.",
         ));
     }
-    let mut body = record.body.clone();
-    let object = body.as_object_mut().ok_or_else(integrity)?;
-    for key in [
-        "status",
-        "revision_reason",
-        "run_ref",
-        "measurement_assessment",
-        crate::origin_ops::CLAIM_ORIGIN_KEY,
-        crate::observation_ops::GUARDRAIL_KEY,
-    ] {
-        object.remove(key);
-    }
-    let body: ObservationBody = decode(&body)?;
+    // Read the typed body only: corrections, assessments, origin traces and
+    // guardrails keep their keys beside it.
+    let body = ObservationBody::from_stored(&record.body).map_err(|_| integrity())?;
     if crate::measurement_ops::effective_validity(state, record) != MeasurementValidity::Valid {
         return Err(gate(
             "/support_refs",
@@ -2240,6 +2230,30 @@ mod tests {
         let expected = missing.error.expected.unwrap();
         assert_eq!(expected.as_array().unwrap().len(), 4);
         assert!(expected.as_array().unwrap().contains(&json!(observation)));
+    }
+
+    /// A corrected Observation carries `corrects` and `revision_reason`
+    /// beside its typed body, and a traced or assessed one `claim_origin` and
+    /// `measurement_assessment`: none of them stops it qualifying direct
+    /// support, directly or through a supportive assessment (bn-eaz1).
+    #[test]
+    fn a_corrected_traced_observation_qualifies_as_direct_support() {
+        let mut s = Scenario::new();
+        let observation = s.observation("3", None, false);
+        let mut body = s.get(observation).body.clone();
+        body["value"]["value"] = json!("4");
+        body["revision_reason"] = json!("Recounted the failures.");
+        body["corrects"] = json!(observation);
+        body[crate::origin_ops::CLAIM_ORIGIN_KEY] = json!({"traces":[],"dependence":[]});
+        let corrected = s.image(Kind::Observation, body, Some(observation));
+        let candidate = s.conclusion(Some(corrected));
+        let ready = s.prepare(candidate);
+        let review = s.validation(ready);
+        let (promote, preconditions) = s.promotion(ready, review);
+        let accepted = s
+            .transact("agent:investigator", vec![promote], &preconditions)
+            .unwrap();
+        assert_eq!(accepted.records[0].body["status"], "validated");
     }
 
     #[test]
