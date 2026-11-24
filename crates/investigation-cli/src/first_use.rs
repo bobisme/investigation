@@ -164,6 +164,36 @@ pub(crate) fn nonempty_init_repair(
     }
 }
 
+/// `init PATH` where PATH lies inside an existing workspace would nest a
+/// second workspace in it (W17.09): a successor ran `init ./casework` from
+/// inside `casework`. Name the enclosing workspace instead. PATH that is
+/// itself a workspace is not refused here; `init` reports it as initialized.
+pub(crate) fn nested_init_refusal(path: &Path) -> Option<Failure> {
+    if path.join("investigation.toml").is_file() {
+        return None;
+    }
+    let root = Workspace::locate(path).ok()?;
+    let root = root.to_str()?;
+    Some(
+        Failure::new(
+            ErrorCode::InvalidInput,
+            format!(
+                "{} lies inside the workspace {root}, so init would nest a second workspace in it. \
+                 Use that workspace: pass --workspace {root}. To create a separate workspace inside it anyway, add --nested.",
+                path.display()
+            ),
+        )
+        .with_argv(argv(&[
+            PROGRAM_NAME,
+            "--workspace",
+            root,
+            "onboard",
+            "--format",
+            "json",
+        ])),
+    )
+}
+
 /// Text lines for the actor setting `init --actor` recorded.
 pub(crate) fn actor_setting_text(actor: &Actor, previous: Option<&Actor>) -> String {
     let mut text = format!(

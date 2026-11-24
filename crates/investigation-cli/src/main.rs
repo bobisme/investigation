@@ -195,8 +195,12 @@ enum Commands {
     )]
     Init {
         /// New or empty directory for the workspace, or an existing workspace; --workspace PATH also works.
+        /// A PATH inside another workspace is refused unless --nested.
         #[arg(value_name = "PATH")]
         path: Option<PathBuf>,
+        /// Create the workspace even though PATH lies inside another workspace.
+        #[arg(long)]
+        nested: bool,
         /// Skip creation of the optional Markdown vault.
         #[arg(long)]
         no_vault: bool,
@@ -450,7 +454,8 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
             path,
             no_vault,
             import_roots,
-        } => init(path.as_deref(), !no_vault, &import_roots, &global),
+            nested,
+        } => init(path.as_deref(), !no_vault, &import_roots, nested, &global),
         Commands::Demo(args) => demo::run(args),
         Commands::Onboard => onboard::run(&global),
         Commands::Docs(args) => docs::run(args),
@@ -791,9 +796,13 @@ fn init(
     path: Option<&Path>,
     vault: bool,
     import_roots: &[PathBuf],
+    nested: bool,
     global: &Global,
 ) -> Result<Output, Failure> {
     let (path, flag) = first_use::init_destination(path, global.workspace.as_deref())?;
+    if let Some(failure) = first_use::nested_init_refusal(path).filter(|_| !nested) {
+        return Err(failure.at(flag.unwrap_or("PATH")));
+    }
     let import_roots = import_roots
         .iter()
         .map(|root| {

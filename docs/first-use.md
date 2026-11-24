@@ -173,5 +173,6 @@ After run 2 (not measured):
 - A missing attachment names, and repairs to, a file of the same name in an import root (`../source.txt` from the root).
 - `note TEXT` without `--on` is a note on the selected case: the only case, or `--case` (bn-3jr1). The receipt warns that `--on` was omitted and names the case. With several cases and no `--case` the call is refused with `CASE_REQUIRED` and the case IDs, as other case-scoped writes are. The note keeps no evidentiary standing.
 - The root help's `Next:` line is the `init` command, not `onboard`.
+- `init PATH` where PATH lies inside an existing workspace is refused (bn-2cc0). The refusal names the enclosing workspace root and repairs to `investigation --workspace ROOT onboard`; nothing is created. `--nested` asks for a workspace inside another. `init` on a workspace root itself and on a path outside every workspace behave as before.
 
 Follow-ups under W17 (bn-3hdd): bn-2mkk (a refused quote points at the nearest source passage), bn-3jr1 (`note` without `--on`), bn-2cc0 (`init` inside a workspace), bn-3bky (brief shows each observation's quote and source lines, for successor citation). The arms are `--arm docs --arm help-only` in `scripts/run-first-use.py`, so the W14 release trial (bn-2aic) can reuse them.

@@ -656,9 +656,24 @@ fn init_is_idempotent_and_discovery_uses_nearest_workspace() {
     assert_eq!(refreshed["result"], "already_initialized");
     assert_eq!(refreshed["layout"]["projection"], "vault/");
 
-    let inner = run(
+    // A workspace inside another is refused unless asked for (W17.09).
+    let refused = run(
         cwd,
         &["init", "outer/vault/Notes/inner", "--no-vault", "--json"],
+        None,
+        2,
+    );
+    assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+    assert!(!cwd.join("outer/vault/Notes/inner").exists());
+    let inner = run(
+        cwd,
+        &[
+            "init",
+            "outer/vault/Notes/inner",
+            "--nested",
+            "--no-vault",
+            "--json",
+        ],
         None,
         0,
     );
