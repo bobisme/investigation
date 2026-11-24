@@ -12,9 +12,8 @@
 //! the Views, the Overview and `Start Here.md` (this renderer plans no Canvas
 //! or Bases file; `Boards/` is human-owned).
 //!
-//! The withheld records keep ID-only placeholders for every audience; that a
-//! public vault still names them by ID is the product gap recorded by the
-//! ignored test below.
+//! The working vault keeps ID-only placeholders for withheld records for
+//! every audience; the public review export (W11.16) names none of them.
 
 mod support;
 
@@ -22,7 +21,11 @@ use investigation_core::{
     identity::Id,
     wire::{CommitResult, Receipt},
 };
-use investigation_render::{Audience, RenderPlan, VerifiedSnapshot, ViewPolicy, layout, render};
+use investigation_render::{
+    Audience, RenderPlan, VerifiedSnapshot, ViewPolicy,
+    export::{ExportSnapshot, Pin, kind, plan_export},
+    layout, render,
+};
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
 use support::vault;
@@ -317,11 +320,6 @@ fn no_text_title_or_digest_of_a_restricted_lesson_reaches_a_lower_audience() {
     }
 }
 
-/// Paths and lines of a plan that name `id`.
-fn mentions(plan: &RenderPlan, id: Id) -> Vec<String> {
-    leaks(plan, &id.to_string())
-}
-
 #[test]
 fn the_internal_working_vault_names_the_withheld_lesson_by_id_only() {
     let mut fixture = fixture();
@@ -357,28 +355,119 @@ fn the_internal_working_vault_names_the_withheld_lesson_by_id_only() {
 }
 
 /// §16.3: "the existence of an omission needs audience permission". The
-/// vault renders withheld records as ID-only placeholders for every
+/// working vault renders withheld records as ID-only placeholders for every
 /// audience (`ViewPolicy::audience_policy` always sets `placeholders`), so a
-/// public vault still has the restricted Retrospective's note file, its
+/// public working vault still has the restricted Retrospective's note file,
 /// Overview and Timeline entries and a `withheld` row in the Retrospectives
-/// view. Dropping placeholders for `public` is the review export's job
-/// (W11.16): it must also omit or refuse statements whose caveats rest on
-/// withheld records, which the placeholders now carry.
+/// view. The review export is what leaves a case (W11.16): its public copy
+/// names none of the restricted lesson's records, in any form, nor its
+/// digest, and says nothing is withheld in the Retrospectives view.
 #[test]
-#[ignore = "product gap: a public vault keeps ID-only placeholders, so the restricted lesson's Retrospective, admission and raise are still named by ID (W11.16 review export)"]
 fn a_public_vault_does_not_reveal_that_a_restricted_lesson_exists() {
     let mut fixture = fixture();
-    let plan = plan(&mut fixture, Audience::Public);
+    let snapshot =
+        ExportSnapshot::read(&mut fixture.store, fixture.source, &Pin::default()).unwrap();
+    let plan = plan_export(kind("review-vault").unwrap(), &snapshot, Audience::Public).unwrap();
+    let identifiers = plan.identifiers();
+    let files: Vec<(String, String)> = plan
+        .files()
+        .entries()
+        .iter()
+        .map(|entry| {
+            (
+                entry.path().as_str().to_owned(),
+                String::from_utf8_lossy(entry.content()).into_owned(),
+            )
+        })
+        .chain([(
+            "export-manifest.json".to_owned(),
+            String::from_utf8_lossy(plan.manifest_bytes()).into_owned(),
+        )])
+        .collect();
+    let restore = |text: &str| String::from_utf8(identifiers.restore(text.as_bytes())).unwrap();
     for &id in &fixture.secret_records {
-        let found = mentions(&plan, id);
-        assert!(found.is_empty(), "{id}: {found:#?}");
+        let canonical = id.to_string();
+        let uuid = canonical.split_once('_').unwrap().1.to_owned();
+        let mut needles = vec![
+            uuid.clone(),
+            uuid.replace('-', ""),
+            uuid.to_ascii_uppercase(),
+        ];
+        needles.extend(identifiers.exported(&canonical).map(str::to_owned));
+        for (path, text) in &files {
+            for needle in &needles {
+                assert!(!path.contains(needle.as_str()), "{id}: {path}");
+                assert!(!text.contains(needle.as_str()), "{id}: {path}");
+            }
+            assert!(!restore(text).contains(&uuid), "{id}: {path}");
+        }
     }
-    let view = text(
-        &plan,
-        &format!(
-            "Cases/{}/Views/Retrospectives and Lessons.md",
-            fixture.source
-        ),
-    );
+    let digest = fixture.secret_digest.trim_start_matches("sha256:");
+    for (path, text) in &files {
+        assert!(!text.contains(RESTRICTED), "{path}");
+        assert!(!text.contains(digest), "{path}");
+    }
+    let view = files
+        .iter()
+        .find(|(path, _)| path.ends_with("/Views/Retrospectives and Lessons.md"))
+        .map(|(_, text)| text.as_str())
+        .unwrap_or_default();
     assert!(!view.contains("withheld"), "{view}");
+    // Not vacuous: the public lesson is there.
+    assert!(view.contains(&format!("{PUBLIC} guidance")), "{view}");
+}
+
+/// The reading case consulted the lesson before it was raised, so its
+/// consultation still points at the restricted Retrospective and binds the
+/// lesson's digest. That pointer lives in another case, whose own records
+/// are internal: no export of the reading case below `restricted` may name
+/// the restricted Retrospective, its admission or its digest.
+#[test]
+fn no_export_of_a_consulting_case_names_the_restricted_lesson() {
+    let mut fixture = fixture();
+    let snapshot =
+        ExportSnapshot::read(&mut fixture.store, fixture.reader, &Pin::default()).unwrap();
+    let digest = fixture
+        .secret_digest
+        .trim_start_matches("sha256:")
+        .to_owned();
+    let mut found = Vec::new();
+    let mut named = 0;
+    for spec in investigation_render::export::KINDS {
+        if spec.scope() != investigation_render::export::Scope::Case {
+            continue;
+        }
+        for audience in [Audience::Internal, Audience::Public] {
+            let plan = plan_export(spec, &snapshot, audience).unwrap();
+            let identifiers = plan.identifiers();
+            let files = plan
+                .files()
+                .entries()
+                .iter()
+                .map(|entry| (entry.path().as_str().to_owned(), entry.content().to_vec()))
+                .chain([(
+                    "export-manifest.json".to_owned(),
+                    plan.manifest_bytes().to_vec(),
+                )]);
+            for (path, bytes) in files {
+                let text = String::from_utf8(identifiers.restore(&bytes)).unwrap();
+                // Not vacuous: the consultation itself is shown.
+                named += usize::from(text.contains(&fixture.consultation.to_string()));
+                for &id in &fixture.secret_records {
+                    let uuid = id.to_string().split_once('_').unwrap().1.to_owned();
+                    if text.contains(&uuid) || path.contains(&uuid) {
+                        found.push(format!("{} {audience:?} {path}: {id}", spec.name));
+                    }
+                }
+                if text.contains(&digest) || text.contains(RESTRICTED) {
+                    found.push(format!("{} {audience:?} {path}: digest or text", spec.name));
+                }
+            }
+        }
+    }
+    assert!(found.is_empty(), "{found:#?}");
+    assert!(
+        named > 0,
+        "no restricted export shows the consultation's pointer"
+    );
 }

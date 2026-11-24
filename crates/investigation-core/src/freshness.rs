@@ -1721,6 +1721,17 @@ impl FreshnessIndex {
                 .map(|(id, _)| *id),
         )
     }
+
+    /// [`Self::overview`] over only the records `include` admits, for a copy
+    /// that shows some of the case: its counts never reveal the others.
+    pub fn overview_of(&self, include: impl Fn(Id) -> bool) -> FreshnessSummary {
+        self.summarize(
+            self.nodes
+                .iter()
+                .filter(|(id, node)| !node.inactive && include(**id))
+                .map(|(id, _)| *id),
+        )
+    }
 }
 
 #[cfg(test)]

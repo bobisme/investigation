@@ -85,7 +85,10 @@ use crate::{
 /// Output format of this kind. It plans the vault templates, so a change
 /// to the vault renderer's bytes (`RENDERER_VERSION`) changes it too; the
 /// manifest names both through this value and the snapshot.
-pub const VERSION: &str = "inv.export.review-vault.v1";
+/// v2 (W11.16): every note, not only the views and the Overview, carries
+/// the caveats of the caveated records it links, since a record note's
+/// backlinks show their standing too.
+pub const VERSION: &str = "inv.export.review-vault.v2";
 
 /// The vault renderer version whose templates this kind plans.
 pub const TEMPLATES: &str = crate::plan::RENDERER_VERSION;
@@ -152,8 +155,8 @@ impl ExportRenderer for ReviewVault {
         let mut plan = PlanBuilder::new(generation.clone());
         for entry in cases.finish().entries() {
             let mut content = entry.content().to_vec();
-            if entry.phase() == Phase::Views && entry.path().as_str().ends_with(".md") {
-                caveat_section(&mut content, &notes)?;
+            if entry.path().as_str().ends_with(".md") {
+                caveat_section(&mut content, &notes, entry.projects())?;
             }
             plan.add(
                 entry.phase(),
@@ -200,15 +203,20 @@ impl ExportRenderer for ReviewVault {
     }
 }
 
-/// Append the fixed caveats of every caveated record a view or Overview
-/// links, so a reader who sees its standing in a table row sees them too.
-fn caveat_section(content: &mut Vec<u8>, notes: &NoteContext<'_>) -> Result<(), RenderError> {
+/// Append the fixed caveats of every caveated record a note links, so a
+/// reader who sees its standing in a table row, a list or a backlink sees
+/// them too. A record's own note shows its caveats under its summary.
+fn caveat_section(
+    content: &mut Vec<u8>,
+    notes: &NoteContext<'_>,
+    own: Option<Id>,
+) -> Result<(), RenderError> {
     let case = notes.case();
     let text = String::from_utf8_lossy(content).into_owned();
     let mut section = String::new();
     for record in case.state().records() {
         let caveats = notes.audience_caveats(record);
-        if caveats.is_empty() {
+        if caveats.is_empty() || own == Some(record.header.id) {
             continue;
         }
         let Some(path) = notes.note_path(record.header.id)? else {

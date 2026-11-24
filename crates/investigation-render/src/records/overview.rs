@@ -46,6 +46,9 @@ use crate::{
 
 /// Freshness reasons shown for a stale synopsis.
 const SHOWN_REASONS: usize = 3;
+/// What a review copy says where the case's leading outcome is withheld
+/// from its audience: it neither names the outcome nor promotes another.
+const NOT_STATED: &str = "not stated in this copy";
 
 // The caveat and contradiction reasons `brief` reports, word for word, so the
 // two reads can be compared for the same snapshot.
@@ -437,7 +440,9 @@ pub(crate) fn properties(notes: &NoteContext<'_>, case: &Record, front: &mut Fro
         front.text("inv_mode", &super::wire(mode));
     }
     front.text("inv_focus", focus(case, state).word());
-    let subject = primary_outcome(state).unwrap_or(case);
+    let subject = primary_outcome(notes.standing_state())
+        .filter(|outcome| notes.visible(outcome))
+        .unwrap_or(case);
     front.text("inv_summary", summary_word(notes, subject).0);
 }
 
@@ -462,7 +467,10 @@ pub(crate) fn sections(
         case,
         state,
         focus: focus(case, state),
-        standing: primary_outcome(state).map(|outcome| Standing::new(notes, outcome)),
+        // The leading outcome of the full case: a review copy that does not
+        // show it says so rather than promote the next one it does show.
+        standing: primary_outcome(notes.standing_state())
+            .map(|outcome| Standing::new(notes, outcome)),
         next,
     };
     overview.opening(out)?;
@@ -510,6 +518,15 @@ impl<'a> Overview<'_, 'a> {
         self.notes.link(id)
     }
 
+    /// A section about the leading outcome that may not show it.
+    fn withheld_with_answer(&self) -> &'static str {
+        if self.notes.reviewing() {
+            "Not stated in this copy, with the answer.\n"
+        } else {
+            "Withheld.\n"
+        }
+    }
+
     /// Whether the leading outcome's state and basis may appear; true when
     /// there is none. A withheld outcome's caveat, objections and evidence
     /// would reveal its lineage.
@@ -551,6 +568,8 @@ impl<'a> Overview<'_, 'a> {
                         self.link(standing.outcome.header.id)?,
                         inline_code(&standing.state)
                     )
+                } else if self.notes.reviewing() {
+                    NOT_STATED.to_owned()
                 } else {
                     format!("{} (withheld)", self.link(standing.outcome.header.id)?)
                 },
@@ -584,7 +603,11 @@ impl<'a> Overview<'_, 'a> {
     /// same ranking over every Observation in the case.
     fn strongest_evidence(&self) -> Result<String, RenderError> {
         if !self.outcome_visible() {
-            return Ok("(withheld with the answer)".to_owned());
+            return Ok(if self.notes.reviewing() {
+                format!("({NOT_STATED})")
+            } else {
+                "(withheld with the answer)".to_owned()
+            });
         }
         let candidates = evidence_candidates(self.state, self.standing.as_ref());
         let best = strongest_observation(
@@ -631,7 +654,11 @@ impl<'a> Overview<'_, 'a> {
     /// on any record of the case when there is no outcome yet.
     fn strongest_objection(&self) -> Result<String, RenderError> {
         if !self.outcome_visible() {
-            return Ok("withheld with the answer".to_owned());
+            return Ok(if self.notes.reviewing() {
+                NOT_STATED.to_owned()
+            } else {
+                "withheld with the answer".to_owned()
+            });
         }
         let open = open_objections(
             self.state,
@@ -713,14 +740,24 @@ impl<'a> Overview<'_, 'a> {
                 );
             }
         }
-        let overview = self.notes.freshness().overview();
+        // The case's effective state is judged on the full case, so leaving
+        // records out never makes it read stronger; a review copy counts only
+        // the records it shows, so a withheld one never changes a count.
+        let full = self.notes.freshness().overview();
+        let overview = if self.notes.reviewing() {
+            self.notes
+                .freshness()
+                .overview_of(|id| self.notes.shown(id))
+        } else {
+            full.clone()
+        };
         let in_use = overview.current + overview.needs_review + overview.disputed;
         let _ = writeln!(
             out,
             "- Freshness: {} (effective {}; of {in_use} record{} in evidentiary use, {} need{} \
              review and {} {} disputed)",
             inline_code(case_freshness(self.notes, self.case)),
-            inline_code(overview.freshness.as_str()),
+            inline_code(full.freshness.as_str()),
             if in_use == 1 { "" } else { "s" },
             overview.needs_review,
             if overview.needs_review == 1 { "s" } else { "" },
@@ -793,6 +830,10 @@ impl<'a> Overview<'_, 'a> {
 
     fn standing_lines(&self, out: &mut String, standing: &Standing<'_>) -> Result<(), RenderError> {
         let outcome = standing.outcome;
+        if !self.outcome_visible() && self.notes.reviewing() {
+            let _ = writeln!(out, "- Answer: {NOT_STATED}.");
+            return Ok(());
+        }
         if !self.outcome_visible() {
             let _ = writeln!(
                 out,
@@ -974,7 +1015,7 @@ impl<'a> Overview<'_, 'a> {
             return Ok(());
         };
         if !self.notes.may_show(standing.outcome, Field::Lineage) {
-            out.push_str("Withheld.\n");
+            out.push_str(self.withheld_with_answer());
             return Ok(());
         }
         let edges = dependency_edges(standing.outcome).unwrap_or_default();
@@ -1018,7 +1059,7 @@ impl<'a> Overview<'_, 'a> {
         out.push_str("\n## Sources\n\n");
         let read: Vec<RevisionRef> = match &self.standing {
             Some(standing) if !self.notes.may_show(standing.outcome, Field::Lineage) => {
-                out.push_str("Withheld.\n");
+                out.push_str(self.withheld_with_answer());
                 return Ok(());
             }
             Some(standing) => with_origins(self.state, &standing.read),
