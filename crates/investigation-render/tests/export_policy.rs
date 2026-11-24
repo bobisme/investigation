@@ -501,7 +501,31 @@ fn internal_carries_the_fixed_caveat_where_restricted_material_bears() {
     assert!(resting.contains(Caveat::BasisWithheld.text()), "{resting}");
     let clean = listing(&report, fixture.clean).unwrap();
     assert!(!clean.contains("Caveat"), "{clean}");
-    assert_eq!(report.matches("- Caveat: ").count(), 2);
+    // Every caveat line sits under a line naming one of the two caveated
+    // records, wherever its standing appears, and is a fixed text.
+    let caveated = [
+        fixture.decision.to_string(),
+        fixture.internal_on_restricted.to_string(),
+    ];
+    let mut named = "";
+    for line in report.lines() {
+        match line.trim_start().strip_prefix("- Caveat: ") {
+            Some(text) => {
+                assert!(
+                    caveated.iter().any(|id| named.contains(id.as_str())),
+                    "{named}\n{line}"
+                );
+                assert!(
+                    [
+                        Caveat::ChallengeWithheld.text(),
+                        Caveat::BasisWithheld.text()
+                    ]
+                    .contains(&text)
+                );
+            }
+            None => named = line,
+        }
+    }
     assert_nothing_withheld_leaks(&plan, fixture.case, &[RESTRICTED]);
     let manifest = &plan.manifest();
     assert_eq!(manifest.policy.version, "inv.export-policy.v2");
@@ -538,17 +562,22 @@ fn public_withholds_every_record_that_bears_on_withheld_material() {
     assert!(listing(&report, fixture.clean).is_some());
     assert!(!report.contains("- Caveat: "));
     // The only conclusion or decision listed is the clean one, so the
-    // section's count is the count of shown records alone.
-    let section: Vec<&str> = report
-        .split("## Conclusions and decisions")
-        .nth(1)
-        .unwrap()
-        .split("\n## ")
-        .next()
-        .unwrap()
-        .lines()
-        .filter(|line| line.starts_with("- "))
-        .collect();
+    // sections count the shown records alone.
+    let listed = |heading: &str| -> Vec<String> {
+        report
+            .split(heading)
+            .nth(1)
+            .unwrap()
+            .split("\n## ")
+            .next()
+            .unwrap()
+            .lines()
+            .filter(|line| line.starts_with("- `"))
+            .map(str::to_owned)
+            .collect()
+    };
+    let mut section = listed("## Supported conclusions\n");
+    section.extend(listed("## Decisions\n"));
     assert_eq!(section.len(), 1, "{section:?}");
     assert_nothing_withheld_leaks(&plan, fixture.case, &[RESTRICTED, INTERNAL]);
     assert!(plan.manifest().sources.is_empty());
@@ -819,4 +848,148 @@ fn internal_keeps_canonical_ids_unless_remapping_is_asked_and_restores_exactly()
         internal.identifiers().exported(&clean)
     );
     assert_ne!(public.manifest().snapshot, internal.manifest().snapshot);
+}
+
+#[test]
+fn every_report_kind_keeps_withheld_material_out() {
+    let mut fixture = fixture();
+    for name in ["case-report", "analysis-report"] {
+        for (audience, above) in [
+            (Audience::Internal, vec![RESTRICTED]),
+            (Audience::Public, vec![RESTRICTED, INTERNAL]),
+        ] {
+            let snapshot =
+                ExportSnapshot::read(&mut fixture.store, fixture.case, &Pin::default()).unwrap();
+            let plan = plan_export(kind(name).unwrap(), &snapshot, audience).unwrap();
+            assert!(!plan.complete(), "{name}");
+            assert_nothing_withheld_leaks(&plan, fixture.case, &above);
+        }
+    }
+}
+
+/// A case whose public decisions each select an option withheld from the
+/// audience under test: one internal option (withheld from `public`) and one
+/// raised to restricted after the decisions were recorded (withheld from
+/// `internal` too). A decision's title is derived from its chosen option, so
+/// this is where a withheld title could leak through another record's title
+/// (bn-31an). Also returns the sequence before the raise: a re-export pinned
+/// there sees the option as internal in the snapshot's own classification,
+/// while today's classification withholds it.
+fn withheld_option_case() -> (tempfile::TempDir, Store, Id, [Id; 2], u64) {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("workspace");
+    Workspace::init(&root, false).unwrap();
+    let mut store = Store::open(Workspace::open(&root).unwrap());
+    let input = json!({
+        "schema_version":"inv.command.v1", "command_id":"case", "case_id":null,
+        "actor":ACTOR, "preconditions":[], "operations":[{"op":"case.create",
+            "payload":{"title":format!("{PUBLIC} case title"), "mode":"evaluate"}}]
+    });
+    let case = store
+        .record(&serde_json::to_vec(&input).unwrap())
+        .unwrap()
+        .created[0]
+        .id;
+    let s = &mut store;
+    clear(s, "clear-case", case, case);
+    let question = create(
+        s,
+        "question",
+        case,
+        "question.create",
+        json!({"wording":format!("{PUBLIC} question wording"), "importance":"normal"}),
+    );
+    clear(s, "clear-question", case, question);
+    let mut decisions = [case; 2];
+    let mut options = [case; 2];
+    for (index, marker) in [INTERNAL, RESTRICTED].into_iter().enumerate() {
+        let question_ref = current(s, case, question);
+        let option = create(
+            s,
+            &format!("option-{index}"),
+            case,
+            "option.create",
+            json!({"question_ref":question_ref,
+                "description":format!("{marker} withheld option title"),
+                "dependencies":[], "tradeoff_notes":[]}),
+        );
+        options[index] = option;
+        let question_ref = current(s, case, question);
+        let option_ref = current(s, case, option);
+        let decision = create(
+            s,
+            &format!("decision-{index}"),
+            case,
+            "decision.propose",
+            json!({
+                "question_ref":question_ref,
+                "choice":{"kind":"select", "option_ref":option_ref},
+                "compared_alternatives":[option_ref],
+                "comparison_refs":[], "hard_conditions":[], "evidence_refs":[],
+                "assumption_refs":[], "tradeoffs":[format!("{PUBLIC} tradeoff")],
+                "consequences":[format!("{PUBLIC} consequence")],
+                "reopen_trigger":format!("{PUBLIC} reopen trigger"), "reversal_conditions":[]
+            }),
+        );
+        clear(s, &format!("clear-decision-{index}"), case, decision);
+        decisions[index] = decision;
+    }
+    let before_raise = s.case(case).unwrap().snapshot.sequence;
+    raise(s, "raise-option", case, options[1]);
+    (directory, store, case, decisions, before_raise)
+}
+
+/// bn-31an: a decision's derived title never carries the title of a
+/// withheld option, in any report kind or audience. A shown decision whose
+/// option is withheld gets the neutral, ID-free label instead.
+#[test]
+fn a_withheld_option_title_never_reaches_a_report_through_a_decision_title() {
+    let (_directory, mut store, case, decisions, before_raise) = withheld_option_case();
+    let mut labelled = 0;
+    let pins = [
+        Pin::default(),
+        Pin {
+            sequence: Some(before_raise),
+            head_hash: None,
+        },
+    ];
+    for (name, pin) in ["case-report", "analysis-report"]
+        .into_iter()
+        .flat_map(|name| pins.iter().map(move |pin| (name, pin)))
+    {
+        let snapshot = ExportSnapshot::read(&mut store, case, pin).unwrap();
+        // With everything shown the derived title names the option, so the
+        // marker would appear if it were not withheld.
+        let plan = plan_export(kind(name).unwrap(), &snapshot, Audience::Restricted).unwrap();
+        if name == "case-report" {
+            let shown = listing(&report(&plan), decisions[1]).unwrap();
+            assert!(shown.contains(RESTRICTED), "{shown}");
+        }
+        let pinned = pin.sequence.is_some();
+        // The decisions whose option each audience does not see.
+        for (audience, above, withheld) in [
+            (Audience::Internal, vec![RESTRICTED], &decisions[1..]),
+            (Audience::Public, vec![RESTRICTED, INTERNAL], &decisions[..]),
+        ] {
+            let plan = plan_export(kind(name).unwrap(), &snapshot, audience).unwrap();
+            assert!(!plan.complete(), "{name} pinned {pinned}");
+            assert_nothing_withheld_leaks(&plan, case, &above);
+            if name == "case-report" {
+                let text = report(&plan);
+                for &decision in withheld {
+                    if let Some(shown) = listing(&text, decision) {
+                        let line = shown.lines().next().unwrap();
+                        assert!(
+                            line.starts_with(&format!("- `{decision}` Decision:")),
+                            "{name} {audience:?} pinned {pinned}: {line}"
+                        );
+                        labelled += usize::from(pinned);
+                    }
+                }
+            }
+        }
+    }
+    // Not vacuous: in the pinned re-export the snapshot's own classification
+    // still shows the option, so only the inclusion keeps its title out.
+    assert!(labelled > 0);
 }

@@ -1,35 +1,40 @@
-//! `case-report`: the framework's proof kind. Pure.
+//! `case-report`: the §15.4 report of a general inquiry. Pure.
 //!
-//! One Markdown file, `case-report.md`, in a fixed section order: basis,
-//! objective, questions, conclusions and decisions with their effective
-//! disposition, observations, and limits. Every record is listed only when
-//! the export includes it; effective dispositions come from the freshness
-//! engine and the objection policy on the full pinned snapshot, so a
-//! withheld objection still leaves its subject `disputed`. Negative and
-//! inconclusive results are listed like any other, and a superseded record
-//! names its successor instead of being dropped. A record that rests on, or
-//! is challenged by, withheld material carries the policy's fixed caveats on
-//! the lines under it.
+//! One Markdown file, `case-report.md`, in a fixed section order:
 //!
-//! This is the minimal skeleton of the §15.4 case report. Methods,
-//! alternatives, contradictions, evidence selectors and retrospective
-//! highlights are later sections of the same file; adding them bumps
-//! [`VERSION`].
+//! 1. Basis: kind, case, snapshot, audience, renderer.
+//! 2. Status and outcome: lifecycle, closure outcome, closure reason and
+//!    reopen condition. An inconclusive case says so in words.
+//! 3. Objective: objective, decision relevance, scope, mode and questions.
+//! 4. Methods: inquiries (purpose, method, controls, limits) and runs.
+//! 5. Original observations: value, citation by source and selector with
+//!    quote state, a bounded inert excerpt, validity and limits.
+//! 6. Alternatives: hypotheses with their assessments, and options.
+//! 7. Supported conclusions: every element §15.3 names (significance,
+//!    applicability, evidence selectors, alternatives addressed,
+//!    uncertainty, dissent and review, what would invalidate it).
+//! 8. Decisions, marked as choices rather than empirical conclusions.
+//! 9. Limits. 10. Open issues. 11. Methodological retrospective: exact
+//!    references and bounded highlights when the account is substantive.
+//!
+//! Every record is listed only when the export includes it, with the
+//! policy's caveats under each line that shows its standing. Effective
+//! dispositions come from the freshness engine and the objection policy on
+//! the full pinned snapshot, so a withheld objection still leaves its
+//! subject `disputed` and a stale review basis leaves a recorded
+//! `validated` beside `needs_review`. Negative and inconclusive results are
+//! listed like any other, a superseded record names its successor, and
+//! stale or withdrawn inputs are annotated where they are cited. The shared
+//! blocks are in `report_blocks`.
 
-use std::fmt::Write as _;
+use investigation_core::{identity::Kind, state::Record};
 
-use investigation_core::{
-    command::RevisionRef,
-    identity::{Id, Kind},
-    state::Record,
+use super::{
+    ExportInput, ExportRenderer, human_files,
+    report_blocks::{MAX_ITEMS, MAX_LISTED, Report},
 };
-
-use super::{ExportInput, ExportRenderer, dependent_rule, human_files};
 use crate::{
-    Phase, PlanBuilder, PlanPath, RenderError,
-    evidence::prose,
-    note::text_at,
-    records::{effective_word, lifecycle},
+    Phase, PlanBuilder, PlanPath, RenderError, evidence::prose, note::text_at, records::wire,
     text::inline_code,
 };
 
@@ -41,13 +46,16 @@ use crate::{
 /// (W11.13).
 /// v4: the human files records rely on, as captured, with their bytes under
 /// `human/sha256/` (W11.14).
-pub const VERSION: &str = "inv.export.case-report.v4";
+/// v5: the full §15.4 content (W11.04): status and outcome with the reopen
+/// condition, methods, original observations with selectors and bounded
+/// excerpts, alternatives, the §15.3 conclusion elements, decisions, open
+/// issues and retrospective highlights; in-place annotation of stale and
+/// withdrawn inputs. A remapped report shows no journal sequence or head of
+/// a retrospective either.
+pub const VERSION: &str = "inv.export.case-report.v5";
 
 /// The report's file name.
 pub const FILE: &str = "case-report.md";
-
-/// Records listed per section; the rest are counted.
-const MAX_LISTED: usize = 50;
 
 pub struct CaseReport;
 
@@ -68,198 +76,186 @@ impl ExportRenderer for CaseReport {
 }
 
 fn report(input: &ExportInput<'_>, human: &[human_files::Shown]) -> String {
-    let case = input.case;
-    let state = case.state();
-    let case_record = state
-        .current(case.case_id())
-        .filter(|record| input.includes(record));
-    let title = case_record
+    let mut report = Report::new(input);
+    let title = report
+        .case_record()
         .and_then(|record| input.title(record))
         .unwrap_or_else(|| "Case report".to_owned());
-    let snapshot = input.snapshot();
-    let mut out = format!("# {title}\n\n");
-    out.push_str(
+    report.line(&format!("# {title}\n"));
+    report.line(
         "> Case report rendered by Investigation from one verified snapshot, with no model \
          call. It lists what the case records; it does not replace the primary evidence. \
          export-manifest.json beside this file names the snapshot, the audience policy, \
-         whether anything was withheld, and the digest of every file.\n",
+         whether anything was withheld, and the digest of every file.",
     );
+    report.basis("case-report", VERSION);
+    report.outcome();
 
-    out.push_str("\n## Basis\n\n| Basis | Value |\n|---|---|\n");
-    let _ = writeln!(
-        out,
-        "| Case | {} |",
-        inline_code(&snapshot.case_id.to_string())
-    );
-    if input.remapped() {
-        let _ = writeln!(
-            out,
-            "| Bundle | {} (IDs remapped; the publisher keeps the case snapshot) |",
-            inline_code(snapshot.head_hash.as_str())
-        );
-    } else {
-        let _ = writeln!(
-            out,
-            "| Snapshot | sequence {}, head {} |",
-            snapshot.sequence,
-            inline_code(snapshot.head_hash.as_str())
-        );
-    }
-    let _ = writeln!(
-        out,
-        "| Audience | {} |",
-        inline_code(input.audience.as_str())
-    );
-    let _ = writeln!(out, "| Renderer | {} |", inline_code(VERSION));
+    report.heading("Objective");
+    report.objective();
+    report.questions();
 
-    out.push_str("\n## Objective\n\n");
-    match case_record {
-        Some(record) => {
-            let _ = writeln!(
-                out,
-                "- Objective: {}",
-                text_at(&record.body, "objective")
-                    .filter(|text| !text.trim().is_empty())
-                    .map_or_else(|| "not recorded".to_owned(), prose)
-            );
-            let _ = writeln!(
-                out,
-                "- Mode: {}",
-                inline_code(text_at(&record.body, "mode").unwrap_or("not recorded"))
-            );
-            let _ = writeln!(
-                out,
-                "- Case status: {}",
-                inline_code(lifecycle(record).unwrap_or("not recorded"))
-            );
-            caveats(&mut out, input, record, "");
-        }
-        None => out.push_str("- Not included for this audience.\n"),
-    }
+    methods(&mut report);
+    observations(&mut report);
+    alternatives(&mut report);
+    conclusions(&mut report);
+    decisions(&mut report);
+    human_files::section(report.buffer(), human);
 
-    section(&mut out, input, "Questions", &[Kind::Question], |record| {
-        format!(
-            "status {}",
-            inline_code(lifecycle(record).unwrap_or("not recorded"))
-        )
-    });
-    section(
-        &mut out,
-        input,
-        "Conclusions and decisions",
-        &[Kind::Conclusion, Kind::Decision],
-        |record| {
-            let recorded = lifecycle(record).unwrap_or("recorded");
-            let mut line = match effective_word(input.notes, record) {
-                Some(word) => format!(
-                    "effective {} (recorded {})",
-                    inline_code(&word),
-                    inline_code(recorded)
-                ),
-                None => format!("recorded {}", inline_code(recorded)),
-            };
-            for (label, field) in [
-                ("supersedes", "supersedes"),
-                ("superseded by", "superseded_by"),
-            ] {
-                if let Some(other) = included_ref(input, record, field) {
-                    let _ = write!(line, "; {label} {}", inline_code(&other.to_string()));
-                }
-            }
-            line
-        },
-    );
-    section(
-        &mut out,
-        input,
-        "Observations",
-        &[Kind::Observation],
-        |record| {
-            format!(
-                "status {}",
-                inline_code(lifecycle(record).unwrap_or("recorded"))
-            )
-        },
-    );
-
-    human_files::section(&mut out, human);
-
-    out.push_str("\n## Limits\n\n");
-    out.push_str(
-        "- Only records this audience may see are listed. export-manifest.json says whether \
-         anything was withheld.\n",
-    );
-    out.push_str(
-        "- Effective dispositions were computed on the whole case at this snapshot before \
-         anything was withheld, so withholding a record does not make another read stronger.\n",
-    );
-    let _ = writeln!(out, "- {}", dependent_rule(input.audience));
-    if input.remapped() {
-        out.push_str(
-            "- IDs in this report were remapped for this export only. To read the full evidence \
-             chain, ask the publisher, who can open the case at the snapshot it was rendered from.\n",
-        );
-    } else {
-        let _ = writeln!(
-            out,
-            "- To read the full evidence chain, open the case at this snapshot: {}",
-            inline_code(&format!(
-                "investigation --case {} brief --snapshot {} --head-hash {}",
-                snapshot.case_id, snapshot.sequence, snapshot.head_hash
-            ))
-        );
-    }
-    out
+    report.limits();
+    report.open_issues();
+    report.retrospective();
+    report.finish()
 }
 
-/// One bounded section listing the included records of `kinds` in ID order.
-fn section(
-    out: &mut String,
-    input: &ExportInput<'_>,
-    heading: &str,
-    kinds: &[Kind],
-    detail: impl Fn(&Record) -> String,
-) {
-    let _ = write!(out, "\n## {heading}\n\n");
-    let state = input.case.state();
-    let records: Vec<&Record> = kinds
-        .iter()
-        .flat_map(|kind| state.records_of_kind(*kind))
-        .filter(|record| input.includes(record))
-        .collect();
-    if records.is_empty() {
-        out.push_str("- None recorded or included.\n");
+fn methods(report: &mut Report<'_, '_>) {
+    report.heading("Methods");
+    let inquiries = report.inquiries();
+    let runs = report.records(&[Kind::Run]);
+    if inquiries == 0 && runs.is_empty() {
+        report.line("- None listed.");
         return;
     }
-    for record in records.iter().take(MAX_LISTED) {
-        let title = input.title(record).unwrap_or_else(|| "untitled".to_owned());
-        let _ = writeln!(
-            out,
-            "- {} {title}: {}",
-            inline_code(&record.header.id.to_string()),
-            detail(record)
+    if runs.is_empty() {
+        return;
+    }
+    report.line("- Runs:");
+    for run in runs.iter().take(MAX_LISTED) {
+        let body = &run.body;
+        let word = |path: &str| inline_code(&wire(text_at(body, path).unwrap_or("unknown")));
+        let detail = format!(
+            "execution {}, evidence completeness {}, evidence validity {}; {}",
+            word("execution_status"),
+            word("evidence_completeness"),
+            word("evidence_validity"),
+            report.standing(run)
         );
-        caveats(out, input, record, "  ");
+        report.item("  ", run, &detail);
     }
-    if records.len() > MAX_LISTED {
-        let _ = writeln!(out, "- … and {} more", records.len() - MAX_LISTED);
-    }
-}
-
-/// The policy's fixed caveats of a shown record, one line each.
-fn caveats(out: &mut String, input: &ExportInput<'_>, record: &Record, indent: &str) {
-    for caveat in input.caveats(record) {
-        let _ = writeln!(out, "{indent}- Caveat: {}", caveat.text());
+    if runs.len() > MAX_LISTED {
+        report.line(&format!(
+            "  - \u{2026} and {} more",
+            runs.len() - MAX_LISTED
+        ));
     }
 }
 
-/// The record a revision reference in `field` names, when it is included.
-fn included_ref(input: &ExportInput<'_>, record: &Record, field: &str) -> Option<Id> {
-    let reference: RevisionRef = serde_json::from_value(record.body.get(field)?.clone()).ok()?;
-    input
-        .case
-        .state()
-        .current(reference.id)
-        .filter(|target| input.includes(target))
-        .map(|_| reference.id)
+fn observations(report: &mut Report<'_, '_>) {
+    report.heading("Original observations");
+    report.line(
+        "Each observation is cited by its retained artifact and selector, with the state of its \
+         quote. A quote shows what the cited bytes say, not that the statement is true.\n",
+    );
+    let observations = report.records(&[Kind::Observation]);
+    if observations.is_empty() {
+        report.line("- None listed.");
+        return;
+    }
+    for observation in observations.iter().take(MAX_LISTED) {
+        report.observation("", observation);
+    }
+    if observations.len() > MAX_LISTED {
+        report.line(&format!(
+            "- \u{2026} and {} more",
+            observations.len() - MAX_LISTED
+        ));
+    }
+}
+
+fn alternatives(report: &mut Report<'_, '_>) {
+    report.heading("Alternatives");
+    let hypotheses = report.records(&[Kind::Hypothesis]);
+    let options = report.records(&[Kind::Option]);
+    if hypotheses.is_empty() && options.is_empty() {
+        report.line("- None listed.");
+        return;
+    }
+    let assessments = report.records(&[Kind::Assessment]);
+    for hypothesis in hypotheses.iter().take(MAX_LISTED) {
+        let detail = format!("hypothesis; {}", report.standing(hypothesis));
+        report.item("", hypothesis, &detail);
+        let body = &hypothesis.body;
+        if let Some(applicability) = text_at(body, "applicability") {
+            report.line(&format!("  - Applicability: {}", prose(applicability)));
+        }
+        for falsifier in body["possible_falsifiers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|value| value.as_str())
+            .take(MAX_ITEMS)
+        {
+            report.line(&format!("  - Possible falsifier: {}", prose(falsifier)));
+        }
+        let id = hypothesis.header.id.to_string();
+        let judged: Vec<&Record> = assessments
+            .iter()
+            .copied()
+            .filter(|assessment| text_at(&assessment.body, "subject_ref.id") == Some(&id))
+            .collect();
+        for assessment in judged.iter().take(MAX_ITEMS) {
+            let detail = format!(
+                "assessment, relation {}; {}: {}",
+                inline_code(&wire(
+                    text_at(&assessment.body, "relation").unwrap_or("unknown")
+                )),
+                report.standing(assessment),
+                text_at(&assessment.body, "rationale")
+                    .map_or_else(|| "rationale not recorded".to_owned(), prose)
+            );
+            report.item("  ", assessment, &detail);
+        }
+    }
+    for option in options.iter().take(MAX_LISTED) {
+        let detail = format!("option; {}", report.standing(option));
+        report.item("", option, &detail);
+        if let Some(reason) = text_at(&option.body, "reason") {
+            report.line(&format!("  - Disposition reason: {}", prose(reason)));
+        }
+    }
+}
+
+fn conclusions(report: &mut Report<'_, '_>) {
+    report.heading("Supported conclusions");
+    report.line(
+        "Each conclusion shows its effective disposition beside its recorded status. Negative \
+         and inconclusive results are listed like any other; a superseded conclusion names its \
+         successor.\n",
+    );
+    let conclusions = report.records(&[Kind::Conclusion]);
+    if conclusions.is_empty() {
+        report.line("- None listed.");
+        return;
+    }
+    for conclusion in conclusions.iter().take(MAX_LISTED) {
+        report.conclusion(conclusion);
+    }
+    if conclusions.len() > MAX_LISTED {
+        report.line(&format!(
+            "- \u{2026} and {} more",
+            conclusions.len() - MAX_LISTED
+        ));
+    }
+}
+
+fn decisions(report: &mut Report<'_, '_>) {
+    let decisions = report.records(&[Kind::Decision]);
+    report.heading("Decisions");
+    if decisions.is_empty() {
+        report.line("- None listed.");
+        return;
+    }
+    report.line(
+        "A decision records a choice. Accepting it never makes it a validated empirical \
+         conclusion, and a superseded decision is kept and marked, not rewritten.\n",
+    );
+    for decision in decisions.iter().take(MAX_LISTED) {
+        report.decision(decision);
+    }
+    if decisions.len() > MAX_LISTED {
+        report.line(&format!(
+            "- \u{2026} and {} more",
+            decisions.len() - MAX_LISTED
+        ));
+    }
 }

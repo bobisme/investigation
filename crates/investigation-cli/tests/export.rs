@@ -154,18 +154,22 @@ fn the_same_snapshot_kind_and_policy_give_byte_identical_exports() {
     for scenario in SCENARIOS {
         let first = fixtures::workspace(scenario, &root.join(scenario).join("a"), false);
         let second = fixtures::workspace(scenario, &root.join(scenario).join("b"), true);
-        for case in cases(&first) {
+        for (case, kind) in cases(&first)
+            .into_iter()
+            .flat_map(|case| ["case-report", "analysis-report"].map(|kind| (case.clone(), kind)))
+        {
             for audience in ["public", "internal", "restricted"] {
                 let mut outputs = Vec::new();
                 for (label, workspace) in [("a", &first), ("b", &second)] {
-                    let out = root.join(format!("{scenario}-{case}-{audience}-{label}"));
-                    let (exit, value) = export(
+                    let out = root.join(format!("{scenario}-{case}-{kind}-{audience}-{label}"));
+                    let (exit, value) = export_kind(
                         root,
                         workspace,
                         &case,
+                        kind,
                         &["--audience", audience, "--out", out.to_str().unwrap()],
                     );
-                    assert_eq!(exit, 0, "{scenario} {case} {audience}: {value}");
+                    assert_eq!(exit, 0, "{scenario} {case} {kind} {audience}: {value}");
                     assert_eq!(value["result"], "exported");
                     assert_manifest_lists_the_files(&out);
                     outputs.push((value, files(&out)));
@@ -174,7 +178,7 @@ fn the_same_snapshot_kind_and_policy_give_byte_identical_exports() {
                 let (second_value, second_files) = &outputs[1];
                 assert_eq!(
                     first_files, second_files,
-                    "{scenario} {case} {audience}: export bytes differ"
+                    "{scenario} {case} {kind} {audience}: export bytes differ"
                 );
                 assert_eq!(first_value["export_id"], second_value["export_id"]);
                 let manifest: Value =
@@ -538,6 +542,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
         json!([
             "handoff",
             "case-report",
+            "analysis-report",
             "decision-record",
             "method-retrospective",
             "review-vault",
@@ -670,7 +675,12 @@ fn assert_receipt_matches_export(label: &str, out: &Path, case: &str, value: &Va
         }
     }
     let report = String::from_utf8(fs::read(out.join("case-report.md")).unwrap()).unwrap();
-    let mut caveat_lines = 0;
+    let caveated_ids: Vec<&str> = receipt["caveated"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap())
+        .collect();
     for caveated in receipt["caveated"].as_array().unwrap() {
         let id = caveated["id"].as_str().unwrap();
         let mut lines = report.lines().skip_while(|line| !line.contains(id));
@@ -685,13 +695,20 @@ fn assert_receipt_matches_export(label: &str, out: &Path, case: &str, value: &Va
             caveated["caveats"].as_array().unwrap().len(),
             "{label}: {id}"
         );
-        caveat_lines += shown;
     }
-    assert_eq!(
-        report.matches("- Caveat: ").count(),
-        caveat_lines,
-        "{label}: only caveated records carry a caveat"
-    );
+    // A record's caveats follow every line that shows its standing, and only
+    // caveated records carry one.
+    let mut named = "";
+    for line in report.lines() {
+        if line.trim_start().starts_with("- Caveat: ") {
+            assert!(
+                caveated_ids.iter().any(|id| named.contains(id)),
+                "{label}: only caveated records carry a caveat: {named}"
+            );
+        } else {
+            named = line;
+        }
+    }
     let complete = value["completeness"] == "complete";
     assert_eq!(complete, count == 0, "{label}");
     assert_eq!(
@@ -1066,10 +1083,15 @@ fn public_and_remapped_exports_disclose_no_canonical_identity_over_scenarios_a_c
                 for (exported, canonical_value) in mapping(&remapped_value) {
                     restored = restored.replace(&exported, &canonical_value);
                 }
+                // Lines that name a journal position: the snapshot, the
+                // command to open it, and a retrospective's own line, which
+                // names the sequence and head it describes only when IDs are
+                // canonical.
                 let names_snapshot = |line: &&str| {
                     line.starts_with("| Snapshot |")
                         || line.starts_with("| Bundle |")
                         || line.contains("full evidence chain")
+                        || line.starts_with("- `retro_")
                 };
                 let expected = fs::read_to_string(plain.join(format!("{kind}.md"))).unwrap();
                 assert_eq!(

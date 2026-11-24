@@ -232,7 +232,7 @@ pub(crate) fn listing_properties(
 
 /// A recorded enum word for a property or a code span: kept only when it is
 /// a plain snake_case word, so authored text never reaches a property.
-fn wire(word: &str) -> String {
+pub(crate) fn wire(word: &str) -> String {
     if !word.is_empty()
         && word.len() <= 64
         && word
@@ -247,7 +247,7 @@ fn wire(word: &str) -> String {
 
 /// A recorded token for a code span: an enum word, number, boolean, digest
 /// or timestamp is kept; anything else is authored text, never shown here.
-fn token(word: &str) -> String {
+pub(crate) fn token(word: &str) -> String {
     if !word.is_empty()
         && word.len() <= 128
         && word
@@ -301,7 +301,7 @@ pub(crate) fn effective_word(notes: &NoteContext<'_>, record: &Record) -> Option
 
 /// A scalar body value as a word: strings, numbers and booleans as written,
 /// a `Knowledge` value by its state, a tagged object by its `kind`.
-fn scalar_word(value: &Value) -> Option<String> {
+pub(crate) fn scalar_word(value: &Value) -> Option<String> {
     match value {
         Value::String(text) => Some(text.clone()),
         Value::Bool(flag) => Some(flag.to_string()),

@@ -622,27 +622,40 @@ impl<'a> NoteContext<'a> {
 
     /// Safe display title, or `None` when withheld or nothing displayable.
     pub fn title(&self, record: &Record) -> Option<String> {
+        self.title_shown(record, &|_| true)
+    }
+
+    /// [`Self::title`] for a caller with its own inclusion rule: a title
+    /// derived from other records (a comparison's option and criterion, a
+    /// decision's choice) uses only records `shown` accepts, so a withheld
+    /// record's title never reaches the caller through another record's.
+    /// `None` when any record it would draw on is not shown.
+    pub(crate) fn title_shown(
+        &self,
+        record: &Record,
+        shown: &dyn Fn(&Record) -> bool,
+    ) -> Option<String> {
         if !self.may_show(record, Field::Title) {
             return None;
         }
         first_text(&record.body, title_fields(record.header.id.kind()))
             .and_then(|text| display_text(text, TITLE_CHARS))
-            .or_else(|| self.derived_title(record))
+            .or_else(|| self.derived_title(record, shown))
     }
 
     /// A title composed from typed fields for kinds whose bodies have no
     /// title text: a comparison names its option and criterion, a decision
     /// its choice, a measurement its value. Other records contribute only
-    /// their own displayable titles.
-    fn derived_title(&self, record: &Record) -> Option<String> {
+    /// their own displayable titles, and only when `shown` accepts them.
+    fn derived_title(&self, record: &Record, shown: &dyn Fn(&Record) -> bool) -> Option<String> {
         let body = &record.body;
         let other = |path: &str| -> Option<String> {
             let id = text_at(body, path)?.parse::<Id>().ok()?;
             let target = self.case.state().current(id)?;
-            if target.header.id.kind() == record.header.id.kind() {
+            if target.header.id.kind() == record.header.id.kind() || !shown(target) {
                 return None;
             }
-            self.title(target)
+            self.title_shown(target, shown)
         };
         let title = match record.header.id.kind() {
             Kind::Comparison => format!(
@@ -894,7 +907,7 @@ impl<'a> NoteContext<'a> {
         let body = &record.body;
         let claim = first_text(body, title_fields(record.header.id.kind()))
             .map(|text| inline_text(text, SUMMARY_CHARS))
-            .or_else(|| self.derived_title(record))
+            .or_else(|| self.derived_title(record, &|_| true))
             .unwrap_or_else(|| "not recorded".to_owned());
         let applicability = first_text(body, APPLICABILITY_FIELDS).map_or_else(
             || "not recorded".to_owned(),

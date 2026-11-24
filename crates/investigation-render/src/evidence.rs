@@ -941,7 +941,7 @@ const fn selector_meaning(validation: SelectorValidation) -> Option<&'static str
 
 /// `text` bounded to [`EXCERPT_CHARS`] characters and [`EXCERPT_LINES`]
 /// lines, and whether it was cut.
-fn bounded_excerpt(text: &str) -> (String, bool) {
+pub(crate) fn bounded_excerpt(text: &str) -> (String, bool) {
     let mut out = String::new();
     let mut lines = 1usize;
     for (chars, c) in text.chars().enumerate() {

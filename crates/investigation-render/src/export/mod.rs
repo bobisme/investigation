@@ -92,6 +92,7 @@
 //! export directory against its manifest offline and, for an archive, the
 //! chains and blobs, by restoring a private copy and running `check`.
 
+mod analysis_report;
 pub mod archive;
 mod case_report;
 mod decision_record;
@@ -101,6 +102,7 @@ mod identifiers;
 mod inclusion;
 mod manifest;
 mod method_retrospective;
+mod report_blocks;
 mod retained;
 pub mod review_vault;
 mod snapshot;
@@ -271,7 +273,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Report,
         purpose: "Report a causal or empirical case.",
         contains: "Reproduction conditions, baselines, runs and controls, uncertainty, root-cause or measurement assessment.",
-        renderer: None,
+        renderer: Some(&analysis_report::AnalysisReport),
     },
     KindSpec {
         name: "decision-record",
@@ -375,13 +377,28 @@ impl ExportInput<'_> {
         self.identity.mode == IdentifierMode::Remapped
     }
 
-    /// The record's safe display title when it is included.
+    /// The record's safe display title when it is included. A title derived
+    /// from other records (a comparison's option and criterion, a decision's
+    /// choice) draws only on included ones; when it cannot be built, for any
+    /// reason, the record gets a neutral label naming its kind, never an ID,
+    /// so a withheld record leaves no trace and no difference behind.
+    ///
+    /// A remapped export shows no journal sequence, so a retrospective there
+    /// is labelled by its kind, not by the sequence it describes.
     pub fn title(&self, record: &Record) -> Option<String> {
-        if self.includes(record) {
-            self.notes.title(record)
-        } else {
-            None
+        if !self.includes(record) {
+            return None;
         }
+        if self.remapped() && record.header.id.kind() == Kind::Retrospective {
+            return Some("Retrospective".to_owned());
+        }
+        self.notes
+            .title_shown(record, &|other| self.includes(other))
+            .or_else(|| match record.header.id.kind() {
+                Kind::Decision => Some("Decision".to_owned()),
+                Kind::Comparison => Some("Comparison".to_owned()),
+                _ => None,
+            })
     }
 }
 
