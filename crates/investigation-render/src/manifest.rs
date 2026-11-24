@@ -259,6 +259,14 @@ pub struct LoadedManifest {
     pub digest: Option<Digest>,
 }
 
+/// A recorded projection root in words, for messages.
+pub(crate) fn describe_recorded(recorded: Option<&(String, String)>) -> String {
+    match recorded {
+        None => "the workspace's vault/".to_owned(),
+        Some((vault, prefix)) => format!("{prefix}/ in the existing vault {vault}"),
+    }
+}
+
 impl Manifest {
     /// An empty record: nothing is owned.
     pub fn new() -> Self {
@@ -364,10 +372,25 @@ impl Manifest {
             && self.handed_over.is_empty()
     }
 
+    /// Whether the record still owns a generated path or has a render's
+    /// intent outstanding: while it does, the projection root cannot change.
+    /// Released and handed-over paths do not count; they are the person's.
+    pub fn holds_generated_paths(&self) -> bool {
+        !self.owned.is_empty() || !self.pending.is_empty()
+    }
+
     /// Check that this record belongs to `projection`, and return it bound
-    /// to it. A record that names no path may be bound anew; one that does
-    /// and was written for another root is refused, so the paths it owns
+    /// to it. A record written for another root is refused while it owns a
+    /// generated path or has a render's intent outstanding, so those paths
     /// are never looked for, replaced or removed under the wrong folder.
+    ///
+    /// A record that owns nothing (never rendered, or emptied by `vault
+    /// remove`) is bound anew. Its released and handed-over paths are the
+    /// person's files in the earlier root, which the renderer never touches
+    /// again; they are forgotten, because nothing in the new root
+    /// corresponds to them. Should the setting return to that root, its
+    /// render is a first render, which refuses a folder holding files the
+    /// renderer does not own.
     pub(crate) fn bound_to(mut self, projection: &Projection) -> Result<Self, RenderError> {
         let wanted = match projection {
             Projection::Dedicated => None,
@@ -376,19 +399,21 @@ impl Manifest {
                 prefix.clone(),
             )),
         };
-        if self.projection != wanted && !self.records_nothing() {
-            let recorded = match &self.projection {
-                None => "the workspace's vault/".to_owned(),
-                Some((vault, prefix)) => format!("{prefix}/ in the existing vault {vault}"),
-            };
-            return Err(RenderError::Projection {
-                reason: format!(
-                    "the render manifest records the projection in {recorded}, but the vault \
-                     policy now names {}; restore the earlier setting and run vault remove \
-                     first, then change it",
-                    projection.describe()
-                ),
-            });
+        if self.projection != wanted {
+            if self.holds_generated_paths() {
+                return Err(RenderError::Projection {
+                    reason: format!(
+                        "the render manifest records the projection in {}, but the vault policy \
+                         now names {}; restore the earlier setting and run vault remove first, \
+                         then change it",
+                        describe_recorded(self.projection.as_ref()),
+                        projection.describe()
+                    ),
+                });
+            }
+            self.released.clear();
+            self.handed_over.clear();
+            self.drifted.clear();
         }
         self.projection = wanted;
         Ok(self)
@@ -725,6 +750,7 @@ impl Manifest {
         if lock.workspace_root() != workspace.root() {
             return Err(RenderError::WrongWorkspace);
         }
+        crate::projection::check_current(workspace)?;
         Self::read(workspace)
     }
 

@@ -58,6 +58,7 @@ use rustix::{
 
 use crate::{
     OnDisk, PlanPath, Publisher, RenderError, RenderPlan,
+    lock::RenderLock,
     publish::{inspect_named, remove_empty_directory},
 };
 
@@ -98,6 +99,16 @@ impl Projection {
         }
     }
 
+    /// The root as labels in reports and messages name it: `vault` (the
+    /// workspace-relative folder), or the managed prefix, which is the
+    /// vault-relative path of the root in existing-vault mode.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Dedicated => "vault",
+            Self::Existing { prefix, .. } => prefix,
+        }
+    }
+
     /// The root in words, for messages.
     pub fn describe(&self) -> String {
         match self {
@@ -114,6 +125,46 @@ impl Projection {
             .map(|prefix| prefix.split('/').collect())
             .unwrap_or_default()
     }
+}
+
+/// Whether the workspace may switch its projection root to `to`: the render
+/// manifest must own no generated path and have no render's intent
+/// outstanding under another root ([`crate::Manifest::holds_generated_paths`]).
+/// Reads only `local/render-manifest.json`; never opens a vault. A refusal
+/// says to run `vault remove` under the current setting first.
+///
+/// The caller holds the render lock across this check and the config write
+/// that makes the change, so no render, reconcile, copy-map or removal can
+/// add an owned path in between. Lock order: the render lock first, then
+/// the store's commit lock (taken by the config write), as a render takes
+/// them; nothing waits for the render lock while holding the commit lock.
+pub fn check_change(
+    workspace: &Workspace,
+    to: &Projection,
+    lock: &RenderLock,
+) -> Result<(), RenderError> {
+    crate::Manifest::load(workspace, lock)?
+        .manifest
+        .bound_to(to)
+        .map(|_| ())
+}
+
+/// Refuse a workspace handle whose projection setting is no longer the one
+/// in `investigation.toml`. Called under the render lock, before the
+/// manifest is loaded: a command that opened the workspace before another
+/// process moved the projection (`init --existing-vault`, under the same
+/// lock) would otherwise write into the old root and bind the record to it.
+pub(crate) fn check_current(workspace: &Workspace) -> Result<(), RenderError> {
+    let on_disk = workspace
+        .read_config()
+        .map_err(|error| refuse(format!("investigation.toml cannot be read again: {error}")))?;
+    if on_disk.vault_policy.existing() != workspace.config().vault_policy.existing() {
+        return Err(refuse(
+            "the vault policy in investigation.toml changed after this command opened the \
+             workspace; run the command again",
+        ));
+    }
+    Ok(())
 }
 
 fn refuse(reason: impl Into<String>) -> RenderError {

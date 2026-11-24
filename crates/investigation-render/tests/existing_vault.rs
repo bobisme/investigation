@@ -26,12 +26,14 @@ use std::{
     fs,
     os::unix::fs::{MetadataExt, symlink},
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 use investigation_core::identity::Id;
 use investigation_render::{
-    Action, RenderError, RenderReport, VaultRenderer, VerifiedSnapshot,
+    Action, RenderError, RenderLock, RenderReport, VaultRenderer, VerifiedSnapshot,
     copy_map::{CopyMapError, copy_map},
+    projection::{Projection, check_change},
     reconcile::{Disposition, NOTES_FOLDER, ReconcileRequest, reconcile_vault},
     remove::{preview, remove_projection},
     render, render_vault, vault_status, working_policy,
@@ -864,4 +866,121 @@ fn the_documented_property_types_match_the_rendered_frontmatter() {
         }
     }
     assert!(seen > 50, "{seen}");
+}
+
+#[test]
+fn a_prefix_change_after_removal_forgets_the_persons_files_and_never_touches_them() {
+    let mut fixture = Fixture::new();
+    fixture.render().unwrap();
+    // A handed-over edit and a released path: the person's files in the old
+    // prefix, recorded in the manifest after `vault remove`.
+    fixture.edit(&fixture.note(0));
+    fixture.render().unwrap();
+    fixture.reconcile(Disposition::PreserveAsNote, &fixture.note(0));
+    fixture.edit(&fixture.note(1));
+    fixture.render().unwrap();
+    fixture.reconcile(Disposition::ReleasePath, &fixture.note(1));
+    let root = fixture.store.workspace().root().to_owned();
+
+    // While generated files are owned, the change is refused.
+    let elsewhere = Projection::Existing {
+        vault: fixture.vault.clone(),
+        prefix: "Elsewhere".to_owned(),
+    };
+    let lock = RenderLock::acquire(fixture.store.workspace(), Duration::ZERO).unwrap();
+    let refused = check_change(fixture.store.workspace(), &elsewhere, &lock).unwrap_err();
+    drop(lock);
+    assert!(
+        refused.to_string().contains("run vault remove first"),
+        "{refused}"
+    );
+
+    remove_projection(fixture.store.workspace()).unwrap();
+    let manifest = fixture.manifest();
+    assert!(!manifest["handed_over"].as_array().unwrap().is_empty());
+    assert!(!manifest["released"].as_array().unwrap().is_empty());
+    let kept = files(&fixture.prefix());
+    assert!(
+        !kept.is_empty(),
+        "the person's files stay in the old prefix"
+    );
+
+    // Only the person's files remain recorded, so the change is allowed and
+    // the next render binds the record to the new prefix.
+    let lock = RenderLock::acquire(fixture.store.workspace(), Duration::ZERO).unwrap();
+    check_change(fixture.store.workspace(), &elsewhere, &lock).unwrap();
+    drop(lock);
+    let workspace = configure(&root, &existing(&fixture.vault, "Elsewhere")).unwrap();
+    fixture.store = Store::open(workspace);
+    let before = fingerprint(&fixture.vault, "Elsewhere");
+    fixture.render().unwrap();
+    assert!(fixture.vault.join("Elsewhere/Start Here.md").is_file());
+    assert_eq!(
+        files(&fixture.prefix()),
+        kept,
+        "the old prefix is untouched"
+    );
+    assert_eq!(fingerprint(&fixture.vault, "Elsewhere"), before);
+    let manifest = fixture.manifest();
+    for field in ["handed_over", "released"] {
+        assert!(
+            manifest[field].as_array().is_none_or(Vec::is_empty),
+            "{manifest}"
+        );
+    }
+
+    // Back to the old prefix: a first render there refuses the person's
+    // files instead of adopting or replacing them.
+    remove_projection(fixture.store.workspace()).unwrap();
+    let workspace = configure(&root, &existing(&fixture.vault, PREFIX)).unwrap();
+    fixture.store = Store::open(workspace);
+    assert!(matches!(
+        fixture.render().unwrap_err(),
+        RenderError::Projection { .. }
+    ));
+    assert_eq!(files(&fixture.prefix()), kept);
+}
+
+#[test]
+fn sweep_reports_leftovers_under_the_managed_prefix() {
+    let mut fixture = Fixture::new();
+    fixture.render().unwrap();
+    let note = fixture.note(0);
+    let (folder, name) = note.rsplit_once('/').unwrap();
+    let leftover = format!("{folder}/.{name}.render-0.inv-tmp");
+    fs::write(fixture.prefix().join(&leftover), "half a note").unwrap();
+    let report = fixture.render().unwrap();
+    let swept: Vec<&str> = report
+        .swept
+        .iter()
+        .map(|swept| swept.path.as_str())
+        .collect();
+    assert_eq!(swept, [format!("{PREFIX}/{leftover}")], "{report:?}");
+    assert!(!fixture.prefix().join(&leftover).exists());
+}
+
+#[test]
+fn a_handle_opened_before_the_setting_moved_never_writes_under_the_lock() {
+    let mut fixture = Fixture::new();
+    let root = fixture.store.workspace().root().to_owned();
+    // Another process moves the projection after this handle was opened.
+    configure(&root, &existing(&fixture.vault, "Elsewhere")).unwrap();
+    let before = fingerprint(&fixture.vault, "-");
+    for error in [
+        fixture.render().unwrap_err(),
+        remove_projection(fixture.store.workspace()).unwrap_err(),
+    ] {
+        assert!(matches!(error, RenderError::Projection { .. }), "{error}");
+        assert!(
+            error.to_string().contains("run the command again"),
+            "{error}"
+        );
+    }
+    assert_eq!(fingerprint(&fixture.vault, "-"), before);
+    assert!(!fixture.vault.join("Elsewhere").exists());
+    assert!(!root.join("local/render-manifest.json").exists());
+    // A handle that reads the new setting renders there.
+    fixture.store = Store::open(Workspace::open(&root).unwrap());
+    fixture.render().unwrap();
+    assert!(fixture.vault.join("Elsewhere/Start Here.md").is_file());
 }

@@ -304,6 +304,9 @@ pub struct Publisher<'lock> {
     /// prefix of an existing vault. `None` only for [`Self::inspect`] before
     /// the first render created the prefix; it then reads as empty.
     vault: Option<OwnedFd>,
+    /// The root as messages and sweep reports name it: `vault` for the
+    /// workspace's own vault, the managed prefix in existing-vault mode.
+    root: String,
     /// When the root's filesystem is trusted for fingerprints
     /// ([`fingerprint::trusted`]), the time the publisher was opened, in
     /// nanoseconds since the epoch: only files last changed well before it
@@ -330,6 +333,9 @@ impl<'lock> Publisher<'lock> {
         Ok(Self {
             _serialized: PhantomData,
             vault,
+            root: crate::projection::Projection::of(workspace)
+                .label()
+                .to_owned(),
             opened,
         })
     }
@@ -347,6 +353,9 @@ impl<'lock> Publisher<'lock> {
             Probe::Idle { .. } => Ok(Some(Self {
                 _serialized: PhantomData,
                 vault: crate::projection::open_root(workspace, false)?,
+                root: crate::projection::Projection::of(workspace)
+                    .label()
+                    .to_owned(),
                 opened: None,
             })),
         }
@@ -508,7 +517,7 @@ impl<'lock> Publisher<'lock> {
     /// was made.
     pub fn barrier(&self) -> Result<(), RenderError> {
         match &self.vault {
-            Some(root) => barrier_on(root, "vault"),
+            Some(root) => barrier_on(root, &self.root),
             None => Ok(()),
         }
     }
@@ -796,7 +805,7 @@ impl<'lock> Publisher<'lock> {
             return Ok(None);
         };
         let mut directory = openat(root, ".", DIRECTORY, Mode::empty())
-            .map_err(|error| RenderError::io("vault", error))?;
+            .map_err(|error| RenderError::io(&self.root, error))?;
         for component in components {
             directory = match openat(&directory, component.as_c_str(), DIRECTORY, Mode::empty()) {
                 Ok(fd) => fd,
@@ -935,6 +944,17 @@ impl<'lock> Publisher<'lock> {
 
     /// Open each parent directory without following links, optionally creating
     /// missing ones (mode 0700).
+    /// The label of a folder below the root: `<root>/<parents>`, where the
+    /// root is `vault` or, in existing-vault mode, the managed prefix
+    /// ([`crate::projection::Projection::label`]).
+    pub(crate) fn folder_label(&self, parents: &[&str]) -> String {
+        if parents.is_empty() {
+            self.root.clone()
+        } else {
+            format!("{}/{}", self.root, parents.join("/"))
+        }
+    }
+
     pub(crate) fn walk(
         &self,
         path: &PlanPath,
@@ -957,7 +977,7 @@ impl<'lock> Publisher<'lock> {
             return Ok(Walk::Missing);
         };
         let mut directory = openat(root, ".", DIRECTORY, Mode::empty())
-            .map_err(|error| RenderError::io("vault", error))?;
+            .map_err(|error| RenderError::io(&self.root, error))?;
         for component in parents {
             let next = match openat(&directory, *component, DIRECTORY, Mode::empty()) {
                 Err(Errno::NOENT) if create => {

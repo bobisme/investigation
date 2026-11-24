@@ -194,6 +194,19 @@ impl VaultPolicy {
     }
 }
 
+/// Refuse an existing vault that contains the workspace `root`, or lies
+/// inside it, so canonical state is never synchronized as notes.
+fn check_vault_apart(vault: &Path, root: &Path) -> Result<(), WorkspaceError> {
+    if vault.starts_with(root) || root.starts_with(vault) {
+        return Err(WorkspaceError::InvalidConfig(format!(
+            "vault_policy.existing_vault {} must be outside the workspace, and the workspace \
+             outside it, so canonical state is never synchronized as notes",
+            vault.display()
+        )));
+    }
+    Ok(())
+}
+
 /// Check a managed prefix: one to [`MAX_PREFIX_COMPONENTS`] `/`-separated
 /// folder names of ASCII letters, digits, spaces, `-`, `_` and `.`, none
 /// hidden, empty, `..` or ending in a space or dot. Links to generated notes
@@ -375,12 +388,114 @@ impl Workspace {
         vault: bool,
         import_roots: &[PathBuf],
     ) -> Result<Self, WorkspaceError> {
+        Self::init_with_settings(root, vault, import_roots, None)
+    }
+
+    /// [`Self::init_with_import_roots`], optionally in existing-vault mode:
+    /// `existing` is the vault and managed prefix written to
+    /// `[vault_policy]` ([`VaultPolicy::existing`]), validated like a
+    /// hand-written setting. In that mode the vault is enabled and the
+    /// workspace's own `vault/` is not created. The vault must lie outside
+    /// the workspace and the workspace outside it.
+    pub fn init_with_settings(
+        root: &Path,
+        vault: bool,
+        import_roots: &[PathBuf],
+        existing: Option<(PathBuf, String)>,
+    ) -> Result<Self, WorkspaceError> {
         for import_root in import_roots {
             check_import_root(import_root)?;
         }
-        let mut config = WorkspaceConfig::initial(vault);
+        let mut config = WorkspaceConfig::initial(vault || existing.is_some());
         config.import_roots = import_roots.to_vec();
+        if let Some((existing_vault, prefix)) = existing {
+            let target = absolute_lexical(root)?;
+            check_vault_apart(&existing_vault, &target)?;
+            if let Ok(canonical) = fs::canonicalize(&target) {
+                check_vault_apart(&existing_vault, &canonical)?;
+            }
+            config.vault_policy.existing_vault = Some(existing_vault);
+            config.vault_policy.managed_prefix = Some(prefix);
+        }
+        config.validate()?;
         Self::init_inner(root, config, None, &NativeFilesystemDetector)
+    }
+
+    /// Render this workspace into `prefix` of the existing vault `vault`:
+    /// write `[vault_policy]` `enabled = true`, `existing_vault` and
+    /// `managed_prefix`, the settings a person would otherwise hand-edit.
+    /// Returns whether the file changed. Like [`Self::add_import_roots`], the
+    /// config is re-read and replaced atomically under the commit lock. The
+    /// caller checks that the render manifest allows the new root; this
+    /// writes only the config, never the vault.
+    pub fn set_existing_vault(
+        &mut self,
+        vault: &Path,
+        prefix: &str,
+    ) -> Result<bool, WorkspaceError> {
+        check_vault_apart(vault, &self.root)?;
+        let _lock = self.config_lock()?;
+        let config_path = self.root.join(CONFIG_FILE);
+        let mut config = self.read_config()?;
+        if config.vault_policy.enabled && config.vault_policy.existing() == Some((vault, prefix)) {
+            self.config = config;
+            return Ok(false);
+        }
+        config.vault_policy.enabled = true;
+        config.vault_policy.existing_vault = Some(vault.to_path_buf());
+        config.vault_policy.managed_prefix = Some(prefix.to_owned());
+        config.validate()?;
+        self.replace_config(&config_path, &config)?;
+        self.config = config;
+        Ok(true)
+    }
+
+    /// `investigation.toml` as it is on disk now, parsed and validated. The
+    /// settings this handle was opened with ([`Self::config`]) may be older:
+    /// another process can change the file afterwards. A caller that must not
+    /// act on a stale setting reads it again under its own lock.
+    pub fn read_config(&self) -> Result<WorkspaceConfig, WorkspaceError> {
+        let config_path = self.root.join(CONFIG_FILE);
+        ensure_regular_file(&config_path)?;
+        let config: WorkspaceConfig = toml::from_str(&read_text(&config_path)?)
+            .map_err(|error| WorkspaceError::InvalidConfig(error.to_string()))?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn config_lock(&self) -> Result<crate::durable::CommitLock, WorkspaceError> {
+        let lock_path = self.root.join(LOCK_FILE);
+        crate::durable::CommitLock::acquire(&lock_path, std::time::Duration::from_secs(2)).map_err(
+            |error| match error {
+                crate::durable::LockError::Io(error) => io_at(&lock_path, error),
+                crate::durable::LockError::Busy { .. } => io_at(
+                    &lock_path,
+                    io::Error::new(io::ErrorKind::WouldBlock, "workspace is busy"),
+                ),
+            },
+        )
+    }
+
+    /// Replace `investigation.toml` atomically. Only a holder of the commit
+    /// lock calls it, so a leftover stage is stale.
+    fn replace_config(
+        &self,
+        config_path: &Path,
+        config: &WorkspaceConfig,
+    ) -> Result<(), WorkspaceError> {
+        let bytes = config_text(config)?;
+        // The stage lives on the workspace filesystem, so the rename is atomic.
+        let stage = self.root.join("state/tmp/investigation-config");
+        match fs::remove_file(&stage) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_at(&stage, error)),
+        }
+        write_new_file(&stage, bytes.as_bytes())?;
+        fs::rename(&stage, config_path).map_err(|source| io_at(config_path, source))?;
+        sync_directory(&self.root)?;
+        sync_directory(&self.root.join("state/tmp"))?;
+        Ok(())
     }
 
     /// Create a tutorial workspace for `demo`: the settings are the fixture's
@@ -429,16 +544,7 @@ impl Workspace {
                 )));
             }
         }
-        let lock_path = self.root.join(LOCK_FILE);
-        let _lock =
-            crate::durable::CommitLock::acquire(&lock_path, std::time::Duration::from_secs(2))
-                .map_err(|error| match error {
-                    crate::durable::LockError::Io(error) => io_at(&lock_path, error),
-                    crate::durable::LockError::Busy { .. } => io_at(
-                        &lock_path,
-                        io::Error::new(io::ErrorKind::WouldBlock, "workspace is busy"),
-                    ),
-                })?;
+        let _lock = self.config_lock()?;
         let config_path = self.root.join(CONFIG_FILE);
         ensure_regular_file(&config_path)?;
         let mut config: WorkspaceConfig = toml::from_str(&read_text(&config_path)?)
@@ -470,19 +576,7 @@ impl Workspace {
             return Ok(added);
         }
         config.import_roots.extend(added.iter().cloned());
-        let bytes = config_text(&config)?;
-        // The stage lives on the workspace filesystem, so the rename is atomic.
-        // Only a holder of the commit lock writes it, so a leftover is stale.
-        let stage = self.root.join("state/tmp/investigation-config");
-        match fs::remove_file(&stage) {
-            Ok(()) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(error) => return Err(io_at(&stage, error)),
-        }
-        write_new_file(&stage, bytes.as_bytes())?;
-        fs::rename(&stage, &config_path).map_err(|source| io_at(&config_path, source))?;
-        sync_directory(&self.root)?;
-        sync_directory(&self.root.join("state/tmp"))?;
+        self.replace_config(&config_path, &config)?;
         self.config = config;
         Ok(added)
     }
@@ -503,7 +597,7 @@ impl Workspace {
         demo: Option<DemoMarker>,
         detector: &impl FilesystemDetector,
     ) -> Result<Self, WorkspaceError> {
-        let vault = config.vault_policy.enabled;
+        let vault = config.vault_policy.uses_workspace_vault();
         let root = absolute_lexical(root)?;
         preflight_target(&root)?;
         let filesystem =
@@ -670,14 +764,8 @@ impl Workspace {
         if let Some(fork) = &marker.fork {
             fork.validate(marker.workspace_id)?;
         }
-        if let Some(vault) = &config.vault_policy.existing_vault
-            && (vault.starts_with(&root) || root.starts_with(vault))
-        {
-            return Err(WorkspaceError::InvalidConfig(format!(
-                "vault_policy.existing_vault {} must be outside the workspace, and the workspace \
-                 outside it, so canonical state is never synchronized as notes",
-                vault.display()
-            )));
+        if let Some(vault) = &config.vault_policy.existing_vault {
+            check_vault_apart(vault, &root)?;
         }
         verify_layout(&root, &config.vault_policy)?;
 

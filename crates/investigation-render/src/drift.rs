@@ -63,7 +63,11 @@ use std::{
 };
 
 use investigation_core::{identity::Id, wire::Digest};
-use investigation_store::{Workspace, journal::hash_bytes};
+use investigation_store::{
+    Workspace,
+    journal::hash_bytes,
+    store::archive::{MAX_MOVED_NOTE_BYTES, MAX_MOVED_SEARCH_BYTES, MAX_MOVED_SEARCH_FILES},
+};
 use rustix::{
     fs::{AtFlags, Dir, FileType, Mode, OFlags, fstat, fsync, mkdirat, openat, statat},
     io::Errno,
@@ -82,7 +86,7 @@ use crate::{
 pub const CONFLICTS_DIR: &str = "local/conflicts";
 
 /// Files larger than this are never read while looking for a moved note.
-const MAX_CANDIDATE_BYTES: u64 = 16 << 20;
+const MAX_CANDIDATE_BYTES: u64 = MAX_MOVED_NOTE_BYTES;
 
 /// How an owned path drifted. See the module documentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -201,7 +205,8 @@ pub(crate) fn survey(
             continue;
         };
         let prefix = parents.join("/");
-        let label = if prefix.is_empty() { "vault" } else { &prefix };
+        let label = publisher.folder_label(parents);
+        let label = label.as_str();
         let mut listing =
             Dir::read_from(&directory).map_err(|error| RenderError::io(label, error))?;
         while let Some(item) = listing.read() {
@@ -358,7 +363,17 @@ pub(crate) fn diagnose(
     Ok(drifts)
 }
 
-/// Mark missing paths whose file is found elsewhere in the vault as renamed.
+/// Mark missing paths whose file is found elsewhere under the projection
+/// root as renamed.
+///
+/// The search never leaves the root: in existing-vault mode that is the
+/// managed prefix, so the rest of the person's vault is neither listed nor
+/// read, as the mode promises, and a note moved out of the prefix stays
+/// diagnosed as missing. Reads are bounded: a file over
+/// [`MAX_MOVED_NOTE_BYTES`] is never read, and once [`MAX_MOVED_SEARCH_FILES`]
+/// files or [`MAX_MOVED_SEARCH_BYTES`] bytes were read no further file is,
+/// so a large prefix costs a bounded amount per render; an unfound note
+/// again stays missing.
 fn find_moved(
     publisher: &Publisher<'_>,
     manifest: &Manifest,
@@ -385,17 +400,22 @@ fn find_moved(
         .map(|entry| entry.path().as_str())
         .collect();
     let mut found: Vec<(usize, String)> = Vec::new();
+    let (mut files_read, mut bytes_read) = (0_usize, 0_u64);
     publisher.visit(true, &mut |relative, directory, name, kind| {
         if kind != FileType::RegularFile
             || manifest.claims(relative)
             || planned.contains(relative)
             || !extensions.contains(&extension(relative.rsplit('/').next().unwrap_or(relative)))
+            || files_read >= MAX_MOVED_SEARCH_FILES
+            || bytes_read >= MAX_MOVED_SEARCH_BYTES
         {
             return Ok(());
         }
+        files_read += 1;
         let Some(bytes) = read_regular(directory, name, relative)? else {
             return Ok(());
         };
+        bytes_read += bytes.len() as u64;
         let sha256 = hash_bytes(&bytes);
         let inv_id = marker::property(&bytes, "inv_id");
         for &index in &missing {

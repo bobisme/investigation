@@ -61,6 +61,9 @@ Every bound on bytes the build parses from outside is listed in one table, [`inv
 | `archive.human_note_bytes` | 16 MiB | bytes | One human note a workspace archive copies from the vault's human folders. A larger note is left out and listed as skipped. | — |
 | `archive.human_notes` | 10000 | items | Human notes one workspace archive copies; the rest are left out and listed as skipped. | — |
 | `vault.note_snapshot_bytes` | 16 MiB | bytes | One person-owned vault file (Notes/, Boards/, Inbox/) that vault snapshot-note retains for a record that relies on it. | `INVALID_INPUT` |
+| `vault.moved_note_bytes` | 16 MiB | bytes | One file a render reads, inside the projection root only, while it looks for a generated note that was moved. A larger file is never taken for one. | — |
+| `vault.moved_search_files` | 2000 | items | Files one render reads, inside the projection root only, while it looks for moved generated notes. Past the bound an unfound note stays reported as missing. | — |
+| `vault.moved_search_bytes` | 256 MiB | bytes | Bytes one render reads, inside the projection root only, while it looks for moved generated notes. Past the bound an unfound note stays reported as missing. | — |
 | `archive.index_bytes` | 64 MiB | bytes | export-manifest.json or archive.json read by archive verify. | `INTEGRITY_FAILURE` |
 
 Nesting levels count JSON Pointer segments below the root. An input over a bound is refused with the listed error code and nothing is committed. A dash marks a bound that refuses nothing: a bound on the work done, which no input can exceed, or a parse bound past which content stays retained and unparsed.

@@ -3,7 +3,9 @@
 //! into the managed prefix of a person's vault, `vault status` names the
 //! mode, a dry run and read-only mode remove nothing, and `vault remove`
 //! deletes only the generated files, leaving every other file of the vault
-//! as it was.
+//! as it was. `init --existing-vault` writes the setting, refuses an unsafe
+//! one with a repair, and changes the prefix only after `vault remove`; a
+//! note moved out of the prefix is never looked for there.
 
 use std::{
     collections::BTreeMap,
@@ -49,26 +51,31 @@ impl Casework {
             _directory: directory,
         };
         let root = casework.root.to_str().unwrap().to_owned();
-        casework.run_in(
+        let init = casework.run_in(
             &parent,
             &[
                 "init",
                 &root,
-                "--no-vault",
+                "--existing-vault",
+                "My Vault",
                 "--import-root",
                 parent.to_str().unwrap(),
             ],
             0,
         );
-        let config = casework.root.join("investigation.toml");
-        let text = fs::read_to_string(&config).unwrap().replace(
-            "enabled = false\n",
-            &format!(
-                "enabled = true\nexisting_vault = {:?}\nmanaged_prefix = \"Investigation\"\n",
+        assert_eq!(init["projection"]["mode"], "existing_vault", "{init}");
+        assert_eq!(init["projection"]["managed_prefix"], "Investigation");
+        assert_eq!(init["layout"]["projection"], Value::Null);
+        // The same settings a person would hand-edit, with the canonical path.
+        let config = fs::read_to_string(casework.root.join("investigation.toml")).unwrap();
+        assert!(
+            config.contains(&format!(
+                "enabled = true\ninclude_approved_derivatives = false\npreserve_human_folders = \
+                 true\nexisting_vault = {:?}\nmanaged_prefix = \"Investigation\"\n",
                 casework.vault.to_str().unwrap()
-            ),
+            )),
+            "{config}"
         );
-        fs::write(&config, text).unwrap();
         casework.run(
             &[
                 "--actor",
@@ -180,4 +187,262 @@ fn render_and_remove_touch_only_the_managed_prefix() {
     assert_eq!(casework.files(), before);
     let status = casework.run(&["vault", "status"], 0);
     assert_eq!(status["state"], "unrendered");
+}
+
+#[test]
+fn init_refuses_an_unsafe_setting_with_a_repair_and_writes_nothing() {
+    let casework = Casework::new();
+    let parent = casework.root.parent().unwrap().to_owned();
+    let before = casework.files();
+    let fresh = parent.join("fresh");
+    let init = |vault: &str, prefix: &str| {
+        casework.run_in(
+            &parent,
+            &[
+                "init",
+                fresh.to_str().unwrap(),
+                "--existing-vault",
+                vault,
+                "--managed-prefix",
+                prefix,
+            ],
+            2,
+        )
+    };
+    for (prefix, says, repaired) in [
+        (".obsidian/plugins", "hidden", "obsidian/plugins"),
+        ("Cases/[x]", "ASCII", "Cases/x"),
+        ("a/b/c/d/e", "one to four", "b/c/d/e"),
+        ("Missing/Investigation", "does not exist", "Investigation"),
+        ("Start Here.md", "not a folder", "Start Here.md Casebook"),
+    ] {
+        let refused = init("My Vault", prefix);
+        assert_eq!(refused["error"]["code"], "INVALID_INPUT", "{refused}");
+        assert_eq!(refused["error"]["path"], "--managed-prefix");
+        let message = refused["error"]["message"].as_str().unwrap();
+        assert!(message.contains(says), "{prefix}: {message}");
+        let argv: Vec<&str> = refused["error"]["repair"]["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|word| word.as_str().unwrap())
+            .collect();
+        assert!(
+            argv.windows(2)
+                .any(|pair| pair == ["--managed-prefix", repaired]),
+            "{argv:?}"
+        );
+    }
+    // The vault must exist, and neither may hold the other.
+    let refused = init("No Such Vault", "Investigation");
+    assert_eq!(refused["error"]["path"], "--existing-vault");
+    let inside = casework.root.parent().unwrap();
+    let refused = casework.run_in(
+        &parent,
+        &[
+            "init",
+            casework.vault.join("ws").to_str().unwrap(),
+            "--existing-vault",
+            inside.to_str().unwrap(),
+        ],
+        2,
+    );
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("must be apart"),
+        "{refused}"
+    );
+    assert!(!fresh.exists());
+    assert_eq!(casework.files(), before);
+}
+
+#[test]
+fn a_prefix_change_goes_through_vault_remove_and_never_moves_notes() {
+    let casework = Casework::new();
+    let vault = casework.vault.to_str().unwrap().to_owned();
+    let root = casework.root.to_str().unwrap().to_owned();
+    // The same setting again changes nothing.
+    let again = casework.run(&["init", &root, "--existing-vault", &vault], 0);
+    assert_eq!(again["result"], "already_initialized", "{again}");
+    assert_eq!(again["projection"]["setting"], "unchanged");
+
+    casework.run(&["vault", "render"], 0);
+    fs::create_dir_all(casework.vault.join("Investigation/Notes")).unwrap();
+    fs::write(casework.vault.join("Investigation/Notes/mine.md"), "mine\n").unwrap();
+    let config = fs::read(casework.root.join("investigation.toml")).unwrap();
+    let rendered = casework.files();
+
+    // While generated files are owned, the change is refused with a repair.
+    let move_to = [
+        "init",
+        &root,
+        "--existing-vault",
+        &vault,
+        "--managed-prefix",
+        "Projects/Cases",
+    ];
+    let refused = casework.run(&move_to, 2);
+    assert_eq!(refused["error"]["path"], "--existing-vault", "{refused}");
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("vault remove"),
+        "{refused}"
+    );
+    let repair = refused["error"]["repair"]["argv"].to_string();
+    assert!(repair.contains("\"remove\",\"--dry-run\""), "{repair}");
+    assert_eq!(
+        fs::read(casework.root.join("investigation.toml")).unwrap(),
+        config
+    );
+    assert_eq!(casework.files(), rendered);
+
+    // The route: remove, init with the new prefix, render.
+    casework.run(&["vault", "remove"], 0);
+    let moved = casework.run(&move_to, 0);
+    assert_eq!(moved["result"], "existing_vault_set", "{moved}");
+    assert_eq!(moved["projection"]["managed_prefix"], "Projects/Cases");
+    assert_eq!(moved["projection"]["setting"], "written");
+    casework.run(&["vault", "render"], 0);
+    let after = casework.files();
+    assert!(after.contains_key("Projects/Cases/Start Here.md"));
+    assert_eq!(after["Investigation/Notes/mine.md"], b"mine\n");
+    assert!(
+        after.keys().all(|path| path.starts_with("Projects/Cases/")
+            || rendered.contains_key(path) && !path.starts_with("Investigation/Cases/")),
+        "{:?}",
+        after.keys().collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_note_moved_out_of_the_prefix_is_not_looked_for_there() {
+    let casework = Casework::new();
+    casework.run(&["vault", "render"], 0);
+    let files = casework.files();
+    let note = files
+        .keys()
+        .find(|path| path.starts_with("Investigation/Cases/") && path.ends_with("Overview.md"))
+        .unwrap()
+        .clone();
+    let inside = "Investigation/Notes/moved.md";
+    fs::create_dir_all(casework.vault.join("Investigation/Notes")).unwrap();
+    fs::rename(casework.vault.join(&note), casework.vault.join(inside)).unwrap();
+    casework.run(&["vault", "render"], 0);
+    let conflicts = casework.run(&["vault", "conflicts"], 0);
+    assert_eq!(conflicts["conflicts"][0]["kind"], "renamed", "{conflicts}");
+    assert_eq!(
+        conflicts["conflicts"][0]["renamed_to"][0]["path"],
+        "Notes/moved.md"
+    );
+
+    // Out of the prefix: the rest of the vault is never read, so it is missing.
+    fs::rename(casework.vault.join(inside), casework.vault.join("moved.md")).unwrap();
+    casework.run(&["vault", "render"], 0);
+    let conflicts = casework.run(&["vault", "conflicts"], 0);
+    assert_eq!(conflicts["conflicts"][0]["kind"], "missing", "{conflicts}");
+    assert!(
+        conflicts["conflicts"][0]["restore"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("only inside the projection folder")
+            || conflicts
+                .to_string()
+                .contains("only inside the projection folder"),
+        "{conflicts}"
+    );
+}
+
+#[test]
+fn an_edited_note_left_by_removal_is_resolved_before_the_prefix_changes() {
+    let casework = Casework::new();
+    let vault = casework.vault.to_str().unwrap().to_owned();
+    let root = casework.root.to_str().unwrap().to_owned();
+    casework.run(&["vault", "render"], 0);
+    let note = casework
+        .files()
+        .into_keys()
+        .find(|path| path.starts_with("Investigation/Cases/") && path.ends_with("Overview.md"))
+        .unwrap();
+    let mut text = fs::read_to_string(casework.vault.join(&note)).unwrap();
+    text.push_str("\nMy edit.\n");
+    fs::write(casework.vault.join(&note), &text).unwrap();
+    casework.run(&["vault", "render"], 0);
+    casework.run(&["vault", "remove"], 0);
+
+    let move_to = [
+        "init",
+        &root,
+        "--existing-vault",
+        &vault,
+        "--managed-prefix",
+        "Elsewhere",
+    ];
+    let refused = casework.run(&move_to, 2);
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(message.contains("release-path"), "{refused}");
+    assert!(
+        refused["error"]["repair"]["argv"]
+            .to_string()
+            .contains("\"conflicts\""),
+        "{refused}"
+    );
+
+    let relative = note.strip_prefix("Investigation/").unwrap();
+    casework.run(
+        &[
+            "vault",
+            "reconcile",
+            relative,
+            "--disposition",
+            "release-path",
+        ],
+        0,
+    );
+    casework.run(&["vault", "remove"], 0);
+    casework.run(&move_to, 0);
+    casework.run(&["vault", "render"], 0);
+    assert_eq!(
+        fs::read_to_string(casework.vault.join(&note)).unwrap(),
+        text
+    );
+    assert!(casework.vault.join("Elsewhere/Start Here.md").is_file());
+}
+
+#[test]
+fn a_prefix_change_waits_for_the_render_lock_and_writes_nothing_while_it_is_held() {
+    let casework = Casework::new();
+    let vault = casework.vault.to_str().unwrap().to_owned();
+    let root = casework.root.to_str().unwrap().to_owned();
+    let config = fs::read(casework.root.join("investigation.toml")).unwrap();
+    // Stand in for a render in progress: hold the renderer's advisory lock.
+    let lock = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(casework.root.join("local/render.lock"))
+        .unwrap();
+    lock.lock().unwrap();
+    let move_to = [
+        "init",
+        &root,
+        "--existing-vault",
+        &vault,
+        "--managed-prefix",
+        "Elsewhere",
+    ];
+    let refused = casework.run(&move_to, 7);
+    assert_eq!(refused["error"]["code"], "WORKSPACE_BUSY", "{refused}");
+    assert_eq!(refused["error"]["path"], "--existing-vault");
+    assert_eq!(
+        fs::read(casework.root.join("investigation.toml")).unwrap(),
+        config
+    );
+    lock.unlock().unwrap();
+    let moved = casework.run(&move_to, 0);
+    assert_eq!(moved["result"], "existing_vault_set", "{moved}");
 }

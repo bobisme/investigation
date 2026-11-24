@@ -357,6 +357,27 @@ pub const LIMITS: &[Limit] = &[
         INVALID_INPUT,
     ),
     limit(
+        "vault.moved_note_bytes",
+        archive::MAX_MOVED_NOTE_BYTES,
+        Bytes,
+        "One file a render reads, inside the projection root only, while it looks for a generated note that was moved. A larger file is never taken for one.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "vault.moved_search_files",
+        archive::MAX_MOVED_SEARCH_FILES as u64,
+        Items,
+        "Files one render reads, inside the projection root only, while it looks for moved generated notes. Past the bound an unfound note stays reported as missing.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "vault.moved_search_bytes",
+        archive::MAX_MOVED_SEARCH_BYTES,
+        Bytes,
+        "Bytes one render reads, inside the projection root only, while it looks for moved generated notes. Past the bound an unfound note stays reported as missing.",
+        NO_REFUSAL,
+    ),
+    limit(
         "archive.index_bytes",
         archive::MAX_INDEX_BYTES,
         Bytes,

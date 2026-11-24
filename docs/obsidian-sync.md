@@ -7,7 +7,7 @@ Nothing here is a requirement on a product. Any tool that copies files works the
 ## Recommended deployment
 
 1. **One authoritative workspace.** Keep the workspace on one machine, on a local filesystem. The support matrix (`docs/support-matrix.md`) lists cloud-synchronized canonical directories as unsupported.
-2. **An optional review vault outside the workspace.** Set `existing_vault` and `managed_prefix` in `investigation.toml` (see `obsidian/README.md`, "Existing-vault mode"). The workspace must not lie inside that vault, so canonical state is never synchronized as notes. Sync that vault, or only the managed prefix, as you like.
+2. **An optional review vault outside the workspace.** Run `investigation init WORKSPACE --existing-vault VAULT [--managed-prefix FOLDER]`, or set `existing_vault` and `managed_prefix` in `investigation.toml` (see `obsidian/README.md`, "Existing-vault mode"). The workspace must not lie inside that vault, so canonical state is never synchronized as notes. Sync that vault, or only the managed prefix, as you like.
 3. **Mobile for browsing and your own notes.** A phone reads generated notes and writes only in the folders that are yours. Nothing a phone does changes a record.
 4. **A full workspace copy for recovery.** To recover, copy the whole workspace folder (`state/`, `investigation.toml` and the rest) while no command runs, as `docs/agent/exposure.md` describes under restore. The support matrix lists archive restore as unqualified: check a copy with `investigation check`.
 

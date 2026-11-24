@@ -105,7 +105,17 @@ copy it into `Boards/` to keep an editable version.
 
 By default the vault is the workspace's own `vault/` folder. To render the
 casebook into a vault you already have, name that vault and one folder in it
-in the workspace's `investigation.toml`:
+when you create the workspace, or run the same command on an existing one:
+
+```sh
+investigation init ./casework --existing-vault ~/Notes --managed-prefix Investigation --format json
+```
+
+`--managed-prefix` defaults to `Investigation`. The command checks the
+setting before it writes anything and refuses an unsafe one with a repair
+command (for example a hidden folder, a missing parent folder, or a prefix
+that is a file or a link), and writes these settings to the workspace's
+`investigation.toml`, which you can also edit by hand:
 
 ```toml
 [vault_policy]
@@ -157,9 +167,9 @@ The rules:
   generated files (notes, views, `.base` files, `Map.canvas`, `Start Here.md`),
   paths released to you, and files moved into `Notes/Reconciled/` with the
   path they came from. It records the vault and prefix it was written for;
-  if the setting changes while the manifest still records paths, render,
-  reconcile and remove refuse. Run `vault remove` with the earlier setting
-  first.
+  if the setting changes while the manifest still owns generated files,
+  render, reconcile and remove refuse, and `init --existing-vault` refuses
+  the change. Run `vault remove` with the earlier setting first.
 - **Removal deletes only owned files.** `investigation vault remove` deletes
   each owned file only while it holds exactly the bytes recorded for it, then
   the folders that leaves empty, and the prefix folder last when it is empty.
@@ -169,8 +179,33 @@ The rules:
   what would happen. The workspace journal is unchanged, and `vault render`
   projects the casebook again.
 
-Changing the managed prefix renames nothing: remove the projection, change
-the setting, then render.
+- **Moved notes are looked for only inside the prefix.** When a generated
+  note disappears, the next render looks for its bytes elsewhere under the
+  prefix and reports it as renamed. It never lists or reads the rest of your
+  vault, so a note moved out of the prefix is reported as missing. The search
+  is bounded (`vault.moved_note_bytes`, `vault.moved_search_files` and
+  `vault.moved_search_bytes` in `docs/support-matrix.md`); past a bound an
+  unfound note is also reported as missing.
+
+Changing the managed prefix renames and moves nothing. Remove the projection
+under the current setting, write the new one, then render:
+
+```sh
+investigation --workspace ./casework vault remove --dry-run --format json
+investigation --workspace ./casework vault remove --format json
+investigation init ./casework --existing-vault ~/Notes --managed-prefix Projects/Investigation --format json
+investigation --workspace ./casework vault render --format json
+```
+
+Generated files you edited survive the removal and stay owned, so the init
+refuses until each is resolved: `vault reconcile PATH --disposition
+release-path` keeps it in place as yours (or `preserve-as-note`), then run
+`vault remove` again. Everything that stays in the old prefix after that
+(your `Notes/`, `Boards/` and `Inbox/`, released paths and
+`Notes/Reconciled/`) is yours: the renderer forgets those paths when the new
+prefix is bound and never touches them again. Move them yourself if you want
+them in the new prefix. There is no move command, because a move would have
+to relocate your own files.
 
 ### Property types
 

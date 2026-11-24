@@ -227,7 +227,9 @@ const fn restore(kind: DriftKind) -> &'static str {
         }
         DriftKind::Missing => {
             "vault reconcile PATH with --disposition discard --discard-observed regenerates the \
-             deleted file; release-path gives up the path and projects the record beside it."
+             deleted file; release-path gives up the path and projects the record beside it. A \
+             moved file is looked for only inside the projection folder (the managed prefix of an \
+             existing vault), so one moved elsewhere reads as missing."
         }
         DriftKind::Renamed => {
             "vault reconcile PATH with --disposition preserve-as-note keeps the moved file (in \

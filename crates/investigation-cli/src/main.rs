@@ -25,6 +25,7 @@ mod guide;
 mod help_lint;
 mod help_teach;
 mod inherited_trust;
+mod init_existing;
 mod integration;
 mod lessons;
 mod lineage;
@@ -195,7 +196,7 @@ enum Format {
 enum Commands {
     /// Create a local workspace and an optional Markdown vault.
     #[command(
-        after_help = "Example: investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json\n--actor records ACTOR in local/actor.toml as this machine's actor for writes in the workspace that name no actor. --actor on a write and AGENT take precedence."
+        after_help = "Examples:\n  investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json\n  investigation init ./casework --existing-vault ~/Notes --managed-prefix Investigation --format json\n--actor records ACTOR in local/actor.toml as this machine's actor for writes in the workspace that name no actor. --actor on a write and AGENT take precedence.\n--existing-vault renders the casebook into one folder (--managed-prefix, default Investigation) of a vault you already have instead of the workspace's vault/; nothing outside that folder is written or read. On an existing workspace it writes the same setting. To change the prefix: vault remove, then init --existing-vault VAULT --managed-prefix NEW, then vault render; your notes in the old folder stay where they are."
     )]
     Init {
         /// New or empty directory for the workspace, or an existing workspace; --workspace PATH also works.
@@ -206,8 +207,16 @@ enum Commands {
         #[arg(long)]
         nested: bool,
         /// Skip creation of the optional Markdown vault.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "existing_vault")]
         no_vault: bool,
+        /// Render into one folder of this existing vault instead of the workspace's vault/
+        /// (absolute or relative folder outside the workspace; nothing outside the folder is touched).
+        #[arg(long, value_name = "VAULT")]
+        existing_vault: Option<PathBuf>,
+        /// The folder of --existing-vault the renderer manages: one to four nested folder
+        /// names, such as Investigation or Projects/Investigation [default: Investigation].
+        #[arg(long, value_name = "FOLDER", requires = "existing_vault")]
+        managed_prefix: Option<String>,
         /// Let the workspace retain copies of files beneath DIR (read-only; repeatable).
         /// On an existing workspace PATH, adds DIR to its import roots.
         #[arg(long = "import-root", value_name = "DIR")]
@@ -466,9 +475,20 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Init {
             path,
             no_vault,
+            existing_vault,
+            managed_prefix,
             import_roots,
             nested,
-        } => init(path.as_deref(), !no_vault, &import_roots, nested, &global),
+        } => init(
+            path.as_deref(),
+            !no_vault,
+            &import_roots,
+            nested,
+            existing_vault
+                .as_deref()
+                .map(|vault| (vault, managed_prefix.as_deref())),
+            &global,
+        ),
         Commands::Demo(args) => demo::run(args),
         Commands::Onboard => onboard::run(&global),
         Commands::Docs(args) => docs::run(args),
@@ -820,12 +840,16 @@ fn init(
     vault: bool,
     import_roots: &[PathBuf],
     nested: bool,
+    existing: Option<(&Path, Option<&str>)>,
     global: &Global,
 ) -> Result<Output, Failure> {
     let (path, flag) = first_use::init_destination(path, global.workspace.as_deref())?;
     if let Some(failure) = first_use::nested_init_refusal(path).filter(|_| !nested) {
         return Err(failure.at(flag.unwrap_or("PATH")));
     }
+    let existing = existing
+        .map(|(vault, prefix)| init_existing::check(vault, prefix, path))
+        .transpose()?;
     let import_roots = import_roots
         .iter()
         .map(|root| {
@@ -851,35 +875,45 @@ fn init(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let mut added = Vec::new();
-    let (workspace, result) = match Workspace::init_with_import_roots(path, vault, &import_roots) {
-        Ok(workspace) => (workspace, "initialized"),
-        Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
-            if path.join("investigation.toml").is_file() {
-                let mut workspace = Workspace::open(path).map_err(workspace_failure)?;
-                selection::refuse_unwritable(&workspace)?;
-                added = workspace
-                    .add_import_roots(&import_roots)
-                    .map_err(|error| workspace_failure(error).at("--import-root"))?;
-                let result = if added.is_empty() {
-                    "already_initialized"
+    let mut setting_changed = None;
+    let setting = existing
+        .as_ref()
+        .map(|setting| (setting.vault.clone(), setting.prefix.clone()));
+    let (workspace, result) =
+        match Workspace::init_with_settings(path, vault, &import_roots, setting) {
+            Ok(workspace) => (workspace, "initialized"),
+            Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
+                if path.join("investigation.toml").is_file() {
+                    let mut workspace = Workspace::open(path).map_err(workspace_failure)?;
+                    selection::refuse_unwritable(&workspace)?;
+                    if let Some(setting) = &existing {
+                        setting_changed = Some(init_existing::apply(&mut workspace, setting)?);
+                    }
+                    added = workspace
+                        .add_import_roots(&import_roots)
+                        .map_err(|error| workspace_failure(error).at("--import-root"))?;
+                    let result = if setting_changed == Some(true) {
+                        "existing_vault_set"
+                    } else if added.is_empty() {
+                        "already_initialized"
+                    } else {
+                        "import_roots_added"
+                    };
+                    (workspace, result)
                 } else {
-                    "import_roots_added"
-                };
-                (workspace, result)
-            } else {
-                return Err(first_use::nonempty_init_repair(
-                    workspace_failure(error),
-                    path,
-                    flag,
-                    import_roots.is_empty(),
-                ));
+                    return Err(first_use::nonempty_init_repair(
+                        workspace_failure(error),
+                        path,
+                        flag,
+                        import_roots.is_empty(),
+                    ));
+                }
             }
-        }
-        Err(error @ WorkspaceError::InvalidImportRoot(_)) => {
-            return Err(workspace_failure(error).at("--import-root"));
-        }
-        Err(error) => return Err(workspace_failure(error)),
-    };
+            Err(error @ WorkspaceError::InvalidImportRoot(_)) => {
+                return Err(workspace_failure(error).at("--import-root"));
+            }
+            Err(error) => return Err(workspace_failure(error)),
+        };
     let actor_setting = match &global.actor {
         Some(actor) => {
             let previous = workspace
@@ -893,7 +927,7 @@ fn init(
         Some((actor, _)) => Some(actor.clone()),
         None => workspace.local_actor().map_err(workspace_failure)?,
     };
-    let vault = workspace.config().vault_policy.enabled;
+    let vault = workspace.config().vault_policy.uses_workspace_vault();
     let path = workspace.root().to_string_lossy();
     let configured_roots = &workspace.config().import_roots;
     let start = first_use::start_step(&path, local_actor.as_ref());
@@ -906,6 +940,12 @@ fn init(
             ""
         },
     );
+    let projection = existing
+        .as_ref()
+        .map(|setting| init_existing::describe(setting, setting_changed));
+    if let Some((_, line)) = &projection {
+        text.push_str(line);
+    }
     for root in configured_roots {
         let state = if added.contains(root) { "  added" } else { "" };
         text.push_str(&format!("import root  {}{state}\n", root.display()));
@@ -936,6 +976,9 @@ fn init(
     });
     if let Some((actor, previous)) = &actor_setting {
         value["actor_setting"] = first_use::actor_setting_value(actor, previous.as_ref());
+    }
+    if let Some((projection, _)) = projection {
+        value["projection"] = projection;
     }
     Ok(Output::success(result, value, text))
 }

@@ -51,8 +51,11 @@ const MANIFEST_NAME: &str = "render-manifest.json";
 /// One leftover the sweep handled.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Swept {
-    /// Workspace-relative path of the leftover, such as
-    /// `vault/Cases/<id>/Questions/.<id>.md.<tag>-0.inv-tmp`.
+    /// Path of the leftover: workspace-relative, such as
+    /// `vault/Cases/<id>/Questions/.<id>.md.<tag>-0.inv-tmp` or
+    /// `local/.render-manifest.json.<tag>-0.inv-tmp`; in existing-vault mode
+    /// a projection leftover is vault-relative and starts with the managed
+    /// prefix (`Investigation/Cases/...`).
     pub path: String,
     pub action: SweptAction,
 }
@@ -161,11 +164,7 @@ impl Publisher<'_> {
             let Walk::Directory(directory) = self.walk(first, parents, false)? else {
                 continue;
             };
-            let prefix = if parents.is_empty() {
-                "vault".to_owned()
-            } else {
-                format!("vault/{}", parents.join("/"))
-            };
+            let prefix = self.folder_label(parents);
             let mut changed = false;
             for (name, target, suffix) in leftovers(&directory, &prefix, names)? {
                 let label = format!("{prefix}/{name}");
