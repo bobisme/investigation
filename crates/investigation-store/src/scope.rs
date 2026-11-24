@@ -89,7 +89,7 @@ impl<F: DurableFs> Store<F> {
         let replay = replay_case_from(
             &self.fs,
             &directory,
-            self.workspace.id(),
+            self.workspace.writers(case_id),
             case_id,
             known.as_ref(),
         )?;

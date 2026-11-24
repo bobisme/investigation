@@ -333,7 +333,7 @@ enum Commands {
     /// Read the effective workspace settings and where each value comes from; never writes.
     #[command(subcommand, after_help = config::AFTER_HELP)]
     Config(config::ConfigCommand),
-    /// Verify an export or workspace archive offline; needs no workspace.
+    /// Verify an export offline, or restore or fork a workspace archive; needs no workspace.
     #[command(subcommand, after_help = archive::AFTER_HELP)]
     Archive(archive::ArchiveCommand),
     /// Report versions, capabilities, limits, filesystem support and workspace health.
@@ -1196,7 +1196,20 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
             text.push_str(&format!("\nRepair: {}", display_argv(argv)));
         }
     }
-    let report = serde_json::to_value(report).expect("check report serializes");
+    let workspace = store.workspace();
+    if let Some(fork) = workspace.fork() {
+        text.push_str(&format!(
+            "\nworkspace {}  fork of {} at recovery head {}",
+            workspace.id(),
+            fork.origin_workspace_id,
+            fork.origin_recovery_head
+        ));
+    }
+    let mut report = serde_json::to_value(report).expect("check report serializes");
+    report["workspace_id"] = json!(workspace.id());
+    if let Some(fork) = workspace.fork() {
+        report["fork"] = json!(fork);
+    }
     let mut output = Output::success("checked", report, text);
     output.value["ok"] = json!(integrity_ok);
     if !integrity_ok {

@@ -529,7 +529,7 @@ impl<F: DurableFs> Store<F> {
             replay_case(
                 &self.fs,
                 &case_directory(located.case_id),
-                self.workspace.id(),
+                self.workspace.writers(located.case_id),
                 located.case_id,
             )?
         };

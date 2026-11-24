@@ -103,6 +103,7 @@ mod inclusion;
 mod manifest;
 mod method_retrospective;
 mod report_blocks;
+pub mod restore;
 mod retained;
 pub mod review_vault;
 mod snapshot;

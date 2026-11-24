@@ -451,7 +451,7 @@ impl<F: DurableFs> Store<F> {
         Ok(replay_case(
             &self.fs,
             &case_directory(case_id),
-            self.workspace.id(),
+            self.workspace.writers(case_id),
             case_id,
         )?
         .snapshot)

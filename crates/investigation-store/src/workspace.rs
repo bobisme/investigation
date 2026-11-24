@@ -52,6 +52,10 @@ struct WorkspaceGenesis {
     /// additive: a workspace without it is an ordinary workspace.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     demo: Option<DemoMarker>,
+    /// Present only in a workspace `archive fork` made. Optional and
+    /// additive, like `demo`; see [`ForkMarker`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fork: Option<ForkMarker>,
 }
 
 /// Marks a workspace `demo` generated: which tutorial scenario, replayed from
@@ -348,6 +352,7 @@ pub struct Workspace {
     config: WorkspaceConfig,
     genesis_sequence: u64,
     demo: Option<DemoMarker>,
+    fork: Option<ForkMarker>,
 }
 
 impl Workspace {
@@ -554,6 +559,7 @@ impl Workspace {
             workspace_id: id,
             genesis_sequence: 0,
             demo,
+            fork: None,
         };
         let marker_bytes = serde_json::to_vec_pretty(&marker)
             .map_err(|error| WorkspaceError::Serialization(error.to_string()))?;
@@ -574,6 +580,7 @@ impl Workspace {
             config,
             genesis_sequence: marker.genesis_sequence,
             demo: marker.demo,
+            fork: None,
         })
     }
 
@@ -641,6 +648,9 @@ impl Workspace {
                 marker.genesis_sequence,
             ));
         }
+        if let Some(fork) = &marker.fork {
+            fork.validate(marker.workspace_id)?;
+        }
         if let Some(vault) = &config.vault_policy.existing_vault
             && (vault.starts_with(&root) || root.starts_with(vault))
         {
@@ -659,6 +669,7 @@ impl Workspace {
             config,
             genesis_sequence: marker.genesis_sequence,
             demo: marker.demo,
+            fork: marker.fork,
         })
     }
 
@@ -1172,8 +1183,10 @@ impl std::error::Error for WorkspaceError {
 }
 
 mod config_keys;
+mod fork;
 mod local_actor;
 pub use config_keys::CONFIG_FILE_NAME;
+pub use fork::{ForkMarker, MAX_FORK_CASES};
 pub use local_actor::LOCAL_ACTOR_FILE;
 
 #[cfg(test)]

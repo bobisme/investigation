@@ -15,6 +15,11 @@
 //!    record uniqueness, and hashes every required blob. The restored heads
 //!    must equal the archived ones. The copy is removed afterwards.
 //!
+//! `archive restore` and `archive fork` run the same checks through
+//! [`verify_into`], which keeps the checked copy where the restore asked for
+//! it instead of removing it: a restore only ever publishes the copy these
+//! checks verified.
+//!
 //! Members are read once while they are copied and hashed, so a member that
 //! changes between the check and the restore is found too. Nothing in DIR is
 //! written.
@@ -118,10 +123,70 @@ enum Entry {
     Unsafe(&'static str),
 }
 
+/// Where the checked copy of an archive goes.
+#[derive(Clone, Copy)]
+enum CopyTo<'a> {
+    /// A new private directory below this scratch folder, removed afterwards.
+    Private(&'a Path),
+    /// This directory, which must not exist; kept when every check passes,
+    /// removed otherwise.
+    Keep(&'a Path),
+}
+
+/// A workspace archive [`verify_into`] verified, and its checked copy.
+#[derive(Debug, Clone)]
+pub struct VerifiedCopy {
+    pub manifest: ExportManifest,
+    pub index: ArchiveIndex,
+    /// The report, with no problem.
+    pub report: VerifyReport,
+}
+
 /// Verify the export in `dir`. A workspace archive is also restored into a
 /// new private directory below `scratch` and checked there. `Err` only when
 /// `dir` itself cannot be read.
 pub fn verify_export(dir: &Path, scratch: &Path) -> io::Result<VerifyReport> {
+    verify_with(dir, CopyTo::Private(scratch)).map(|(report, _)| report)
+}
+
+/// Verify the workspace archive in `dir` exactly as [`verify_export`] does,
+/// restoring the copy that `check` runs on into `root`, which must not
+/// exist, and keep it there. `Ok(Err(report))` lists the problems; then
+/// nothing is left at `root`. An export that is not a workspace archive is a
+/// problem too (`NOT_RESTORABLE`). `Err` only when `dir` cannot be read.
+pub fn verify_into(dir: &Path, root: &Path) -> io::Result<Result<VerifiedCopy, VerifyReport>> {
+    let (mut report, verified) = verify_with(dir, CopyTo::Keep(root))?;
+    if report.archive.is_none() && report.problems.is_empty() {
+        report.problems.push(problem(
+            "NOT_RESTORABLE",
+            Some(MANIFEST_FILE),
+            "Only a workspace archive restores a workspace; this export is a view of one.",
+        ));
+    }
+    Ok(match verified {
+        Some((manifest, index)) if report.ok() => Ok(VerifiedCopy {
+            manifest,
+            index,
+            report,
+        }),
+        _ => {
+            remove_kept(root);
+            Err(report)
+        }
+    })
+}
+
+/// Remove a copy [`verify_into`] began at `root` and did not keep. Only a
+/// directory this verification created is there.
+fn remove_kept(root: &Path) {
+    if fs::symlink_metadata(root).is_ok_and(|metadata| metadata.is_dir()) {
+        let _ = fs::remove_dir_all(root);
+    }
+}
+
+type Checked = (VerifyReport, Option<(ExportManifest, ArchiveIndex)>);
+
+fn verify_with(dir: &Path, copy: CopyTo<'_>) -> io::Result<Checked> {
     let metadata = fs::symlink_metadata(dir)?;
     if !metadata.is_dir() {
         return Err(io::Error::new(
@@ -146,7 +211,7 @@ pub fn verify_export(dir: &Path, scratch: &Path) -> io::Result<VerifyReport> {
                 Some(MANIFEST_FILE),
                 "No export-manifest.json: the export is unfinished or not an export.",
             ));
-            return Ok(report);
+            return Ok((report, None));
         }
         Some(Entry::Unsafe(kind)) => {
             report.problems.push(problem(
@@ -154,7 +219,7 @@ pub fn verify_export(dir: &Path, scratch: &Path) -> io::Result<VerifyReport> {
                 Some(MANIFEST_FILE),
                 format!("The manifest is a {kind}."),
             ));
-            return Ok(report);
+            return Ok((report, None));
         }
         Some(Entry::File) => match read_manifest(&dir.join(MANIFEST_FILE)) {
             Ok(manifest) => manifest,
@@ -162,7 +227,7 @@ pub fn verify_export(dir: &Path, scratch: &Path) -> io::Result<VerifyReport> {
                 report
                     .problems
                     .push(problem("MANIFEST_INVALID", Some(MANIFEST_FILE), detail));
-                return Ok(report);
+                return Ok((report, None));
             }
         },
     };
@@ -176,10 +241,12 @@ pub fn verify_export(dir: &Path, scratch: &Path) -> io::Result<VerifyReport> {
             "The export_id does not match the manifest's own fields and file digests.",
         ));
     }
-    if manifest.product == Product::Archive {
-        verify_archive(dir, scratch, &manifest, &mut report);
+    if manifest.product == Product::Archive
+        && let Some(index) = verify_archive(dir, copy, &manifest, &mut report)
+    {
+        return Ok((report, Some((manifest, index))));
     }
-    Ok(report)
+    Ok((report, None))
 }
 
 fn read_manifest(path: &Path) -> Result<ExportManifest, String> {
@@ -294,12 +361,13 @@ fn check_members(
     Ok(())
 }
 
+/// The archive checks; the index when it parsed and a copy was checked.
 fn verify_archive(
     dir: &Path,
-    scratch: &Path,
+    copy: CopyTo<'_>,
     manifest: &ExportManifest,
     report: &mut VerifyReport,
-) {
+) -> Option<ArchiveIndex> {
     let listed: BTreeMap<&str, (&Digest, u64)> = manifest
         .files
         .iter()
@@ -311,7 +379,7 @@ fn verify_archive(
             Some(INDEX_FILE),
             "A workspace archive must list archive.json.",
         ));
-        return;
+        return None;
     }
     let index: ArchiveIndex = match read_small(&dir.join(INDEX_FILE)).and_then(|bytes| {
         serde_json::from_slice(&bytes).map_err(|error| format!("It does not parse: {error}."))
@@ -321,7 +389,7 @@ fn verify_archive(
             report
                 .problems
                 .push(problem("INDEX_INVALID", Some(INDEX_FILE), detail));
-            return;
+            return None;
         }
     };
     if index.format != ARCHIVE_FORMAT {
@@ -333,7 +401,7 @@ fn verify_archive(
                 index.format
             ),
         ));
-        return;
+        return None;
     }
     let mismatch = |detail: String, path: Option<&str>| problem("INDEX_MISMATCH", path, detail);
     let recomputed = recovery_head(
@@ -406,17 +474,19 @@ fn verify_archive(
         human_notes: index.human_notes.len(),
         rehearsal: None,
     };
-    if report.problems.is_empty() {
-        verdict.rehearsal = Some(rehearse(dir, scratch, manifest, &index, report));
+    let checked = report.problems.is_empty();
+    if checked {
+        verdict.rehearsal = Some(rehearse(dir, copy, manifest, &index, report));
     }
     report.archive = Some(verdict);
+    checked.then_some(index)
 }
 
-/// Restore into a private directory below `scratch`, run `check`, compare
-/// heads, and remove the copy.
+/// Restore into a private directory below the scratch folder, or into the
+/// kept root, run `check` and compare heads. A private copy is removed.
 fn rehearse(
     dir: &Path,
-    scratch: &Path,
+    copy: CopyTo<'_>,
     manifest: &ExportManifest,
     index: &ArchiveIndex,
     report: &mut VerifyReport,
@@ -428,7 +498,11 @@ fn rehearse(
         verified_blobs: 0,
         unavailable_artifacts: 0,
     };
-    let private = match private_directory(scratch) {
+    let private = match copy {
+        CopyTo::Keep(_) => Ok(None),
+        CopyTo::Private(scratch) => private_directory(scratch).map(Some),
+    };
+    let private = match private {
         Ok(private) => private,
         Err(error) => {
             report.problems.push(problem(
@@ -442,8 +516,12 @@ fn rehearse(
             return rehearsal;
         }
     };
-    let root = private.join("workspace");
-    let outcome = restore_into(dir, manifest, index, &root, false);
+    let root = match (&private, copy) {
+        (Some(private), _) => private.join("workspace"),
+        (None, CopyTo::Keep(root) | CopyTo::Private(root)) => root.to_path_buf(),
+    };
+    // A kept copy is the one a restore publishes, human notes included.
+    let outcome = restore_into(dir, manifest, index, &root, private.is_none());
     match outcome {
         Err(RestoreError::Changed(path)) => report.problems.push(problem(
             "MEMBER_CHANGED",
@@ -468,7 +546,9 @@ fn rehearse(
             check_restored(&root, index, &mut rehearsal, report);
         }
     }
-    let _ = fs::remove_dir_all(&private);
+    if let Some(private) = private {
+        let _ = fs::remove_dir_all(&private);
+    }
     rehearsal
 }
 
@@ -593,7 +673,8 @@ impl std::error::Error for RestoreError {}
 /// [`Workspace::open`] accepts it. With `human_notes`, the human notes go
 /// back to their vault paths. Each member is hashed while it is copied and
 /// must equal its manifest digest. Call only after [`verify_export`]
-/// found no problem; publication, forks and retries are W11.18.
+/// found no problem, or through [`verify_into`], which `archive restore` and
+/// `archive fork` publish from (see [`super::restore`]).
 pub fn restore_into(
     dir: &Path,
     manifest: &ExportManifest,

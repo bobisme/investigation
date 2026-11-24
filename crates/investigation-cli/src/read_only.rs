@@ -109,6 +109,10 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Reads an export directory; writes only a private restored copy below
     // --scratch, outside any workspace, and removes it.
     ("archive verify", Effect::Read),
+    // Publish a verified archive as a workspace at a new or empty PATH and
+    // render its vault; nothing is written outside PATH.
+    ("archive restore", Effect::Write),
+    ("archive fork", Effect::Write),
     // Moves observed files into Notes/Reconciled/ or local/conflicts/,
     // updates the manifest and renders; propose-change also records a
     // change. --dry-run checks and prints only.

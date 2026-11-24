@@ -41,7 +41,9 @@ use super::{
     integrity, io_failure, pins::ArchivePin,
 };
 use crate::{
-    journal::{CaseReplay, EVENTS_DIRECTORY, GENESIS_FILENAME, event_filename, hash_bytes},
+    journal::{
+        CaseReplay, EVENTS_DIRECTORY, GENESIS_FILENAME, InheritedCase, event_filename, hash_bytes,
+    },
     workspace::{self, POINTER_FILE, WorkspaceError},
 };
 
@@ -195,6 +197,26 @@ impl<F: DurableFs> Store<F> {
         };
         let pin = self.create_archive_pin(&state.heads(), &state.blobs)?;
         Ok((state, pin))
+    }
+
+    /// Every case journal, verified in full, as the inherited head a fork
+    /// of this workspace records: the head, and the runs of events by the
+    /// workspace that wrote them (a fork of a fork names both).
+    pub fn fork_heads(&mut self) -> Result<Vec<InheritedCase>, Failure> {
+        let _lock = self.coordinate()?;
+        let verified = self.load_fully_verified()?;
+        Ok(verified
+            .cases
+            .iter()
+            .map(|(case_id, replay)| InheritedCase {
+                case_id: *case_id,
+                sequence: replay.snapshot.sequence,
+                head_hash: replay.snapshot.head_hash.clone(),
+                writers: InheritedCase::writers_of(
+                    replay.events.iter().map(|verified| &verified.event),
+                ),
+            })
+            .collect())
     }
 
     /// The bytes of the retained blob with `digest`, as stored. The caller

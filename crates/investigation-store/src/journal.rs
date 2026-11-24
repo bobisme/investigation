@@ -505,6 +505,113 @@ pub(crate) fn decode_known(
     })
 }
 
+/// Which workspace wrote each part of one case journal.
+///
+/// An ordinary case is written by one workspace, from its genesis on: every
+/// event and the genesis name `workspace_id`. A case a fork inherited
+/// (`archive fork`) keeps the exact bytes its origin wrote, so up to the
+/// inherited head its genesis and events name the workspaces that wrote
+/// them, and only later events name the fork. See [`InheritedCase`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct JournalWriters<'a> {
+    /// The workspace reading the journal; it writes every later event.
+    pub workspace_id: Id,
+    /// The prefix inherited from an origin workspace, when there is one.
+    pub inherited: Option<&'a InheritedCase>,
+}
+
+impl From<Id> for JournalWriters<'_> {
+    fn from(workspace_id: Id) -> Self {
+        Self {
+            workspace_id,
+            inherited: None,
+        }
+    }
+}
+
+impl JournalWriters<'_> {
+    /// The workspace the genesis (sequence 0) or event `sequence` must name.
+    pub fn at(&self, sequence: u64) -> Id {
+        self.inherited
+            .filter(|inherited| sequence <= inherited.sequence)
+            .and_then(|inherited| {
+                inherited
+                    .writers
+                    .iter()
+                    .find(|writer| sequence <= writer.through_sequence)
+            })
+            .map_or(self.workspace_id, |writer| writer.workspace_id)
+    }
+}
+
+/// A case journal a fork inherited: its verified head at the fork, and
+/// which workspaces wrote it up to there. Recorded once, in the fork's
+/// immutable workspace marker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InheritedCase {
+    pub case_id: Id,
+    /// The head the fork started from. The event at this sequence must
+    /// hash to `head_hash`, so every inherited byte is the origin's.
+    pub sequence: u64,
+    pub head_hash: Digest,
+    /// Consecutive runs of events by writing workspace, in sequence order.
+    /// The first writer also wrote the genesis; the last run ends at
+    /// `sequence`.
+    pub writers: Vec<JournalWriter>,
+}
+
+/// One workspace that wrote events of an inherited case, through
+/// `through_sequence`, since the previous writer's last event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct JournalWriter {
+    pub workspace_id: Id,
+    pub through_sequence: u64,
+}
+
+impl InheritedCase {
+    /// The writers of `events`, a verified journal from sequence 1, as runs.
+    pub fn writers_of<'a>(events: impl IntoIterator<Item = &'a Event>) -> Vec<JournalWriter> {
+        let mut writers: Vec<JournalWriter> = Vec::new();
+        for event in events {
+            match writers.last_mut() {
+                Some(last) if last.workspace_id == event.workspace_id => {
+                    last.through_sequence = event.sequence;
+                }
+                _ => writers.push(JournalWriter {
+                    workspace_id: event.workspace_id,
+                    through_sequence: event.sequence,
+                }),
+            }
+        }
+        writers
+    }
+
+    /// Whether the record is well formed for a fork with `own` identity:
+    /// a case ID, at least one writer, runs that increase strictly, change
+    /// writer at each run, end at the head and never name `own`.
+    pub fn is_well_formed(&self, own: Id) -> bool {
+        let mut previous: Option<&JournalWriter> = None;
+        for writer in &self.writers {
+            if writer.workspace_id.kind() != Kind::Workspace
+                || writer.workspace_id == own
+                || previous.is_some_and(|previous| {
+                    previous.through_sequence >= writer.through_sequence
+                        || previous.workspace_id == writer.workspace_id
+                })
+                || writer.through_sequence == 0
+            {
+                return false;
+            }
+            previous = Some(writer);
+        }
+        self.case_id.kind() == Kind::Case
+            && self.sequence > 0
+            && previous.is_some_and(|last| last.through_sequence == self.sequence)
+    }
+}
+
 /// A case head this program verified in full earlier: event `sequence`
 /// hashed to `head_hash`. Read from a disposable checkpoint; see
 /// [`replay_case_from`].
@@ -528,37 +635,50 @@ pub struct KnownHead {
 /// verified in full. On any failure, a journal shorter than the known head
 /// or a head that differs, the case is replayed again in full and that
 /// result, success or error, is returned.
-pub fn replay_case_from(
+pub fn replay_case_from<'a>(
     fs: &impl DurableFs,
     case_dir: &Path,
-    workspace_id: Id,
+    writers: impl Into<JournalWriters<'a>>,
     case_id: Id,
     known: Option<&KnownHead>,
 ) -> Result<CaseReplay, JournalError> {
+    let writers = writers.into();
     if let Some(known) = known
-        && let Ok(replay) = replay(fs, case_dir, workspace_id, case_id, Some(known))
+        && let Ok(replay) = replay(fs, case_dir, writers, case_id, Some(known))
     {
         return Ok(replay);
     }
-    replay_case(fs, case_dir, workspace_id, case_id)
+    replay_case(fs, case_dir, writers, case_id)
 }
 
-pub fn replay_case(
+/// Replay and verify a case from its genesis. `writers` is the workspace
+/// reading it, or with an inherited prefix, see [`JournalWriters`].
+pub fn replay_case<'a>(
     fs: &impl DurableFs,
     case_dir: &Path,
-    workspace_id: Id,
+    writers: impl Into<JournalWriters<'a>>,
     case_id: Id,
 ) -> Result<CaseReplay, JournalError> {
-    replay(fs, case_dir, workspace_id, case_id, None)
+    replay(fs, case_dir, writers.into(), case_id, None)
 }
 
 fn replay(
     fs: &impl DurableFs,
     case_dir: &Path,
-    workspace_id: Id,
+    writers: JournalWriters<'_>,
     case_id: Id,
     known: Option<&KnownHead>,
 ) -> Result<CaseReplay, JournalError> {
+    if writers
+        .inherited
+        .is_some_and(|inherited| inherited.case_id != case_id)
+    {
+        return Err(JournalError::new(
+            JournalErrorKind::InvalidIdentity,
+            case_dir,
+            "The inherited head names another case.",
+        ));
+    }
     let genesis_path = case_dir.join(GENESIS_FILENAME);
     let genesis_bytes = read_bounded(
         fs,
@@ -590,7 +710,7 @@ fn replay(
             ));
         }
     };
-    genesis.validate(&genesis_path, workspace_id, case_id)?;
+    genesis.validate(&genesis_path, writers.at(0), case_id)?;
 
     let mut result = CaseReplay {
         state: State::default(),
@@ -657,13 +777,7 @@ fn replay(
                 ));
             }
             let verified = verified?;
-            apply_event(
-                &mut result,
-                &mut seen,
-                verified,
-                path,
-                (workspace_id, case_id),
-            )?;
+            apply_event(&mut result, &mut seen, verified, path, (writers, case_id))?;
         }
     }
     if known.is_some_and(|known| known.sequence > result.snapshot.sequence) {
@@ -671,6 +785,18 @@ fn replay(
             JournalErrorKind::MissingEvent,
             &events_dir,
             "The journal ends before the verified head.",
+        ));
+    }
+    // A fork's inherited prefix was published before its marker, so a
+    // journal shorter than it lost canonical events.
+    if writers
+        .inherited
+        .is_some_and(|inherited| inherited.sequence > result.snapshot.sequence)
+    {
+        return Err(JournalError::new(
+            JournalErrorKind::MissingEvent,
+            &events_dir,
+            "The journal ends before the head this fork inherited.",
         ));
     }
     Ok(result)
@@ -770,16 +896,26 @@ fn apply_event(
     seen: &mut (BTreeSet<Id>, BTreeSet<(Actor, String)>),
     (verified, images): (VerifiedEvent, SharedImages),
     path: &Path,
-    identity: (Id, Id),
+    identity: (JournalWriters<'_>, Id),
 ) -> Result<(), JournalError> {
     let (transactions, command_keys) = seen;
-    let (workspace_id, case_id) = identity;
+    let (writers, case_id) = identity;
     let event = &verified.event;
-    if event.workspace_id != workspace_id || event.accepted.case_id != case_id {
+    if event.workspace_id != writers.at(event.sequence) || event.accepted.case_id != case_id {
         return Err(JournalError::new(
             JournalErrorKind::InvalidIdentity,
             path,
             "Event belongs to a different workspace or case.",
+        ));
+    }
+    if let Some(inherited) = writers.inherited
+        && inherited.sequence == event.sequence
+        && inherited.head_hash != verified.hash
+    {
+        return Err(JournalError::new(
+            JournalErrorKind::ParentHashMismatch,
+            path,
+            "The journal differs from the head this fork inherited.",
         ));
     }
     if event.previous_hash != result.snapshot.head_hash {
