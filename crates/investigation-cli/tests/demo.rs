@@ -218,6 +218,7 @@ fn plan_tutorial_path_runs_as_written_and_ends_with_a_decision_record() {
             actions: vec![action.clone()],
             exit: 0,
             quote: None,
+            quote_at: None,
         };
         session.run(&step);
         let state = files(&cwd.path().join("demo-case"), "state");

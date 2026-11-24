@@ -230,6 +230,62 @@ blindspot:criterion.hard_unmeasured:crit_01a20751-9798-7000-aae4-926efd533c7d
 Both hard requirements lack an evidence-backed result for at least one
 option: no one has measured whether an acknowledged job can be lost. That
 gap could change the answer, so it belongs in a challenge Review and an open
-Question, not in an invented replacement conclusion. The case then closes
-with an attributed Retrospective in the same transaction, as walkthrough
-[A](a-request-timeout.md) shows.
+Question, not in an invented replacement conclusion.
+
+The process digest lists what went stale on the way: the reviews of the old
+threshold and the superseded decision.
+
+```sh
+investigation --workspace ./demo-case retrospective --draft
+```
+
+```text
+case case_01a20751-966d-7001-ae2d-5a18d7d5f0ce  snapshot 44
+...
+Process digest: 3 item(s)
+  review.stale/rev_01a20751-9c08-7001-ad97-3da4beac5791
+...
+  decision.superseded/dec_01a20751-9ba9-7000-80c8-6358d78cfecd
+...
+```
+
+The case can close, but no option can be reported as chosen. The replacement
+decision is still proposed, and no reviewed comparison covers the 60-second
+threshold or the zero-loss requirement. The outcome is therefore
+`inconclusive`. The choice question stays listed as unresolved, and the
+reopen condition names the comparison that would settle it. The
+Retrospective and the close are one transaction, as in walkthrough
+[A](a-request-timeout.md). Remove `--dry-run` to close the case.
+
+```sh
+investigation --workspace ./demo-case record --dry-run --input - <<'EOF'
+{"schema_version": "inv.command.v1", "command_id": "walkthrough-c-close",
+ "case_id": "case_01a20751-966d-7001-ae2d-5a18d7d5f0ce", "actor": "agent:walkthrough",
+ "preconditions": [{"id": "case_01a20751-966d-7001-ae2d-5a18d7d5f0ce", "revision": 1}],
+ "operations": [
+  {"op": "retrospective.record", "client_ref": "account", "payload": {
+    "case_ref": {"id": "case_01a20751-966d-7001-ae2d-5a18d7d5f0ce", "revision": 1},
+    "snapshot": {"sequence": 44, "head_hash": "sha256:444095fedbc3d1b56dbf0bd604b4a7b6449950bc32a352b98c8a7005b43205f0"},
+    "methods_attempted": [{"name": "Option-by-criterion comparison with a do-nothing baseline and a conditional decision"}],
+    "effective_steps": [{"description": "Retaining the recovery-time source let every cell be judged again against the new threshold.",
+      "support_refs": ["obs_01a20751-98a7-7000-975b-065951c6309a"]}],
+    "invalid_or_misleading_steps": [{"description": "The first decision was reviewed against the 300-second threshold, so its review no longer covers the current basis.",
+      "support_refs": ["dec_01a20751-9ba9-7000-80c8-6358d78cfecd", "rev_01a20751-9c08-7001-ad97-3da4beac5791"]}],
+    "costs_or_constraints": "Synthetic data and twelve latency samples per option.",
+    "residual_unknowns": ["No one has verified that an acknowledged job cannot be lost.",
+                          "No reviewed comparison addresses the 60-second recovery threshold."],
+    "lessons": [], "no_reusable_lesson_reason": "Synthetic evidence alone does not establish a transferable method."}},
+  {"op": "case.close", "payload": {"outcome": "inconclusive",
+    "reason": "The stricter recovery requirement invalidated the earlier choice; its replacement is still only proposed.",
+    "unresolved_questions": [{"id": "q_01a20751-968d-7000-95f4-00ce848bdb49", "revision": 1}],
+    "reopen_condition": "A reviewed comparison addresses the 60-second threshold and the zero-loss requirement.",
+    "retrospective_ref": {"client_ref": "account"}}}]}
+EOF
+```
+
+```text
+dry_run  would_result committed  nothing committed
+$RETRO  revision 1
+case_01a20751-966d-7001-ae2d-5a18d7d5f0ce  revision 2
+...
+```

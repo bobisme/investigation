@@ -11,6 +11,10 @@
 //!   byte-identical; so does every `--dry-run`.
 //! - A block that is not run must be labelled schematic, and the index lists
 //!   exactly the walkthroughs that run here.
+//!
+//! With `INVESTIGATION_BLESS_WALKTHROUGHS=1` a quote that no longer matches is
+//! rewritten in the document instead (see `tutorial::rewrite`), for review as
+//! a git diff; statuses, refusals and dry runs are still checked.
 
 use std::fs;
 
@@ -45,8 +49,18 @@ fn walk(name: &str) {
     );
     let cwd = tempfile::tempdir().unwrap();
     let mut session = tutorial::Session::new(cwd.path());
+    if tutorial::blessing() {
+        session = session.bless();
+    }
     for step in &steps {
         session.run(step);
+    }
+    if let Some(blessing) = session.blessing().filter(|b| !b.rewrites.is_empty()) {
+        let path = tutorial::repository().join(&document);
+        fs::write(&path, tutorial::blessed(&markdown, blessing)).unwrap();
+        for rewrite in &blessing.rewrites {
+            eprintln!("blessed the quote at {}", rewrite.origin);
+        }
     }
 }
 

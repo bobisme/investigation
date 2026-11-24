@@ -49,6 +49,28 @@ The walkthroughs quote the demo's real IDs, so a rebuilt scenario workspace
 or a changed text output needs the walkthroughs updated as well; the test
 failure names the line and prints the new output.
 
+When the change to the output is intended, bless the quotes instead of
+editing them by hand, then review the result as a diff:
+
+```sh
+INVESTIGATION_BLESS_WALKTHROUGHS=1 cargo test -p investigation-cli --test walkthroughs
+git diff docs/walkthroughs/
+```
+
+Bless rewrites only the quoted `text` blocks that no longer match, and keeps
+each one's shape. Lines that still match stay as written. Each changed line
+is replaced by the printed line it aligns with, keeping its `$NAME`s, its
+` ...` cut and the `...` lines around it. When a changed word is an ID or a
+path, such as an export folder's hash, bless also replaces it in the rest of
+the document, so a later `cat` of that folder follows. Exit statuses,
+refusals and dry runs are still checked. A quote whose lines cannot be paired
+one to one with the new output, for example because lines were inserted
+inside it or it fits two places equally well, fails with its location
+instead. Edit that one by hand. Bless does not change commands or
+here-documents except to follow such a renamed word, so it does not repair a
+walkthrough after a rebuilt scenario workspace changes the IDs the commands
+use.
+
 `docs/agent/` holds the pages that `investigation docs` prints: the agent
 instructions (`agents`) and the optional skill (`skill`). They are compiled
 into the binary, so they work offline. To add a page, add one line to `PAGES`

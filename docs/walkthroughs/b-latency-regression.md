@@ -277,7 +277,67 @@ Process digest: 8 item(s)
 ...
 ```
 
-The retrospective should say which benchmark conditions to control next time:
-monitor health, the observation window, warm-up, trial order and the load
-model. Walkthrough [A](a-request-timeout.md) shows the closing transaction;
-it has the same shape here.
+The retrospective should say which benchmark conditions wasted effort and
+which to control next time: monitor health, the observation window, warm-up,
+trial order and the load model. Each lesson cites the capture it was learned
+from and states how far it transfers.
+
+The case can close, but not as answered. The regression is shown for this
+workload, while its cause and optimization A's effect are unresolved, so the
+outcome is `inconclusive`. Both open questions stay listed as unresolved,
+and the reopen condition is the frozen confirmatory repeat plan. As in
+walkthrough [A](a-request-timeout.md), the Retrospective and the close are
+one transaction. With `--dry-run` nothing is written; remove it to close the
+case.
+
+```sh
+investigation --workspace ./demo-case record --dry-run --input - <<'EOF'
+{"schema_version": "inv.command.v1", "command_id": "walkthrough-b-close",
+ "case_id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "actor": "agent:walkthrough",
+ "preconditions": [{"id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "revision": 1}],
+ "operations": [
+  {"op": "retrospective.record", "client_ref": "account", "payload": {
+    "case_ref": {"id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "revision": 1},
+    "snapshot": {"sequence": 75, "head_hash": "sha256:965e1ffd7214bbff00bfb2575559fec1c0c960e146fd3a66031c579abf7e3461"},
+    "methods_attempted": [{"name": "Interleaved control and treatment captures with typed measurement fields"},
+                          {"name": "Externally supplied intervals against a margin frozen in advance"}],
+    "effective_steps": [{"description": "The matched pair showed the regression on this workload.",
+      "support_refs": ["concl_01a20a66-4485-7000-9e7e-9b17c320c0f0"]},
+     {"description": "Freezing the margin before the intervals let one resolve and the other stay unresolved.",
+      "support_refs": ["assess_01a20a66-3d0c-7000-9005-f73c542fa161"]}],
+    "invalid_or_misleading_steps": [
+     {"description": "Debug logging was on for one capture, so it measured different instrumentation.",
+      "support_refs": ["obs_01a20a66-1d5d-7000-a178-4b51713905d8"]},
+     {"description": "The short captures ran 8 s of 300 s under a failed monitor and settle nothing.",
+      "support_refs": ["obs_01a20a66-2117-7000-9b1c-45ad7ec0fe7e", "obs_01a20a66-22b8-7000-91ec-d0ca93e833e0"]},
+     {"description": "The closed-loop capture timed from the actual send and hid queueing delay.",
+      "support_refs": ["obs_01a20a66-286c-7000-b67d-64fff59a7465"]}],
+    "costs_or_constraints": "Synthetic offline captures; one capture per build and condition.",
+    "residual_unknowns": ["Whether the regression follows the allocator alone.",
+                          "Whether optimization A improves p99 under matched conditions."],
+    "lessons": [{"guidance": "Do not interpret a capture whose monitor self-check failed or whose window was cut short.",
+      "applies_when": "Latency captures compared across builds or conditions.",
+      "support_refs": ["obs_01a20a66-2117-7000-9b1c-45ad7ec0fe7e"],
+      "transfer_limits": "Learned from one synthetic workload and host."},
+     {"guidance": "Interleave run order, match warm-up and time latency from the intended send.",
+      "applies_when": "Latency captures compared across builds or conditions.",
+      "support_refs": ["obs_01a20a66-2489-7000-a45a-d46babd50b4a", "obs_01a20a66-286c-7000-b67d-64fff59a7465"],
+      "transfer_limits": "Learned from one synthetic workload and host."}]}},
+  {"op": "case.close", "payload": {"outcome": "inconclusive",
+    "reason": "A regression is shown for this workload; its cause and optimization A's effect are unresolved.",
+    "unresolved_questions": [{"id": "q_01a20a66-155a-7000-b02e-ea1c8a18e50e", "revision": 1},
+                             {"id": "q_01a20a66-547a-7000-931b-852995fb67fc", "revision": 1}],
+    "reopen_condition": "Run the frozen confirmatory repeat plan with only the allocator reverted.",
+    "retrospective_ref": {"client_ref": "account"}}}]}
+EOF
+```
+
+```text
+dry_run  would_result committed  nothing committed
+$RETRO  revision 1
+case_01a20a66-1244-7001-adab-1a5a11b46bcf  revision 2
+...
+```
+
+A successor reads the closed case and finds the bounded regression, the two
+open questions and the exact plan that would reopen it.

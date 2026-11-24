@@ -271,5 +271,77 @@ so the reader still decides what the text is.
 
 The open step is a Retrospective that says why the downstream reports added
 no independent support. They restated one origin, and only the first-party
-erratum changed the answer. Walkthrough [A](a-request-timeout.md) shows the
-closing transaction; it has the same shape here.
+erratum changed the answer. The process digest is empty: nothing was
+recorded as invalid, stale or superseded. That makes the Retrospective's own
+account of the restated reports more important, not less.
+
+```sh
+investigation --workspace ./demo-case retrospective --draft
+```
+
+```text
+case case_01a20751-b71f-7003-98ca-1391c7aafc36  snapshot 52
+...
+Process digest: 0 item(s)
+  No invalid, failed, amended, rejected, stale or superseded work is recorded.
+...
+```
+
+A Retrospective names the snapshot it accounts for. The page and the notice
+added two commits with this run's own clock, so take the current head from
+the last line of the brief:
+
+```sh
+investigation --workspace ./demo-case brief --level compact
+```
+
+```text
+...
+Next: investigation --workspace <WORKSPACE> --case case_01a20751-b71f-7003-98ca-1391c7aafc36 show case_01a20751-b71f-7003-98ca-1391c7aafc36 --depth full --snapshot 52 --head-hash $HEAD --format json
+```
+
+This case can close as answered. The question is answered by the validated
+conditional conclusion, so no question stays unresolved. The reopen condition
+names what would change the answer: a later erratum or edition. The
+"No further erratum exists" candidate stays a candidate, and the answer does
+not depend on it. The Retrospective and the close are one transaction, as in
+walkthrough [A](a-request-timeout.md). The here document is unquoted
+(`<<EOF`), so the shell fills in `$HEAD` and `$NOTICE`. Remove `--dry-run`
+to close the case.
+
+```sh
+investigation --workspace ./demo-case record --dry-run --input - <<EOF
+{"schema_version": "inv.command.v1", "command_id": "walkthrough-d-close",
+ "case_id": "case_01a20751-b71f-7003-98ca-1391c7aafc36", "actor": "agent:walkthrough",
+ "preconditions": [{"id": "case_01a20751-b71f-7003-98ca-1391c7aafc36", "revision": 1}],
+ "operations": [
+  {"op": "retrospective.record", "client_ref": "account", "payload": {
+    "case_ref": {"id": "case_01a20751-b71f-7003-98ca-1391c7aafc36", "revision": 1},
+    "snapshot": {"sequence": 52, "head_hash": "$HEAD"},
+    "methods_attempted": [{"name": "Trace each passage to its origin, then search first-party errata registries"}],
+    "effective_steps": [{"description": "Only the first-party erratum, traced to Edition 3.1, changed the answer.",
+      "support_refs": ["obs_01a20751-ba58-7000-a9f9-6b1a98fac14c"]},
+     {"description": "Quoting the planted notice as an observation kept it as data; the method did not change.",
+      "support_refs": ["$NOTICE"]}],
+    "invalid_or_misleading_steps": [{"description": "The article and the blog restate the specification row, so they add no independent support for 64 frames.",
+      "support_refs": ["obs_01a20751-b989-7000-ad07-7f08a0abf437", "obs_01a20751-b9ce-7000-a77f-6470a9177b11"]}],
+    "costs_or_constraints": "Four synthetic documents and five registry searches.",
+    "residual_unknowns": ["Whether a later edition changes the value for build 3.1.4."],
+    "lessons": [{"guidance": "Trace where a passage's claim came from before counting it as corroboration.",
+      "applies_when": "Several documents state the same technical value.",
+      "support_refs": ["obs_01a20751-b9ce-7000-a77f-6470a9177b11"],
+      "transfer_limits": "Learned from one specification and its downstream reports."}]}},
+  {"op": "case.close", "payload": {"outcome": "answered",
+    "reason": "48 frames for build 3.1.4 while erratum E-3.1-004 applies to Edition 3.1; the three references share one origin.",
+    "unresolved_questions": [],
+    "reopen_condition": "A later erratum or edition changes the window or the Edition 3.1 mapping for build 3.1.4.",
+    "retrospective_ref": {"client_ref": "account"}}}]}
+EOF
+```
+
+```text
+dry_run  would_result committed  nothing committed
+$RETRO  revision 1
+case_01a20751-b71f-7003-98ca-1391c7aafc36  revision 2
+...
+```

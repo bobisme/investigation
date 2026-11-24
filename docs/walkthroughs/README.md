@@ -57,4 +57,5 @@ A block that is not run must start with a `Schematic` line. These
 walkthroughs have none: every example in them is executed. A walkthrough
 that drifts from the binary fails the test. The failure names the file and
 line of the block, the quoted lines that no longer match, and the full
-output.
+output. After an intended output change, bless mode rewrites the quotes for
+review as a diff ([development notes](../development.md)).

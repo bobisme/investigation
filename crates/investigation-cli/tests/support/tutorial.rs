@@ -37,6 +37,15 @@
 //!   word of the output and binds NAME to it, or must equal NAME's value once
 //!   bound. Later commands substitute `$NAME` as a shell would. This is how a
 //!   walkthrough uses the real IDs that a write returns.
+//!
+//! Bless mode ([`BLESS_ENV`]) rewrites quotes that no longer match instead of
+//! failing, keeping each quote's shape ([`Session::bless`], [`blessed`]): a
+//! line that still matches is kept as written, and a changed line is
+//! replaced by the printed line it aligns with, with the `$NAME`s and the
+//! ` ...` cut of the line it replaces. A changed ID-like word is also
+//! replaced in the rest of the document, so a later command that names it
+//! (`cat` of an export folder) follows. A quote whose lines cannot be paired
+//! with printed lines one to one fails, naming the line, rather than guess.
 #![allow(dead_code)]
 
 use std::{
@@ -47,6 +56,16 @@ use std::{
 };
 
 pub const BIN: &str = env!("CARGO_BIN_EXE_investigation");
+
+/// Set to rewrite quoted output that no longer matches, in place, for review
+/// as a diff: `INVESTIGATION_BLESS_WALKTHROUGHS=1 cargo test -p
+/// investigation-cli --test walkthroughs`.
+pub const BLESS_ENV: &str = "INVESTIGATION_BLESS_WALKTHROUGHS";
+
+/// Whether bless mode is switched on.
+pub fn blessing() -> bool {
+    std::env::var_os(BLESS_ENV).is_some()
+}
 
 pub fn repository() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -150,6 +169,8 @@ pub struct Step {
     pub actions: Vec<Action>,
     pub exit: i32,
     pub quote: Option<Vec<String>>,
+    /// Zero-based line of the document where the quote's first line is.
+    pub quote_at: Option<usize>,
 }
 
 impl Step {
@@ -208,6 +229,7 @@ pub fn parse(markdown: &str, document: &str, program: &str) -> Vec<Step> {
                     "{origin}: a second output block for one command"
                 );
                 step.quote = Some(body.iter().map(|line| (*line).to_owned()).collect());
+                step.quote_at = Some(start);
                 quotable = false;
             }
             other => panic!(
@@ -289,6 +311,7 @@ fn step(body: &[&str], origin: &str, program: &str) -> Step {
         actions,
         exit,
         quote: None,
+        quote_at: None,
     }
 }
 
@@ -367,6 +390,26 @@ pub struct Session {
     cwd: PathBuf,
     workspaces: Vec<String>,
     variables: BTreeMap<String, String>,
+    /// In bless mode, what to change in the document.
+    bless: Option<Blessing>,
+}
+
+/// The changes bless mode found: quotes to replace and words to rename.
+#[derive(Debug, Default)]
+pub struct Blessing {
+    pub rewrites: Vec<Rewrite>,
+    /// `(line, old, new)`: from document line `line` on, `old` reads `new`.
+    pub renames: Vec<(usize, String, String)>,
+}
+
+/// One quote to replace: its first line, how many lines it had, and the
+/// lines that replace them.
+#[derive(Debug)]
+pub struct Rewrite {
+    pub origin: String,
+    pub at: usize,
+    pub len: usize,
+    pub lines: Vec<String>,
 }
 
 /// What a step printed, normalised.
@@ -382,7 +425,64 @@ impl Session {
             cwd: cwd.to_path_buf(),
             workspaces: Vec::new(),
             variables: BTreeMap::new(),
+            bless: None,
         }
+    }
+
+    /// Rewrite quotes that no longer match instead of failing; the changes
+    /// are collected for [`blessed`] ([`Self::blessing`]).
+    pub fn bless(mut self) -> Self {
+        self.bless = Some(Blessing::default());
+        self
+    }
+
+    /// What bless mode found to change, if it is on.
+    pub fn blessing(&self) -> Option<&Blessing> {
+        self.bless.as_ref()
+    }
+
+    /// `text` with the words renamed so far.
+    fn renamed(&self, text: &str) -> String {
+        let mut text = text.to_owned();
+        for (_, old, new) in self.bless.iter().flat_map(|bless| &bless.renames) {
+            text = text.replace(old.as_str(), new);
+        }
+        text
+    }
+
+    /// The step as the blessed document will read: earlier renames applied.
+    fn renamed_step(&self, step: &Step) -> Step {
+        let mut step = step.clone();
+        if self
+            .bless
+            .as_ref()
+            .is_none_or(|bless| bless.renames.is_empty())
+        {
+            return step;
+        }
+        for action in &mut step.actions {
+            match action {
+                Action::Command { argv, stdin } => {
+                    for word in argv.iter_mut() {
+                        *word = self.renamed(word);
+                    }
+                    if let Some((text, _)) = stdin {
+                        *text = self.renamed(text);
+                    }
+                }
+                Action::Write { path, text } => {
+                    *path = self.renamed(path);
+                    *text = self.renamed(text);
+                }
+                Action::Read { path } => *path = self.renamed(path),
+            }
+        }
+        if let Some(quote) = &mut step.quote {
+            for line in quote.iter_mut() {
+                *line = self.renamed(line);
+            }
+        }
+        step
     }
 
     pub fn variables(&self) -> &BTreeMap<String, String> {
@@ -392,6 +492,7 @@ impl Session {
     /// Run one step and check its status, its quoted output and, when it is
     /// refused or a dry run, that it changed no canonical byte.
     pub fn run(&mut self, step: &Step) -> Outcome {
+        let step = &self.renamed_step(step);
         let mut outcome = None;
         for action in &step.actions {
             match action {
@@ -465,7 +566,10 @@ impl Session {
         );
         if let Some(quote) = &step.quote {
             let printed = format!("{}{}", outcome.stdout, outcome.stderr);
-            if let Err(message) = self.matches(quote, &printed) {
+            let result = self.matches(quote, &printed);
+            if result.is_err() && self.bless.is_some() {
+                self.bless_quote(step, quote, &printed);
+            } else if let Err(message) = result {
                 panic!(
                     "{}: the output of `{command}` no longer matches the walkthrough.\n\
                      {message}\n--- quoted ---\n{}\n--- printed (normalised) ---\n{printed}",
@@ -475,6 +579,43 @@ impl Session {
             }
         }
         outcome
+    }
+
+    /// Bless mode: replace `quote` by one that matches `printed` and keeps
+    /// its shape, binding its names; panic, naming the line, when its lines
+    /// cannot be paired with printed lines.
+    fn bless_quote(&mut self, step: &Step, quote: &[String], printed: &str) {
+        let at = step.quote_at.expect("a quote has a line");
+        let lines = rewrite(quote, printed, &self.variables).unwrap_or_else(|reason| {
+            panic!(
+                "{}: bless cannot rewrite this quote mechanically: {reason}\n\
+                 --- quoted ---\n{}\n--- printed (normalised) ---\n{printed}",
+                step.origin,
+                quote.join("\n")
+            )
+        });
+        if let Err(message) = self.matches(&lines, printed) {
+            panic!(
+                "{}: the blessed quote does not match: {message}\n{}",
+                step.origin,
+                lines.join("\n")
+            );
+        }
+        let end = at + quote.len();
+        let bless = self.bless.as_mut().unwrap();
+        for (old, new) in quote.iter().zip(&lines) {
+            for (from, to) in renamed_words(old, new) {
+                if !bless.renames.iter().any(|(_, known, _)| *known == from) {
+                    bless.renames.push((end, from, to));
+                }
+            }
+        }
+        bless.rewrites.push(Rewrite {
+            origin: step.origin.clone(),
+            at,
+            len: quote.len(),
+            lines,
+        });
     }
 
     /// Canonical bytes of every workspace in the directory.
@@ -659,6 +800,298 @@ fn line_matches(expected: &str, actual: &str, bound: &mut BTreeMap<String, Strin
     }
 }
 
+/// `markdown` with `blessing` applied: each renamed word replaced in the
+/// lines after the quote that changed it, then each quote replaced.
+pub fn blessed(markdown: &str, blessing: &Blessing) -> String {
+    let mut lines: Vec<String> = markdown.lines().map(str::to_owned).collect();
+    for (from, old, new) in &blessing.renames {
+        for line in lines.iter_mut().skip(*from) {
+            *line = line.replace(old.as_str(), new);
+        }
+    }
+    let mut rewrites: Vec<&Rewrite> = blessing.rewrites.iter().collect();
+    rewrites.sort_by_key(|rewrite| std::cmp::Reverse(rewrite.at));
+    for rewrite in rewrites {
+        lines.splice(rewrite.at..rewrite.at + rewrite.len, rewrite.lines.clone());
+    }
+    let mut text = lines.join("\n");
+    if markdown.ends_with('\n') {
+        text.push('\n');
+    }
+    text
+}
+
+/// A word that is safe to rename across a document: long and ID-like (it
+/// has a digit and an `_`, `-` or `/`), and not a `$NAME`.
+fn id_like(word: &str) -> bool {
+    word.len() >= 12
+        && !word.contains('$')
+        && word.chars().any(|c| c.is_ascii_digit())
+        && word.contains(['_', '-', '/'])
+}
+
+/// ID-like words that `old` has and `new` replaces at the same position:
+/// both lines must have the same number of words.
+fn renamed_words(old: &str, new: &str) -> Vec<(String, String)> {
+    let old: Vec<&str> = old.trim_end_matches(" ...").split_whitespace().collect();
+    let new: Vec<&str> = new.trim_end_matches(" ...").split_whitespace().collect();
+    if old.len() != new.len() {
+        return Vec::new();
+    }
+    old.iter()
+        .zip(&new)
+        .filter(|(a, b)| a != b && id_like(a) && id_like(b))
+        .map(|(a, b)| ((*a).to_owned(), (*b).to_owned()))
+        .collect()
+}
+
+/// The words of a quoted line, `$NAME`s read as their bound value or as a
+/// wildcard (`None`), without a ` ...` cut.
+fn quoted_words(line: &str, bound: &BTreeMap<String, String>) -> Vec<Option<String>> {
+    line.trim_end()
+        .trim_end_matches(" ...")
+        .split_whitespace()
+        .map(|word| {
+            let mut out = word.to_owned();
+            for (name, value) in bound {
+                out = out.replace(&format!("${name}"), value);
+            }
+            (!out.contains('$') || !out.chars().any(|c| c.is_ascii_uppercase())).then_some(out)
+        })
+        .collect()
+}
+
+/// How alike a quoted line and a printed line are: the share of words in
+/// order they have in common (a wildcard matches any word).
+fn likeness(quoted: &str, printed: &str, bound: &BTreeMap<String, String>) -> f64 {
+    let left = quoted_words(quoted, bound);
+    let cut = quoted.trim_end().ends_with(" ...");
+    let mut right: Vec<&str> = printed.split_whitespace().collect();
+    if cut {
+        right.truncate(left.len());
+    }
+    if left.is_empty() && right.is_empty() {
+        return 1.0;
+    }
+    // Longest common subsequence of words.
+    let mut table = vec![vec![0usize; right.len() + 1]; left.len() + 1];
+    for (i, a) in left.iter().enumerate() {
+        for (j, b) in right.iter().enumerate() {
+            table[i + 1][j + 1] = if a.as_deref().is_none_or(|a| a == *b) {
+                table[i][j] + 1
+            } else {
+                table[i][j + 1].max(table[i + 1][j])
+            };
+        }
+    }
+    table[left.len()][right.len()] as f64 / left.len().max(right.len()) as f64
+}
+
+/// The printed line `actual` in the shape of the quoted line `quoted`: cut
+/// after as many words as the quote kept when it ends in ` ...`, and with
+/// each `$NAME` of the quote in place of its value. New names are bound in
+/// `bound`.
+fn templated(
+    quoted: &str,
+    actual: &str,
+    bound: &mut BTreeMap<String, String>,
+) -> Result<String, String> {
+    let quoted = quoted.trim_end();
+    let (head, cut) = match quoted.strip_suffix(" ...") {
+        Some(head) => (head, true),
+        None => (quoted, false),
+    };
+    let mut line = actual.to_owned();
+    if cut {
+        let keep = head.split_whitespace().count();
+        let mut words = 0;
+        let mut previous_space = true;
+        for (at, c) in actual.char_indices() {
+            if !c.is_whitespace() && previous_space {
+                words += 1;
+                if words == keep + 1 {
+                    line = format!("{} ...", actual[..at].trim_end());
+                    break;
+                }
+            }
+            previous_space = c.is_whitespace();
+        }
+    }
+    // Put each `$NAME` back, left to right, after the literal text before it.
+    let mut out = String::new();
+    let mut rest = line.as_str();
+    let mut pattern = head;
+    while let Some(at) = pattern.find('$') {
+        let name: String = pattern[at + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            pattern = &pattern[at + 1..];
+            continue;
+        }
+        let before = &pattern[..at];
+        let value = match bound.get(&name) {
+            Some(value) => value.clone(),
+            None => {
+                let start = rest
+                    .find(before)
+                    .ok_or_else(|| format!("the text before ${name} is gone: {before:?}"))?
+                    + before.len();
+                let word: String = rest[start..]
+                    .chars()
+                    .take_while(|c| !c.is_whitespace() && !matches!(c, '@' | ',' | ')' | '"'))
+                    .collect();
+                if word.is_empty() {
+                    return Err(format!("no word follows {before:?} for ${name}"));
+                }
+                bound.insert(name.clone(), word.clone());
+                word
+            }
+        };
+        let found = rest
+            .find(&value)
+            .ok_or_else(|| format!("${name} ({value}) is no longer printed on this line"))?;
+        out.push_str(&rest[..found]);
+        out.push('$');
+        out.push_str(&name);
+        rest = &rest[found + value.len()..];
+        pattern = &pattern[at + 1 + name.len()..];
+    }
+    out.push_str(rest);
+    Ok(out)
+}
+
+/// A quote that matches `printed`, made from `quote`: its `...` lines stay,
+/// each run of quoted lines is aligned with the printed lines it fits best
+/// (every line pairs with a printed line at least half alike, in order and
+/// without gaps), lines that still match stay as written and the others
+/// become their printed line in the quoted line's shape. An error says why
+/// no single alignment exists.
+pub fn rewrite(
+    quote: &[String],
+    printed: &str,
+    bound: &BTreeMap<String, String>,
+) -> Result<Vec<String>, String> {
+    let actual: Vec<&str> = printed.lines().collect();
+    let elided = |line: &String| line.trim() == "...";
+    let mut groups: Vec<(usize, usize)> = Vec::new();
+    let mut from = 0;
+    for (index, line) in quote.iter().enumerate() {
+        if elided(line) {
+            if from < index {
+                groups.push((from, index));
+            }
+            from = index + 1;
+        }
+    }
+    if from < quote.len() {
+        groups.push((from, quote.len()));
+    }
+    let open_start = quote.first().is_some_and(elided);
+    let open_end = quote.last().is_some_and(elided);
+    let mut out: Vec<String> = quote.to_vec();
+    let mut bound = bound.clone();
+    // A quote of the whole output, with nothing cut or named, is the output.
+    if groups.len() == 1
+        && !open_start
+        && !open_end
+        && quote.len() != actual.len()
+        && !quote
+            .iter()
+            .any(|line| line.contains('$') || line.trim_end().ends_with(" ..."))
+    {
+        return Ok(actual.iter().map(|line| (*line).to_owned()).collect());
+    }
+    let mut at = 0;
+    for (number, &(start, end)) in groups.iter().enumerate() {
+        let group = &quote[start..end];
+        let first = number == 0 && !open_start;
+        let last = number == groups.len() - 1 && !open_end;
+        let candidates: Vec<usize> = if first && last {
+            (group.len() == actual.len())
+                .then_some(0)
+                .into_iter()
+                .collect()
+        } else if first {
+            vec![0]
+        } else if last {
+            actual.len().checked_sub(group.len()).into_iter().collect()
+        } else {
+            (at..=actual.len().saturating_sub(group.len())).collect()
+        };
+        let mut best: Vec<(usize, usize)> = Vec::new();
+        let mut best_score = 0;
+        for candidate in candidates.into_iter().filter(|&c| c >= at) {
+            if candidate + group.len() > actual.len() {
+                continue;
+            }
+            let mut trial = bound.clone();
+            let mut score = 0;
+            let mut fits = true;
+            for (quoted, line) in group.iter().zip(&actual[candidate..]) {
+                if line_matches(quoted, line, &mut trial) {
+                    score += 2;
+                } else if likeness(quoted, line, &trial) >= 0.5 {
+                    score += 1;
+                } else {
+                    fits = false;
+                    break;
+                }
+            }
+            if !fits {
+                continue;
+            }
+            match score.cmp(&best_score) {
+                std::cmp::Ordering::Greater => {
+                    best_score = score;
+                    best = vec![(candidate, score)];
+                }
+                std::cmp::Ordering::Equal => best.push((candidate, score)),
+                std::cmp::Ordering::Less => {}
+            }
+        }
+        let place = || {
+            format!(
+                "quoted lines {}-{} ({:?}...)",
+                start + 1,
+                end,
+                group[0].chars().take(60).collect::<String>()
+            )
+        };
+        let (start_at, _) = match best.as_slice() {
+            [] => {
+                return Err(format!(
+                    "{} pair with no run of printed lines line by line; lines were added, \\
+                     removed or rewritten",
+                    place()
+                ));
+            }
+            [one] => *one,
+            [one, ..] if best_score == 2 * group.len() => *one,
+            _ => {
+                return Err(format!(
+                    "{} fit {} places in the output equally well",
+                    place(),
+                    best.len()
+                ));
+            }
+        };
+        for (offset, quoted) in group.iter().enumerate() {
+            let line = actual[start_at + offset];
+            let mut trial = bound.clone();
+            if line_matches(quoted, line, &mut trial) {
+                bound = trial;
+            } else {
+                out[start + offset] = templated(quoted, line, &mut bound)
+                    .map_err(|reason| format!("quoted line {}: {reason}", start + offset + 1))?;
+            }
+        }
+        at = start_at + group.len();
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -732,5 +1165,85 @@ mod tests {
                 .map(|(text, expands)| (text.as_str(), *expands)),
             Some(("{\"a\": \"$ID\"}\n", false))
         );
+    }
+
+    fn lines(text: &[&str]) -> Vec<String> {
+        text.iter().map(|line| (*line).to_owned()).collect()
+    }
+
+    #[test]
+    fn bless_rewrites_a_changed_repair_and_keeps_the_rest_as_written() {
+        let quote = lines(&[
+            "/operations/0/payload/x: Record it.",
+            "Retry or inspect with investigation --workspace <WORKSPACE> show concl_1a2b3c4d5e6f --depth full --format json",
+            "See investigation schema conclusion.request_review",
+        ]);
+        let printed = "/operations/0/payload/x: Record it.\nRetry or inspect with investigation --workspace <WORKSPACE> show concl_1a2b3c4d5e6f --case case_9f8e7d6c5b4a --depth full --format json\nSee investigation schema conclusion.request_review";
+        let new = rewrite(&quote, printed, &BTreeMap::new()).unwrap();
+        assert_eq!(new[0], quote[0]);
+        assert_eq!(new[1], printed.lines().nth(1).unwrap());
+        assert_eq!(new[2], quote[2]);
+    }
+
+    #[test]
+    fn bless_follows_a_renamed_export_folder_into_later_commands() {
+        let markdown = "```sh\ninvestigation export\n```\n\n```text\nexported  decision-record  complete  exports/decision-record-case_1-44-16d59b1df19a\n...\n```\n\n```sh\ncat ./demo-case/exports/decision-record-case_1-44-16d59b1df19a/decision-record.md\n```\n";
+        let steps = parse(markdown, "doc", "investigation");
+        let printed = "exported  decision-record  complete  exports/decision-record-case_1-44-fe655fdab412\nfiles  3";
+        let mut session = Session::new(Path::new(".")).bless();
+        session.bless_quote(&steps[0], steps[0].quote.as_ref().unwrap(), printed);
+        let blessed = blessed(markdown, session.blessing().unwrap());
+        assert!(!blessed.contains("16d59b1df19a"), "{blessed}");
+        assert_eq!(blessed.matches("fe655fdab412").count(), 2, "{blessed}");
+        // The later command reads the renamed folder when it runs.
+        let renamed = session.renamed_step(&steps[1]);
+        let Action::Read { path } = &renamed.actions[0] else {
+            panic!()
+        };
+        assert!(path.contains("fe655fdab412"), "{path}");
+    }
+
+    #[test]
+    fn bless_keeps_names_cuts_and_elisions() {
+        let mut bound = BTreeMap::new();
+        bound.insert("CASE".to_owned(), "case_1".to_owned());
+        let quote = lines(&[
+            "dry_run  would_result committed ...",
+            "$RETRO  revision 1",
+            "$CASE  revision 2",
+            "...",
+        ]);
+        let printed = "dry_run  would_result rejected  nothing committed\nretro_77  revision 1\ncase_1  revision 3\nWarning: x";
+        let new = rewrite(&quote, printed, &bound).unwrap();
+        assert_eq!(
+            new,
+            lines(&[
+                "dry_run  would_result rejected ...",
+                "$RETRO  revision 1",
+                "$CASE  revision 3",
+                "..."
+            ])
+        );
+    }
+
+    #[test]
+    fn bless_refuses_to_guess() {
+        // A line inserted inside a run anchored at the start.
+        let quote = lines(&["alpha one", "beta two", "..."]);
+        let error = rewrite(
+            &quote,
+            "alpha one\ninserted line\nbeta three",
+            &BTreeMap::new(),
+        );
+        assert!(error.is_err(), "{error:?}");
+        // A run that fits two places equally well.
+        let quote = lines(&["...", "row 1 value", "..."]);
+        let error = rewrite(&quote, "row 2 value\nother\nrow 3 value", &BTreeMap::new());
+        assert!(error.unwrap_err().contains("equally well"));
+        // A bound name whose value is no longer printed.
+        let mut bound = BTreeMap::new();
+        bound.insert("ID".to_owned(), "art_1".to_owned());
+        let quote = lines(&["$ID  revision 1 extra words here"]);
+        assert!(rewrite(&quote, "art_2  revision 1 extra words here", &bound).is_err());
     }
 }
