@@ -735,6 +735,159 @@ fn a_handoff_reads_a_large_source_by_its_cited_lines() {
     }
 }
 
+/// The sentence a restricted handoff prints for a restricted Artifact
+/// instead of a read (bn-3382).
+const RESTRICTED_BYTES: &str =
+    "original bytes: restricted; evidence read does not print restricted content";
+
+#[test]
+fn a_restricted_handoff_prints_only_reads_that_run_and_no_read_of_restricted_bytes() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    fs::write(root.join("open.log"), "request 7 waited 3 seconds\n").unwrap();
+    fs::write(root.join("secret.log"), "token 9 leaked after 4 seconds\n").unwrap();
+    let actor = "agent:snapshot-pin";
+    json(
+        root,
+        &[
+            "init",
+            "./ws",
+            "--actor",
+            actor,
+            "--no-vault",
+            "--import-root",
+            ".",
+        ],
+        0,
+    );
+    let workspace = root.join("ws");
+    let started = json(
+        &workspace,
+        &[
+            "--actor",
+            actor,
+            "start",
+            "Why did requests wait?",
+            "--attach",
+            "../open.log",
+        ],
+        0,
+    );
+    let case = started["created"][0]["id"].as_str().unwrap().to_owned();
+    let added = json(
+        &workspace,
+        &[
+            "--actor",
+            actor,
+            "--case",
+            &case,
+            "source",
+            "add",
+            "../secret.log",
+        ],
+        0,
+    );
+    let ids = |response: &Value| -> Vec<String> {
+        ["artifact_id", "derivative_id"]
+            .iter()
+            .filter_map(|key| response["items"][0][key].as_str().map(str::to_owned))
+            .collect()
+    };
+    let (open, secret) = (ids(&started), ids(&added));
+    for (source, quote) in [
+        (&open[0], "waited 3 seconds"),
+        (&secret[0], "leaked after 4 seconds"),
+    ] {
+        json(
+            &workspace,
+            &[
+                "--actor",
+                actor,
+                "--case",
+                &case,
+                "observe",
+                &format!("The log reports that a request {quote}"),
+                "--source",
+                source,
+                "--quote",
+                quote,
+            ],
+            0,
+        );
+    }
+    // Raise the second source to restricted. Its text and the Observation
+    // that quotes it inherit the level.
+    let subject =
+        &json(&workspace, &["--case", &case, "show", &secret[0]], 0)["lineage"]["artifact_ref"];
+    let raise = serde_json::json!({
+        "schema_version": "inv.command.v1", "command_id": "restrict-secret", "case_id": case,
+        "actor": actor, "preconditions": [], "operations": [{"op": "classification.raise",
+            "payload": {"subject_ref": subject, "level": "restricted",
+                "reason": "The log names a credential."}}]
+    });
+    let (code, receipt) = invoke(&workspace, &["record", "--input", "-"], Some(&raise));
+    assert_eq!(code, 0, "{receipt}");
+    // `evidence read` has no audience flag or override: it refuses
+    // restricted content for every reader.
+    for id in &secret {
+        let (code, refused) = invoke(
+            &workspace,
+            &["evidence", "read", id, "--whole", "--format", "json"],
+            None,
+        );
+        assert_ne!(code, 0, "{refused}");
+        assert!(refused.contains("Restricted source content"), "{refused}");
+    }
+    for audience in ["restricted", "internal"] {
+        let files = export(&workspace, &case, &root.join(audience), audience, false);
+        let mut printed: Vec<String> = files.iter().flat_map(|text| commands(text)).collect();
+        printed.sort();
+        printed.dedup();
+        let reads: Vec<&String> = printed
+            .iter()
+            .filter(|command| command.contains(" evidence read art_"))
+            .collect();
+        // The open source is read whole; no read names restricted bytes.
+        assert!(
+            reads.iter().any(
+                |command| open.iter().any(|id| command.contains(id.as_str()))
+                    && command.ends_with(" --whole")
+            ),
+            "{audience}: {reads:#?}"
+        );
+        for command in &reads {
+            assert!(
+                !secret.iter().any(|id| command.contains(id.as_str())),
+                "{audience}: {command}"
+            );
+        }
+        // A restricted handoff names the restricted source and says why no
+        // read is printed; an internal one leaves it out.
+        let overview = &files[1];
+        if audience == "restricted" {
+            assert!(overview.contains(&secret[0]), "{overview}");
+            assert!(overview.contains(RESTRICTED_BYTES), "{overview}");
+        } else {
+            assert!(!overview.contains(&secret[0]), "{overview}");
+            assert!(!overview.contains(RESTRICTED_BYTES), "{overview}");
+        }
+        // Every printed read runs as printed. Placeholders are filled by the
+        // reader; `record` writes.
+        let runnable: Vec<Vec<&str>> = printed
+            .iter()
+            .map(|command| command.split(' ').skip(1).collect::<Vec<_>>())
+            .filter(|args| !args.iter().any(|arg| arg.starts_with('<')))
+            .filter(|args| args.first() != Some(&"record"))
+            .collect();
+        assert!(runnable.len() > reads.len(), "{audience}: {printed:#?}");
+        for args in &runnable {
+            let command = args.join(" ");
+            let (code, stdout) = invoke(&workspace, args, None);
+            assert_eq!(code, 0, "{audience}: {command}\n{stdout}");
+        }
+    }
+}
+
 #[test]
 fn remapped_and_public_handoffs_carry_no_pins() {
     let directory = tempfile::tempdir().unwrap();

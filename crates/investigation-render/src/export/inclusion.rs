@@ -272,6 +272,16 @@ impl<'a> Inclusion<'a> {
             })
     }
 
+    /// Whether `evidence read` prints the content of Artifact `id` today.
+    /// It reads for the default (internal) audience and has no override, so
+    /// a restricted export can show a record whose bytes no read prints.
+    pub fn evidence_read_prints(&self, id: Id) -> bool {
+        let classifier = self.today.as_ref().unwrap_or(&self.pinned);
+        classifier.state().current(id).is_some_and(|record| {
+            classifier.may_show(record, Field::Content, &AudiencePolicy::default())
+        })
+    }
+
     /// Whether the record's title, summary and content may appear. A shown
     /// record may still need its [`Self::caveats`] beside it.
     pub fn includes(&self, record: &Record) -> bool {

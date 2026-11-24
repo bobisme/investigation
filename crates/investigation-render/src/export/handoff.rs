@@ -90,7 +90,9 @@ use crate::{
 /// v4 (bn-3fbv): escalation gives each named Artifact and Observation the
 /// runnable `evidence read` of its bytes, `--whole` or the cited `--lines`,
 /// instead of a selector file the reader had to write.
-pub const VERSION: &str = "inv.export.handoff.v4";
+/// v5 (bn-3382): a restricted Artifact gets a sentence instead of an
+/// `evidence read`, which never prints restricted content.
+pub const VERSION: &str = "inv.export.handoff.v5";
 
 /// The compact agent brief.
 pub const BRIEF_FILE: &str = "handoff-brief.md";
@@ -393,6 +395,16 @@ impl<'i, 'a> Story<'i, 'a> {
                         None,
                     )];
                 };
+                // `evidence read` never prints restricted content, and nothing
+                // here works around that gate.
+                if !self.input.inclusion.evidence_read_prints(id) {
+                    return vec![(
+                        "original bytes: restricted; evidence read does not print restricted \
+                         content"
+                            .to_owned(),
+                        None,
+                    )];
+                }
                 if Self::fits_one_read(&body) {
                     return vec![(
                         "original bytes".to_owned(),
