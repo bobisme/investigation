@@ -906,3 +906,87 @@ fn each_artifact_lists_only_the_observations_that_cite_it() {
         [bound + 2, 1, 0]
     );
 }
+
+/// An Observation whose claim origin was traced is still read as an
+/// Observation (bn-1brz): its note keeps its quote, limits and properties and
+/// gains the origin, and the traced origin never leaks a withheld record.
+#[test]
+fn a_traced_claim_origin_keeps_the_observation_readable_and_is_shown() {
+    let mut fixture = fixture();
+    let case = fixture.case;
+    let before = note(
+        &plan(&mut fixture, Audience::Internal),
+        case,
+        fixture.quoted,
+    );
+    assert!(!before.contains("## Claim origin"), "{before}");
+    submit(
+        &mut fixture.store,
+        "trace",
+        Some(case),
+        "origin.trace",
+        json!({
+            "observation_ref":{"id":fixture.secret_quote, "revision":1},
+            "origin":{"kind":"original"}, "rationale":"First-party plan."
+        }),
+    );
+    submit(
+        &mut fixture.store,
+        "trace-quoted",
+        Some(case),
+        "origin.trace",
+        json!({
+            "observation_ref":{"id":fixture.quoted, "revision":1},
+            "origin":{"kind":"restates",
+                "observation_ref":{"id":fixture.secret_quote, "revision":2}},
+            "dimensions":{"upstream_source":"the plan ]] [[Other]]",
+                "dependence_groups":["plan-family"]},
+            "rationale":"Copied from the plan <b>x</b> [[Other]]."
+        }),
+    );
+    let plan = plan(&mut fixture, Audience::Internal);
+    let text = note(&plan, case, fixture.quoted);
+    for entry in plan.entries() {
+        let other = std::str::from_utf8(entry.content()).unwrap();
+        assert!(!other.contains(SECRET), "{SECRET} in {}", entry.path());
+        assert!(
+            !other.contains("cannot be read"),
+            "{}:\n{other}",
+            entry.path()
+        );
+    }
+    assert_eq!(property(&text, "inv_basis").as_deref(), Some("source"));
+    assert_eq!(
+        property(&text, "inv_quote_state").as_deref(),
+        Some("verified")
+    );
+    assert!(text.contains("> [!quote] Untrusted excerpt"), "{text}");
+    assert!(text.contains("\n## Observation limits\n"), "{text}");
+    let origin = text
+        .split("\n## Claim origin\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n## ").next())
+        .unwrap_or_else(|| panic!("no claim origin section:\n{text}"));
+    let withheld = path(case, fixture.secret_quote);
+    let root = format!(
+        "- Origin: `known`; the claim resolves to [[{}|{}]] revision 2 through 1 restatement.",
+        withheld.trim_end_matches(".md"),
+        fixture.secret_quote
+    );
+    assert!(origin.contains(&root), "{origin}");
+    assert!(
+        origin.contains("- Collected through 1 acquisition"),
+        "{origin}"
+    );
+    assert!(origin.contains("- `restates` [["), "{origin}");
+    assert!(
+        origin.contains("  - Dependence group: `plan-family`"),
+        "{origin}"
+    );
+    // Authored text stays inert: no link to `Other` and no HTML.
+    assert!(
+        links(&text).iter().all(|(target, _)| target != "Other"),
+        "{text}"
+    );
+    assert!(!origin.contains("<b>"), "{origin}");
+}

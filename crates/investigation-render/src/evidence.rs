@@ -15,7 +15,9 @@
 //!   excerpt cited from it.
 //! - Observation: the cited artifact, selector and quote state, the recorded
 //!   quote as a bounded, labelled excerpt, explicit limits on what the quote
-//!   establishes, and the observation's own limits.
+//!   establishes, the observation's own limits and, once an origin is traced,
+//!   where its claim comes from (`claim_origin`: origin root, restatement
+//!   chain, acquisitions counted apart, attributed dependence judgments).
 //!
 //! Retained bytes are never read or copied: the planner sees canonical state
 //! only. The only captured text in a note is a recorded quote, shown in a
@@ -38,6 +40,7 @@ use investigation_core::{
     external_ref::{self, RetentionState},
     header::{Knowledge, SourceTime},
     identity::Kind,
+    origin_ops::{self, OriginLink, OriginTrace},
     selector_attest::{SelectorStateBasis, selector_state},
     source_ops::{self, EvidentiaryUse, SourceJudgment, UseState, WithdrawalScope},
     state::Record,
@@ -59,31 +62,10 @@ pub const CONTEXT_CHARS: usize = 200;
 /// Lists of related records are bounded; the omitted count is shown.
 pub const MAX_LISTED: usize = 16;
 
-/// Lifecycle and attribution keys the observation operations store beside the
-/// typed body (`investigation_core::observation_ops`); they are shown through
-/// the effective state, not here.
-const OBSERVATION_METADATA: &[&str] = &[
-    "status",
-    "revision_reason",
-    "retraction_reason",
-    "correction_reason",
-    "retracted",
-    "lifecycle",
-    "rationale",
-    "corrects",
-    "measurement_assessment",
-    "run_ref",
-    investigation_core::observation_ops::GUARDRAIL_KEY,
-];
-
-/// The typed Observation body, without its lifecycle keys.
+/// The typed Observation body, without the keys other operations keep beside
+/// it (lifecycle, measurement assessments, `claim_origin`, guardrails).
 fn observation_body(record: &Record) -> Option<ObservationBody> {
-    let mut body = record.body.clone();
-    let object = body.as_object_mut()?;
-    for key in OBSERVATION_METADATA {
-        object.remove(*key);
-    }
-    serde_json::from_value(body).ok()
+    ObservationBody::from_stored(&record.body).ok()
 }
 
 /// Flat frontmatter properties of a visible evidence-family record.
@@ -1054,7 +1036,169 @@ fn observation_sections(
     for limitation in &body.limitations {
         let _ = writeln!(out, "- Limitation: {}", prose(limitation));
     }
+    origin_section(notes, out, record)?;
     use_section(notes, out, record)
+}
+
+/// `## Claim origin`, when an origin was traced for this claim: where the
+/// claim comes from as attributed judgments, the restatement chain to its
+/// origin root, the acquisitions that collected it (counted apart from its
+/// origin) and the dependence judgments on that root, as `show` reports them.
+fn origin_section(
+    notes: &NoteContext<'_>,
+    out: &mut String,
+    record: &Record,
+) -> Result<(), RenderError> {
+    if record.body.get(origin_ops::CLAIM_ORIGIN_KEY).is_none() {
+        return Ok(());
+    }
+    out.push_str("\n## Claim origin\n\n");
+    out.push_str(
+        "Where this claim comes from, as attributed judgments, separate from the Sources that \
+         collected it. A pair of origins without a dependence judgment is `unknown`, never \
+         independent.\n\n",
+    );
+    let Ok(view) = origin_ops::observation_origin(notes.case().state(), record) else {
+        out.push_str("The recorded origin traces cannot be read; the origin is `unknown`.\n");
+        return Ok(());
+    };
+    let origin = &view.origin;
+    let state = inline_code(&wire_word(&origin.state));
+    match origin.root {
+        Some(root) if root.id == record.header.id => {
+            let _ = writeln!(out, "- Origin: {state}; this passage originates the claim.");
+        }
+        Some(root) => {
+            let _ = writeln!(
+                out,
+                "- Origin: {state}; the claim resolves to {} through {}.",
+                revision_link(notes, root)?,
+                match origin.chain.len() {
+                    1 => "1 restatement".to_owned(),
+                    steps => format!("{steps} restatements"),
+                }
+            );
+        }
+        None => {
+            let reason = origin
+                .reason
+                .as_ref()
+                .map(|reason| format!(" ({})", inline_code(&wire_word(reason))))
+                .unwrap_or_default();
+            let _ = writeln!(out, "- Origin: {state}{reason}.");
+        }
+    }
+    // A one-step chain is its root; a longer one, or one where tracing
+    // stopped, is listed nearest first.
+    if origin.chain.len() > 1 || origin.root.is_none() {
+        for step in &origin.chain {
+            let _ = writeln!(out, "  - Restates {}", revision_link(notes, *step)?);
+        }
+    }
+    let _ = writeln!(
+        out,
+        "- Collected through {}{}",
+        match view.acquisitions.len() {
+            1 => "1 acquisition".to_owned(),
+            count => format!("{count} acquisitions"),
+        },
+        if view.acquisitions.is_empty() {
+            "."
+        } else {
+            ", counted apart from its origin:"
+        }
+    );
+    for source in view.acquisitions.iter().take(MAX_LISTED) {
+        let _ = writeln!(out, "  - {}", notes.link(*source)?);
+    }
+    if view.acquisitions.len() > MAX_LISTED {
+        let _ = writeln!(out, "  - and {} more", view.acquisitions.len() - MAX_LISTED);
+    }
+    let _ = writeln!(
+        out,
+        "\n### Origin traces\n\nThe latest trace of each assessor is current; {} recorded.\n",
+        match view.traces_kept {
+            1 => "1 trace is".to_owned(),
+            count => format!("{count} traces are"),
+        }
+    );
+    for trace in &view.traces {
+        trace_item(notes, out, trace)?;
+    }
+    if !view.dependence.is_empty() {
+        out.push_str("\n### Dependence judgments\n\n");
+        for judgment in &view.dependence {
+            let dimensions: Vec<String> = judgment
+                .dimensions
+                .iter()
+                .map(|dimension| inline_code(&wire_word(dimension)))
+                .collect();
+            let _ = writeln!(
+                out,
+                "- {}{} by {} at sequence {}: {}",
+                inline_code(&wire_word(&judgment.judgment)),
+                if dimensions.is_empty() {
+                    String::new()
+                } else {
+                    format!(" on {}", dimensions.join(", "))
+                },
+                inline_code(&judgment.assessor.to_string()),
+                judgment.accepted_at_sequence,
+                prose(&judgment.basis)
+            );
+            for root in &judgment.roots {
+                let _ = writeln!(out, "  - Origin root {}", revision_link(notes, *root)?);
+            }
+        }
+        if view.omitted_dependence > 0 {
+            let _ = writeln!(out, "- and {} more", view.omitted_dependence);
+        }
+    }
+    Ok(())
+}
+
+fn trace_item(
+    notes: &NoteContext<'_>,
+    out: &mut String,
+    trace: &OriginTrace,
+) -> Result<(), RenderError> {
+    let link = match trace.origin {
+        OriginLink::Restates { observation_ref } => {
+            format!(" {}", revision_link(notes, observation_ref)?)
+        }
+        OriginLink::Original | OriginLink::Unknown => String::new(),
+    };
+    let _ = writeln!(
+        out,
+        "- {}{link} by {} at sequence {}, of revision {}: {}",
+        inline_code(&wire_word(&trace.origin)),
+        inline_code(&trace.assessor.to_string()),
+        trace.accepted_at_sequence,
+        trace.observation_revision,
+        prose(&trace.rationale)
+    );
+    let dimensions = &trace.dimensions;
+    let _ = writeln!(
+        out,
+        "  - Upstream source: {}",
+        or_not_recorded(dimensions.upstream_source.as_deref())
+    );
+    if let Some(run) = dimensions.collection_run {
+        let _ = writeln!(out, "  - Collection run: {}", revision_link(notes, run)?);
+    }
+    if let Some(method) = &dimensions.method {
+        let _ = writeln!(out, "  - Method: {}", prose(method));
+    }
+    if let Some(environment) = &dimensions.environment {
+        let _ = writeln!(out, "  - Environment: {}", prose(environment));
+    }
+    for group in &dimensions.dependence_groups {
+        let _ = writeln!(out, "  - Dependence group: {}", inline_code(group));
+    }
+    for reference in &trace.evidence_refs {
+        let _ = writeln!(out, "  - Grounded in {}", revision_link(notes, *reference)?);
+    }
+    Ok(())
 }
 
 fn quoted_source(

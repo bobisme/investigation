@@ -833,4 +833,43 @@ mod tests {
         assert!(value.get("support").is_none());
         assert_eq!(value["basis"]["kind"], "assertion");
     }
+
+    #[test]
+    fn stored_body_fields_are_exactly_the_typed_body_properties() {
+        let schema = serde_json::to_value(schemars::schema_for!(ObservationBody)).unwrap();
+        let properties: std::collections::BTreeSet<&str> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let fields: std::collections::BTreeSet<&str> =
+            ObservationBody::FIELDS.iter().copied().collect();
+        assert_eq!(fields, properties);
+        for key in OBSERVATION_METADATA {
+            assert!(
+                !fields.contains(key),
+                "{key} is metadata, not a typed field"
+            );
+        }
+    }
+
+    #[test]
+    fn a_stored_body_reads_whatever_keys_other_operations_keep_beside_it() {
+        let typed = json!({
+            "value":{"kind":"text","statement":"observed"},
+            "basis":{"kind":"assertion","assertion":"operator","context":null},
+            "extraction_method":null,"validity":"unknown","quality":[],"limitations":[],
+            "evidence_kind":null,"variables_changed":[],"observed_at":null
+        });
+        let expected: ObservationBody = serde_json::from_value(typed.clone()).unwrap();
+        let mut stored = typed;
+        for key in OBSERVATION_METADATA {
+            stored[*key] = json!({"kept":"beside the typed body"});
+        }
+        stored["a_key_a_later_v1_operation_adds"] = json!(true);
+        assert!(input::decode::<ObservationBody>(&stored).is_err());
+        assert_eq!(ObservationBody::from_stored(&stored).unwrap(), expected);
+        assert!(ObservationBody::from_stored(&json!("not an object")).is_err());
+    }
 }

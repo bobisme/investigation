@@ -71,7 +71,12 @@ use crate::{
 /// its Overview a `## Map` section (W12.03). The policy fingerprint names
 /// the stated viewer release (`;viewer=<release>`) instead of `;bases`.
 /// v23: the Map Legend's copy hint names `vault copy-map` (W12.04).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v23";
+/// v24: an Observation whose claim origin was traced (`claim_origin`) is read
+/// again: its note shows its quoted evidence, limits and frontmatter instead
+/// of "cannot be read as an Observation", and gains a `## Claim origin`
+/// section (origin, restatement chain, acquisitions, traces, dependence
+/// judgments) (bn-1brz).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v24";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

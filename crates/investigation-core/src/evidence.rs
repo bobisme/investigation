@@ -643,6 +643,39 @@ pub struct ObservationBody {
     pub measurement: Option<crate::measurement_fields::MeasurementFields>,
 }
 
+impl ObservationBody {
+    /// The keys of the typed body. A stored Observation also carries keys
+    /// that other operations keep beside it (lifecycle, corrections, measurement
+    /// assessments, `claim_origin`, guardrails); they are not part of it.
+    pub const FIELDS: &'static [&'static str] = &[
+        "value",
+        "basis",
+        "extraction_method",
+        "validity",
+        "quality",
+        "limitations",
+        "evidence_kind",
+        "variables_changed",
+        "observed_at",
+        "measurement",
+    ];
+
+    /// The typed body of a stored Observation, read from [`Self::FIELDS`]
+    /// only, so a key another operation keeps beside it never makes the
+    /// Observation unreadable. For read paths; write paths that must reject
+    /// unknown keys strip their own list of known metadata instead.
+    pub fn from_stored(body: &serde_json::Value) -> Result<Self, serde_json::Error> {
+        let typed: serde_json::Map<String, serde_json::Value> = body
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| Self::FIELDS.contains(&key.as_str()))
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        serde_json::from_value(serde_json::Value::Object(typed))
+    }
+}
+
 impl ObservationAdd {
     /// Validate invariants that depend only on the typed request. Byte checks
     /// and quote verification are performed by trusted readers after this.

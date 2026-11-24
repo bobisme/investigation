@@ -177,6 +177,27 @@ fn golden_vaults_match_their_checked_in_workspaces() {
     }
 }
 
+/// Every stored record in the scenario workspaces is readable, so no golden
+/// note shows a renderer fallback for an unreadable body ("The stored body
+/// cannot be read as an Observation") in place of the record. A record kind
+/// gaining a key in v1 that a renderer reader rejects shows up here (bn-1brz).
+#[test]
+fn no_golden_note_shows_an_unreadable_record_fallback() {
+    const FALLBACKS: [&str; 2] = ["cannot be read", "could not be read"];
+    let mut found = Vec::new();
+    for scenario in SCENARIOS {
+        for (path, bytes) in fixtures::golden(scenario) {
+            let note = String::from_utf8_lossy(&bytes);
+            for (number, line) in note.lines().enumerate() {
+                if FALLBACKS.iter().any(|fallback| line.contains(fallback)) {
+                    found.push(format!("{scenario}/{path}:{}: {line}", number + 1));
+                }
+            }
+        }
+    }
+    assert!(found.is_empty(), "{found:#?}");
+}
+
 #[test]
 fn identical_snapshots_publish_identical_bytes_across_runs_environments_and_file_order() {
     let directory = tempfile::tempdir().unwrap();
