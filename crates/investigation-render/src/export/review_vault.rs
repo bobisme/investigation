@@ -9,6 +9,8 @@
 //!   Cases/<case>/<Kind>/<record>.md        one note per shown record
 //!   Cases/<case>/Views/<view>.md           static Markdown table views
 //!   Attachments/<artifact>.<ext>           reviewed derivative previews, exact bytes
+//!   Human Files.md                         human notes and boards shown records rely on
+//!   human/sha256/<hex>                     their captured bytes, exact
 //!   export-manifest.json                   written last
 //! ```
 //!
@@ -17,8 +19,8 @@
 //! [`ExportInput::includes`] first ([`crate::CaseSnapshot::filtered`]), and
 //! the notes are planned from that filtered case. Nothing is read from
 //! `vault/`, so stale generated files, conflict copies and the person-owned
-//! folders (`Notes/`, `Boards/`, `Inbox/`) cannot appear; selected human
-//! notes are a later, explicit input. Every channel question a template
+//! folders (`Notes/`, `Boards/`, `Inbox/`) cannot appear as they are now.
+//! Every channel question a template
 //! asks (title, summary, content, metadata, lineage) is answered by the
 //! export's [`super::Inclusion`], with no ID-only placeholders.
 //!
@@ -50,6 +52,22 @@
 //! link to its note. Every copied attachment therefore passes any
 //! identifier rewrite unchanged and keeps its recorded digest.
 //!
+//! **Human files.** A person-owned note or board a record relies on
+//! appears only through its snapshot annotation (W11.14), and only when the
+//! annotation, its Artifact and that Artifact's Source are all included
+//! ([`super::human_files`], as for a case report). `Human Files.md` lists
+//! each with its vault path, role, digest and size; the captured bytes, never
+//! the live file, are copied to `human/sha256/<hex>`. As for attachments,
+//! bytes that may hold an identifier are never copied, for every audience
+//! (the case report's rule copies them unless identifiers are remapped), so
+//! no copy can name a withheld record or be altered by a remap; each one
+//! left out is listed with the reason and reported as an
+//! [`super::Omission`]. Withdrawn or reclaimed bytes are never read.
+//!
+//! **Caveat columns.** A view table whose rows include a caveated record
+//! gains an `Audience caveat` column holding the caveats word for word, as
+//! well as the per-note caveat section ([`crate::records::views`]).
+//!
 //! **Identifiers.** The notes name canonical IDs and the framework remaps
 //! them for an export whose identifiers are remapped (W11.13). Such an
 //! export also shows no journal position: no acceptance sequence, record
@@ -74,7 +92,7 @@ use investigation_core::{
 
 use super::{
     ExportInput, ExportRenderer, ExportSnapshot, Inclusion, Omission, OmissionReason, Omitted,
-    Statements, dependent_rule,
+    Statements, dependent_rule, human_files,
 };
 use crate::{
     Audience, Phase, PlanBuilder, PlanPath, RenderError, VerifiedSnapshot, ViewPolicy, layout,
@@ -95,7 +113,10 @@ use crate::{
 /// left out, with the framework's completeness statement.
 /// v4 (bn-91gz): a Retrospective step or lesson citing a record not shown
 /// is left out of its note and the Views, and reported.
-pub const VERSION: &str = "inv.export.review-vault.v4";
+/// v5 (bn-48uc): selected human-note snapshots (`Human Files.md` and their
+/// captured bytes under `human/sha256/`), and an `Audience caveat` column in
+/// view tables whose rows include a caveated record.
+pub const VERSION: &str = "inv.export.review-vault.v5";
 
 /// The vault renderer version whose templates this kind plans.
 pub const TEMPLATES: &str = crate::plan::RENDERER_VERSION;
@@ -105,6 +126,9 @@ pub const ENTRY_FILE: &str = "Start Here.md";
 
 /// The omitted-data note.
 pub const OMITTED_FILE: &str = "Omitted Data.md";
+
+/// The note listing the human files shown records rely on.
+pub const HUMAN_FILE: &str = "Human Files.md";
 
 pub struct ReviewVault;
 
@@ -187,10 +211,20 @@ impl ExportRenderer for ReviewVault {
         // Every omission is reported before the two notes that state
         // completeness are planned.
         let attachments = attachments(input, case.state());
+        let mut copies = PlanBuilder::new(generation.clone());
+        let human = human_files::plan_with(input, &mut copies, true)?;
+        if !human.is_empty() {
+            plan.add(
+                Phase::Views,
+                PlanPath::new(HUMAN_FILE)?,
+                human_note(input, &human),
+                None,
+            )?;
+        }
         plan.add(
             Phase::Entry,
             layout::start_here()?,
-            entry_note(input, &notes, &attachments)?,
+            entry_note(input, &notes, &attachments, !human.is_empty())?,
             None,
         )?;
         plan.add(
@@ -209,6 +243,15 @@ impl ExportRenderer for ReviewVault {
                 entry.path().clone(),
                 entry.content().to_vec(),
                 entry.projects(),
+            )?;
+        }
+        for copy in copies.finish().entries() {
+            guard(copy.path().as_str(), copy.content(), &withheld)?;
+            files.add(
+                copy.phase(),
+                copy.path().clone(),
+                copy.content().to_vec(),
+                None,
             )?;
         }
         for attachment in attachments.copied {
@@ -479,6 +522,7 @@ fn entry_note(
     input: &ExportInput<'_>,
     notes: &NoteContext<'_>,
     attachments: &Attachments,
+    human_files: bool,
 ) -> Result<String, RenderError> {
     let case = notes.case();
     let case_id = case.case_id();
@@ -557,6 +601,14 @@ fn entry_note(
         "- {} says what a review copy never holds and whether anything was withheld.",
         layout::wikilink(&PlanPath::new(OMITTED_FILE)?, "Omitted Data")
     );
+    if human_files {
+        let _ = writeln!(
+            out,
+            "- {} lists the person-owned notes and boards shown records rely on, as captured \
+             when the reliance was recorded, never as they are now.",
+            layout::wikilink(&PlanPath::new(HUMAN_FILE)?, "Human Files")
+        );
+    }
     out.push_str(
         "- export-manifest.json beside this note names the snapshot, the audience policy and \
          the digest of every file.\n",
@@ -578,6 +630,25 @@ fn entry_note(
         }
     }
     Ok(out)
+}
+
+/// `Human Files.md`: the human-file snapshots `shown` records rely on, in
+/// the table a case report uses.
+fn human_note(input: &ExportInput<'_>, shown: &[human_files::Shown]) -> String {
+    let mut out = Frontmatter::new()
+        .text("inv_schema", VAULT_SCHEMA)
+        .text("inv_export_kind", input.kind.name)
+        .list("tags", &["investigation/review"])
+        .finish();
+    let _ = write!(
+        out,
+        "# Human files
+
+{REVIEW_BANNER}
+"
+    );
+    human_files::section(&mut out, shown);
+    out
 }
 
 /// `Omitted Data.md`: what a review vault never holds, and the fixed
@@ -609,8 +680,9 @@ fn omitted_note(
          the audience may see in full are attached, byte for byte.",
         "Credential sources and local absolute paths; paths are elided from displayed text.",
         "Anything from the working vault: generated notes, stale files, conflict copies and the \
-         person-owned folders Notes, Boards and Inbox. This copy was planned from the case \
-         records alone into a new folder.",
+         person-owned folders Notes, Boards and Inbox as they are now. This copy was planned \
+         from the case records alone into a new folder; a human note or board a shown record \
+         relies on appears only as the version captured when the reliance was recorded.",
         "Plugin views (Bases, Canvas). Static Markdown tables show the same views.",
         "The configuration, caches and machine-local state of the workspace.",
     ] {

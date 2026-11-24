@@ -104,8 +104,10 @@ command's output. A remapped export cannot restore canonical state.
 --kind review-vault writes a browsable copy of the case for the audience:
 the vault's notes and plain Markdown table views planned from the records
 the audience may see, never copied from vault/, with Start Here.md, Omitted
-Data.md and reviewed derivative previews under Attachments/. It is written
-only into a directory that does not exist yet, and cannot resume the case.
+Data.md and reviewed derivative previews under Attachments/. Human notes and
+boards shown records rely on appear as captured (Human Files.md, bytes under
+human/sha256/), never as they are now. It is written only into a directory
+that does not exist yet, and cannot resume the case.
 
 --kind workspace-archive copies the canonical state of every case instead:
 each journal to its verified head, the blobs they require, the workspace

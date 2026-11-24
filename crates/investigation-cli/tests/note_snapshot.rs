@@ -10,6 +10,10 @@
 //! The working vault's annotation note shows the captured file and whether
 //! it still matches: `the_working_vault_note_shows_the_captured_file_and_whether_it_still_matches`.
 //!
+//! A review copy lists the snapshots its audience may see and copies their
+//! captured bytes, never withdrawn or reclaimed ones (bn-48uc):
+//! `withdrawn_or_reclaimed_snapshot_bytes_are_never_copied`.
+//!
 //! Also: `restricted_note_bytes_never_reach_a_non_restricted_export`,
 //! `links_special_files_and_paths_outside_the_human_folders_are_refused`,
 //! `existing_vault_mode_reads_only_inside_the_managed_prefix`,
@@ -450,6 +454,92 @@ fn an_export_shows_the_captured_version_not_the_live_one() {
     // The same snapshot exports byte for byte the same.
     let again = casework.export("case-report", "internal", "again");
     assert_eq!(files(&again), files(&casework.parent.join("case-report")));
+}
+
+/// bn-48uc: a review copy lists the snapshots its audience may see in
+/// `Human Files.md` with their captured bytes; once the bytes' availability
+/// is withdrawn (W11.11), and after they are reclaimed (W11.19), neither a
+/// review copy nor a case report copies them.
+#[test]
+fn withdrawn_or_reclaimed_snapshot_bytes_are_never_copied() {
+    let casework = Casework::dedicated();
+    let note = b"# Reading\n\nThe queue drains in 3 s.\n";
+    casework.write("Notes/reading.md", note);
+    let snapshot = casework.snapshot("Notes/reading.md", &casework.case, &[]);
+    let hex = sha256_hex(&snapshot["sha256"]);
+    let blob = casework
+        .root
+        .join(format!("state/blobs/sha256/{}/{hex}", &hex[..2]));
+    let listed = |out: &Path| -> String {
+        let text = fs::read_to_string(out.join("Human Files.md")).unwrap();
+        text.lines()
+            .find(|line| line.contains("`Notes/reading.md`"))
+            .unwrap_or_else(|| panic!("{text}"))
+            .to_owned()
+    };
+
+    let review = casework.export("review-vault", "internal", "review-before");
+    assert_eq!(
+        fs::read(review.join(format!("human/sha256/{hex}"))).unwrap(),
+        note
+    );
+    assert!(listed(&review).contains(&format!("`human/sha256/{hex}`")));
+    let start = fs::read_to_string(review.join("Start Here.md")).unwrap();
+    assert!(start.contains("[[Human Files|Human Files]]"), "{start}");
+
+    // Withdraw every reference to the captured bytes.
+    let artifact = snapshot["artifact"]["id"].as_str().unwrap();
+    let previewed = casework.run(&["retention", "preview", artifact], 0);
+    let mut references = vec![previewed["references"][0]["artifact_ref"].clone()];
+    for held in previewed["held_for_others"]["digests"].as_array().unwrap() {
+        references.extend(held["references"].as_array().unwrap().iter().cloned());
+    }
+    let operations: Vec<Value> = references
+        .iter()
+        .map(|reference| {
+            serde_json::json!({"op": "artifact.expire", "payload": {
+                "artifact_ref": reference, "reason": "retention_period_ended",
+                "rationale": "Notes are kept for 30 days."}})
+        })
+        .collect();
+    let command = casework.parent.join("expire.json");
+    fs::write(
+        &command,
+        serde_json::json!({
+            "schema_version": "inv.command.v1", "command_id": "expire-1", "actor": ACTOR,
+            "case_id": casework.case, "preconditions": [], "operations": operations,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    casework.run(&["record", "--input", command.to_str().unwrap()], 0);
+
+    let ids: Vec<String> = references
+        .iter()
+        .map(|reference| reference["id"].as_str().unwrap().to_owned())
+        .collect();
+    for stage in ["withdrawn", "reclaimed"] {
+        if stage == "reclaimed" {
+            let mut args = vec!["retention", "reclaim"];
+            args.extend(ids.iter().map(String::as_str));
+            casework.run(&args, 0);
+            assert!(!blob.exists(), "the bytes were reclaimed");
+        }
+        let review = casework.export("review-vault", "internal", &format!("review-{stage}"));
+        let line = listed(&review);
+        assert!(line.contains("availability withdrawn"), "{stage}: {line}");
+        assert!(!review.join("human").exists(), "{stage}");
+        let report = casework.export("case-report", "internal", &format!("report-{stage}"));
+        assert!(!report.join("human").exists(), "{stage}");
+        for out in [&review, &report] {
+            for (path, bytes) in files(out) {
+                assert!(
+                    !String::from_utf8_lossy(&bytes).contains("drains in 3 s"),
+                    "{stage}: {path}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

@@ -257,6 +257,7 @@ const CONTRACTS: &[Contract] = &[
             Channel::Lesson,
             Channel::Cited,
             Channel::NotePath,
+            Channel::NoteBytes,
             Channel::RunFile,
             Channel::RunMeta,
         ],
@@ -2167,6 +2168,123 @@ fn adding_a_restricted_record_changes_no_count_a_lower_audience_sees() {
 /// full case. When it is withheld from the audience, the copy says its
 /// answer is not stated, rather than promoting the newest outcome it does
 /// show, and its counts cover only the records it shows.
+/// bn-48uc: a review copy lists the human-file snapshots its audience may
+/// see in `Human Files.md` and copies their captured bytes exactly; a
+/// withheld snapshot never appears; bytes that hold an identifier are listed
+/// but never copied, and reported; view tables carry the audience caveat as
+/// a column, and the public copy has neither caveats nor the column.
+#[test]
+fn a_review_copy_shows_only_the_human_files_and_caveats_its_audience_may_see() {
+    let planted = planted("hostile");
+    let human_note = |exported: &Exported| -> Option<String> {
+        exported
+            .files
+            .get("Human Files.md")
+            .map(|bytes| String::from_utf8(bytes.clone()).unwrap())
+    };
+    let copies = |exported: &Exported| -> Vec<String> {
+        exported
+            .files
+            .iter()
+            .filter(|(path, _)| path.starts_with("human/sha256/"))
+            .map(|(_, bytes)| String::from_utf8_lossy(bytes).into_owned())
+            .collect()
+    };
+
+    let restricted = export(&planted, "review-vault", Audience::Restricted, false, None).unwrap();
+    let listed = human_note(&restricted).expect("a restricted copy lists human files");
+    for marker in [INTERNAL, RESTRICTED] {
+        assert!(
+            listed.contains(&Channel::NotePath.token(marker)),
+            "{listed}"
+        );
+        let bytes = Channel::NoteBytes.token(marker);
+        assert!(
+            copies(&restricted).iter().any(|copy| copy.contains(&bytes)),
+            "{marker}"
+        );
+    }
+
+    let internal = export(&planted, "review-vault", Audience::Internal, false, None).unwrap();
+    let listed = human_note(&internal).expect("an internal copy lists human files");
+    assert!(
+        listed.contains(&Channel::NotePath.token(INTERNAL)),
+        "{listed}"
+    );
+    assert!(
+        !listed.contains(&Channel::NotePath.token(RESTRICTED)),
+        "{listed}"
+    );
+    let copied = copies(&internal);
+    assert!(
+        copied
+            .iter()
+            .any(|copy| copy.contains(&Channel::NoteBytes.token(INTERNAL)))
+    );
+    assert!(internal.find(RESTRICTED).is_empty());
+    // The note quoting the case ID is listed and not copied, for every
+    // audience that sees it, and reported to the publisher alone.
+    let ids = listed
+        .lines()
+        .find(|line| line.contains("`Notes/ids.md`"))
+        .unwrap_or_else(|| panic!("{listed}"));
+    assert!(
+        ids.contains("not copied: the captured bytes hold identifiers"),
+        "{ids}"
+    );
+    assert!(copied.iter().all(|copy| !copy.contains("See case_")));
+    let omissions = &internal.receipt["publisher_receipt"]["omissions"];
+    assert!(
+        omissions.as_array().into_iter().flatten().any(|omission| {
+            omission["content"] == "human_file_bytes"
+                && omission["reason"] == "bytes_hold_identifiers"
+        }),
+        "{omissions:#}"
+    );
+    // Start Here links the note; Omitted Data says the live files never come.
+    let entry = String::from_utf8(internal.files["Start Here.md"].clone()).unwrap();
+    assert!(entry.contains("[[Human Files|Human Files]]"), "{entry}");
+    let omitted = String::from_utf8(internal.files["Omitted Data.md"].clone()).unwrap();
+    assert!(omitted.contains("as they are now"), "{omitted}");
+    // A view table with a caveated row carries the caveats as a column.
+    let caveat_rows: Vec<&str> = internal
+        .files
+        .iter()
+        .filter(|(path, _)| path.contains("/Views/"))
+        .flat_map(|(_, bytes)| std::str::from_utf8(bytes).unwrap().lines())
+        .filter(|line| line.starts_with('|') && line.contains(Caveat::BasisWithheld.text()))
+        .collect();
+    assert!(
+        !caveat_rows.is_empty(),
+        "no caveat column in any internal view"
+    );
+    let views_with_column = internal
+        .files
+        .iter()
+        .filter(|(path, bytes)| {
+            path.contains("/Views/")
+                && String::from_utf8_lossy(bytes).contains("| Audience caveat |")
+        })
+        .count();
+    assert!(views_with_column > 0);
+
+    // The public copy sees no internal annotation, so no human file, and
+    // no caveat or caveat column anywhere.
+    let public = export(&planted, "review-vault", Audience::Public, false, None).unwrap();
+    assert!(human_note(&public).is_none());
+    assert!(copies(&public).is_empty());
+    assert!(public.find("Audience caveat").is_empty());
+
+    // The working vault never gains the column: it has no audience caveats.
+    let working = read_tree(&planted.workspace.join("vault"));
+    for (path, bytes) in working {
+        assert!(
+            !String::from_utf8_lossy(&bytes).contains("Audience caveat"),
+            "{path}"
+        );
+    }
+}
+
 #[test]
 fn a_review_copy_never_promotes_another_answer_over_a_withheld_leading_outcome() {
     let planted = planted("hostile");

@@ -18,6 +18,10 @@
 //!   from [`NoteContext::table_link`]; a cell never holds a line break.
 //! - A record the audience may not see is left out, or shown by ID with
 //!   `withheld` cells when only its content is withheld.
+//! - In a review export, a table of records whose rows include a record
+//!   with audience caveats ends with an `Audience caveat` column holding
+//!   them word for word (bn-48uc). The working vault has no audience
+//!   caveats, and neither has a public copy, so their tables never gain it.
 //!
 //! A view with no rows is not planned, except the epistemic frontier and
 //! the timeline, which every case has.
@@ -268,6 +272,19 @@ impl<'n, 'a> Views<'n, 'a> {
         self.notes.link(self.notes.case().case_id())
     }
 
+    /// Whether any of `rows` carries an audience caveat. Only a review
+    /// export has any, and never for the public, so the working vault's
+    /// tables and a public copy's never gain the column.
+    fn any_caveat<'r>(&self, mut rows: impl Iterator<Item = &'r Record>) -> bool {
+        rows.any(|record| !self.notes.audience_caveats(record).is_empty())
+    }
+
+    /// The audience caveats of a row's record, word for word as the caveat
+    /// section states them, or `none`.
+    fn caveat_cell(&self, record: &Record) -> String {
+        self.notes.audience_caveats(record).join(" ")
+    }
+
     /// One table of current records of `kinds` that `keep` admits, a row per
     /// record in ID order. The first column links the record; `row` gives
     /// the rest, and is called only when the record's content may appear.
@@ -290,8 +307,10 @@ impl<'n, 'a> Views<'n, 'a> {
             return Ok(None);
         }
         let mut text = format!("\n{intro} One row per {}, in record ID order.\n\n", noun.0);
-        header(&mut text, headers);
-        for record in selected.iter().take(MAX_ROWS) {
+        let rows = &selected[..selected.len().min(MAX_ROWS)];
+        let caveated = self.any_caveat(rows.iter().copied());
+        header(&mut text, &with_caveat_column(headers, caveated));
+        for record in rows {
             let mut cells = vec![self.notes.table_link(record.header.id)?];
             if self.notes.visible(record) && self.notes.may_show(record, Field::Content) {
                 cells.extend(row(record)?);
@@ -300,6 +319,9 @@ impl<'n, 'a> Views<'n, 'a> {
                     "withheld".to_owned(),
                     headers.len() - 1,
                 ));
+            }
+            if caveated {
+                cells.push(self.caveat_cell(record));
             }
             line(&mut text, &cells);
         }
@@ -1574,18 +1596,27 @@ impl<'n, 'a> Views<'n, 'a> {
              changed decisions), corrections, retractions, supersession and the stated \
              reason. One row per revision.\n\n",
         );
+        let skip = revisions.len().saturating_sub(MAX_ROWS);
+        let caveated = self.any_caveat(
+            revisions
+                .iter()
+                .skip(skip)
+                .map(|(_, revision)| state.current(revision.header.id).unwrap_or(*revision)),
+        );
         header(
             &mut text,
-            &[
-                "Sequence",
-                "Record",
-                "Change",
-                "Observed, started or acquired (claimed)",
-                "Recorded",
-                "Recorded by",
-            ],
+            &with_caveat_column(
+                &[
+                    "Sequence",
+                    "Record",
+                    "Change",
+                    "Observed, started or acquired (claimed)",
+                    "Recorded",
+                    "Recorded by",
+                ],
+                caveated,
+            ),
         );
-        let skip = revisions.len().saturating_sub(MAX_ROWS);
         for (previous, revision) in revisions.iter().skip(skip) {
             let id = revision.header.id;
             let current = state.current(id).unwrap_or(*revision);
@@ -1619,6 +1650,9 @@ impl<'n, 'a> Views<'n, 'a> {
                 ]);
             } else {
                 cells.extend(std::iter::repeat_n("withheld".to_owned(), 4));
+            }
+            if caveated {
+                cells.push(self.caveat_cell(current));
             }
             line(&mut text, &cells);
         }
@@ -1719,10 +1753,15 @@ impl<'n, 'a> Views<'n, 'a> {
             text.push_str("No note is listed here at this snapshot.\n");
             return Ok(());
         }
-        header(text, headers);
-        for record in selected.iter().take(MAX_ROWS) {
+        let rows = &selected[..selected.len().min(MAX_ROWS)];
+        let caveated = self.any_caveat(rows.iter().copied());
+        header(text, &with_caveat_column(headers, caveated));
+        for record in rows {
             let mut cells = vec![self.notes.table_link(record.header.id)?];
             cells.extend(row(record));
+            if caveated {
+                cells.push(self.caveat_cell(record));
+            }
             line(text, &cells);
         }
         if selected.len() > MAX_ROWS {
@@ -1857,6 +1896,19 @@ fn claimed_time(record: &Record) -> String {
     }
     "none claimed".to_owned()
 }
+
+/// The header `headers`, with the audience caveat column last when a row of
+/// the table carries a caveat.
+fn with_caveat_column<'h>(headers: &[&'h str], caveated: bool) -> Vec<&'h str> {
+    let mut all = headers.to_vec();
+    if caveated {
+        all.push(CAVEAT_COLUMN);
+    }
+    all
+}
+
+/// The column holding a row's audience caveats in a review export.
+const CAVEAT_COLUMN: &str = "Audience caveat";
 
 /// `| a | b |` and the separator row.
 fn header(out: &mut String, headers: &[&str]) {

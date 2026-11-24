@@ -1,5 +1,6 @@
-//! Person-owned files a record relies on, in a report export: the captured
-//! version, never the live one (plan §12.1, W11.14). Pure.
+//! Person-owned files a record relies on, in a report export or a review
+//! copy: the captured version, never the live one (plan §12.1, W11.14,
+//! bn-48uc). Pure.
 //!
 //! A record relies on a human note or board through a snapshot annotation
 //! ([`NoteSnapshot`]): its artifact content holds the bytes captured when the
@@ -32,6 +33,8 @@ use crate::{Phase, PlanBuilder, PlanPath, RenderError, text::inline_code};
 
 /// Why a shown snapshot's bytes are not copied.
 const NOT_RETAINED: &str = "bytes not retained";
+/// A review copy copies only bytes that hold no identifier.
+const HOLDS_ANY_IDENTIFIER: &str = "not copied: the captured bytes hold identifiers, and a review copy copies only bytes that hold none";
 /// The captured bytes' Artifact had its availability withdrawn.
 const WITHDRAWN: &str = "availability withdrawn: no bytes are copied through this reference";
 /// A remapped export rewrites every identifier in every file body, so a copy
@@ -54,6 +57,20 @@ pub(crate) struct Shown {
 pub(crate) fn plan(
     input: &ExportInput<'_>,
     files: &mut PlanBuilder,
+) -> Result<Vec<Shown>, RenderError> {
+    plan_with(input, files, false)
+}
+
+/// [`plan`]; with `exact_only`, bytes that may hold an identifier are left
+/// out for every audience, not only when identifiers are remapped: listed,
+/// not copied, and reported. A review copy uses it, as it does for its
+/// attachments: it refuses any file naming a withheld record, and a copy
+/// without identifiers can name none, so whether a copy was left out never
+/// depends on what is withheld.
+pub(crate) fn plan_with(
+    input: &ExportInput<'_>,
+    files: &mut PlanBuilder,
+    exact_only: bool,
 ) -> Result<Vec<Shown>, RenderError> {
     let state = input.case.state();
     let visible = |reference: RevisionRef| {
@@ -86,6 +103,16 @@ pub(crate) fn plan(
                         .of(snapshot.annotation.id),
                 );
                 Err(HOLDS_IDENTIFIERS)
+            }
+            Some(bytes) if exact_only && may_hold_identifier(bytes) => {
+                input.omit(
+                    Omission::new(
+                        Omitted::HumanFileBytes,
+                        OmissionReason::BytesHoldIdentifiers,
+                    )
+                    .of(snapshot.annotation.id),
+                );
+                Err(HOLDS_ANY_IDENTIFIER)
             }
             Some(bytes) => {
                 let member = human_member(&snapshot.sha256);
