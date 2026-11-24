@@ -34,6 +34,7 @@ rubric. `self-check` sets up every instance, plays its scripted correct path
 
 import argparse
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 import copy
 import hashlib
 import json
@@ -522,13 +523,17 @@ def task8_setup(inv, root, case, instance, replay):
     current = sorted(records(root, case))
     if len(current) < 40:
         raise Failed(f"{instance['id']}: only {len(current)} records")
-    reference = {
-        "records": len(current),
-        "compact_brief": size(["brief", "--level", "compact"]),
-        "standard_brief": size(["brief", "--level", "standard"]),
-        "title_sweep": sum(size(["show", identifier, "--depth", "title"]) for identifier in current),
-        "full_traversal": sum(size(["show", identifier, "--depth", "full"]) for identifier in current),
-    }
+    # Read-only calls, so they run side by side; the sums do not depend on the order.
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        titles = pool.map(size, [["show", identifier, "--depth", "title"] for identifier in current])
+        full = pool.map(size, [["show", identifier, "--depth", "full"] for identifier in current])
+        reference = {
+            "records": len(current),
+            "compact_brief": size(["brief", "--level", "compact"]),
+            "standard_brief": size(["brief", "--level", "standard"]),
+            "title_sweep": sum(titles),
+            "full_traversal": sum(full),
+        }
     blobs = sorted(path.relative_to(root).as_posix() for path in (root / "state/blobs").rglob("*") if path.is_file())
     return {"reference_bytes": reference, "raw_files": blobs + instance["key"].get("source_files", [])}
 

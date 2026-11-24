@@ -58,6 +58,8 @@ COST = runpy.run_path(str(ROOT / "scripts/a-gate-cost.py"))
 FIXTURE = runpy.run_path(str(ROOT / "scripts/check-fixture-families.py"))
 TT = runpy.run_path(str(ROOT / "scripts/trial-tasks.py"))
 TT810 = runpy.run_path(str(ROOT / "scripts/trial-tasks-8-10.py"))
+TRIAL_TASK_NUMBERS = ("5", "6", "7", "8", "9", "10")
+TRIAL_TASK_ROOTS = ("source_root", "key_root")
 
 PLAN_SCHEMA = "inv.release-trial-plan.v1"
 RUN_SCHEMA = "inv.release-trial-run.v1"
@@ -174,8 +176,9 @@ class CaseSet:
     digest when used. Keys are only ever read by `grade`.
     """
 
-    def __init__(self, split, opened=None, trial_tasks=None):
+    def __init__(self, split, opened=None, trial_tasks=None, task_roots=None):
         self.split = split
+        self.opened = Path(opened).resolve() if opened else None
         registry = read_json(REGISTRY)
         if split == "development":
             self.manifest_path = DRY_RUN / "manifest.json"
@@ -203,6 +206,37 @@ class CaseSet:
             trial_tasks = self.manifest.get("trial_tasks", {})
         self.trial_tasks = {str(number): [str(path) for path in paths]
                             for number, paths in (trial_tasks or {}).items()}
+        unknown = set(self.trial_tasks) - set(TRIAL_TASK_NUMBERS)
+        if unknown:
+            raise HarnessError(f"unknown trial-task numbers {sorted(unknown)}")
+        self.task_roots = {name: (task_roots or {}).get(name) for name in TRIAL_TASK_ROOTS}
+        if split == "sealed" and self.trial_tasks:
+            check_sealed_trial_tasks(self)
+
+    def task(self, path):
+        """A task 5-7 file, its sources and key read from this case set's roots."""
+        return TT["load_task"](str(resolve_input(path)), self.task_roots["source_root"], self.task_roots["key_root"])
+
+    def task_inputs(self):
+        """Every file the trial tasks read: task and instance files, task 5-7 keys and sources, task 8-10
+        instance sources and the repository drills or files an instance builds on."""
+        files = []
+        for number, paths in sorted(self.trial_tasks.items()):
+            for path in paths:
+                file = resolve_input(path)
+                files.append(file)
+                if number in ("5", "6", "7"):
+                    task = self.task(path)
+                    files.append(TT["key_path"](task))
+                    files += TT["source_files"](task)
+                    continue
+                instance = read_json(file)
+                setup = instance["setup"]
+                if "drill" in setup:
+                    files.append(TT810["DRILLS"] / setup["drill"])
+                for source in setup.get("base", {}).get("sources", []):
+                    files.append(ROOT / source["from"] if "from" in source else file.parent / source["from_instance_dir"])
+        return sorted({Path(file).resolve() for file in files})
 
     def variant(self, family, variant):
         return next(item for item in self.families[family]["variants"] if item["id"] == variant)
@@ -234,14 +268,11 @@ class CaseSet:
         digests = {entry["key_sha256"] for entry in self.entries.values()}
         for path in (ROOT / "training/trial-tasks/keys").glob("*.json"):
             digests.add(sha_file(path))
-        for paths in self.trial_tasks.values():
+        for number, paths in self.trial_tasks.items():
             for path in paths:
-                file = resolve_input(path)
-                digests.add(sha_file(file))
-                if file.suffix == ".json":
-                    task = read_json(file)
-                    if isinstance(task.get("key"), str):
-                        digests.add(sha_file(resolve_input(task["key"])))
+                digests.add(sha_file(resolve_input(path)))
+                if number in ("5", "6", "7"):
+                    digests.add(sha_file(TT["key_path"](self.task(path))))
         return digests
 
     def forbidden_paths(self):
@@ -252,7 +283,55 @@ class CaseSet:
         for task_paths in self.trial_tasks.values():
             for path in task_paths:
                 paths.add(resolve_input(path).parent)
+        paths |= {Path(root) for root in self.task_roots.values() if root}
         return sorted(str(path) for path in paths)
+
+
+def load_trial_tasks(path):
+    """A --trial-tasks file: {"5": [paths], ..., "10": [paths]} with optional "source_root" (task 5-7
+    sources, <root>/<family>/<variant>/) and "key_root" (the base of each task 5-7 `key`). Relative
+    paths are relative to the file. Returns (tasks, roots, the file's digest) with absolute paths."""
+    path = Path(path).resolve()
+    index = read_json(path)
+    unknown = set(index) - set(TRIAL_TASK_NUMBERS) - set(TRIAL_TASK_ROOTS)
+    if unknown:
+        raise HarnessError(f"{path}: unknown keys {sorted(unknown)}")
+    tasks = {number: [str((path.parent / item).resolve()) for item in index[number]]
+             for number in TRIAL_TASK_NUMBERS if index.get(number)}
+    roots = {name: str((path.parent / index[name]).resolve()) if index.get(name) else None for name in TRIAL_TASK_ROOTS}
+    return tasks, roots, sha_file(path)
+
+
+def check_sealed_trial_tasks(case_set, index_sha256=None, manifest=None):
+    """Sealed trial tasks must be the committed instances, read from the opened bundle: the opened
+    trial-tasks/ tree matches the manifest's tree digest, every planned instance file matches a committed
+    digest and every committed instance is planned, and every input outside the repository lies inside
+    that tree. Only digests are compared; nothing is printed from the files."""
+    manifest = manifest if manifest is not None else case_set.manifest
+    section = manifest.get("trial_tasks")
+    if not section:
+        raise HarnessError("no sealed trial-task instances are committed in the sealed manifest; "
+                           "seal them first (seal-release-families.py seal-trial-tasks) or plan with --families-only")
+    if case_set.opened is None:
+        raise HarnessError("sealed trial tasks are read from the opened bundle (--opened)")
+    tree = case_set.opened / section["tree"]["root"]
+    files = {}
+    for path in sorted(tree.rglob("*")) if tree.is_dir() else ():
+        if path.is_file():
+            files[path.relative_to(tree).as_posix()] = sha_file(path)
+    lines = "".join(f"{digest}  {name}\n" for name, digest in sorted(files.items()))
+    if len(files) != section["tree"]["files"] or sha_bytes(lines.encode("utf-8")) != section["tree"]["sha256"]:
+        raise HarnessError("the opened trial-task tree differs from its committed digest")
+    if index_sha256 is not None and index_sha256 != section["index"]["sha256"]:
+        raise HarnessError("--trial-tasks is not the committed trial-task index")
+    committed = sorted((str(entry["task"]), entry["sha256"]) for entry in section["tasks"])
+    planned = sorted((number, sha_file(resolve_input(path))) for number, paths in case_set.trial_tasks.items()
+                     for path in paths)
+    if planned != committed:
+        raise HarnessError("the planned trial-task instances differ from the committed ones")
+    for file in case_set.task_inputs():
+        if not file.is_relative_to(ROOT) and not file.is_relative_to(tree.resolve()):
+            raise HarnessError(f"a sealed trial-task input lies outside the opened bundle: {file}")
 
 
 def resolve_input(path):
@@ -281,7 +360,7 @@ def units(case_set, secondary=()):
                        "arms": list(ARMS), "primary": False, "theme": entry.get("theme")})
     for number in ("5", "6", "7"):
         for path in case_set.trial_tasks.get(number, []):
-            task = TT["load_task"](str(resolve_input(path)))
+            task = case_set.task(path)
             base = {"task_type": f"task-{number}", "task": path, "family": task["family"],
                     "domain": task["domain"], "twin": None, "primary": False}
             if "stages" not in task:
@@ -457,10 +536,11 @@ class CommandBackend:
 
     def describe(self, models):
         reply = self.call({"kind": "describe", "models": list(models)}, 120)
-        if set(reply.get("models", {})) != set(models):
+        if not isinstance(reply, dict) or set(reply.get("models") or {}) != set(models):
             raise HarnessError("the adapter must describe every model")
+        files = adapter_files(self.argv)
         executable = shutil.which(self.argv[0]) or self.argv[0]
-        reply["adapter"] = {"argv": self.argv, "sha256": sha_file(executable) if Path(executable).is_file() else None}
+        reply["adapter"] = {"argv": self.argv, "sha256": files.get(str(Path(executable).resolve())), "files": files}
         return reply
 
     def call(self, request, timeout):
@@ -479,6 +559,18 @@ class CommandBackend:
             raise TimeoutError from None
 
 
+def adapter_files(argv):
+    """Digests of the adapter's files: the executable and every argument that names an existing file
+    (an interpreter's script, for example). The plan pins all of them; `run` refuses if one changed."""
+    files = {}
+    executable = shutil.which(argv[0]) or argv[0]
+    for index, word in enumerate([executable, *argv[1:]]):
+        path = Path(word)
+        if (index == 0 or not word.startswith("-")) and path.is_file():
+            files[str(path.resolve())] = sha_file(path)
+    return files
+
+
 # The smallest adapter that follows the protocol. It names no host: a real adapter translates
 # the request to its host's API, keeps no state between calls and reports metered tokens.
 ADAPTER_EXAMPLE = '''import json, sys
@@ -486,6 +578,8 @@ request = json.load(sys.stdin)
 if request["kind"] == "describe":
     reply = {"provider": "example", "version": "1", "metering": "example counts",
              "models": {model: "example:" + model for model in request["models"]}}
+elif request["kind"] != "chat":
+    sys.exit("unknown request kind")
 else:
     fields = {name: "example" for name in ("answer", "citation", "limitation", "next")}
     reply = {"message": {"role": "assistant", "content": "", "tool_calls": [
@@ -522,10 +616,126 @@ def make_backend(config, override_command=None):
         executable = shutil.which(argv[0]) or argv[0]
         if config.get("adapter_sha256") and Path(executable).is_file() and sha_file(executable) != config["adapter_sha256"]:
             raise HarnessError("the backend adapter changed since the plan was frozen")
+        pinned = config.get("adapter_files")
+        if pinned is not None and sorted(adapter_files(argv).values()) != sorted(pinned.values()):
+            raise HarnessError("the backend adapter's files changed since the plan was frozen")
         return backend
     if config["kind"] == "local":
         return LocalBackend()
     raise HarnessError(f"unknown backend {config['kind']}")
+
+
+# --- Adapter conformance -------------------------------------------------------------------------
+
+CONFORMANCE_PROMPT = ("This is a protocol check, not a task. Call the submit_answer tool exactly once with "
+                      "answer 'conformance', citation 'none', limitation 'none' and next 'none'. Call no other tool.")
+
+
+def reply_problems(reply, offered):
+    """What is wrong with one chat reply under the protocol, as a list of strings (empty when it conforms)."""
+    problems = []
+    if not isinstance(reply, dict):
+        return ["the reply is not a JSON object"]
+    message = reply.get("message")
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        problems.append("message must be an object with role 'assistant'")
+        message = {}
+    if not isinstance(message.get("content", ""), (str, type(None))):
+        problems.append("message.content must be a string")
+    calls = message.get("tool_calls") or []
+    if not isinstance(calls, list):
+        problems.append("message.tool_calls must be a list")
+        calls = []
+    for call in calls:
+        function = call.get("function") if isinstance(call, dict) else None
+        if not isinstance(function, dict) or function.get("name") not in offered:
+            problems.append(f"a tool call names a tool that was not offered: {json.dumps(call)[:200]}")
+            continue
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = None
+        if not isinstance(arguments, dict):
+            problems.append("tool call arguments must be an object or a JSON object string")
+    for name in ("prompt_eval_count", "eval_count"):
+        value = reply.get(name)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            problems.append(f"{name} must be a metered non-negative integer")
+    if reply.get("prompt_eval_count") == 0:
+        problems.append("prompt_eval_count is 0: input tokens are not metered")
+    cached = reply.get("prompt_eval_cached_count")
+    if cached is not None and (not isinstance(cached, int) or isinstance(cached, bool) or cached < 0):
+        problems.append("prompt_eval_cached_count must be a non-negative integer when present")
+    if reply.get("done_reason") is not None and not isinstance(reply.get("done_reason"), str):
+        problems.append("done_reason must be a string when present")
+    return problems
+
+
+def adapter_conformance(argv, models, deadline=120):
+    """The checks any `command` adapter must pass before a plan uses it. It describes every model, and for
+    each model it answers a first turn with a valid submit_answer call, answers a later turn that carries an
+    assistant tool call and its tool result, meters tokens, returns within the deadline, and exits non-zero
+    on a request kind it does not know. Returns {"checks", "failed", "adapter"}; costs a few model turns."""
+    checks, failed = [], []
+
+    def check(name, condition, detail=None):
+        checks.append(name)
+        if not condition:
+            failed.append({"check": name, "detail": detail})
+        return condition
+
+    backend = CommandBackend(argv)
+    try:
+        described = backend.describe(models)
+    except (HarnessError, OSError, ValueError, subprocess.TimeoutExpired) as error:
+        check("describe", False, f"{type(error).__name__}: {str(error)[:500]}")
+        return {"checks": len(checks), "failed": failed, "adapter": {"argv": list(argv), "files": adapter_files(argv)}}
+    check("describe_fields", all(isinstance(described.get(name), str) and described[name]
+                                 for name in ("provider", "version", "metering")), described)
+    check("describe_identifiers", all(isinstance(value, str) and value for value in described["models"].values()),
+          described["models"])
+    tools = [SHELL_TOOL, SUBMIT]
+    offered = {tool["function"]["name"] for tool in tools}
+    for model in models:
+        first = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": CONFORMANCE_PROMPT}]
+        started = time.monotonic()
+        try:
+            reply = backend.chat(model, first, tools, dict(INFERENCE), f"conformance-{model}-1", deadline)
+        except (OSError, ValueError, TimeoutError) as error:
+            check(f"chat_first_turn:{model}", False, f"{type(error).__name__}: {str(error)[:500]}")
+            continue
+        check(f"chat_within_deadline:{model}", time.monotonic() - started <= deadline)
+        problems = reply_problems(reply, offered)
+        check(f"chat_reply_shape:{model}", not problems, problems)
+        submitted = [call["function"] for call in (reply.get("message") or {}).get("tool_calls") or []
+                     if isinstance(call, dict) and isinstance(call.get("function"), dict)
+                     and call["function"].get("name") == "submit_answer"]
+        arguments = submitted[0].get("arguments") if submitted else None
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = None
+        check(f"tool_call_round_trip:{model}", isinstance(arguments, dict)
+              and RUNNER["validate_answer"](arguments) is not None, reply.get("message"))
+        later = first + [{"role": "assistant", "content": "", "tool_calls": [
+            {"function": {"name": "shell", "arguments": {"command": "echo conformance"}}}]},
+            {"role": "tool", "tool_name": "shell", "content": json.dumps({"exit": 0, "output": "conformance\n"})}]
+        try:
+            reply = backend.chat(model, later, tools, dict(INFERENCE), f"conformance-{model}-2", deadline)
+            problems = reply_problems(reply, offered)
+            check(f"chat_later_turn:{model}", not problems, problems)
+        except (OSError, ValueError, TimeoutError) as error:
+            check(f"chat_later_turn:{model}", False, f"{type(error).__name__}: {str(error)[:500]}")
+    try:
+        backend.call({"kind": "conformance-unknown-kind"}, 60)
+        check("refuses_unknown_kind", False, "the adapter answered a request kind it does not know")
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        check("refuses_unknown_kind", True)
+    return {"checks": len(checks), "failed": failed, "adapter": described["adapter"],
+            "description": {k: v for k, v in described.items() if k != "adapter"}}
 
 
 # --- Sandbox, bridge and isolation ---------------------------------------------------------------
@@ -1111,7 +1321,7 @@ exec bwrap --unshare-all --hostname trial --die-with-parent --new-session {mount
 
     def run_task_5_7(self):
         a = self.assignment
-        task = TT["staged"](TT["load_task"](str(resolve_input(a["task"]))), a["stage"])
+        task = TT["staged"](self.trial.case_set.task(a["task"]), a["stage"])
         visible = "/work" if self.mode == "bwrap" else None
         setup = TT["setup"](task, str(self.trial.binary), self.work, self.evaluator, a["arm"], a["condition"], visible)
         details = self.prepare(a["arm"], self.evaluator / "plan.json" if a["arm"] == "inv" else None)
@@ -1185,11 +1395,8 @@ def harness_inputs(case_set):
              ROOT / "scripts/a-gate-cost.py", ROOT / "scripts/check-fixture-families.py",
              ROOT / "scripts/trial-tasks.py", ROOT / "scripts/trial-tasks-8-10.py", REGISTRY, case_set.manifest_path,
              TASK_SPEC_8_10, PREREGISTRATION]
-    for task_paths in case_set.trial_tasks.values():
-        for path in task_paths:
-            file = resolve_input(path)
-            paths.append(file)
-    return {relative(path): sha_file(path) for path in sorted(set(paths))}
+    paths += case_set.task_inputs()
+    return {relative(path): sha_file(path) for path in sorted({Path(path).resolve() for path in paths})}
 
 
 def make_plan(args):
@@ -1205,8 +1412,13 @@ def make_plan(args):
             raise HarnessError("give --trial-tasks with the sealed task 5-10 instances, or --families-only")
     if len(set(args.model)) != len(args.model):
         raise HarnessError("use distinct model names")
-    trial_tasks = read_json(args.trial_tasks) if args.trial_tasks else ({} if args.families_only else None)
-    case_set = CaseSet(args.split, args.opened, trial_tasks)
+    if args.trial_tasks and args.families_only:
+        raise HarnessError("give --trial-tasks or --families-only, not both")
+    trial_tasks, roots, index_sha256 = load_trial_tasks(args.trial_tasks) if args.trial_tasks else (
+        {} if args.families_only else None, None, None)
+    case_set = CaseSet(args.split, args.opened, trial_tasks, roots)
+    if args.split == "sealed" and case_set.trial_tasks:
+        check_sealed_trial_tasks(case_set, index_sha256)
     mode = args.sandbox
     if mode == "auto":
         mode = "bwrap" if bwrap_works() else "none"
@@ -1230,10 +1442,29 @@ def make_plan(args):
         if not args.backend_command:
             raise HarnessError("the command backend needs --backend-command")
         backend_config["argv"] = shlex.split(args.backend_command)
+        files = adapter_files(backend_config["argv"])
+        pins = getattr(args, "adapter_sha256", None) or []
+        missing = set(pins) - set(files.values())
+        if missing:
+            raise HarnessError(f"no adapter file has the pinned digest {sorted(missing)[0]}; "
+                               "the adapter differs from the one the operator reviewed")
+        if args.split == "sealed":
+            if not pins:
+                raise HarnessError("the sealed trial needs --adapter-sha256 with the reviewed adapter's digest")
+            inside = [path for path in files if Path(path).is_relative_to(ROOT)]
+            if inside:
+                raise HarnessError("the adapter must live outside the repository")
+        conformance = adapter_conformance(backend_config["argv"], args.model)
+        if conformance["failed"]:
+            raise HarnessError("the adapter fails the conformance checks: "
+                               + json.dumps(conformance["failed"])[:2000])
+        backend_config["conformance"] = {"checks": conformance["checks"], "failed": []}
     backend = make_backend(backend_config)
     description = backend.describe(args.model)
     if args.backend == "command":
         backend_config["adapter_sha256"] = description["adapter"]["sha256"]
+        backend_config["adapter_files"] = description["adapter"]["files"]
+        backend_config["adapter_pins"] = sorted(getattr(args, "adapter_sha256", None) or [])
     backend_config["description"] = description
     secondary = {}
     for name in args.secondary:
@@ -1261,7 +1492,8 @@ def make_plan(args):
         "case_set": {"manifest": relative(case_set.manifest_path), "registry": relative(REGISTRY),
                      "opened": str(Path(args.opened).resolve()) if args.opened else None,
                      "keys": {family: entry["key_sha256"] for family, entry in sorted(case_set.entries.items())},
-                     "trial_tasks": case_set.trial_tasks},
+                     "trial_tasks": case_set.trial_tasks, "trial_task_roots": case_set.task_roots,
+                     "trial_task_index_sha256": index_sha256},
         "backend": backend_config, "models": args.model,
         "inference": INFERENCE, "budgets": BUDGETS, "role_budgets": ROLE_BUDGET, "shell_seconds": SHELL_SECONDS,
         "shell_output_bytes": SHELL_BYTES,
@@ -1299,7 +1531,7 @@ class Trial:
         self.plan = read_json(self.dir / "plan.json")
         opened = opened or self.plan["case_set"]["opened"]
         tasks = self.plan["case_set"]["trial_tasks"]
-        self.case_set = CaseSet(self.plan["split"], opened, tasks)
+        self.case_set = CaseSet(self.plan["split"], opened, tasks, self.plan["case_set"].get("trial_task_roots"))
         for path, digest in self.plan["inputs"].items():
             if sha_file(resolve_input(path)) != digest:
                 raise HarnessError(f"harness input changed since the plan was frozen: {path}")
@@ -1349,6 +1581,9 @@ def run_trial(directory, only=(), parallel=1, opened=None, backend_command=None,
     if parallel == 1:
         results = [one(assignment) for assignment in pending]
     else:
+        # Development dry runs only: start the slowest task types first so no long run is left for the end.
+        slow = {"task-8": 0, "task-5": 1, "task-7": 1}
+        pending.sort(key=lambda item: (slow.get(item["task_type"], 2), item["sequence"]))
         with ThreadPoolExecutor(max_workers=parallel) as pool:
             results = list(pool.map(one, pending))
     trial.verify_binary()
@@ -1368,8 +1603,8 @@ def answer_key(trial, assignment):
                      if (data := cases.document(assignment["family"], assignment["variant"], name)) is not None}
         return f"{assignment['family']}/{assignment['variant']}", key["variants"][assignment["variant"]], documents
     if task_type in ("task-5", "task-6", "task-7"):
-        task = TT["staged"](TT["load_task"](str(resolve_input(assignment["task"]))), assignment["stage"])
-        key = read_json(resolve_input(task["key"]))
+        task = TT["staged"](cases.task(assignment["task"]), assignment["stage"])
+        key = read_json(TT["key_path"](task))
         spec = task["arms"].get("inv", {})
         directory = TT["source_dir"](task, spec)
         documents = {name: (directory / name).read_bytes() for name in DOCUMENTS if (directory / name).is_file()}
@@ -1413,7 +1648,7 @@ def mechanics(trial, assignment, record, scratch, answer_row):
     copy_root = scratch / assignment["id"]
     if task_type in ("task-5", "task-6", "task-7"):
         shutil.copytree(work, copy_root / "work", symlinks=True)
-        task = TT["staged"](TT["load_task"](str(resolve_input(assignment["task"]))), assignment["stage"])
+        task = TT["staged"](trial.case_set.task(assignment["task"]), assignment["stage"])
         setup = read_json(run_dir / "evaluator/setup.json")
         calls = TT["read_calls"](run_dir / "evaluator/calls.jsonl")
         result = TT["grade"](task, setup, copy_root / "work", calls, binary)
@@ -1615,7 +1850,8 @@ def verify(directory):
 def dry_run(binary, output, models=("dry-run-a",), seed=1405, parallel=1, sandbox="auto", trace="auto", quiet=True):
     args = argparse.Namespace(split="development", bin=binary, binary_commit=git_head(), output=output,
                               model=list(models), seed=seed, backend="stub", backend_command=None, opened=None,
-                              trial_tasks=None, families_only=False, secondary=[], sandbox=sandbox, trace=trace)
+                              trial_tasks=None, families_only=False, secondary=[], sandbox=sandbox, trace=trace,
+                              adapter_sha256=[])
     directory = make_plan(args)
     run_trial(directory, parallel=parallel, quiet=quiet)
     graded = grade_trial(directory)
@@ -1651,6 +1887,146 @@ def schema_check(value, schema, definitions=None, path="$"):
                 if name not in schema.get("properties", {}):
                     errors += schema_check(child, extra, definitions, f"{path}.{name}")
     return errors
+
+
+def adapter_self_test(scratch, adapter, check):
+    """The conformance checks pass a conforming stub adapter (written to a temporary directory, never to
+    the repository) and fail a broken one; the plan pins the script, not only its interpreter."""
+    argv = [sys.executable, "-I", str(adapter)]
+    report = adapter_conformance(argv, ["m1", "m2"], deadline=30)
+    check("adapter_conformance_passes_the_stub", not report["failed"] and report["checks"] >= 9, report)
+    broken = scratch / "broken-adapter.py"
+    broken.write_text('''import json, sys
+request = json.load(sys.stdin)
+if request["kind"] == "describe":
+    reply = {"provider": "broken", "version": "1", "metering": "none",
+             "models": {model: "broken:" + model for model in request["models"]}}
+else:
+    reply = {"message": {"role": "assistant", "content": "", "tool_calls": [
+                 {"function": {"name": "delete_everything", "arguments": "{}"}}]},
+             "prompt_eval_count": "many", "eval_count": 1}
+json.dump(reply, sys.stdout)
+''', encoding="utf-8")
+    report = adapter_conformance([sys.executable, "-I", str(broken)], ["m1"], deadline=30)
+    failed = {item["check"] for item in report["failed"]}
+    check("adapter_conformance_fails_a_broken_adapter",
+          {"chat_reply_shape:m1", "tool_call_round_trip:m1", "refuses_unknown_kind"} <= failed, sorted(failed))
+    files = adapter_files(argv)
+    check("adapter_digest_pins_the_script", str(adapter.resolve()) in files and len(files) == 2, files)
+    config = {"kind": "command", "argv": argv, "adapter_files": files}
+    make_backend(config)
+    original = adapter.read_text(encoding="utf-8")
+    adapter.write_text(original + "# edited\n", encoding="utf-8")
+    try:
+        make_backend(config)
+        check("adapter_change_refused", False)
+    except HarnessError:
+        check("adapter_change_refused", True)
+    adapter.write_text(original, encoding="utf-8")
+
+
+def trial_task_self_test(scratch, check):
+    """Sealed trial-task instances end to end, with copies of development instances and a throwaway
+    passphrase in a temporary directory: the source and key roots are honoured, the seal commits only
+    digests, the opened bundle passes the plan's commitment check, and a changed or substituted file fails."""
+    seal = runpy.run_path(str(ROOT / "scripts/seal-release-families.py"))
+    authoring = scratch / "authoring"
+    (authoring / "keys").mkdir(parents=True)
+    task6 = read_json(ROOT / "training/trial-tasks/tasks/task-6-lost-response-conflict.json")
+    task6.update(family="release-t6-01", split="sealed", key="keys/release-t6-01.json")
+    variant = task6["phase"]["variant"]
+    sources = authoring / "sources/release-t6-01" / variant
+    sources.mkdir(parents=True)
+    origin = ROOT / "fixtures/development/trial-tasks/proofer-temperature-drift" / variant
+    for name in ("source.txt", "update.txt"):
+        (sources / name).write_bytes((origin / name).read_bytes() + b"Self-test copy.\n")
+    key = read_json(ROOT / "training/trial-tasks/keys/proofer-temperature-drift.json")
+    (authoring / "keys/release-t6-01.json").write_text(json.dumps(key), encoding="utf-8")
+    (authoring / "task-6").mkdir()
+    (authoring / "task-6/release-t6-01.json").write_text(json.dumps(task6, indent=1), encoding="utf-8")
+    task8 = read_json(ROOT / "training/trial-tasks/tasks-8-10/development/task-8-export-stalls.json")
+    task8.update(id="release-t8-01", split="sealed")
+    (authoring / "task-8/release-t8-01").mkdir(parents=True)
+    for source in task8["setup"]["base"]["sources"]:
+        target = f"release-t8-01/{source['as']}"
+        (authoring / "task-8" / target).write_bytes((ROOT / source.pop("from")).read_bytes() + b"Self-test copy.\n")
+        source["from_instance_dir"] = target
+    (authoring / "task-8/release-t8-01.json").write_text(json.dumps(task8, indent=1), encoding="utf-8")
+    index = {"6": ["task-6/release-t6-01.json"], "8": ["task-8/release-t8-01.json"],
+             "source_root": "sources", "key_root": "."}
+    (authoring / "trial-tasks.json").write_text(json.dumps(index), encoding="utf-8")
+
+    # Item 2: the roots are honoured, and every file is pinned at plan time.
+    tasks, roots, index_sha256 = load_trial_tasks(authoring / "trial-tasks.json")
+    cases = CaseSet("development", None, tasks, roots)
+    loaded = cases.task(tasks["6"][0])
+    check("trial_task_source_root", TT["source_dir"](loaded) == sources.resolve()
+          and TT["key_path"](loaded) == (authoring / "keys/release-t6-01.json").resolve())
+    inputs = cases.task_inputs()
+    check("trial_task_inputs_pinned", {path.relative_to(authoring.resolve()).as_posix() for path in inputs
+                                       if path.is_relative_to(authoring.resolve())} ==
+          {"task-6/release-t6-01.json", "keys/release-t6-01.json", f"sources/release-t6-01/{variant}/source.txt",
+           f"sources/release-t6-01/{variant}/update.txt", "task-8/release-t8-01.json",
+           "task-8/release-t8-01/source.txt", "task-8/release-t8-01/update.txt"}, [str(path) for path in inputs])
+    check("trial_task_units", Counter(unit["task_type"] for unit in units(types.SimpleNamespace(
+        manifest={"families": []}, families={}, trial_tasks=tasks, task=cases.task))) == {"task-6": 1, "task-8": 1})
+
+    # Item 1: seal with a throwaway passphrase, commit digests only, open, and check the commitments.
+    passphrase = scratch / "throwaway.key"
+    passphrase.write_bytes(os.urandom(32).hex().encode())
+    passphrase.chmod(0o600)
+    manifest = scratch / "manifest.json"
+    manifest.write_text(SEALED_MANIFEST.read_text(encoding="utf-8"), encoding="utf-8")
+    ciphertext = scratch / "trial-tasks.tar.gz.enc"
+    section = seal["bundle_trial_tasks"](authoring, passphrase, {"authors": ["self-test"]}, manifest, ciphertext)
+    public = json.dumps(section)
+    check("trial_task_commitments_are_opaque", section["counts"]["6"] == 1 and section["counts"]["8"] == 1
+          and "proofer" not in public and "source.txt" not in public and "Self-test copy" not in ciphertext.read_text(
+              encoding="latin-1"), section)
+    try:
+        seal["bundle_trial_tasks"](authoring, passphrase, {}, manifest, ciphertext)
+        check("trial_task_seal_once", False)
+    except SystemExit:
+        check("trial_task_seal_once", True)
+    opened = scratch / "opened"
+    opened.mkdir(mode=0o700)
+    seal["unpack_trial_tasks"](passphrase, opened, section, ciphertext)
+    tasks, roots, index_sha256 = load_trial_tasks(opened / "trial-tasks/trial-tasks.json")
+    sealed = CaseSet("development", None, tasks, roots)
+    sealed.opened = opened.resolve()
+
+    def refused(**changes):
+        try:
+            check_sealed_trial_tasks(**{"case_set": sealed, "index_sha256": index_sha256,
+                                        "manifest": {"trial_tasks": section}, **changes})
+            return False
+        except HarnessError:
+            return True
+    check("trial_task_commitments_accept_the_opened_bundle", not refused())
+    check("trial_task_commitments_refuse_another_index", refused(index_sha256="0" * 64))
+    check("trial_task_commitments_refuse_no_section", refused(manifest={}))
+    partial = CaseSet("development", None, {"6": tasks["6"]}, roots)
+    partial.opened = sealed.opened
+    check("trial_task_commitments_refuse_a_partial_plan", refused(case_set=partial))
+    victim = opened / "trial-tasks/sources/release-t6-01" / variant / "update.txt"
+    victim.chmod(0o600)
+    victim.write_bytes(victim.read_bytes() + b"changed\n")
+    check("trial_task_commitments_refuse_a_changed_source", refused())
+    # The checker refuses development bytes, non-opaque IDs and development splits.
+    (sources / "update.txt").write_bytes((origin / "update.txt").read_bytes())
+    try:
+        seal["check_trial_task_set"](authoring)
+        check("trial_task_check_refuses_reused_bytes", False)
+    except ValueError as error:
+        check("trial_task_check_refuses_reused_bytes", "reuse" in str(error), str(error))
+    (sources / "update.txt").write_bytes((origin / "update.txt").read_bytes() + b"Self-test copy.\n")
+    task6.update(family="proofer-temperature-drift")
+    (authoring / "task-6/release-t6-01.json").write_text(json.dumps(task6), encoding="utf-8")
+    try:
+        seal["check_trial_task_set"](authoring)
+        check("trial_task_check_refuses_named_ids", False)
+    except ValueError as error:
+        check("trial_task_check_refuses_named_ids", "opaque" in str(error), str(error))
 
 
 def self_test(binary, keep=None, sandbox="auto"):
@@ -1732,12 +2108,14 @@ def self_test(binary, keep=None, sandbox="auto"):
                              [SUBMIT], dict(INFERENCE), "session", 30)
         check("adapter_protocol", described["models"] == {"m1": "example:m1"} and described["adapter"]["sha256"]
               and RUNNER["validate_answer"](reply["message"]["tool_calls"][0]["function"]["arguments"]), reply)
+        adapter_self_test(scratch, adapter, check)
+        trial_task_self_test(scratch / "trial-tasks", check)
         key_file = next((DRY_RUN / "keys").glob("*.json"))
         shutil.copyfile(key_file, work / "copied.json")
         holder = types.SimpleNamespace(work=work, trial=types.SimpleNamespace(key_digests=cases.key_digests()))
         check("content_scan_detects_a_key", Run.content_scan(holder)["matches"] == [
             {"path": "copied.json", "key_bytes": True}])
-        directory, graded = dry_run(binary, scratch / "trial", parallel=4, sandbox=sandbox)
+        directory, graded = dry_run(binary, scratch / "trial", parallel=6, sandbox=sandbox)
         plan = read_json(directory / "plan.json")
         schema = read_json(ROOT / "training/release-trial/run-record.schema.json")
         records = {path.parent.name: read_json(path) for path in (directory / "runs").glob("*/run.json")}
@@ -1833,6 +2211,8 @@ def main():
     plan.add_argument("--seed", type=int, required=True)
     plan.add_argument("--backend", choices=("stub", "command", "local"), required=True)
     plan.add_argument("--backend-command", help="the adapter command line for --backend command")
+    plan.add_argument("--adapter-sha256", action="append", default=[],
+                      help="the reviewed adapter file's SHA-256 (sha256sum); the plan refuses a different adapter")
     plan.add_argument("--opened", help="sealed: the opened bundle directory, outside the repository")
     plan.add_argument("--trial-tasks", help="sealed: JSON {task number: [instance paths]} for tasks 5-10")
     plan.add_argument("--families-only", action="store_true", help="sealed: plan families and lookups only")
@@ -1848,6 +2228,9 @@ def main():
     grade = commands.add_parser("grade", help="blind, grade, reconcile and freeze")
     grade.add_argument("trial")
     grade.add_argument("--opened")
+    conform = commands.add_parser("adapter-check", help="run the conformance checks on a command-backend adapter")
+    conform.add_argument("--backend-command", required=True, help="the adapter command line")
+    conform.add_argument("--model", action="append", required=True)
     check = commands.add_parser("verify", help="check a frozen trial against frozen.json")
     check.add_argument("trial")
     dry = commands.add_parser("dry-run", help="plan, run and grade the development set with the stub")
@@ -1869,6 +2252,10 @@ def main():
             run_trial(args.trial, set(args.only), args.parallel, args.opened, args.backend_command)
         elif args.command == "grade":
             print(json.dumps(grade_trial(args.trial, args.opened), indent=2))
+        elif args.command == "adapter-check":
+            report = adapter_conformance(shlex.split(args.backend_command), args.model)
+            print(json.dumps(report, indent=2))
+            sys.exit(1 if report["failed"] else 0)
         elif args.command == "verify":
             result = verify(args.trial)
             print(json.dumps(result, indent=2))

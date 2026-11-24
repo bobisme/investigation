@@ -34,7 +34,7 @@ The development instances reuse the drill fixtures in place. No source bytes are
 
 ## Sealed instances
 
-Sealed instances use the same format. Their author (W14.01) keeps them, with their sources, outside this repository, as `fixtures/README.md` requires. Each sealed instance needs a rehearsal. Before the trial, run `self-check` on the sealed files. A sealed case enters the trial only when its correct path passes and every scripted fault is caught on the frozen binary. Development instances never enter the sealed sample.
+Sealed instances use the same format. Their author (W14.01) keeps them, with their sources, outside this repository, as `fixtures/README.md` requires. A sealed instance has an opaque `id` (`release-t8-01`), takes every source `from_instance_dir`, and does not replay a repository drill. Each sealed instance needs a rehearsal. Before the trial, run `self-check` on the sealed files. A sealed case enters the trial only when its correct path passes and every scripted fault is caught on the frozen binary. `seal-release-families.py check-trial-tasks` and `seal-trial-tasks` run that self-check before they seal; see [Trial-task instances](../../release/families/README.md#trial-task-instances-w1405b). Development instances never enter the sealed sample.
 
 ## Running a task
 

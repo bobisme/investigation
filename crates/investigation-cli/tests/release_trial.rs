@@ -5,7 +5,11 @@
 //! four domains, twins in opposite order, the sealed design's 672
 //! assignments from its public commitments alone), the dry-run rubric keys,
 //! and that the isolation probe and key scan catch a visible path and a
-//! copied key. It then runs a full dry run of the development set offline
+//! copied key. It checks the command-backend adapter conformance suite
+//! against a stub adapter written to a temporary directory (and a broken
+//! one, which must fail), and seals copies of development task instances
+//! with a throwaway passphrase to exercise the sealed trial-task
+//! commitments, source and key roots, and refusals. It then runs a full dry run of the development set offline
 //! with the scripted stub participant: both arms of every task type that has
 //! both, transcripts, answers, workspace snapshots, complete cost records,
 //! blinded grading, mechanics grading, reconciliation, and a frozen,

@@ -6,9 +6,10 @@
 python3 scripts/release-trial.py dry-run --bin target/debug/investigation --output DIR    # development set, stub participant
 python3 scripts/release-trial.py self-test --bin target/debug/investigation               # unit checks plus a dry run (cargo test)
 
+python3 scripts/release-trial.py adapter-check --backend-command 'ADAPTER ARGS' --model MODEL-A --model MODEL-B
 python3 scripts/release-trial.py plan --split sealed --bin RC --binary-commit SHA --output /outside/repo/trial \
   --model MODEL-A --model MODEL-B --seed SEED --backend command --backend-command 'ADAPTER ARGS' \
-  --opened /outside/repo/opened --trial-tasks /outside/repo/sealed-tasks.json
+  --adapter-sha256 REVIEWED-SHA --opened /outside/repo/opened --trial-tasks /outside/repo/opened/trial-tasks/trial-tasks.json
 python3 scripts/release-trial.py run /outside/repo/trial --opened /outside/repo/opened
 python3 scripts/release-trial.py grade /outside/repo/trial --opened /outside/repo/opened
 python3 scripts/release-trial.py verify /outside/repo/trial
@@ -38,13 +39,17 @@ Tasks 9 and 10 are graded on journals, and their specifications define no notes 
 `plan` writes `plan.json` once and records its SHA-256 in `plan.sha256`. `run` and `grade` refuse to continue if the plan file changed. The plan fixes the following:
 
 - **Binary.** A copy is placed at `frozen/investigation` with mode `0555`, and its digest and commit are recorded. Runs use only the copy. Its digest is checked when each assignment starts and when the batch ends.
-- **Inputs.** The plan stores the digest of every repository file the harness reads: the harness and the scripts it loads, the registry, the case-set manifest, the task files, the task 8–10 specification and the preregistration. `run` and `grade` refuse to continue if any of them changed.
+- **Inputs.** The plan stores the digest of every file the harness reads: the harness and the scripts it loads, the registry, the case-set manifest, the task 8–10 specification, the preregistration, and every trial-task input (each task or instance file, each task 5–7 key and source file, and each task 8–10 instance source or drill). `run` and `grade` refuse to continue if any of them changed.
 - **Case set.** `development` reads `training/release-trial/dry-run/manifest.json` and loads sources from `fixtures/`. `sealed` reads the W14.01 manifest and an opened bundle outside the repository. It reads objectives and sources from `<opened>/sealed/` and keys from `<opened>/evaluator/`. Each file is checked against its registered digest when it is used. Keys are read only by `grade`. The plan stores key digests, never key content.
-- **Backend, models and inference.** The plan records the backend kind, the model names and the identifiers the backend reports, the adapter's command line and digest, the inference options (the pilot's: temperature 0, a 2,048-token cap per response) and the metering statement.
+- **Backend, models and inference.** The plan records the backend kind, the model names and the identifiers the backend reports, the adapter's command line, the digest of every adapter file (see [Pinning the adapter](#pinning-the-adapter)), the conformance result, the inference options (the pilot's: temperature 0, a 2,048-token cap per response) and the metering statement.
 - **Budgets, prompts and sandbox.** The plan records the pilot budgets: an investigator, reviewer or closer gets 210 s, 28 shell calls, 180,000 input and 14,000 output tokens; a successor gets 120 s, 14 shell calls, 95,000 input and 6,000 output tokens. It also records each shell call's limit of 12 s and 12,000 bytes, the prompt templates, the sandbox mode, the trace, the sandbox limits and the versions of bubblewrap, strace, bash and Python.
 - **Schedule.** The plan stores the seed and every assignment. See [Schedule](#schedule).
 
-The sealed split refuses the following: the stub backend, fewer than two models, a trial directory inside the repository, an opened bundle inside the repository, and a missing bubblewrap sandbox or syscall trace. It also needs either `--trial-tasks FILE`, which lists the sealed task 5–10 instances as `{"5": [paths], ...}`, or an explicit `--families-only`. It checks that the primary assignment count equals the preregistered 672.
+The sealed split refuses the following: the stub backend, fewer than two models, a trial directory inside the repository, an opened bundle inside the repository, a missing bubblewrap sandbox or syscall trace, and a command adapter that fails the [conformance checks](#adapter-conformance), lives inside the repository or has no `--adapter-sha256`. It also needs either `--trial-tasks FILE` or an explicit `--families-only`. It checks that the primary assignment count equals the preregistered 672.
+
+**Trial-task file.** `--trial-tasks FILE` lists task 5–10 instances as `{"5": [paths], ..., "10": [paths]}`, with two optional keys: `source_root`, the directory that holds task 5–7 sources as `<family>/<variant>/`, and `key_root`, the base of each task 5–7 `key`. Relative paths are relative to the file. Without them, sources come from `fixtures/development/trial-tasks/` and keys from the repository, as in development. The plan stores the absolute paths and the roots.
+
+**Sealed trial tasks.** The sealed instances are sealed in a bundle of their own (see [Trial-task instances](../release/families/README.md#trial-task-instances-w1405b)). `open` writes them to `<opened>/trial-tasks/`, and the index there, `trial-tasks.json`, is the file to pass. In the sealed split, `plan`, `run` and `grade` check the following against the manifest's `trial_tasks` commitments: the opened tree matches its committed digest; the file given is the committed index; the planned instances are exactly the committed ones; and every input outside the repository lies inside the opened tree. Only digests are compared. If the manifest commits no instances, the sealed plan with `--trial-tasks` is refused, and `--families-only` remains the only option.
 
 ## Schedule
 
@@ -76,8 +81,28 @@ The `bwrap` sandbox gives the participant a private `/work`, a read-only `/usr`,
 ## Backends
 
 - **`stub`.** An offline, deterministic participant for dry runs. It plays one generic script in both arms: it lists the directory and reads the sources, uses the CLI if one is on PATH (`init` and `start`, or `brief`) and otherwise reads and appends `NOTES.md`, honors the review checkpoint and end marker, and submits a placeholder answer. Its token counts are an estimate (serialized characters divided by 4), and the metering statement says so.
-- **`command`.** An operator-supplied adapter, run once per model turn. Its stdin is `{"kind": "chat", "model", "session_id", "messages", "tools", "options", "deadline_seconds"}`. Its stdout must be `{"message": {"role", "content", "tool_calls": [{"function": {"name", "arguments"}}]}, "prompt_eval_count", "eval_count", "prompt_eval_cached_count"?, "done_reason"?}`. A `{"kind": "describe", "models": [...]}` call at plan time returns `{"provider", "version", "metering", "models": {name: identifier}}`. Each request carries the whole conversation, so an adapter needs no state and cannot carry one session into another. The plan pins the adapter's digest. The repository ships no host-specific adapter, and `ADAPTER_EXAMPLE` in the script shows the shape. Report cached input in `prompt_eval_cached_count`. The pilot's engine did not report it, and the record states when it is missing.
+- **`command`.** An operator-supplied adapter, run once per model turn. Its stdin is `{"kind": "chat", "model", "session_id", "messages", "tools", "options", "deadline_seconds"}`. Its stdout must be `{"message": {"role", "content", "tool_calls": [{"function": {"name", "arguments"}}]}, "prompt_eval_count", "eval_count", "prompt_eval_cached_count"?, "done_reason"?}`. A `{"kind": "describe", "models": [...]}` call at plan time returns `{"provider", "version", "metering", "models": {name: identifier}}`. Each request carries the whole conversation, so an adapter needs no state and cannot carry one session into another. An adapter exits non-zero on a request `kind` it does not know. The repository ships no host-specific adapter: the operator writes it and keeps it outside the repository, and `ADAPTER_EXAMPLE` in the script shows the shape. Report cached input in `prompt_eval_cached_count`. The pilot's engine did not report it, and the record states when it is missing.
 - **`local`.** The A-gate pilot's local endpoint (`scripts/run-a-gate.py`).
+
+### Adapter conformance
+
+`adapter-check` runs the checks that every `command` adapter must pass. `plan` runs them again for any command backend, and refuses the plan if one fails. For each model, they make two short chat turns, so they cost a few model turns. The checks are as follows:
+
+- `describe` returns a nonempty `provider`, `version` and `metering`, and an identifier for every model.
+- A first turn asks for one `submit_answer` call. The reply has role `assistant` and a string `content`. It names only the tools offered, its arguments are an object or a JSON object string, and the `submit_answer` call carries all four answer fields.
+- A later turn carries an assistant tool call and its `tool` result. The reply has the same valid shape.
+- `prompt_eval_count` and `eval_count` are non-negative integers, and `prompt_eval_count` is not 0. `prompt_eval_cached_count`, when present, is a non-negative integer.
+- Each call returns before its deadline.
+- An unknown request kind gets a non-zero exit.
+
+The checks cannot show that an adapter keeps no state between calls. The operator must review that in the adapter's code. The self-test runs the checks against `ADAPTER_EXAMPLE`, written to a temporary directory, and against a deliberately broken adapter, which must fail. Neither is committed as an adapter.
+
+### Pinning the adapter
+
+1. Write the adapter outside the repository, review it, and record its digest: `sha256sum /outside/repo/adapter.py`.
+2. Run `adapter-check` with the exact command line the plan will use.
+3. Pass that command line to `plan` as `--backend-command`, and pass the reviewed digest as `--adapter-sha256`. Repeat `--adapter-sha256` for each file that you reviewed. The plan refuses the adapter if a pinned digest matches none of its files. The sealed plan requires at least one pin and refuses an adapter file inside the repository.
+4. The plan records the digest of every adapter file: the executable, and each argument that names an existing file, such as an interpreter's script. `run` recomputes these digests and refuses to continue if any changed. The same check applies when `run --backend-command` points to the same adapter at another path.
 
 ## Cost capture
 
@@ -150,7 +175,7 @@ The self-test dry run uses one model. On the development set it plans 31 assignm
 - 5 runs of task 7: stage 1 in both arms, stage 2 with `guardrails-off` in both arms, and stage 2 with `guardrails-on` in the CLI arm;
 - 1 run each of tasks 9 and 10.
 
-The default `dry-run` uses two models and doubles this to 62. With bubblewrap and strace, all 31 runs complete in about 10 s with four parallel workers. Every run has:
+The default `dry-run` uses two models and doubles this to 62. With bubblewrap and strace, all 31 runs complete in about 6 s with six parallel workers on an idle host; parallel dry runs start the slowest task types first. Every run has:
 
 - transcripts;
 - an answer where its task asks for one;
@@ -175,7 +200,8 @@ The stub's placeholder answers score 0, apart from an incidental citation hit on
 
 ## Known limits and seams
 
-- **Sealed tasks 5–10 do not exist yet.** W14.03 and W14.04 built development instances only. The sealed plan takes `--trial-tasks` or `--families-only`. `trial-tasks.py` reads task 5–7 sources from `fixtures/development/trial-tasks`, so sealed task 5–7 instances will need that source root to be configurable.
+- **Sealed tasks 5–10 are not authored yet.** W14.03 and W14.04 built development instances only. The seal, the commitments, the opened layout and the plan's checks exist (W14.05b). The instances themselves must come from authors who did not build the product (see [Trial-task instances](../release/families/README.md#trial-task-instances-w1405b)), and the owner seals them with the passphrase. Until then, the sealed plan takes only `--families-only`.
+- **Sealed task 5–7 rehearsals are content-independent.** The scripted correct and trap paths in `trial-tasks.py rehearse` are written against the development families. For another instance, `trial-tasks.py check` covers prompts, rubric answers, and setup and grading in every arm, stage and condition. It does not play a correct or trap path. Task 8–10 instances carry their own rehearsal, and `self-check` plays it.
 - **Bridged runs show a Python shim.** In bridged runs (tasks 5–7), `/tools/investigation` is a Python script, not the ELF binary, and the binary's own file reads are not traced. Both arms of a task are metered the same way.
 - **No notes arm for tasks 9 and 10.** Task 9 and 10 runs are in the CLI arm only.
 - **Isolation is not proof against every leak.** The checks are a path probe and a byte-identical scan. A key that was paraphrased or re-encoded into the work directory would not match. Keys never enter a run by construction: only `grade` reads them.

@@ -12,7 +12,11 @@ These are the release-trial tasks for plan §20.5 scenarios 5, 6 and 7: resuming
 | [`scripts/trial-tasks.py`](../../scripts/trial-tasks.py) | Evaluator side: `setup`, `proxy`, `notes-fault`, `grade`, `summarize`, `rehearse`. |
 | `crates/investigation-cli/tests/trial_tasks.rs` | Runs the rehearsal against the built binary in `just check`. |
 
-Setup steps use the placeholder format of the adversarial drills (`{"$": "name/path"}`, `{"$concat": [...]}`, `[key=value]` filters). Record IDs are generated at setup and stored in the evaluator's `setup.json`; no file pins a generated ID. All three families are synthetic and development split. They were written by a builder, so results on them cannot support a release claim. Sealed counterparts must come from W14.01's authors.
+Setup steps use the placeholder format of the adversarial drills (`{"$": "name/path"}`, `{"$concat": [...]}`, `[key=value]` filters). Record IDs are generated at setup and stored in the evaluator's `setup.json`; no file pins a generated ID. All three families are synthetic and development split. They were written by a builder, so results on them cannot support a release claim. Sealed counterparts must come from W14.01's authors. They are sealed as described in [Trial-task instances](../release/families/README.md#trial-task-instances-w1405b).
+
+**Source and key roots.** By default, sources are read from `fixtures/development/trial-tasks/<family>/<variant>/`, and each task's `key` is resolved from the repository root. `setup`, `grade`, `rehearse` and `check` take `--source-root DIR` and `--key-root DIR`, which read them from elsewhere, such as an opened bundle on the evaluator side. The release-trial harness passes the roots from its `--trial-tasks` file.
+
+**Checking other instances.** `check TASK.json ... --bin BIN [--source-root DIR] [--key-root DIR]` runs the content-independent part of the rehearsal on any instance: the prompt denylist, the rubric's passing and trap answers (`rehearsal.answers`), and setup and grading of the untouched setup in every arm, stage and condition. The scripted correct and trap paths of `rehearse` are written against the development families and run only for them.
 
 ## Shared procedure
 
@@ -28,6 +32,7 @@ python3 scripts/trial-tasks.py setup 6 --bin BIN --work WORK --evaluator EVAL --
 python3 scripts/trial-tasks.py grade 6 --evaluator EVAL --work WORK --bin BIN
 python3 scripts/trial-tasks.py summarize EVAL1/grade.json EVAL2/grade.json ...
 python3 scripts/trial-tasks.py rehearse --bin BIN
+python3 scripts/trial-tasks.py check SEALED/task-5/release-t5-01.json --bin BIN --source-root SEALED/sources --key-root SEALED
 ```
 
 ## Task 5: stale-snapshot resume (`tide-gauge-dropout`, debugging)

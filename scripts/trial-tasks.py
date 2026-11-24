@@ -9,6 +9,13 @@ Each task is described by training/trial-tasks/tasks/task-*.json. This script is
   grade        grade one run from its journal (CLI arm) or notes (notes arm) and the call log
   summarize    count attempts, successes and passes with denominators over graded runs
   rehearse     replay scripted correct and trap paths for every task against a binary
+  check        check other instances (sealed ones, say) of tasks 5-7: prompts, rubric answers, setup in
+               every arm, stage and condition, and a grade of each untouched setup
+
+Sources are read from fixtures/development/trial-tasks/<family>/<variant>/ and rubric keys from the
+repository by default. `--source-root DIR` and `--key-root DIR` read them from elsewhere, so sealed
+instances are set up and graded from an opened bundle on the evaluator side; `load_task` takes the same
+two roots and records them in the task it returns.
 
 Outcomes are decided by deterministic checks on the verified journal and the proxy's call log, never by
 reading a transcript. Prompts, answers and rubric keys follow the A-gate formats (training/a-gate).
@@ -51,15 +58,32 @@ def write_json(path, value):
     Path(path).write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def load_task(name):
-    """A task by file name, path, number ("5") or ID ("stale-resume")."""
+def load_task(name, source_root=None, key_root=None):
+    """A task by file name, path, number ("5") or ID ("stale-resume").
+
+    `source_root` replaces fixtures/development/trial-tasks and `key_root` the repository as the base of
+    the task's `key`; both are kept in the returned task (`_source_root`, `_key_root`)."""
+    task = None
     if Path(name).is_file():
-        return read_json(name)
-    for file in TASK_FILES:
-        task = read_json(TASKS / file)
-        if name in (file, str(task["task"]), task["id"]):
-            return task
-    raise SystemExit(f"unknown task: {name}")
+        task = read_json(name)
+    else:
+        for file in TASK_FILES:
+            candidate = read_json(TASKS / file)
+            if name in (file, str(candidate["task"]), candidate["id"]):
+                task = candidate
+                break
+    if task is None:
+        raise SystemExit(f"unknown task: {name}")
+    if source_root is not None:
+        task["_source_root"] = str(Path(source_root).resolve())
+    if key_root is not None:
+        task["_key_root"] = str(Path(key_root).resolve())
+    return task
+
+
+def key_path(task):
+    """The task's rubric key: under `_key_root` when one is set, else repository-relative."""
+    return Path(task.get("_key_root") or ROOT) / task["key"]
 
 
 def upper_bound(n):
@@ -247,7 +271,22 @@ def source_dir(task, spec=None):
     """The fixture directory of a variant: the arm's or phase's `source_variant`, else the variant."""
     phase = task["phase"]
     variant = (spec or {}).get("source_variant") or phase.get("source_variant") or phase["variant"]
-    return FIXTURES / task["family"] / variant
+    return Path(task.get("_source_root") or FIXTURES) / task["family"] / variant
+
+
+def source_files(task):
+    """Every source file the task can stage or cite, across its stages and arms, as sorted paths."""
+    phases = list(task["stages"].values()) if "stages" in task else [task["phase"]]
+    found = {}
+    for phase in phases:
+        staged_task = dict(task, phase=phase)
+        specs = [None] + list(phase.get("arms", task.get("arms", {})).values())
+        for spec in specs:
+            directory = source_dir(staged_task, spec)
+            for path in sorted(directory.rglob("*")) if directory.is_dir() else ():
+                if path.is_file():
+                    found[str(path)] = path
+    return sorted(found.values())
 
 
 def stage_sources(task, work, names, spec=None):
@@ -947,7 +986,7 @@ class Rehearsal:
         grader = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(grader)
         for task in tasks:
-            key = read_json(ROOT / task["key"])
+            key = read_json(key_path(task))
             for variant, cases in task["rehearsal"]["answers"].items():
                 phase = staged(task, variant if "stages" in task else None)
                 directory = source_dir(phase)
@@ -1116,7 +1155,7 @@ class Rehearsal:
 
     def injection(self, task):
         payload = task["embedded_payload"]
-        bundle = (FIXTURES / task["family"] / "stage-1/source.txt").read_text(encoding="utf-8")
+        bundle = (source_dir(staged(task, "stage-1")) / "source.txt").read_text(encoding="utf-8")
         embedded = json.loads(next(line for line in bundle.splitlines() if line.startswith('{"schema_version"')))
         self.expect("task 7: the embedded payload is the one the task names",
                     embedded["command_id"] == payload["command_id"]
@@ -1256,8 +1295,37 @@ class Rehearsal:
             preconditions=list(basis["read_set"]) + [basis["subject_ref"], review], session="successor", extra=extra)
         return code
 
-    def run(self, only=None):
-        tasks = [load_task(name) for name in TASK_FILES]
+    def check_instance(self, task):
+        """Content-independent checks for an instance whose scripted paths are not in this file (a sealed
+        instance, for example): every arm, stage and condition sets up, stages its sources and grades."""
+        stages = list(task["stages"]) if "stages" in task else [None]
+        for stage in stages:
+            phase = staged(task, stage)
+            conditions = [None] + (list(task.get("conditions", {})) if stage not in (None, "stage-1") else [])
+            for arm in phase["arms"]:
+                for condition in conditions if arm == "inv" else [None]:
+                    label = "/".join(str(part) for part in (task["id"], stage, condition, arm) if part)
+                    try:
+                        run = Run(self.base, task, self.binary, arm=arm, condition=condition, stage=stage)
+                        names = {path.name for path in run.work.iterdir()}
+                        wanted = set(phase["arms"][arm].get("sources", [])) - set(
+                            phase["arms"][arm].get("remove_after_setup", []))
+                        self.expect(f"{label}: setup stages the arm's sources", wanted <= names,
+                                    f"missing {sorted(wanted - names)}")
+                        result = run.grade()
+                        self.expect(f"{label}: the untouched setup grades", "pass" in result, json.dumps(result)[:1500])
+                    except (AssertionError, OSError, KeyError, SystemExit, subprocess.SubprocessError) as error:
+                        self.expect(f"{label}: setup and grading run", False, f"{type(error).__name__}: {error}"[:1500])
+
+    def check(self, tasks):
+        self.prompts(tasks)
+        self.rubrics(tasks)
+        for task in tasks:
+            self.check_instance(task)
+        return {"checks": len(self.results), "failed": self.failures}
+
+    def run(self, only=None, source_root=None, key_root=None):
+        tasks = [load_task(name, source_root, key_root) for name in TASK_FILES]
         self.prompts(tasks)
         self.rubrics(tasks)
         for task, rehearse in zip(tasks, (self.stale_resume, self.lost_response, self.injection)):
@@ -1298,10 +1366,17 @@ def main():
     rehearse = commands.add_parser("rehearse")
     rehearse.add_argument("--bin", required=True)
     rehearse.add_argument("--only", help="rehearse one task number")
+    instances = commands.add_parser("check", help="check other instances of tasks 5-7, such as sealed ones")
+    instances.add_argument("tasks", nargs="+", help="trial-task.v1 files")
+    instances.add_argument("--bin", required=True)
+    for sub in (step, score, rehearse, instances):
+        sub.add_argument("--source-root", help="read <family>/<variant>/ sources here instead of "
+                                               "fixtures/development/trial-tasks (an opened bundle, for example)")
+        sub.add_argument("--key-root", help="resolve each task's `key` here instead of the repository")
     options = parser.parse_args()
 
     if options.command == "setup":
-        task = staged(load_task(options.task), options.stage)
+        task = staged(load_task(options.task, options.source_root, options.key_root), options.stage)
         record = setup(task, options.bin, options.work, options.evaluator, options.arm, options.condition,
                        options.visible_root)
         print(json.dumps(record, indent=2, sort_keys=True))
@@ -1319,14 +1394,21 @@ def main():
         print(json.dumps(result))
     elif options.command == "grade":
         record = read_json(Path(options.evaluator) / "setup.json")
-        task = staged(load_task(options.task), record["variant"] if record["variant"].startswith("stage-") else None)
+        task = staged(load_task(options.task, options.source_root, options.key_root), record["variant"] if record["variant"].startswith("stage-") else None)
         calls = read_calls(Path(options.evaluator) / "calls.jsonl")
         print(json.dumps(grade(task, record, options.work, calls, options.bin), indent=2, sort_keys=True))
     elif options.command == "summarize":
         print(json.dumps(summarize([read_json(path) for path in options.grades]), indent=2))
     elif options.command == "rehearse":
         with tempfile.TemporaryDirectory(prefix="trial-tasks-") as base:
-            report = Rehearsal(str(Path(options.bin).resolve()), base).run(options.only)
+            report = Rehearsal(str(Path(options.bin).resolve()), base).run(options.only, options.source_root,
+                                                                         options.key_root)
+        print(json.dumps(report, indent=2))
+        sys.exit(1 if report["failed"] else 0)
+    elif options.command == "check":
+        tasks = [load_task(path, options.source_root, options.key_root) for path in options.tasks]
+        with tempfile.TemporaryDirectory(prefix="trial-tasks-check-") as base:
+            report = Rehearsal(str(Path(options.bin).resolve()), base).check(tasks)
         print(json.dumps(report, indent=2))
         sys.exit(1 if report["failed"] else 0)
 

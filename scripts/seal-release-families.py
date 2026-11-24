@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Check, seal, verify and open the sealed release-trial case families (W14.01)
-and the skip-the-tool lookup tasks sealed beside them (W14.02).
+"""Check, seal, verify and open the sealed release-trial case families (W14.01),
+the skip-the-tool lookup tasks sealed beside them (W14.02) and the sealed
+instances of trial tasks 5-10 (W14.05b), which have a bundle of their own.
 
 The sealed families' source bytes, objectives and grading keys never appear in
 the checkout as plain text. The checkout holds only:
@@ -11,7 +12,12 @@ the checkout as plain text. The checkout holds only:
   key, objective and source file, the plaintext bundle digest and the
   preregistered counts it was checked against;
 * training/release/families/sealed.tar.gz.enc, the bundle encrypted with a
-  passphrase kept outside the repository.
+  passphrase kept outside the repository;
+* once sealed, training/release/families/trial-tasks.tar.gz.enc, the trial-task
+  instances encrypted with the same passphrase, and the manifest's
+  ``trial_tasks`` section: opaque instance IDs, per-instance digests, the
+  index digest and one digest over the whole opened tree. No path, family name
+  or source byte of an instance is committed in plain text.
 
 ``verify`` without a passphrase checks counts, registry/manifest agreement and
 the ciphertext digest. With ``--key-file`` it also decrypts into a private
@@ -65,7 +71,14 @@ DIRECT_LOOKUP = "This is a direct lookup from the source and has not been indepe
 LOOKUP_PREREGISTRATION = "Separate lookup probes from this primary test."
 SHA = re.compile(r"^[a-f0-9]{64}$")
 OPENSSL = ["openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-iter", "600000", "-md", "sha256"]
-ALLOWED_RELEASE_FILES = {"README.md", "manifest.json", "sealed.tar.gz.enc"}
+TRIAL_TASK_CIPHERTEXT = RELEASE / "trial-tasks.tar.gz.enc"
+ALLOWED_RELEASE_FILES = {"README.md", "manifest.json", "sealed.tar.gz.enc", TRIAL_TASK_CIPHERTEXT.name}
+# Sealed trial-task instances (W14.05b): opaque IDs, one per task-5 to task-10 instance.
+TRIAL_TASK_ID = re.compile(r"^release-t(5|6|7|8|9|10)-(\d{2})$")
+TRIAL_TASK_ROOT = "trial-tasks"
+TRIAL_TASK_INDEX = "trial-tasks.json"
+TRIAL_TASK_NUMBERS = ("5", "6", "7", "8", "9", "10")
+TRIAL_TASK_PATH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*(?:/[A-Za-z0-9][A-Za-z0-9._-]*)*$")
 
 GRADER = runpy.run_path(str(ROOT / "scripts/grade-a-gate.py"))
 REGISTRY_CHECK = runpy.run_path(str(ROOT / "scripts/check-fixture-families.py"))
@@ -689,6 +702,238 @@ def seal(authoring, key, authors):
     print(f"Sealed {len(specs)} families ({len(files)} files) into {CIPHERTEXT.relative_to(ROOT)}")
 
 
+# --- Sealed trial-task instances (W14.05b) ------------------------------------------------------
+#
+# An authoring directory holds `trial-tasks.json`, the index the trial harness takes as
+# `--trial-tasks`: {"5": [paths], ..., "10": [paths], "source_root": DIR, "key_root": DIR}, every path
+# relative to the index. Tasks 5-7 are trial-task.v1 files (training/trial-tasks/protocol.md) whose
+# `family` is an opaque ID, with sources at <source_root>/<family>/<variant>/ and the rubric key at
+# <key_root>/<key>. Tasks 8-10 are instance files (training/trial-tasks/tasks-8-10/protocol.md) whose
+# `id` is an opaque ID and whose sources are `from_instance_dir`. The whole directory is sealed as one
+# deterministic tar under `trial-tasks/` and encrypted with the families' passphrase.
+
+def tree_digest(files):
+    """One digest over (path, content digest) pairs: what the manifest commits for the opened tree."""
+    lines = "".join(f"{sha256(files[path])}  {path}\n" for path in sorted(files))
+    return sha256(lines.encode("utf-8"))
+
+
+def read_tree(root):
+    root = Path(root)
+    files = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            raise ValueError(f"{relative}: symbolic links cannot be sealed")
+        if path.is_file():
+            if not TRIAL_TASK_PATH.fullmatch(relative):
+                raise ValueError(f"{relative}: use plain path segments (letters, digits, '.', '_', '-')")
+            files[relative] = path.read_bytes()
+    return files
+
+
+def trial_task_index(root):
+    """The index with its paths resolved inside `root`; refuses paths that leave it."""
+    root = Path(root).resolve()
+    index = load(root / TRIAL_TASK_INDEX)
+    unknown = set(index) - set(TRIAL_TASK_NUMBERS) - {"source_root", "key_root"}
+    if unknown:
+        raise ValueError(f"{TRIAL_TASK_INDEX}: unknown keys {sorted(unknown)}")
+
+    def inside(relative, what):
+        path = (root / relative).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError(f"{what} leaves the authoring directory: {relative}")
+        return path
+    roots = {name: inside(index.get(name, "."), name) for name in ("source_root", "key_root")}
+    tasks = {number: [inside(item, f"task {number}") for item in index.get(number, [])] for number in TRIAL_TASK_NUMBERS}
+    return index, roots, tasks
+
+
+_TRIAL_TASKS = {}
+
+
+def trial_task_module():
+    if not _TRIAL_TASKS:
+        _TRIAL_TASKS.update(runpy.run_path(str(ROOT / "scripts/trial-tasks.py")))
+    return _TRIAL_TASKS
+
+
+def trial_task_inputs(number, path, roots):
+    """(opaque ID, every file the instance reads) for one instance; refuses repository sources."""
+    task = load(path)
+    if str(task.get("task")) != number:
+        raise ValueError(f"{path.name}: task {task.get('task')}, listed as task {number}")
+    if task.get("split") != "sealed":
+        raise ValueError(f"{path.name}: split must be sealed")
+    files = [path]
+    identifier = task.get("family" if number in ("5", "6", "7") else "id", "")
+    match = TRIAL_TASK_ID.fullmatch(identifier)
+    if not match or match.group(1) != number:
+        raise ValueError(f"{path.name}: the instance ID must be opaque, release-t{number}-NN (got {identifier!r})")
+    if number in ("5", "6", "7"):
+        tt = trial_task_module()
+        loaded = tt["load_task"](str(path), roots["source_root"], roots["key_root"])
+        key = tt["key_path"](loaded)
+        if not key.is_file():
+            raise ValueError(f"{identifier}: key {task.get('key')} not found under key_root")
+        sources = tt["source_files"](loaded)
+        if not sources:
+            raise ValueError(f"{identifier}: no sources under source_root/{identifier}/")
+        files += [key, *sources]
+    else:
+        setup = task.get("setup", {})
+        if "drill" in setup:
+            raise ValueError(f"{identifier}: a sealed instance carries its own steps, not a repository drill")
+        for source in setup.get("base", {}).get("sources", []):
+            if "from_instance_dir" not in source:
+                raise ValueError(f"{identifier}: sealed sources are `from_instance_dir`, not repository files")
+            files.append(path.parent / source["from_instance_dir"])
+    return identifier, files
+
+
+def development_trial_task_digests():
+    digests = set()
+    for directory in (FIXTURES / "development/trial-tasks", ROOT / "training/trial-tasks"):
+        for path in directory.rglob("*"):
+            if path.is_file():
+                digests.add(sha256(path.read_bytes()))
+    return digests
+
+
+def check_trial_task_set(authoring):
+    """Structure, opaque IDs and fresh bytes for an authoring directory. Returns (files, tasks)."""
+    root = Path(authoring).resolve()
+    files = read_tree(root)
+    if TRIAL_TASK_INDEX not in files:
+        raise ValueError(f"no {TRIAL_TASK_INDEX} in {root}")
+    _, roots, tasks = trial_task_index(root)
+    listed, used = [], {root / TRIAL_TASK_INDEX}
+    for number in TRIAL_TASK_NUMBERS:
+        for path in tasks[number]:
+            identifier, inputs = trial_task_inputs(number, path, roots)
+            for file in inputs:
+                if not Path(file).resolve().is_relative_to(root) or not Path(file).is_file():
+                    raise ValueError(f"{identifier}: input outside the authoring directory or missing")
+                used.add(Path(file).resolve())
+            listed.append({"task": int(number), "id": identifier,
+                           "sha256": sha256(path.read_bytes()),
+                           "file": path.relative_to(root).as_posix()})
+    if not listed:
+        raise ValueError("the index lists no instance")
+    if len({entry["id"] for entry in listed}) != len(listed):
+        raise ValueError("two instances share an ID")
+    stray = sorted(set(files) - {path.relative_to(root).as_posix() for path in used})
+    if stray:
+        raise ValueError(f"{len(stray)} files are not read by any listed instance; remove them before sealing")
+    registry = load(REGISTRY)
+    taken = non_sealed_source_digests(registry) | development_trial_task_digests()
+    for family in registry["families"]:
+        for variant in family["variants"]:
+            taken |= {variant[part]["sha256"] for part in ("initial", "update") if part in variant}
+    reused = [path for path, data in files.items() if path != TRIAL_TASK_INDEX and sha256(data) in taken]
+    if reused:
+        raise ValueError(f"{len(reused)} files reuse registered, development or family bytes")
+    return files, listed
+
+
+def check_trial_tasks(authoring, binary):
+    """check_trial_task_set plus the rehearsals on `binary`: tasks 5-7 through `trial-tasks.py check`
+    and tasks 8-10 through `trial-tasks-8-10.py self-check` (correct path passes, every fault caught).
+    Prints counts only; the sub-checks print their own failures."""
+    _, listed = check_trial_task_set(authoring)
+    root = Path(authoring).resolve()
+    _, roots, tasks = trial_task_index(root)
+    failures = 0
+    early = [str(path) for number in ("5", "6", "7") for path in tasks[number]]
+    if early:
+        done = subprocess.run([sys.executable, str(ROOT / "scripts/trial-tasks.py"), "check", *early, "--bin", str(binary),
+                               "--source-root", str(roots["source_root"]), "--key-root", str(roots["key_root"])],
+                              capture_output=True, text=True, check=False)
+        failures += done.returncode != 0
+        if done.returncode != 0:
+            print(done.stdout[-4000:] + done.stderr[-2000:])
+    late = [str(path) for number in ("8", "9", "10") for path in tasks[number]]
+    if late:
+        done = subprocess.run([sys.executable, str(ROOT / "scripts/trial-tasks-8-10.py"), "self-check", "--bin",
+                               str(binary), *late], capture_output=True, text=True, check=False)
+        failures += done.returncode != 0
+        if done.returncode != 0:
+            print(done.stdout[-4000:] + done.stderr[-2000:])
+    return listed, failures
+
+
+def bundle_trial_tasks(authoring, key, authors, manifest_path=None, ciphertext_path=None):
+    """Seal a checked authoring directory: a deterministic tar under trial-tasks/, encrypted with the
+    families' passphrase, and the manifest's `trial_tasks` commitments. Decrypts nothing."""
+    manifest_path = Path(manifest_path or MANIFEST)
+    ciphertext_path = Path(ciphertext_path or TRIAL_TASK_CIPHERTEXT)
+    manifest = load(manifest_path)
+    if "trial_tasks" in manifest or ciphertext_path.exists():
+        raise SystemExit("Sealed trial-task instances are already committed; new instances need new IDs and a new manifest")
+    files, listed = check_trial_task_set(authoring)
+    plaintext = deterministic_tar({f"{TRIAL_TASK_ROOT}/{path}": data for path, data in files.items()})
+    ciphertext = openssl("-e", key, plaintext)
+    if openssl("-d", key, ciphertext) != plaintext:
+        raise SystemExit("Round trip through openssl failed")
+    manifest["trial_tasks"] = {
+        "study": "Sealed instances of release-trial tasks 5-10 (W14.05b)",
+        "authorship": authors,
+        "bundle": {
+            "file": ciphertext_path.name,
+            "ciphertext_sha256": sha256(ciphertext),
+            "plaintext_sha256": sha256(plaintext),
+            "plaintext_files": len(files),
+            "format": "deterministic PAX tar (mtime 0, uid 0, sorted paths), gzip mtime 0",
+            "encryption": " ".join(OPENSSL) + " -pass file:<passphrase> (the families' passphrase)",
+            "opens_to": f"{TRIAL_TASK_ROOT}/ beside sealed/ and evaluator/ in the opened directory",
+        },
+        "index": {"path": f"{TRIAL_TASK_ROOT}/{TRIAL_TASK_INDEX}", "sha256": sha256(files[TRIAL_TASK_INDEX])},
+        "tree": {"root": TRIAL_TASK_ROOT, "files": len(files), "sha256": tree_digest(files)},
+        "counts": {number: sum(entry["task"] == int(number) for entry in listed) for number in TRIAL_TASK_NUMBERS},
+        "tasks": [{k: entry[k] for k in ("task", "id", "sha256")} for entry in listed],
+    }
+    ciphertext_path.write_bytes(ciphertext)
+    manifest_path.write_text(dump(manifest), encoding="utf-8")
+    return manifest["trial_tasks"]
+
+
+def verify_trial_tasks_public(manifest):
+    section = manifest.get("trial_tasks")
+    if section is None:
+        if TRIAL_TASK_CIPHERTEXT.exists():
+            raise ValueError("A trial-task bundle exists but the manifest commits none")
+        return None
+    if sha256(TRIAL_TASK_CIPHERTEXT.read_bytes()) != section["bundle"]["ciphertext_sha256"]:
+        raise ValueError("Trial-task ciphertext digest does not match the manifest")
+    ids = [entry["id"] for entry in section["tasks"]]
+    if len(set(ids)) != len(ids) or any(not TRIAL_TASK_ID.fullmatch(i) or TRIAL_TASK_ID.fullmatch(i).group(1) !=
+                                        str(entry["task"]) for i, entry in zip(ids, section["tasks"])):
+        raise ValueError("Trial-task IDs must be unique and opaque")
+    if section["counts"] != {n: sum(str(e["task"]) == n for e in section["tasks"]) for n in TRIAL_TASK_NUMBERS}:
+        raise ValueError("Trial-task counts differ from the listed instances")
+    return section
+
+
+def unpack_trial_tasks(key, destination, section, ciphertext_path=None):
+    plaintext = openssl("-d", key, Path(ciphertext_path or TRIAL_TASK_CIPHERTEXT).read_bytes())
+    if sha256(plaintext) != section["bundle"]["plaintext_sha256"]:
+        raise ValueError("Decrypted trial-task bundle digest does not match the manifest")
+    with tarfile.open(fileobj=io.BytesIO(gzip.decompress(plaintext)), mode="r:") as archive:
+        if any(not member.name.startswith(TRIAL_TASK_ROOT + "/") or not member.isfile() for member in archive):
+            raise ValueError("Unexpected trial-task bundle member")
+        archive.extractall(destination, filter="data")
+    opened = Path(destination) / TRIAL_TASK_ROOT
+    files = read_tree(opened)
+    if len(files) != section["tree"]["files"] or tree_digest(files) != section["tree"]["sha256"]:
+        raise ValueError("Opened trial-task tree differs from its committed digest")
+    if sha256(files[TRIAL_TASK_INDEX]) != section["index"]["sha256"]:
+        raise ValueError("Trial-task index differs from its committed digest")
+    for path in opened.rglob("*"):
+        path.chmod(0o700 if path.is_dir() else 0o400)
+    opened.chmod(0o700)
+
+
 # --- Verification ----------------------------------------------------------------
 
 def verify_public():
@@ -734,6 +979,7 @@ def verify_public():
         raise ValueError(f"Unexpected files beside the sealed bundle: {sorted(stray)}")
     if (FIXTURES / "sealed").exists() or (ROOT / "training/a-gate/evaluator/sealed").exists():
         raise ValueError("Sealed material is present in plain text in the checkout")
+    verify_trial_tasks_public(manifest)
     return registry, manifest, Counter((d, t) for _, d, t in rows)
 
 
@@ -779,6 +1025,8 @@ def unpack(key, destination):
         archive.extractall(destination, filter="data")
     for path in Path(destination).rglob("*"):
         path.chmod(0o700 if path.is_dir() else 0o400)
+    if manifest.get("trial_tasks"):
+        unpack_trial_tasks(key, destination, manifest["trial_tasks"])
     return manifest
 
 
@@ -788,7 +1036,8 @@ def verify_sealed(key):
         root = Path(directory)
         root.chmod(0o700)
         unpack(key, root)
-        names = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+        names = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()
+                       and not p.relative_to(root).as_posix().startswith(TRIAL_TASK_ROOT + "/"))
         if len(names) != manifest["bundle"]["plaintext_files"]:
             raise ValueError("Bundle file count differs from the manifest")
         REGISTRY_CHECK["validate"](registry, FIXTURES, root)
@@ -839,10 +1088,15 @@ def verify_sealed(key):
 
 def lookup_summary(manifest):
     section = manifest.get("lookup_tasks")
-    if not section:
-        return ""
-    kinds = ", ".join(f"{k} {n}" for k, n in section["counts"]["by_kind"].items())
-    return f"; {section['counts']['tasks']} skip-the-tool tasks ({kinds})"
+    text = ""
+    if section:
+        kinds = ", ".join(f"{k} {n}" for k, n in section["counts"]["by_kind"].items())
+        text = f"; {section['counts']['tasks']} skip-the-tool tasks ({kinds})"
+    tasks = manifest.get("trial_tasks")
+    if tasks:
+        counts = ", ".join(f"task {n} {c}" for n, c in tasks["counts"].items() if c)
+        text += f"; {len(tasks['tasks'])} trial-task instances ({counts})"
+    return text
 
 
 def main():
@@ -862,6 +1116,14 @@ def main():
     sealing_lookups.add_argument("authoring", type=Path)
     sealing_lookups.add_argument("--key-file")
     sealing_lookups.add_argument("--authors", type=Path, required=True, help="JSON authorship declaration")
+    trial_check = commands.add_parser("check-trial-tasks", help="validate and rehearse authored task 5-10 instances")
+    trial_check.add_argument("directory", type=Path)
+    trial_check.add_argument("--bin", required=True, help="the binary the rehearsals run on")
+    trial_seal = commands.add_parser("seal-trial-tasks", help="seal checked task 5-10 instances into their own bundle")
+    trial_seal.add_argument("directory", type=Path)
+    trial_seal.add_argument("--bin", required=True, help="the binary the rehearsals run on")
+    trial_seal.add_argument("--key-file")
+    trial_seal.add_argument("--authors", type=Path, required=True, help="JSON authorship declaration")
     verifying = commands.add_parser("verify", help="check counts and commitments; with a key, every digest and rubric")
     verifying.add_argument("--key-file")
     verifying.add_argument("--public", action="store_true", help="skip the keyed checks even if a key exists")
@@ -877,6 +1139,22 @@ def main():
         specs, failures = check_lookups(args.directory, args.files or None)
         print(f"{len(specs)} valid, {failures} failing")
         sys.exit(1 if failures else 0)
+    if args.command in ("check-trial-tasks", "seal-trial-tasks"):
+        directory = args.directory.resolve()
+        if directory.is_relative_to(ROOT.resolve()):
+            raise SystemExit("Keep authored trial-task instances outside the repository")
+        try:
+            listed, failures = check_trial_tasks(directory, args.bin)
+        except ValueError as error:
+            raise SystemExit(f"check-trial-tasks: {error}") from None
+        print(f"{len(listed)} instances checked, {failures} rehearsal failures")
+        if failures:
+            sys.exit(1)
+        if args.command == "seal-trial-tasks":
+            section = bundle_trial_tasks(directory, key_path(args.key_file), load(args.authors))
+            print(f"Sealed {len(section['tasks'])} trial-task instances ({section['tree']['files']} files) into "
+                  f"{TRIAL_TASK_CIPHERTEXT.relative_to(ROOT)}; delete the authoring directory once the commit lands")
+        return
     if args.command == "seal":
         seal(args.authoring, key_path(args.key_file), load(args.authors))
     elif args.command == "seal-lookups":

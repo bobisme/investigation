@@ -109,6 +109,49 @@ python3 scripts/seal-release-families.py check-lookups /private/authoring/dir
 python3 scripts/seal-release-families.py seal-lookups /private/authoring/dir --authors authors.json
 ```
 
+## Trial-task instances (W14.05b)
+
+The release trial also runs tasks 5–10 ([tasks 5–7](../../trial-tasks/protocol.md), [tasks 8–10](../../trial-tasks/tasks-8-10/protocol.md)). Their sealed instances have a bundle of their own, `trial-tasks.tar.gz.enc`, beside `sealed.tar.gz.enc`. It is encrypted with the same passphrase and the same `openssl` command. Sealing the instances therefore never decrypts or rewrites the family bundle, and no family byte or commitment changes.
+
+**Status.** No sealed instance is authored yet. The tooling, the commitments format, the opened layout and the harness checks exist and are tested with copies of development instances and a throwaway passphrase in a temporary directory. Nothing from that test is committed.
+
+**Authoring directory.** It is kept outside the repository and holds the following:
+
+| Path | Content |
+| --- | --- |
+| `trial-tasks.json` | The index that the harness takes as `--trial-tasks`: `{"5": [paths], ..., "10": [paths], "source_root": "sources", "key_root": "."}`. Paths are relative to the index. |
+| `task-5/<id>.json` … `task-7/<id>.json` | `trial-task.v1` files in the development format. `family` is the opaque ID, `split` is `sealed`, and `key` is relative to `key_root`. `rehearsal.answers` holds a passing and a trap answer per variant. |
+| `sources/<id>/<variant>/` | Task 5–7 source bytes, such as `source.txt`, `update.txt` and stage files. |
+| `keys/<id>.json` | Task 5–7 rubric keys in the A-gate format. |
+| `task-8/<id>.json` … `task-10/<id>.json` | Task 8–10 instances in the development format. `id` is the opaque ID and `split` is `sealed`. The setup base is `init` or a checked-in `workspace`. Each source is `from_instance_dir`, never a repository file or drill. The instance carries its own `rehearsal`. |
+| `task-8/<id>/…` | Task 8–10 source bytes. |
+
+Instance IDs are opaque: `release-t5-01`, `release-t8-03` and so on. Path segments use only letters, digits, `.`, `_` and `-`. Every file in the directory must be read by a listed instance. No file may reuse the bytes of a registered development, pilot or family source, or of a development trial-task file.
+
+**What is committed.** `seal-trial-tasks` writes the ciphertext and adds a `trial_tasks` section to `manifest.json`. The section holds the authorship declaration, the ciphertext and plaintext digests, the number of instances per task, each instance's opaque ID and file digest, the index digest, and one digest over the opened tree: the SHA-256 of the sorted `<sha256>  <path>` lines. No path, family name, source or key is committed in plain text. Like `seal` and `seal-lookups`, it refuses to run twice. New instances need new IDs and a new manifest.
+
+**What the harness checks.** `open` writes the instances to `<opened>/trial-tasks/` in mode `0400`. In the sealed split, `release-trial.py plan`, `run` and `grade` compare the opened tree with its committed digest. They also check that `--trial-tasks` is the committed index, that the planned instances are exactly the committed ones, and that every input outside the repository lies inside the opened tree. The plan then pins every input file by digest, as it does for every other input.
+
+**Who does what.** Builders do not author or read sealed instances, just as with the families. Each step is done by the role named:
+
+1. **Authors** (fresh sessions, not product builders, as in [Authorship and independence](#authorship-and-independence)) write the directory outside the repository. They may read the task protocols, the development instances and the graders, because the format is code-like. They must not read the onboarding text or the blindspot rules.
+2. **The author or evaluator** runs the content-independent checks and rehearsals on the release-candidate binary. Task 5–7 instances go through `trial-tasks.py check`, which checks prompts, rubric answers, and setup and grading in every arm, stage and condition. Task 8–10 instances go through `trial-tasks-8-10.py self-check`, which plays the correct path and every scripted fault:
+
+   ```sh
+   python3 scripts/seal-release-families.py check-trial-tasks /private/trial-tasks --bin target/release/investigation
+   ```
+
+3. **The owner** seals with the passphrase, commits only `manifest.json` and `trial-tasks.tar.gz.enc`, and then deletes the authoring directory:
+
+   ```sh
+   python3 scripts/seal-release-families.py seal-trial-tasks /private/trial-tasks --bin target/release/investigation \
+     --authors /private/trial-task-authors.json
+   python3 scripts/seal-release-families.py verify --public
+   git add training/release/families/manifest.json training/release/families/trial-tasks.tar.gz.enc
+   ```
+
+4. **The evaluator** opens the seal outside the repository and plans with `--opened DIR --trial-tasks DIR/trial-tasks/trial-tasks.json`.
+
 ## Verifying the seal
 
 You can verify without the passphrase:
@@ -118,7 +161,7 @@ python3 scripts/seal-release-families.py verify --public
 git log --format='%H %cI' -- training/release/families/manifest.json fixtures/family-registry.json
 ```
 
-This checks the counts against the preregistration, agreement between registry and manifest, opaque IDs, one twin per family, shared initial bytes within a family, distinct sources across families, and the ciphertext digest. It also checks that no plaintext sealed path exists in the checkout. The commit time of `manifest.json` shows when the key digests were committed. W14.08 compares it with the first scored run.
+This checks the counts against the preregistration, agreement between registry and manifest, opaque IDs, one twin per family, shared initial bytes within a family, distinct sources across families, and the ciphertext digest. When trial-task instances are sealed, it also checks their ciphertext digest, opaque IDs and counts. It also checks that no plaintext sealed path exists in the checkout. The commit time of `manifest.json` shows when the key digests were committed. W14.08 compares it with the first scored run.
 
 An evaluator with the passphrase can open the seal:
 
@@ -127,7 +170,7 @@ python3 scripts/seal-release-families.py verify --key-file /path/outside/repo/re
 python3 scripts/seal-release-families.py open /private/evaluator/dir --key-file /path/outside/repo/release-families.key
 ```
 
-Keyed `verify` decrypts the bundle into a temporary `0700` directory and checks the plaintext bundle digest. It checks every objective, source, update and key digest against the registry and manifest. It checks that each key was generated from its authored specification. It runs `check-fixture-families` against the opened sources and repeats every rubric self-test. The temporary directory is then deleted. `open` refuses a destination inside the repository and writes files in mode `0400`. Without `--key-file`, the tool reads the passphrase file from `$INVESTIGATION_SEALED_KEY` or from `~/.local/share/investigation-evaluator/release-families.key`. It refuses a file inside the repository or one readable by group or others.
+Keyed `verify` decrypts the bundle into a temporary `0700` directory and checks the plaintext bundle digest. It checks every objective, source, update and key digest against the registry and manifest. It checks that each key was generated from its authored specification. It runs `check-fixture-families` against the opened sources and repeats every rubric self-test. The temporary directory is then deleted. `open` refuses a destination inside the repository and writes files in mode `0400`. It also opens the trial-task bundle into `trial-tasks/` when one is committed, and checks the bundle against its tree and index digests. Without `--key-file`, the tool reads the passphrase file from `$INVESTIGATION_SEALED_KEY` or from `~/.local/share/investigation-evaluator/release-families.key`. It refuses a file inside the repository or one readable by group or others.
 
 ## Rules for the trial
 
