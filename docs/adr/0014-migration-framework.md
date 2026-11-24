@@ -112,4 +112,4 @@ One distinction matters for "`brief` changes no file". Each entry in `cache/blob
 - Every commit now reads the marker once under the lock, which is one small file.
 - `check` JSON always carries `format`. Format 1 appears as `{"version": 1, "read_requires": 1, "write_requires": 1}`.
 - `migrate` is a new command (`ReadUnlessFlag(apply)`). With the built-in registry it reports `current`.
-- The first real migration adds itself to `Registry::builtin()` and raises `FORMAT_VERSION`. It needs a new directory in `fixtures/historical/` with a workspace from the last release.
+- The first real migration adds itself to `Registry::builtin()` and raises `FORMAT_VERSION`. It needs a new directory in `fixtures/historical/` with a workspace from the last release. It must also make `init` write the new format. The full checklist is in the [migration module doc](../../crates/investigation-store/src/migration.rs). A unit test already keeps `FORMAT_VERSION` equal to the builtin registry's latest format.

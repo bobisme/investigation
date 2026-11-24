@@ -37,7 +37,9 @@ use serde_json::Value;
 use super::{GENESIS_FILE, Workspace, WorkspaceError, WorkspaceGenesis, io_at, sync_directory};
 
 /// The highest workspace format this program reads and writes: 1 plus the
-/// number of built-in migrations (`crate::migration::builtin`).
+/// number of built-in migrations ([`crate::migration::Registry::builtin`]).
+/// Raising it is step 4 of the first-migration checklist in
+/// [`crate::migration`].
 pub const FORMAT_VERSION: u32 = 1;
 /// Where a replacement marker is staged before it replaces the marker.
 const STAGED_MARKER: &str = "state/tmp/format-marker";

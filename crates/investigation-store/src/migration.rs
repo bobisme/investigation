@@ -33,6 +33,36 @@
 //! the current readers (legacy events are upcast, older indexes rebuilt),
 //! so [`Registry::builtin`] is empty and [`FORMAT_VERSION`] is 1. The tests
 //! run the whole path with a test migration.
+//!
+//! **Checklist for the first real migration** (ADR 0014). Do all of it in
+//! one change:
+//!
+//! 1. Before changing any code, add a directory to `fixtures/historical/`
+//!    with a workspace that the *last release* wrote, at the format you are
+//!    leaving. Never regenerate it with the new build. List its files in
+//!    `fixtures/historical/SHA256SUMS`, add a row to that README, and add
+//!    its name to `HISTORICAL` in `crates/investigation-cli/tests/migration.rs`.
+//!    Leave the older directories as they are.
+//! 2. Implement [`Migration`] with `version()` 2. Declare every area it
+//!    changes in `touches()`, raise `read_requires` for anything an older
+//!    reader must not ignore, and make `apply` idempotent.
+//! 3. Register it in [`Registry::builtin`].
+//! 4. Raise [`FORMAT_VERSION`] to [`Registry::latest`]. The test
+//!    `the_builtin_registry_matches_the_format_this_program_writes` fails until the two agree.
+//! 5. Make new workspaces start at the new format. `Workspace::init` (and
+//!    so `demo` and `init_demo`) writes no `format` section today, which
+//!    means format 1. Left alone, every new workspace would need the
+//!    migration at once.
+//! 6. Update what says "no migration": this module doc, the
+//!    `FORMAT_VERSION` doc, ADR 0014 ("No migration is needed today" and
+//!    its Consequences), and the assertion that the builtin registry is at
+//!    format 1 in `tests/migration.rs`. Record the migration's decision in
+//!    ADR 0014 or a new ADR.
+//! 7. Expect format-1 workspaces and archives (the scenario fixtures, the
+//!    golden workspaces, every restore test) to report
+//!    `MIGRATION_AVAILABLE` in `check`. Decide whether each test migrates
+//!    first or accepts the warning. Regenerate the CLI goldens with
+//!    `scripts/check-cli-goldens.py --write` and review every changed line.
 
 use std::fmt;
 
