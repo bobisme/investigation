@@ -38,6 +38,12 @@ Text output lists the same items as that bounded JSON, one ID-first line per
 record with indented caveats and limitations, so it is shorter than the budget;
 use --format json for every field.
 
+At standard and deep level, each observation with a quote or line selector
+shows its citation: the line or lines in its source, the exact quote and its
+quote_state.
+Cite it as FILE line N \"QUOTE\". Only quote_state verified was found in the
+retained source bytes; any other state is shown as recorded.
+
 --level sets depth, not size. compact is an index of outcomes and evidence with
 their status, freshness, caveat and contradiction. standard adds bounded
 synopses, unresolved questions and inquiries. deep adds the full outcome records.
@@ -110,6 +116,8 @@ pub struct BriefInputs {
     pub primary_outcome: Option<Id>,
     /// The historical-read label, when the brief is pinned before the head.
     pub historical: Option<Value>,
+    /// The citation of each Observation, keyed by record ID (see `citation`).
+    pub citations: BTreeMap<Id, Value>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -227,10 +235,18 @@ pub fn brief(
         .into_iter()
         .map(|record| {
             let effective = effective_of(record);
-            match level {
+            let mut item = match level {
                 BriefLevel::Compact => views::index_entry(record, replay, today, Some(&effective)),
                 _ => project_record(record, replay, today, ViewDepth::Summary, &effective),
+            };
+            // The compact index stays an index; standard and deep cite.
+            if let Some(citation) = inputs.citations.get(&record.header.id)
+                && level != BriefLevel::Compact
+                && item["content_state"] != "restricted"
+            {
+                item["citation"] = citation.clone();
             }
+            item
         })
         .collect::<Vec<_>>();
     let inquiries = brief_select::active_inquiries(state);
@@ -321,6 +337,9 @@ pub fn brief(
         "omitted":caps.into_entries(),
     });
     let mut output = output;
+    if evidence.iter().any(|item| item.get("citation").is_some()) {
+        output["citation_guide"] = json!(crate::citation::GUIDE);
+    }
     if let Some(label) = &inputs.historical {
         output["historical_read"] = label.clone();
     }

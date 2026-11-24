@@ -81,6 +81,7 @@ const HANDLED: &[&str] = &[
     "measurement_flags",
     "gaps",
     "lineage",
+    "citation",
 ];
 
 fn text(value: &Value) -> Option<&str> {
@@ -367,6 +368,9 @@ pub(crate) fn record(item: &Value, out: &mut Vec<String>) {
 /// names the keys the caller states itself.
 fn details(item: &Value, out: &mut Vec<String>, skip: &[&str]) {
     let line = |out: &mut Vec<String>, body: String| out.push(format!("  {body}"));
+    for citation in crate::citation::text_lines(item) {
+        line(out, citation);
+    }
     let caveat = &item["material_caveat"];
     let strongest = caveat["value"].as_str();
     match (caveat["state"].as_str(), strongest) {
@@ -756,6 +760,9 @@ pub(crate) fn brief(view: &Value) -> String {
         .flatten()
     {
         out.push(format!("freshness_reason  {}", digest(reason)));
+    }
+    if let Some(guide) = view["citation_guide"].as_str() {
+        out.push(guide.to_owned());
     }
     let trust = &view["inherited_trust"];
     if let Value::Object(levels) = &trust["items_by_level"] {

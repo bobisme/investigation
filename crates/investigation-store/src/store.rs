@@ -51,6 +51,9 @@ pub mod capture;
 
 #[path = "evidence_read.rs"]
 pub mod evidence_read;
+
+#[path = "cited_lines.rs"]
+pub mod cited_lines;
 use evidence_read::PromotionBlobs;
 
 #[path = "method_packs.rs"]

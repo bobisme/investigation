@@ -8,6 +8,7 @@ mod bundle_import;
 mod calibration;
 mod capture;
 mod capture_schema;
+mod citation;
 mod config;
 mod demo;
 mod docs;
@@ -768,6 +769,12 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
         primary_outcome: primary.map(|record| record.header.id),
         historical: pinned.label(),
         read_prefix: prefix.clone(),
+        // Only a standard or deep brief of the case shows citations.
+        citations: if args.since.is_none() && args.level != brief::BriefLevel::Compact {
+            citation::citations(store, replay, today)
+        } else {
+            Default::default()
+        },
         ..BriefInputs::default()
     };
     let budget = args.max_bytes.saturating_sub(1);

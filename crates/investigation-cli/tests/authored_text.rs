@@ -80,6 +80,7 @@ const DATA_KEYS: &[&str] = &[
     "statement",
     "outcome",
     "recorded_caveats",
+    "quote",
 ];
 /// Containers whose whole content is the recorded record or labelled quotes.
 const DATA_CONTAINERS: &[&str] = &[

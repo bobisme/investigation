@@ -485,7 +485,7 @@ impl<F: DurableFs> Store<F> {
         Ok(proof)
     }
 
-    fn read_artifact(
+    pub(super) fn read_artifact(
         &self,
         body: &ArtifactBody,
         selector: &SelectorRequest,
@@ -585,7 +585,7 @@ fn artifact_body(artifact: &Record) -> Result<ArtifactBody, Failure> {
     input::decode(&artifact.body).map_err(|_| integrity("Invalid canonical Artifact record."))
 }
 
-fn derivative(body: &ArtifactBody) -> Option<TextDerivative> {
+pub(super) fn derivative(body: &ArtifactBody) -> Option<TextDerivative> {
     let transform = body.transforms.iter().find(|transform| {
         transform.transformation == "decode_utf8"
             && transform.version == ingest::TEXT_PARSER_VERSION
