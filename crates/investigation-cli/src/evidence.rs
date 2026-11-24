@@ -40,6 +40,9 @@ pub(crate) enum EvidenceCommand {
 
 pub(crate) fn ingest(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Failure> {
     let bytes = read_input(path)?;
+    if crate::bundle_import::is_bundle(&bytes) {
+        return crate::bundle_import::ingest(store, global, path);
+    }
     if probe_envelope(&bytes) != EnvelopeProbe::NotAnEnvelope {
         return producer_run(store, global, &bytes);
     }

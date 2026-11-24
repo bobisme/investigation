@@ -102,6 +102,7 @@ mod identifiers;
 mod inclusion;
 mod manifest;
 mod method_retrospective;
+pub mod producer_bundle;
 mod report_blocks;
 pub mod restore;
 mod retained;
@@ -309,7 +310,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Bundle,
         purpose: "Hand recorded runs to another tool.",
         contains: "Versioned structured records, mappings, original lineage, completeness.",
-        renderer: None,
+        renderer: Some(&producer_bundle::ProducerBundleRenderer),
     },
 ];
 

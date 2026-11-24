@@ -513,12 +513,15 @@ fn an_earlier_snapshot_is_pinned_and_follows_todays_classification() {
 }
 
 #[test]
-fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
+fn an_unknown_kind_is_refused_with_every_kind_listed_and_writes_nothing() {
+    // Every plan §15.4 kind now has a renderer, so the only refused kind is
+    // one the registry does not name; it is refused before any export code
+    // runs and nothing is written.
     let directory = tempfile::tempdir().unwrap();
     let root = directory.path();
     let workspace = fixtures::workspace("scenario-a", &root.join("ws"), false);
     let case = cases(&workspace).remove(0);
-    let out = root.join("producer-bundle");
+    let out = root.join("vault-export");
     let (exit, value) = run(
         root,
         &[
@@ -528,7 +531,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
             &case,
             "export",
             "--kind",
-            "producer-bundle",
+            "vault",
             "--audience",
             "internal",
             "--out",
@@ -536,25 +539,21 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
         ],
     );
     assert_eq!(exit, 2, "{value}");
-    assert_eq!(value["error"]["path"], "--kind");
-    assert_eq!(
-        value["error"]["expected"]["available"],
-        json!([
-            "handoff",
-            "case-report",
-            "analysis-report",
-            "decision-record",
-            "method-retrospective",
-            "review-vault",
-            "workspace-archive"
-        ])
-    );
+    assert_eq!(value["error"]["code"], "INVALID_INPUT", "{value}");
+    let message = value["error"]["message"].as_str().unwrap();
+    for kind in [
+        "handoff",
+        "case-report",
+        "analysis-report",
+        "decision-record",
+        "method-retrospective",
+        "review-vault",
+        "workspace-archive",
+        "producer-bundle",
+    ] {
+        assert!(message.contains(kind), "{kind} missing from {message}");
+    }
     assert!(!out.exists());
-    let (exit, value) = run(
-        root,
-        &["export", "--kind", "vault", "--audience", "internal"],
-    );
-    assert_eq!(exit, 2, "{value}");
 }
 
 #[test]

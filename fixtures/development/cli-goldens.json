@@ -486,6 +486,7 @@
       "method-pack",
       "export-manifest",
       "dry-run",
+      "producer-bundle",
       "capture",
       "capture.begin",
       "capture.begin.receipt",

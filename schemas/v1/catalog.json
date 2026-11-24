@@ -215,6 +215,7 @@
     "ingest": "ingest.schema.json",
     "ingest-receipt": "ingest-receipt.schema.json",
     "method-pack": "method-pack.schema.json",
+    "producer-bundle": "producer-bundle.schema.json",
     "producer-run": "producer-run.schema.json",
     "producer-run-receipt": "producer-run-receipt.schema.json",
     "receipt": "receipt.schema.json",

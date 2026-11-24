@@ -62,6 +62,12 @@ pub struct ProducerRunSubmission {
     /// Journal command ID. `None` derives one from the request content, so an
     /// identical resubmission is idempotent.
     pub command_id: Option<String>,
+    /// Relative folder, of plain names, below an import root that holds the
+    /// declared artifacts. `None` resolves declared paths at the import
+    /// roots themselves. A re-imported producer bundle names each run's own
+    /// folder, so runs that declare the same path never read each other's
+    /// bytes; the files are still read only beneath configured import roots.
+    pub artifact_folder: Option<String>,
 }
 
 impl ProducerRunSubmission {
@@ -71,6 +77,7 @@ impl ProducerRunSubmission {
             actor_descriptor: None,
             case_id: None,
             command_id: None,
+            artifact_folder: None,
         }
     }
 }
@@ -209,6 +216,14 @@ impl Store {
         {
             return Err(invalid("Choose an existing case ID.", "/case_id"));
         }
+        if let Some(folder) = &submission.artifact_folder
+            && normalized_path(folder).as_deref() != Some(folder.as_str())
+        {
+            return Err(invalid(
+                "Name the artifact folder as a relative path of plain names below an import root.",
+                "/artifact_folder",
+            ));
+        }
         let mut stages = Vec::new();
         let result = self.producer_run_inner(bytes, &run, raw, submission, &mut stages);
         if result
@@ -235,9 +250,13 @@ impl Store {
         let mut retained_blobs = Vec::new();
         let mut artifact_blobs = Vec::new();
         for (index, artifact) in run.artifacts.iter().enumerate() {
-            let relative = PathBuf::from(normalized_path(&artifact.path).ok_or_else(|| {
+            let declared = normalized_path(&artifact.path).ok_or_else(|| {
                 invalid("Use a relative path beneath an import root.", "/artifacts")
-            })?);
+            })?;
+            let relative = match &submission.artifact_folder {
+                Some(folder) => Path::new(folder).join(declared),
+                None => PathBuf::from(declared),
+            };
             let Some(mut opened) = self.open_declared(&relative, index)? else {
                 staged.push(Staged::Missing);
                 continue;

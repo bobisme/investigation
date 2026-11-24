@@ -22,7 +22,7 @@ use investigation_render::{
         self, ExportError, ExportPlan, ExportSnapshot, IdentifierMode, KINDS, KindSpec,
         MANIFEST_FILE, Pin, Product, Scope,
         archive::{ARCHIVE_AUDIENCE, plan_archive},
-        plan_export_remap, review_vault,
+        plan_export_remap, producer_bundle, review_vault,
         source::{read_archive_source, read_retained},
         write_export,
     },
@@ -115,6 +115,13 @@ because it holds every byte, and is refused while capture staging holds
 evidence the journal does not reference. It keeps canonical IDs and refuses
 --remap-ids. Check it with archive verify.
 
+--kind producer-bundle writes the case's recorded Runs for another tool:
+producer-bundle.json (schema producer-bundle), each run's inv.producer-run.v1
+envelope and its retained artifact bytes. Producer statements stay labelled as
+the producer's claims. With the bundle beneath an import root, investigation
+ingest --input DIR/producer-bundle.json re-imports every run; the same run maps
+onto the recorded one and is never a new trial.
+
 Kinds:
 ",
     );
@@ -139,6 +146,7 @@ Examples:
   investigation export --kind case-report --audience internal --remap-ids --case <ID> --format json
   investigation export --kind review-vault --audience internal --case <ID> --out ./review --format json
   investigation export --kind workspace-archive --audience restricted --out ./backup --format json
+  investigation export --kind producer-bundle --audience internal --case <ID> --out ./runs --format json
 
 Read DIR/export-manifest.json for completeness, versions and file digests, then
 share DIR yourself; the export never leaves this machine on its own.
@@ -183,14 +191,20 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     };
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
-    // The captured bytes of the human files records rely on (W11.14) and,
-    // for a review copy, the reviewed derivatives it may attach: read exactly
-    // those bytes, checked against their digests, before planning. The
-    // planner copies only those the audience may see.
+    // The captured bytes of the human files records rely on (W11.14), for a
+    // review copy the reviewed derivatives it may attach, and for a producer
+    // bundle the retained artifacts its Runs name: read exactly those bytes,
+    // checked against their digests, before planning. The planner copies
+    // only those the audience may see.
     let mut digests = snapshot_digests(&snapshot);
     if spec.product == Product::Review {
         digests.extend(review_vault::attachment_digests(&snapshot, audience));
     }
+    if spec.name == producer_bundle::KIND {
+        digests.extend(producer_bundle::required_digests(snapshot.case().state()));
+    }
+    digests.sort();
+    digests.dedup();
     let retained =
         read_retained(store, &digests).map_err(|failure| failure.with_argv(retry.clone()))?;
     let plan = plan_export_remap(spec, &snapshot, audience, &retained, args.remap_ids).map_err(

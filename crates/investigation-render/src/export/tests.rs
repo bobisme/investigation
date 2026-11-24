@@ -26,6 +26,10 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
         ),
         ("export/archive.rs", include_str!("archive.rs")),
         ("export/report_blocks.rs", include_str!("report_blocks.rs")),
+        (
+            "export/producer_bundle.rs",
+            include_str!("producer_bundle.rs"),
+        ),
         ("export/retained.rs", include_str!("retained.rs")),
         ("export/human_files.rs", include_str!("human_files.rs")),
         ("export/handoff.rs", include_str!("handoff.rs")),
@@ -75,6 +79,10 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
         ("export/snapshot.rs", include_str!("snapshot.rs")),
         ("export/write.rs", include_str!("write.rs")),
         ("export/archive.rs", include_str!("archive.rs")),
+        (
+            "export/producer_bundle.rs",
+            include_str!("producer_bundle.rs"),
+        ),
         ("export/retained.rs", include_str!("retained.rs")),
         ("export/source.rs", include_str!("source.rs")),
         ("export/verify.rs", include_str!("verify.rs")),
@@ -123,7 +131,8 @@ fn the_registry_lists_every_section_15_4_kind_once() {
             "decision-record",
             "method-retrospective",
             "review-vault",
-            "workspace-archive"
+            "workspace-archive",
+            "producer-bundle"
         ]
     );
     assert_eq!(
@@ -134,7 +143,7 @@ fn the_registry_lists_every_section_15_4_kind_once() {
     assert!(kind("case-report").is_some_and(KindSpec::available));
     assert!(kind("handoff").is_some_and(KindSpec::available));
     assert!(kind("analysis-report").is_some_and(KindSpec::available));
-    assert!(kind("producer-bundle").is_some_and(|spec| !spec.available()));
+    assert!(kind("producer-bundle").is_some_and(KindSpec::available));
     assert!(kind("vault").is_none());
     let resumable: Vec<_> = KINDS
         .iter()

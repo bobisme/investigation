@@ -300,6 +300,46 @@ def invariants(state, identity):
     return problems
 
 
+BUNDLE_ACTOR = "agent:bundle-round-trip"
+
+
+def bundle_facts(index):
+    """What re-importing a producer bundle must keep of each re-importable run,
+    without the IDs, item names and origin a workspace assigns."""
+    facts = {}
+    for run in index["runs"]:
+        if run["reingest"] is None:
+            continue
+        artifacts = []
+        for artifact in run["artifacts"]:
+            # Rejected bytes were never retained, so a re-import finds nothing.
+            retention = "missing" if artifact["retention"] == "rejected" else artifact["retention"]
+            retained = retention == "retained"
+            artifacts.append({
+                "role": artifact["role"] or "undeclared",
+                "media_type": artifact["media_type"],
+                "retention": retention,
+                "digest": artifact["digest"] if retained else None,
+                "size_bytes": artifact["size_bytes"] if retained else None,
+            })
+        key = f"{run['producer']['name']} {run['external_run_id']}"
+        facts[key] = {
+            "producer": run["producer"],
+            "intent": run["intent"],
+            "execution": run["execution"],
+            "environment": run["environment"],
+            "evidence_completeness": run["evidence_completeness"],
+            "artifacts": sorted(artifacts, key=lambda item: json.dumps(item, sort_keys=True)),
+            "assertions": run["assertions"],
+            "controls": run["controls"],
+            "receipts": [{"kind": r["kind"], "reference": r.get("reference")} for r in run["receipts"]],
+            "limitations": run["limitations"],
+            "metadata": run["metadata"],
+            "attribution": run["attribution"],
+        }
+    return facts
+
+
 class CaseRun:
     def __init__(self, runner, producer, case, root):
         self.runner = runner
@@ -316,7 +356,75 @@ class CaseRun:
         for index, step in enumerate(self.case["steps"], 1):
             action = step["action"]
             getattr(self, "step_" + action.replace("-", "_"))(index, step)
+        if self.runner.round_trip:
+            self.round_trip()
         return self.snapshots
+
+    def round_trip(self):
+        """Export every case as a producer bundle and re-import it.
+
+        Into a fresh workspace, every finalized captured run is re-imported and
+        a bundle exported there gives the same facts; into this workspace,
+        nothing is committed, since every run is an attempt already recorded.
+        """
+        workspace = self.workspace
+        before = workspace.workspace_state()
+        heads = workspace.cli(["check"]).get("heads", [])
+        out_root = workspace.output_dir(next(iter(workspace.attempts)))
+        fresh = workspace.root / "round-trip"
+        init = workspace.cli(["init", str(fresh), "--no-vault", "--import-root", str(out_root)], workspace=False)
+        if init.get("ok") is not True:
+            self.fail("round-trip", f"init: {json.dumps(init)[:300]}")
+        fresh_cli = Workspace.__new__(Workspace)
+        fresh_cli.binary, fresh_cli.path = workspace.binary, fresh
+        for number, head in enumerate(heads, 1):
+            case_id = head["case_id"]
+            bundle = out_root / f"producer-bundle-{number}"
+            exported = workspace.cli(["--case", case_id, "export", "--kind", "producer-bundle",
+                                      "--audience", "restricted", "--out", str(bundle)])
+            if exported.get("ok") is not True:
+                self.fail("round-trip", f"export {case_id}: {json.dumps(exported)[:300]}")
+            verified = workspace.cli(["archive", "verify", str(bundle), "--scratch", str(workspace.root)],
+                                     workspace=False)
+            if verified.get("ok") is not True:
+                self.fail("round-trip", f"archive verify: {json.dumps(verified)[:300]}")
+            index = json.loads((bundle / "producer-bundle.json").read_text(encoding="utf-8"))
+            for run in index["runs"]:
+                finalized = run["origin"] == "capture" and run["finalization"] != "not_finalized"
+                if finalized and run["reingest"] is None and run["not_reingestible"] != "incomplete_beyond_inventory":
+                    self.fail("round-trip", f"finalized run {run['folder']} is not re-importable: {run['not_reingestible']}")
+                if run["origin"] == "capture" and not finalized and run["reingest"] is not None:
+                    self.fail("round-trip", f"unfinalized run {run['folder']} has an envelope")
+            argv = ["--actor", BUNDLE_ACTOR, "ingest", "--input", str(bundle / "producer-bundle.json")]
+            imported = fresh_cli.cli(argv)
+            if imported.get("ok") is not True:
+                self.fail("round-trip", f"ingest into a fresh workspace: {json.dumps(imported)[:400]}")
+            if any(run["run_outcome"] != "imported" for run in imported["runs"]):
+                self.fail("round-trip", f"fresh import outcomes: {json.dumps(imported['runs'])[:400]}")
+            expected = bundle_facts(index)
+            if imported["runs"]:
+                again = out_root / f"producer-bundle-{number}-again"
+                exported = fresh_cli.cli(["--case", imported["case_id"], "export", "--kind", "producer-bundle",
+                                          "--audience", "restricted", "--out", str(again)])
+                if exported.get("ok") is not True:
+                    self.fail("round-trip", f"re-export: {json.dumps(exported)[:300]}")
+                found = bundle_facts(json.loads((again / "producer-bundle.json").read_text(encoding="utf-8")))
+                problems = list(differences(expected, found))
+                if problems:
+                    self.fail("round-trip", "re-imported facts differ: " + "; ".join(problems[:5]))
+            back = workspace.cli(argv)
+            if back.get("ok") is not True:
+                self.fail("round-trip", f"ingest into the source workspace: {json.dumps(back)[:400]}")
+            fresh_runs = [run for run in back["runs"] if not run["run_outcome"].startswith("already_")]
+            if fresh_runs:
+                self.fail("round-trip", f"a re-import into the source made new trials: {json.dumps(fresh_runs)[:400]}")
+        after = workspace.workspace_state()
+        if after["sequences"] != before["sequences"]:
+            self.fail("round-trip", f"the source journal moved: {before['sequences']} -> {after['sequences']}")
+        if heads:
+            check = fresh_cli.cli(["check"])
+            if check.get("ok") is not True:
+                self.fail("round-trip", f"check in the fresh workspace: {json.dumps(check)[:300]}")
 
     def step_producer(self, index, step):
         attempt = step.get("attempt", "a")
@@ -426,8 +534,9 @@ class CaseRun:
 
 
 class Runner:
-    def __init__(self, binary, suite):
+    def __init__(self, binary, suite, round_trip=False):
         self.binary = binary
+        self.round_trip = round_trip
         self.suite_dir = suite
         self.suite = json.loads((suite / "suite.json").read_text(encoding="utf-8"))
         self.cases = {}
@@ -531,9 +640,12 @@ def main():
     parser.add_argument("--dump", type=Path, help="write each checked, normalized canonical state under this directory")
     parser.add_argument("--json", action="store_true", help="print one JSON report")
     parser.add_argument("--validate-suite", action="store_true", help="check the suite files only")
+    parser.add_argument("--round-trip", action="store_true",
+                        help="after each case, export every case as a producer bundle and re-import it into a "
+                             "fresh workspace and into the source one")
     args = parser.parse_args()
     binary = args.bin.resolve()
-    runner = Runner(binary, args.suite.resolve())
+    runner = Runner(binary, args.suite.resolve(), round_trip=args.round_trip)
     problems = runner.validate_suite()
     if problems or args.validate_suite:
         for problem in problems:

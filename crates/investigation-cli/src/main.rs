@@ -4,6 +4,7 @@ mod archive;
 mod blindspots;
 mod brief;
 mod brief_delta;
+mod bundle_import;
 mod calibration;
 mod capture;
 mod capture_schema;
@@ -219,7 +220,7 @@ enum Commands {
     },
     /// Preserve original local bytes and return their acquisition IDs.
     Ingest {
-        /// Read the JSON manifest from FILE, or - for stdin; investigation schema ingest shows it.
+        /// Read the JSON manifest, producer-run envelope or producer-bundle.json from FILE, or - for stdin.
         #[arg(long, value_name = "FILE|-")]
         input: PathBuf,
         #[arg(long, help = dry_run::HELP)]

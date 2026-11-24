@@ -1,0 +1,851 @@
+{
+  "$defs": {
+    "Attribution": {
+      "description": "Who a stored producer statement is attributed to. Always the producer.",
+      "enum": [
+        "producer_reported"
+      ],
+      "type": "string"
+    },
+    "BundleArtifact": {
+      "additionalProperties": false,
+      "description": "One artifact a run names.",
+      "properties": {
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "caveats": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "channel": {
+          "description": "The capture channel.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "classification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ClassificationLevel"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "declared_path": {
+          "description": "The path the envelope declared.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Digest"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Retained bytes; for `rejected`, the bytes that were refused."
+        },
+        "expected_sha256": {
+          "description": "The digest the producer expected.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file": {
+          "description": "The bundle file holding its bytes.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "item": {
+          "description": "The acquisition item: `artifact:` plus the declared path for an\nenvelope, the item key for a captured run, `recorded:` plus a number\nfor a recorded run.",
+          "type": "string"
+        },
+        "media_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "reason": {
+          "description": "Why the producer says it is missing.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retention": {
+          "description": "`retained`, `missing`, `rejected`, `external`, `partial` or\n`intentionally_removed`.",
+          "type": "string"
+        },
+        "role": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "size_bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "retention",
+        "caveats",
+        "metadata"
+      ],
+      "type": "object"
+    },
+    "BundleFile": {
+      "additionalProperties": false,
+      "description": "One file of the bundle that holds retained bytes.",
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef",
+          "description": "The Artifact that retains these bytes."
+        },
+        "bytes": {
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "path": {
+          "description": "Relative to the bundle.",
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest"
+        }
+      },
+      "required": [
+        "path",
+        "sha256",
+        "bytes",
+        "artifact"
+      ],
+      "type": "object"
+    },
+    "BundleRun": {
+      "additionalProperties": false,
+      "description": "One Run.",
+      "properties": {
+        "artifacts": {
+          "items": {
+            "$ref": "#/$defs/BundleArtifact"
+          },
+          "type": "array"
+        },
+        "assertions": {
+          "items": {
+            "$ref": "#/$defs/ProducerAssertion"
+          },
+          "type": "array"
+        },
+        "attribution": {
+          "$ref": "#/$defs/Attribution",
+          "description": "Who produced the statements below: always `producer_reported`."
+        },
+        "caveats": {
+          "description": "Fixed caveats of the audience policy, word for word.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "channels": {
+          "description": "A captured run's per-channel completeness, as finalized.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "controls": {
+          "items": {
+            "$ref": "#/$defs/ProducerControl"
+          },
+          "type": "array"
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Reported environment facts, by name.",
+          "type": "object"
+        },
+        "environment_text": {
+          "description": "A recorded run's free-text environment.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_completeness": {
+          "$ref": "#/$defs/EvidenceCompleteness",
+          "description": "Retention completeness as recorded on the Run."
+        },
+        "evidence_validity": {
+          "description": "The exporting case's recorded judgment; see `statements.validity`.",
+          "type": "string"
+        },
+        "execution": {
+          "$ref": "#/$defs/ProducerExecution",
+          "description": "Execution as reported."
+        },
+        "external_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "finalization": {
+          "description": "A captured run's finalization: `finalized`, `partial`, or\n`not_finalized`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "folder": {
+          "description": "The run's folder in the bundle, such as `runs/0001`.",
+          "type": "string"
+        },
+        "intent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "lineage": {
+          "items": {
+            "$ref": "#/$defs/LineageEdge"
+          },
+          "type": "array"
+        },
+        "mapping": {
+          "$ref": "#/$defs/Mapping"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Namespaced inert metadata, as recorded.",
+          "type": "object"
+        },
+        "not_reingestible": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NotReingestible"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "origin": {
+          "$ref": "#/$defs/RunOrigin"
+        },
+        "original": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BundleFile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The original description, byte for byte: an ingested envelope or a\ncaptured run's finalized manifest."
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ProducerDescriptor"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "receipts": {
+          "description": "Receipts as recorded: an envelope receipt names an artifact path, a\ncaptured one an item key.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "reingest": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Reingest"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/RevisionRef",
+          "description": "The canonical Run revision."
+        }
+      },
+      "required": [
+        "run",
+        "folder",
+        "origin",
+        "caveats",
+        "attribution",
+        "execution",
+        "environment",
+        "evidence_completeness",
+        "evidence_validity",
+        "channels",
+        "artifacts",
+        "assertions",
+        "controls",
+        "receipts",
+        "limitations",
+        "metadata",
+        "mapping",
+        "lineage"
+      ],
+      "type": "object"
+    },
+    "BundleStatements": {
+      "additionalProperties": false,
+      "description": "Fixed statements, compiled into the program.",
+      "properties": {
+        "attribution": {
+          "type": "string"
+        },
+        "completeness": {
+          "type": "string"
+        },
+        "identifiers": {
+          "type": "string"
+        },
+        "reingest": {
+          "type": "string"
+        },
+        "validity": {
+          "type": "string"
+        },
+        "withheld": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "attribution",
+        "validity",
+        "completeness",
+        "reingest",
+        "withheld",
+        "identifiers"
+      ],
+      "type": "object"
+    },
+    "BundleVersion": {
+      "description": "The bundle index version.",
+      "enum": [
+        "inv.producer-bundle.v1"
+      ],
+      "type": "string"
+    },
+    "ClassificationLevel": {
+      "enum": [
+        "public",
+        "internal",
+        "restricted"
+      ],
+      "type": "string"
+    },
+    "ClockQuality": {
+      "enum": [
+        "unknown",
+        "unverified",
+        "synchronized",
+        "attested"
+      ],
+      "type": "string"
+    },
+    "Digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "type": "string"
+    },
+    "EvidenceCompleteness": {
+      "enum": [
+        "complete",
+        "partial",
+        "missing",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "declared",
+        "running",
+        "completed",
+        "failed",
+        "cancelled",
+        "blocked",
+        "unknown"
+      ],
+      "type": "string"
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "LineageEdge": {
+      "additionalProperties": false,
+      "description": "One edge between two records the bundle shows.",
+      "properties": {
+        "from": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "relation": {
+          "description": "`describes` (an envelope or manifest describes the Run), `records`\n(the Run records an artifact), `retained_from` (an artifact's Source)\nor `derived_from` (a derivative's input).",
+          "type": "string"
+        },
+        "to": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "transformation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "from",
+        "relation",
+        "to"
+      ],
+      "type": "object"
+    },
+    "MappedItem": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/RevisionRef"
+        },
+        "item": {
+          "description": "`envelope`, `manifest`, or an artifact's item.",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RevisionRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "item",
+        "artifact"
+      ],
+      "type": "object"
+    },
+    "Mapping": {
+      "additionalProperties": false,
+      "description": "Producer identifiers to canonical IDs.",
+      "properties": {
+        "external_run_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "items": {
+          "items": {
+            "$ref": "#/$defs/MappedItem"
+          },
+          "type": "array"
+        },
+        "namespace": {
+          "description": "The producer namespace of the acquisition.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "run": {
+          "$ref": "#/$defs/RevisionRef"
+        }
+      },
+      "required": [
+        "run",
+        "items"
+      ],
+      "type": "object"
+    },
+    "NotReingestible": {
+      "description": "Why a run has no envelope to re-import.",
+      "oneOf": [
+        {
+          "const": "no_producer_identity",
+          "description": "The Run was recorded without a producer namespace and external run ID.",
+          "type": "string"
+        },
+        {
+          "const": "not_finalized",
+          "description": "The captured run is not finalized.",
+          "type": "string"
+        },
+        {
+          "const": "envelope_invalid",
+          "description": "The statements shown do not form a valid envelope.",
+          "type": "string"
+        },
+        {
+          "const": "incomplete_beyond_inventory",
+          "description": "The run is recorded less complete than its artifacts alone show\n(missing stream positions or channel gaps). An envelope carries only\nthe artifact inventory, so a re-imported run would read stronger.",
+          "type": "string"
+        },
+        {
+          "const": "identifiers_remapped",
+          "description": "The export's IDs are remapped, which would rewrite UUIDs inside the\nenvelope and the retained bytes; a remapped bundle is review only.",
+          "type": "string"
+        }
+      ]
+    },
+    "ProducerAssertion": {
+      "additionalProperties": false,
+      "description": "A producer-reported result, such as a metric.\n\nIt is retained as the producer's assertion. Only an attributed Assessment or\nConclusion can promote it to an investigative interpretation.",
+      "properties": {
+        "kind": {
+          "description": "Assertion kind, such as `reported_metric`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Name, such as `latency.p99`.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "unit": {
+          "description": "Unit, when meaningful.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "validity_claim": {
+          "$ref": "#/$defs/ValidityClaim",
+          "default": "producer_reported",
+          "description": "Always `producer_reported`."
+        },
+        "value": {
+          "description": "Reported value, retained verbatim."
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "value"
+      ],
+      "type": "object"
+    },
+    "ProducerControl": {
+      "additionalProperties": false,
+      "description": "A control the producer reports with its own result.",
+      "properties": {
+        "metadata": {
+          "additionalProperties": true,
+          "description": "Inert namespaced metadata.",
+          "type": "object"
+        },
+        "name": {
+          "description": "Control name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        "producer_result": {
+          "description": "Producer's result, such as `reported_pass`. It is not proof of method.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "producer_result"
+      ],
+      "type": "object"
+    },
+    "ProducerDescriptor": {
+      "additionalProperties": false,
+      "description": "Self-reported producer identity. Attribution, not authentication.",
+      "properties": {
+        "instance": {
+          "description": "Instance label, such as a host-local name.",
+          "maxLength": 128,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "description": "Producer namespace; it scopes acquisition identity and is never interpreted.\nA capture producer name and an ingest acquisition namespace follow the\nsame rule.",
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "ProducerExecution": {
+      "additionalProperties": false,
+      "description": "Execution as the producer reports it. A `completed` state or an exit code of\n0 says how the action ended; it implies nothing about measurement validity.",
+      "properties": {
+        "clock_quality": {
+          "$ref": "#/$defs/ClockQuality",
+          "default": "unknown",
+          "description": "Quality of the producer's clock for both times."
+        },
+        "ended_at": {
+          "default": null,
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "description": "Original error text, preserved verbatim.",
+          "maxLength": 2048,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "exit_code": {
+          "default": null,
+          "format": "int64",
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "default": null,
+          "description": "Reported start time, verbatim; RFC 3339 is recommended.",
+          "maxLength": 64,
+          "minLength": 1,
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "state": {
+          "$ref": "#/$defs/ExecutionStatus"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "type": "object"
+    },
+    "ProducerRunVersion": {
+      "description": "Producer-run envelope versions.",
+      "enum": [
+        "inv.producer-run.v1"
+      ],
+      "type": "string"
+    },
+    "Reingest": {
+      "additionalProperties": false,
+      "description": "How to re-import a run.",
+      "properties": {
+        "artifact_folder": {
+          "description": "The folder, relative to the bundle, its artifact paths resolve in.",
+          "type": "string"
+        },
+        "envelope": {
+          "description": "The `inv.producer-run.v1` envelope, relative to the bundle.",
+          "type": "string"
+        },
+        "sha256": {
+          "$ref": "#/$defs/Digest"
+        },
+        "verbatim": {
+          "description": "Whether the envelope is the original bytes the run was ingested from.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "envelope",
+        "artifact_folder",
+        "verbatim",
+        "sha256"
+      ],
+      "type": "object"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    },
+    "RunOrigin": {
+      "description": "Where a Run's record came from.",
+      "oneOf": [
+        {
+          "const": "producer_run",
+          "description": "Ingested from an `inv.producer-run.v1` envelope.",
+          "type": "string"
+        },
+        {
+          "const": "capture",
+          "description": "Recorded through the capture protocol (`inv.capture.v1`).",
+          "type": "string"
+        },
+        {
+          "const": "recorded",
+          "description": "Recorded by an investigator, without a producer acquisition identity.",
+          "type": "string"
+        }
+      ]
+    },
+    "ValidityClaim": {
+      "description": "How valid the producer says an assertion is. The only accepted claim is\n`producer_reported`: a producer cannot declare its own result verified.",
+      "enum": [
+        "producer_reported"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:wire:producer-bundle",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "`producer-bundle.json`: one case's recorded Runs for another tool.",
+  "properties": {
+    "audience": {
+      "description": "The audience the bundle was made for: `public`, `internal` or\n`restricted`.",
+      "type": "string"
+    },
+    "case_id": {
+      "$ref": "#/$defs/Id",
+      "description": "The case the runs were exported from."
+    },
+    "envelope_version": {
+      "$ref": "#/$defs/ProducerRunVersion",
+      "description": "The envelope version every `reingest.envelope` file follows."
+    },
+    "runs": {
+      "description": "The runs the audience may see, in ID order.",
+      "items": {
+        "$ref": "#/$defs/BundleRun"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "$ref": "#/$defs/BundleVersion"
+    },
+    "statements": {
+      "$ref": "#/$defs/BundleStatements",
+      "description": "Fixed statements on how to read the bundle."
+    }
+  },
+  "required": [
+    "schema_version",
+    "case_id",
+    "audience",
+    "envelope_version",
+    "runs",
+    "statements"
+  ],
+  "title": "ProducerBundle",
+  "type": "object"
+}

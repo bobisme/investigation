@@ -29,6 +29,7 @@ const WIRE_SCHEMAS: &[&str] = &[
     "method-pack",
     "export-manifest",
     "dry-run",
+    "producer-bundle",
 ];
 const RESERVED_WIRE_SCHEMAS: &[&str] = &[];
 
@@ -95,6 +96,9 @@ pub(crate) fn describe(args: Args, global: &Global) -> Result<Output, Failure> {
                 }
                 "export-manifest" => {
                     "Read export-manifest.json, written last into every directory investigation export creates."
+                }
+                "producer-bundle" => {
+                    "Read producer-bundle.json from investigation export --kind producer-bundle, or re-import it with investigation ingest --input."
                 }
                 "dry-run" => {
                     "Read the would-be receipt that a write given --dry-run returns without committing."
@@ -203,6 +207,7 @@ fn wire_value(name: &str) -> Option<Value> {
         "method-pack" => Some(investigation_core::method_pack::schema()),
         "export-manifest" => Some(investigation_render::export::manifest_schema()),
         "dry-run" => Some(crate::dry_run::schema()),
+        "producer-bundle" => Some(investigation_render::export::producer_bundle::bundle_schema()),
         _ => wire_schema(name),
     }?;
     Some(serde_json::to_value(wire).expect("wire schema serializes"))

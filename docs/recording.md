@@ -432,6 +432,10 @@ The receipt (`producer-run-receipt`) adds `case_id`, the `run` revision, `run_ou
 
 `ProducerAssertion` and `ProducerControl` are the same types in the envelope and in `FinalizeCapture`. `ExternalReceipt` has the fields of the envelope's receipt, but names its bytes by an attached item key instead of a path. The envelope's `producer` fields match `ProducerIdentity`, and both follow one name rule.
 
+### Producer bundles
+
+`investigation export --kind producer-bundle` hands recorded runs back out in the same contract: per run an `inv.producer-run.v1` envelope (the original bytes for an ingested run, one built from the finalization for a captured run), the retained artifact bytes and a `producer-bundle.json` index. `investigation ingest --input DIR/producer-bundle.json` re-imports it into any workspace that has DIR beneath an import root, under the attempt identity below. See [Producer bundles](schema-v1.md#producer-bundles). A public bundle, or one exported with `--remap-ids`, is review only, with no envelopes or bytes, because remapping would rewrite identifiers inside them.
+
 ## Executor receipts and chronology
 
 A Run's `chronology` says how its frozen plan is known to precede its execution (plan §6.5). A producer can carry receipts in `receipts[]` of `capture finalize` or of an `inv.producer-run.v1` envelope. The receipt bytes are an attached or declared artifact and are retained as an Artifact of the Run, like any other artifact. Every receipt stays the producer's attributed claim.
@@ -643,5 +647,7 @@ The runner gets every verdict from the binary, never from the adapter's word:
 - To normalize state, the runner replaces the workspace, output directory, handle, Run, case, producer name and external run ID with placeholders. It masks generated IDs and drops wall-clock times, journal hashes, request digests and the manifest's own digest and size. The remaining state must match the expected pattern. Extra fields are allowed, so additive v1 fields do not break the suite.
 
 `scripts/conformance/reference_producer.py` is a standard-library producer that sends the scenario files through the JSON CLI. It passes every case. `scripts/conformance/non_idempotent_producer.py` has one defect: it records a step again under a fresh key when a response is lost. The suite fails it on the four lost-response cases. A duplicated item fails the canonical check even when the adapter's call log is ignored. `crates/investigation-cli/tests/conformance.rs` runs both. It also runs the reference producer, the Python example (`examples/python-producer/producer.py`) and the Rust example (`example-rust-producer`) together. All three must pass all 20 cases and record the same normalized state.
+
+`--round-trip` also exports every case of each case's workspace as a producer bundle and re-imports it, judged from canonical state too. Every finalized captured run gets an envelope unless it is recorded less complete than its artifacts show. Re-imported into a fresh workspace, every run is `imported`, `check` passes, and a bundle exported there gives the same facts: producer, intent, execution, environment, completeness, artifact roles, retention and digests, assertions, controls, receipts, limitations and metadata. Re-imported into the source workspace, no run is new and no journal moves. `conformance.rs` runs the reference producer with it.
 
 To prove a new adapter, add `--producer` for it. Its result counts only when it passes every case and its normalized state equals the reference producer's.

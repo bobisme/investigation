@@ -31,7 +31,7 @@ const TEACH: &[Teach] = &[
     t!(&[], [], "investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json"),
     t!(&["init"], [], "investigation --workspace ./casework --actor agent:investigator start 'Why did requests time out?' --attach ./results.log --format json"),
     t!(&["record"], [], "investigation --workspace ./casework receipt KEY --actor agent:investigator --format json"),
-    t!(&["ingest"], ["investigation --workspace ./casework ingest --input manifest.json --format json"], "investigation --workspace ./casework brief --format json"),
+    t!(&["ingest"], ["investigation --workspace ./casework ingest --input manifest.json --format json", "investigation --workspace ./casework ingest --input ./runs/producer-bundle.json --format json"], "investigation --workspace ./casework brief --format json"),
     t!(&["start"], [], "investigation --workspace ./casework brief --format json"),
     t!(&["evidence"], ["investigation --workspace ./casework evidence read <ARTIFACT_ID> --selector-file selector.json --format json"], "investigation --workspace ./casework evidence read <ARTIFACT_ID> --selector-file selector.json --format json"),
     t!(&["evidence", "read"], ["investigation --workspace ./casework evidence read <ARTIFACT_ID> --selector-file selector.json --format json"], "investigation --workspace ./casework observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json"),

@@ -187,3 +187,37 @@ fn two_producers_are_compared_case_by_case() {
     assert_eq!(equivalence.len(), cases.len());
     assert!(equivalence.iter().all(|entry| entry["equal"] == true));
 }
+
+/// Every case's recording, exported as a producer bundle (W11.10), re-imports
+/// into a fresh workspace with the same facts and adds nothing to the source
+/// workspace, where every run is an attempt already recorded.
+#[test]
+fn every_case_round_trips_through_a_producer_bundle() {
+    let output = Command::new("python3")
+        .arg(repository().join("scripts/run-conformance.py"))
+        .arg("--bin")
+        .arg(env!("CARGO_BIN_EXE_investigation"))
+        .arg("--json")
+        .arg("--round-trip")
+        .arg("--producer")
+        .arg(producer("reference_producer.py"))
+        .current_dir(repository())
+        .output()
+        .expect("python3 runs the conformance runner");
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap_or_else(|error| {
+        panic!(
+            "runner printed no report ({error}): {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+    });
+    assert!(
+        output.status.success(),
+        "{}",
+        serde_json::to_string_pretty(&report).unwrap()
+    );
+    assert_eq!(
+        report["producers"][0]["cases"].as_array().unwrap().len(),
+        20
+    );
+    assert!(failed_cases(&report).is_empty());
+}
