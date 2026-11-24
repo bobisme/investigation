@@ -47,6 +47,16 @@
 //! anything was. Measurement validity is the exporting case's recorded
 //! judgment and is never part of an envelope.
 //!
+//! Omissions (bn-1vg8). Each artifact entry left out because its artifact
+//! or Source is not shown, each retained artifact's bytes and each capture
+//! manifest not copied, and each envelope not written because IDs are
+//! remapped is reported as an [`super::Omission`], so a remapped bundle of
+//! runs with retained bytes or envelopes never reads complete. A run that
+//! has no envelope in any export (no producer identity, not finalized,
+//! recorded less complete than its inventory) and bytes the case does not
+//! retain are what the case holds, not omissions; the index says so per
+//! run and artifact.
+//!
 //! Identifiers. Re-import is keyed on the producer namespace and external
 //! run ID, never on a record ID. But a remapped export (public always,
 //! internal or restricted with `--remap-ids`) rewrites every UUIDv7 in every
@@ -87,7 +97,7 @@ use schemars::{JsonSchema, Schema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{ExportInput, ExportRenderer, dependent_rule};
+use super::{ExportInput, ExportRenderer, Omission, OmissionReason, Omitted, dependent_rule};
 use crate::{Phase, PlanBuilder, PlanPath, RenderError};
 
 /// The kind's registry name.
@@ -499,6 +509,32 @@ impl Shown<'_> {
                 .is_none_or(|body| self.record(body.source.id).is_some())
     }
 
+    /// [`Self::artifact`], reporting `content` of `run` at `item` as left
+    /// out when it may not appear.
+    fn admits(&self, reference: RevisionRef, content: Omitted, run: Id, item: &str) -> bool {
+        if self.artifact(reference) {
+            return true;
+        }
+        let source = current_artifact(self.state, reference).map(|body| body.source.id);
+        let reason = self
+            .input
+            .rests_on(std::iter::once(reference.id).chain(source))
+            .unwrap_or(OmissionReason::RestsOnWithheld);
+        self.input
+            .omit(Omission::new(content, reason).of(run).at(item));
+        false
+    }
+
+    /// Whether the case retains the artifact's bytes and has not withdrawn
+    /// their availability, so an export that does not copy them leaves
+    /// them out.
+    fn retains(&self, reference: RevisionRef) -> bool {
+        !self.input.inclusion.availability_withdrawn(reference.id)
+            && current_artifact(self.state, reference).is_some_and(|body| {
+                body.availability == ArtifactAvailability::Retained && body.digest.is_some()
+            })
+    }
+
     fn caveats(&self, id: Id) -> Vec<String> {
         self.record(id)
             .map(|record| {
@@ -685,7 +721,9 @@ impl Planned<'_> {
     }
 }
 
-/// Copy an artifact's bytes into the run's files folder at `path`.
+/// Copy an artifact's bytes into the run's files folder at `path`. Bytes
+/// the case retains but a remapped export cannot copy are reported as left
+/// out.
 fn copy_artifact(
     shown: &Shown<'_>,
     planned: &mut Planned<'_>,
@@ -694,7 +732,15 @@ fn copy_artifact(
 ) -> Result<Option<String>, RenderError> {
     match shown.bytes(reference)? {
         Some((_, bytes)) => Ok(Some(planned.add(&format!("{FILES_FOLDER}/{path}"), bytes)?)),
-        None => Ok(None),
+        None => {
+            if shown.input.remapped() && shown.retains(reference) {
+                shown.input.omit(
+                    Omission::new(Omitted::ArtifactBytes, OmissionReason::IdentifiersRemapped)
+                        .of(reference.id),
+                );
+            }
+            Ok(None)
+        }
     }
 }
 
@@ -755,7 +801,7 @@ fn plan_envelope_run(
                 digest,
                 size_bytes,
             } => {
-                if !shown.artifact(*artifact_ref) {
+                if !shown.admits(*artifact_ref, Omitted::ArtifactEntry, run.run.id, &item) {
                     verbatim = false;
                     continue;
                 }
@@ -905,6 +951,9 @@ fn finish_rebuilt(
 ) -> Result<(), RenderError> {
     if shown.input.remapped() {
         run.not_reingestible = Some(NotReingestible::IdentifiersRemapped);
+        shown.input.omit(
+            Omission::new(Omitted::Envelope, OmissionReason::IdentifiersRemapped).of(run.run.id),
+        );
         return Ok(());
     }
     let valid = serde_json::from_value::<ProducerRun>(envelope.clone())
@@ -1070,7 +1119,7 @@ fn plan_captured_run(
         };
         let placed;
         if let Some(artifact_ref) = revision_ref(&retention["artifact_ref"]) {
-            if !shown.artifact(artifact_ref) {
+            if !shown.admits(artifact_ref, Omitted::ArtifactEntry, run.run.id, &key) {
                 every_artifact_shown = false;
                 continue;
             }
@@ -1112,6 +1161,19 @@ fn plan_captured_run(
                 bytes: bytes.len() as u64,
                 artifact: manifest_ref,
             });
+        } else if shown.retains(manifest_ref) {
+            // It names an artifact entry left out, or a remapped export
+            // would rewrite it.
+            let reason = if every_artifact_shown {
+                OmissionReason::IdentifiersRemapped
+            } else {
+                OmissionReason::RestsOnWithheld
+            };
+            shown.input.omit(
+                Omission::new(Omitted::CaptureManifest, reason)
+                    .of(run.run.id)
+                    .at("manifest"),
+            );
         }
     }
 
@@ -1183,7 +1245,7 @@ fn plan_recorded_run(
     run.environment_text = body["environment"].as_str().map(str::to_owned);
     run.not_reingestible = Some(NotReingestible::NoProducerIdentity);
     for (item, reference) in named_artifacts(body) {
-        if !shown.artifact(reference) {
+        if !shown.admits(reference, Omitted::ArtifactEntry, run.run.id, &item) {
             continue;
         }
         let artifact_body = current_artifact(shown.state, reference);

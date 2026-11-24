@@ -11,7 +11,7 @@ use investigation_core::{command::RevisionRef, identity::Id, wire::Digest};
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::{Deserialize, Serialize};
 
-use super::{IdentifierMode, Product, dependent_rule};
+use super::{IdentifierMode, Product, Shortfall, dependent_rule};
 use crate::Audience;
 
 /// Schema version of [`ExportManifest`].
@@ -49,7 +49,11 @@ pub struct ExportManifest {
     pub identifiers: Option<IdentifierMode>,
     pub policy: ManifestPolicy,
     /// `incomplete` when the audience policy withheld any record of the
-    /// case. An incomplete export is never labelled complete.
+    /// case, or the kind left out any content beyond record inclusion (a
+    /// lesson, matrix row, gap or attachment resting on what it may not
+    /// show, or bytes it could not copy exactly). An export that left
+    /// anything out is never labelled complete; `statements.completeness`
+    /// says which, without naming or counting what.
     pub completeness: Completeness,
     /// Digests of the retained artifacts the export includes.
     pub sources: Vec<SourceDigest>,
@@ -168,7 +172,9 @@ pub struct Statements {
 }
 
 impl Statements {
-    pub fn fixed(completeness: Completeness, audience: Audience, mode: IdentifierMode) -> Self {
+    /// The statements of an export of a case view. `shortfall` picks the
+    /// completeness sentence; it names, counts and describes nothing.
+    pub fn fixed(shortfall: Shortfall, audience: Audience, mode: IdentifierMode) -> Self {
         Self {
             rendering: match mode {
                 IdentifierMode::Canonical => "Rendered deterministically from the exact verified snapshot named here, with no model call. The same snapshot, kind, renderer and policy give the same bytes.",
@@ -176,9 +182,10 @@ impl Statements {
             }
             .to_owned(),
             evidence: "This export is a view of the case record. It does not replace the primary evidence it cites; negative and inconclusive results are kept, and superseded records are marked, not rewritten.".to_owned(),
-            completeness: match completeness {
-                Completeness::Complete => "Nothing in the case was withheld from this audience.",
-                Completeness::Incomplete => "Incomplete: the audience policy withheld material from this export. What was withheld is not named here.",
+            completeness: match shortfall {
+                Shortfall::None => "Nothing in the case was withheld from this audience.",
+                Shortfall::Withheld => "Incomplete: the audience policy withheld material from this export, and content resting on it, or that this export could not copy exactly, may be left out too. What was withheld or left out is not named here.",
+                Shortfall::LeftOut => "Incomplete: nothing in the case was withheld from this audience, but this export left out content it could not show or copy exactly. What was left out is not named here.",
             }
             .to_owned(),
             disclosure: format!(

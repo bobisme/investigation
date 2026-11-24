@@ -26,8 +26,9 @@ use investigation_core::{
 use investigation_render::{
     Audience,
     export::{
-        Caveat, ExportPlan, ExportSnapshot, IdentifierMode, Pin, Retained, kind, plan_export,
-        plan_export_remap,
+        Caveat, Completeness, ExportPlan, ExportSnapshot, IdentifierMode, KINDS, Pin, Retained,
+        Scope, Shortfall, Statements, kind, plan_export, plan_export_remap, producer_bundle,
+        review_vault, source::read_retained,
     },
 };
 use investigation_store::{Store, Workspace};
@@ -848,6 +849,50 @@ fn internal_keeps_canonical_ids_unless_remapping_is_asked_and_restores_exactly()
         internal.identifiers().exported(&clean)
     );
     assert_ne!(public.manifest().snapshot, internal.manifest().snapshot);
+}
+
+/// For every case kind and audience, the manifest reads complete exactly
+/// when nothing was withheld and nothing was left out, and its statement is
+/// the fixed one for that shortfall: the same words whether or not an
+/// omission stands beside withheld records (bn-1vg8).
+#[test]
+fn every_kind_reads_complete_only_when_nothing_was_withheld_or_left_out() {
+    let mut fixture = fixture();
+    let snapshot = ExportSnapshot::read(&mut fixture.store, fixture.case, &Pin::default()).unwrap();
+    for spec in KINDS
+        .iter()
+        .filter(|spec| spec.available() && spec.scope() == Scope::Case)
+    {
+        for audience in [Audience::Restricted, Audience::Internal, Audience::Public] {
+            let mut digests = review_vault::attachment_digests(&snapshot, audience);
+            digests.extend(producer_bundle::required_digests(
+                snapshot.case().state(),
+                snapshot.today(),
+            ));
+            let retained = read_retained(&fixture.store, &digests).unwrap();
+            for remap in [false, true] {
+                let label = format!("{} {audience:?} remap {remap}", spec.name);
+                let plan = plan_export_remap(spec, &snapshot, audience, &retained, remap)
+                    .unwrap_or_else(|error| panic!("{label}: {error}"));
+                let withheld = !plan.exclusions().is_empty();
+                let omitted = !plan.omissions().is_empty();
+                assert_eq!(plan.complete(), !withheld && !omitted, "{label}");
+                let manifest = plan.manifest();
+                assert_eq!(
+                    manifest.completeness == Completeness::Complete,
+                    plan.complete(),
+                    "{label}: {:?}",
+                    plan.omissions()
+                );
+                let shortfall = Shortfall::of(withheld, omitted);
+                assert_eq!(
+                    manifest.statements.completeness,
+                    Statements::fixed(shortfall, audience, plan.identifiers().mode()).completeness,
+                    "{label}"
+                );
+            }
+        }
+    }
 }
 
 #[test]

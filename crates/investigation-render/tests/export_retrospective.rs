@@ -20,7 +20,7 @@ use investigation_core::{
 };
 use investigation_render::{
     Audience,
-    export::{ExportPlan, ExportSnapshot, Pin, kind, plan_export},
+    export::{ExportPlan, ExportSnapshot, OmissionReason, Omitted, Pin, kind, plan_export},
 };
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
@@ -383,6 +383,67 @@ fn restricted_shows_every_lesson_with_its_exact_reviewer_status() {
     assert!(two.contains("Not shown as admitted"), "{two}");
     assert!(two.contains("unreviewed proposal"), "{two}");
     assert!(plan.complete(), "{:?}", plan.exclusions());
+    assert!(plan.omissions().is_empty(), "{:?}", plan.omissions());
+}
+
+/// The lessons and steps each audience does not get, as the publisher sees
+/// them: what, why, the retrospective and which entry (bn-1vg8).
+fn left_out(plan: &ExportPlan) -> Vec<(Omitted, OmissionReason, Option<Id>, String)> {
+    plan.omissions()
+        .iter()
+        .map(|omission| {
+            (
+                omission.content,
+                omission.reason,
+                omission.record,
+                omission.part.clone().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn every_lesson_and_step_left_out_is_reported_to_the_publisher_only() {
+    let mut fixture = fixture();
+    let retro = Some(fixture.retrospective);
+    let withheld = OmissionReason::RestsOnWithheld;
+    let internal = export(&mut fixture, Audience::Internal);
+    assert_eq!(
+        left_out(&internal),
+        [(Omitted::Lesson, withheld, retro, "lessons[3]".to_owned())]
+    );
+    let public = export(&mut fixture, Audience::Public);
+    assert_eq!(
+        left_out(&public),
+        [
+            (Omitted::Lesson, withheld, retro, "lessons[2]".to_owned()),
+            (Omitted::Lesson, withheld, retro, "lessons[3]".to_owned()),
+            (
+                Omitted::Step,
+                withheld,
+                retro,
+                "effective_steps[1]".to_owned()
+            ),
+        ]
+    );
+    for plan in [&internal, &public] {
+        assert!(!plan.complete());
+        // The export says only that material was withheld, in the words an
+        // export with no omission beside its exclusions uses as well.
+        let manifest = plan.manifest();
+        assert_eq!(manifest.completeness.as_str(), "incomplete");
+        assert!(
+            manifest
+                .statements
+                .completeness
+                .starts_with("Incomplete: the audience policy withheld material"),
+            "{}",
+            manifest.statements.completeness
+        );
+        for word in ["lessons[", "effective_steps[", "rests_on", "omission"] {
+            assert!(mentions(plan, word).is_empty(), "{word}");
+        }
+    }
 }
 
 #[test]

@@ -7,6 +7,8 @@
 //! - a cell whose comparison is withheld reads "not shown" for an audience
 //!   that approves caveats and drops its option row for one that does not;
 //! - Pareto status is listed only when the whole matrix is shown;
+//! - every row, cell and Pareto status left out is reported as an omission
+//!   for the publisher (bn-1vg8);
 //! - every byte of every file is scanned for any withheld ID or marker.
 
 use investigation_core::{
@@ -15,7 +17,7 @@ use investigation_core::{
 };
 use investigation_render::{
     Audience,
-    export::{Caveat, ExportPlan, ExportSnapshot, Pin, kind, plan_export},
+    export::{Caveat, ExportPlan, ExportSnapshot, OmissionReason, Omitted, Pin, kind, plan_export},
 };
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
@@ -136,6 +138,7 @@ struct Fixture {
     _directory: tempfile::TempDir,
     store: Store,
     case: Id,
+    question: Id,
     decision: Id,
     option_a: Id,
     option_b: Id,
@@ -296,6 +299,7 @@ fn fixture(hold: Hold) -> Fixture {
         _directory: directory,
         store,
         case,
+        question,
         decision,
         option_a,
         option_b,
@@ -415,6 +419,19 @@ fn a_withheld_option_has_no_row_for_the_public_and_no_pareto_status() {
     assert_eq!(matrix_rows(&text).len(), 1, "{text}");
     assert!(!text.contains("Pareto status ("), "{text}");
     assert!(!text.contains("Caveat"), "{text}");
+    // The withheld option is an exclusion, not an omission; the Pareto
+    // status left out because of it is reported for the publisher.
+    assert_eq!(
+        omitted(&plan),
+        [(
+            Omitted::ParetoStatus,
+            OmissionReason::RestsOnWithheld,
+            Some(fixture.question),
+            None
+        )],
+        "{:?}",
+        plan.omissions()
+    );
     let everything = everything(&plan);
     for withheld in [
         shown(&plan, fixture.option_b),
@@ -448,6 +465,25 @@ fn a_withheld_comparison_drops_its_row_for_the_public_and_reads_not_shown_for_in
     assert!(!everything(&public).contains(&shown(&public, hidden_id)));
     assert!(rows.iter().all(|row| !row.contains("not shown")), "{text}");
     assert!(!text.contains("Pareto status ("));
+    // Option A is shown elsewhere, so its dropped row is an omission.
+    assert_eq!(
+        omitted(&public),
+        [
+            (
+                Omitted::MatrixRow,
+                OmissionReason::RestsOnWithheld,
+                Some(fixture.option_a),
+                Some(fixture.question.to_string())
+            ),
+            (
+                Omitted::ParetoStatus,
+                OmissionReason::RestsOnWithheld,
+                Some(fixture.question),
+                None
+            ),
+        ],
+    );
+    assert!(!public.complete());
 
     // Raised above internal, the cell is withheld from the internal audience
     // too; it stays in the row as "not shown" and nothing names it.
@@ -464,12 +500,45 @@ fn a_withheld_comparison_drops_its_row_for_the_public_and_reads_not_shown_for_in
     assert!(row_a.contains("not shown"), "{row_a}");
     assert!(!everything(&internal).contains(&hidden));
     assert!(!text.contains("Pareto status ("));
+    assert_eq!(
+        omitted(&internal),
+        [
+            (
+                Omitted::MatrixCell,
+                OmissionReason::RestsOnWithheld,
+                Some(fixture.option_a),
+                Some(fixture.soft.to_string())
+            ),
+            (
+                Omitted::ParetoStatus,
+                OmissionReason::RestsOnWithheld,
+                Some(fixture.question),
+                None
+            ),
+        ],
+    );
     // The restricted audience sees the cell.
     let restricted = plan(&mut fixture, Audience::Restricted);
     let text = record(&restricted);
     assert!(text.contains(&hidden), "{text}");
     assert!(!text.contains("not shown"));
     assert!(text.contains("Pareto status ("));
+    assert!(restricted.omissions().is_empty() && restricted.complete());
+}
+
+/// What the plan reports leaving out, as comparable tuples.
+fn omitted(plan: &ExportPlan) -> Vec<(Omitted, OmissionReason, Option<Id>, Option<String>)> {
+    plan.omissions()
+        .iter()
+        .map(|omission| {
+            (
+                omission.content,
+                omission.reason,
+                omission.record,
+                omission.part.clone(),
+            )
+        })
+        .collect()
 }
 
 #[test]

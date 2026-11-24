@@ -18,7 +18,8 @@
 //!
 //! A remapped export (always for `public`, W11.13) rewrites every identifier
 //! in every file it writes. Captured bytes that may hold one are therefore
-//! listed but not copied, so a copy is always exactly the captured bytes.
+//! listed but not copied, so a copy is always exactly the captured bytes,
+//! and each one is reported as an [`super::Omission`] (bn-1vg8).
 
 use std::{collections::BTreeSet, fmt::Write as _};
 
@@ -26,7 +27,7 @@ use investigation_core::{
     command::RevisionRef, derivation::artifact_body, human_file::NoteSnapshot, wire::Digest,
 };
 
-use super::{ExportInput, archive::human_member};
+use super::{ExportInput, Omission, OmissionReason, Omitted, archive::human_member};
 use crate::{Phase, PlanBuilder, PlanPath, RenderError, text::inline_code};
 
 /// Why a shown snapshot's bytes are not copied.
@@ -79,7 +80,13 @@ pub(crate) fn plan(
         let withdrawn = input.inclusion.availability_withdrawn(snapshot.artifact.id);
         let member = match input.retained.get(&snapshot.sha256) {
             _ if withdrawn => Err(WITHDRAWN),
-            Some(bytes) if input.remapped() && may_hold_identifier(bytes) => Err(HOLDS_IDENTIFIERS),
+            Some(bytes) if input.remapped() && may_hold_identifier(bytes) => {
+                input.omit(
+                    Omission::new(Omitted::HumanFileBytes, OmissionReason::IdentifiersRemapped)
+                        .of(snapshot.annotation.id),
+                );
+                Err(HOLDS_IDENTIFIERS)
+            }
             Some(bytes) => {
                 let member = human_member(&snapshot.sha256);
                 if copied.insert(snapshot.sha256.clone()) {

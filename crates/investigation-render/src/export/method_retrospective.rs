@@ -19,11 +19,13 @@
 //!   lesson), and an admission is described as independent only when the
 //!   admitting actor differs from the author. Actor names are identifiers
 //!   the actors gave themselves; nothing here authenticates them.
-//! - **Policy applies to lessons like any text.** A lesson, step or
-//!   citation that rests on a record the audience may not see is left out for
-//!   every audience, since its wording may restate that record; a fixed
-//!   sentence in the limits says so, and nothing names or counts what was
-//!   left out. Records shown carry the policy's caveats as in every kind.
+//! - **Policy applies to lessons like any text.** A lesson or step that
+//!   cites a record the audience may not see, or one this snapshot does not
+//!   hold, is left out for every audience, since its wording may restate
+//!   that record; a fixed sentence in the limits says so, and nothing names
+//!   or counts what was left out. Each one is reported as an
+//!   [`super::Omission`], so the manifest reads incomplete (bn-1vg8). Records
+//!   shown carry the policy's caveats as in every kind.
 
 use std::fmt::Write as _;
 
@@ -37,7 +39,7 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-use super::{ExportInput, ExportRenderer, caveats_approved, dependent_rule};
+use super::{ExportInput, ExportRenderer, Omission, Omitted, caveats_approved, dependent_rule};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::prose,
@@ -46,7 +48,9 @@ use crate::{
 };
 
 /// Output format of this kind.
-pub const VERSION: &str = "inv.export.method-retrospective.v1";
+/// v2 (bn-1vg8): a step or lesson citing a record this snapshot does not
+/// hold is left out like one citing a withheld record, and reported.
+pub const VERSION: &str = "inv.export.method-retrospective.v2";
 
 /// The file's name.
 pub const FILE: &str = "method-retrospective.md";
@@ -142,7 +146,8 @@ fn document(input: &ExportInput<'_>) -> String {
     steps(
         &mut out,
         input,
-        &array(&retro.body, "effective_steps"),
+        retro,
+        "effective_steps",
         "- None recorded.",
     );
     out.push_str("\n## Invalid or misleading routes\n\n");
@@ -151,12 +156,7 @@ fn document(input: &ExportInput<'_>) -> String {
         text_at(&retro.body, "none_observed_reason")
             .map_or_else(|| "no reason recorded".to_owned(), prose)
     );
-    steps(
-        &mut out,
-        input,
-        &array(&retro.body, "invalid_or_misleading_steps"),
-        &none,
-    );
+    steps(&mut out, input, retro, "invalid_or_misleading_steps", &none);
 
     out.push_str("\n## Constraints\n\n");
     let _ = writeln!(
@@ -291,49 +291,43 @@ fn caveat_lines(out: &mut String, input: &ExportInput<'_>, record: &Record, inde
     }
 }
 
-/// What the audience gets of an entry that cites `support`: its shown
-/// citations and whether some cited record is withheld from it.
-struct Citations {
-    shown: Vec<Id>,
-    withheld: bool,
-}
-
-fn citations(input: &ExportInput<'_>, entry: &Value) -> Citations {
-    let mut found = Citations {
-        shown: Vec::new(),
-        withheld: false,
-    };
-    for id in entry
+/// The records an entry cites as its support.
+fn support(entry: &Value) -> Vec<Id> {
+    entry
         .get("support_refs")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
         .filter_map(|id| id.parse::<Id>().ok())
-    {
-        if shown(input, id).is_some() {
-            found.shown.push(id);
-        } else {
-            found.withheld = true;
-        }
-    }
-    found
+        .collect()
 }
 
-/// Whether an entry with this citation outcome may appear. A step or lesson
-/// is authored text that may restate what its support says, and a record's
-/// caveat cannot vouch for that text, so an entry that cites anything the
-/// audience may not see is left out for every audience.
-const fn may_appear(cited: &Citations) -> bool {
-    !cited.withheld
+/// Whether entry `index` of `field` may appear, reporting the omission when
+/// it may not. A step or lesson is authored text that may restate what its
+/// support says, and a record's caveat cannot vouch for that text, so an
+/// entry that cites anything the audience may not see, or anything this
+/// snapshot does not hold, is left out for every audience.
+fn may_appear(
+    input: &ExportInput<'_>,
+    retro: &Record,
+    content: Omitted,
+    field: &str,
+    index: usize,
+    cited: &[Id],
+) -> bool {
+    input.admits(cited.iter().copied(), |reason| {
+        Omission::new(content, reason)
+            .of(retro.header.id)
+            .at(format!("{field}[{index}]"))
+    })
 }
 
-fn support_line(input: &ExportInput<'_>, cited: &Citations) -> String {
-    if cited.shown.is_empty() {
+fn support_line(input: &ExportInput<'_>, cited: &[Id]) -> String {
+    if cited.is_empty() {
         return "no support shown".to_owned();
     }
     let links: Vec<String> = cited
-        .shown
         .iter()
         .take(MAX_LISTED)
         .map(|id| {
@@ -346,11 +340,11 @@ fn support_line(input: &ExportInput<'_>, cited: &Citations) -> String {
     format!("support {}", links.join("; "))
 }
 
-fn steps(out: &mut String, input: &ExportInput<'_>, items: &[Value], none: &str) {
+fn steps(out: &mut String, input: &ExportInput<'_>, retro: &Record, field: &str, none: &str) {
     let mut listed = 0;
-    for item in items {
-        let cited = citations(input, item);
-        if !may_appear(&cited) {
+    for (index, item) in array(&retro.body, field).iter().enumerate() {
+        let cited = support(item);
+        if !may_appear(input, retro, Omitted::Step, field, index, &cited) {
             continue;
         }
         listed += 1;
@@ -570,8 +564,8 @@ fn proposed_lessons(out: &mut String, input: &ExportInput<'_>, retro: &Record) {
         .level;
     let mut listed = 0;
     for (index, lesson) in all.iter().enumerate() {
-        let cited = citations(input, lesson);
-        if !may_appear(&cited) {
+        let cited = support(lesson);
+        if !may_appear(input, retro, Omitted::Lesson, "lessons", index, &cited) {
             continue;
         }
         listed += 1;
@@ -699,9 +693,9 @@ fn limits(out: &mut String, input: &ExportInput<'_>) {
     );
     let _ = writeln!(out, "- {}", dependent_rule(input.audience));
     out.push_str(
-        "- A step or lesson that cites a record withheld from this audience is left out for \
-         every audience, because its wording may restate what that record says. It is not \
-         named, counted or described.\n",
+        "- A step or lesson that cites a record withheld from this audience, or one this \
+         snapshot does not hold, is left out for every audience, because its wording may \
+         restate what that record says. It is not named, counted or described.\n",
     );
     out.push_str(
         "- The process digest covers recorded work only; effort, dead ends and decisions never \

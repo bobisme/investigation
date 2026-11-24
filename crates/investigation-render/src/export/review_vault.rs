@@ -29,7 +29,10 @@
 //! [`super::Caveat`]s under its summary, wherever its note shows its standing.
 //! A reference to a record not shown is left out of lists and replaced by
 //! fixed words elsewhere; a gap whose rule read anything not shown is left
-//! out; Pareto status is not listed when anything is withheld.
+//! out; Pareto status is not listed when anything is withheld. Each such
+//! gap and status, and each attachment not copied, is reported as an
+//! [`super::Omission`], so the manifest, `Start Here.md` and
+//! `Omitted Data.md` agree that the copy is incomplete.
 //!
 //! **Guard.** After planning, every file name and byte is scanned for every
 //! withheld record's ID (prefixed, bare or 32-digit). A hit refuses the
@@ -70,8 +73,8 @@ use investigation_core::{
 };
 
 use super::{
-    Completeness, ExportInput, ExportRenderer, ExportSnapshot, Inclusion, Statements,
-    dependent_rule,
+    ExportInput, ExportRenderer, ExportSnapshot, Inclusion, Omission, OmissionReason, Omitted,
+    Statements, dependent_rule,
 };
 use crate::{
     Audience, Phase, PlanBuilder, PlanPath, RenderError, VerifiedSnapshot, ViewPolicy, layout,
@@ -88,7 +91,9 @@ use crate::{
 /// v2 (W11.16): every note, not only the views and the Overview, carries
 /// the caveats of the caveated records it links, since a record note's
 /// backlinks show their standing too.
-pub const VERSION: &str = "inv.export.review-vault.v2";
+/// v3 (bn-1vg8): completeness counts gaps, Pareto status and attachments
+/// left out, with the framework's completeness statement.
+pub const VERSION: &str = "inv.export.review-vault.v3";
 
 /// The vault renderer version whose templates this kind plans.
 pub const TEMPLATES: &str = crate::plan::RENDERER_VERSION;
@@ -137,6 +142,17 @@ impl ExportRenderer for ReviewVault {
                 .map(|caveat| caveat.text())
                 .collect()
         };
+        let omit = |content: Omitted, record: Option<Id>, part: Option<&str>, rests: &[Id]| {
+            // Not shown here means withheld, or held at a channel this
+            // audience may not see.
+            let reason = input
+                .rests_on(rests.iter().copied())
+                .unwrap_or(OmissionReason::RestsOnWithheld);
+            let mut omission = Omission::new(content, reason);
+            omission.record = record;
+            omission.part = part.map(str::to_owned);
+            input.omit(omission);
+        };
         let generation = files.generation().clone();
         let notes = NoteContext::for_review(
             case,
@@ -145,6 +161,7 @@ impl ExportRenderer for ReviewVault {
                 shows: &shows,
                 caveats: &caveats,
                 positions: !input.remapped(),
+                omit: &omit,
             },
             &policy,
             &generation,
@@ -165,6 +182,8 @@ impl ExportRenderer for ReviewVault {
                 entry.projects(),
             )?;
         }
+        // Every omission is reported before the two notes that state
+        // completeness are planned.
         let attachments = attachments(input, case.state());
         plan.add(
             Phase::Entry,
@@ -318,12 +337,16 @@ fn attachments(input: &ExportInput<'_>, shown: &State) -> Attachments {
             continue;
         }
         let Some(bytes) = input.retained.get(&digest) else {
+            input.omit(Omission::new(Omitted::Attachment, OmissionReason::BytesNotRead).of(id));
             found
                 .skipped
                 .push((id, "its retained bytes were not read for this export"));
             continue;
         };
         if holds_identifiers(bytes, &identifiers) {
+            input.omit(
+                Omission::new(Omitted::Attachment, OmissionReason::BytesHoldIdentifiers).of(id),
+            );
             found.skipped.push((
                 id,
                 "its bytes hold record identifiers or a journal head; an export may rewrite \
@@ -449,14 +472,6 @@ fn guard(path: &str, bytes: &[u8], withheld: &[String]) -> Result<(), RenderErro
     Ok(())
 }
 
-fn completeness(input: &ExportInput<'_>) -> Completeness {
-    if input.inclusion.exclusions().is_empty() {
-        Completeness::Complete
-    } else {
-        Completeness::Incomplete
-    }
-}
-
 /// `Start Here.md`: what this folder is, its basis, and how to read it.
 fn entry_note(
     input: &ExportInput<'_>,
@@ -511,7 +526,7 @@ fn entry_note(
     let _ = writeln!(
         out,
         "| Completeness | {} |",
-        table_code(completeness(input).as_str())
+        table_code(input.shortfall().completeness().as_str())
     );
     let _ = writeln!(out, "| Export kind | {} |", table_code(VERSION));
     let _ = writeln!(out, "| Note templates | {} |", table_code(TEMPLATES));
@@ -571,7 +586,7 @@ fn omitted_note(
     notes: &NoteContext<'_>,
     attachments: &Attachments,
 ) -> Result<String, RenderError> {
-    let statements = Statements::fixed(completeness(input), input.audience, input.identity.mode);
+    let statements = Statements::fixed(input.shortfall(), input.audience, input.identity.mode);
     let mut out = Frontmatter::new()
         .text("inv_schema", VAULT_SCHEMA)
         .text("inv_export_kind", input.kind.name)

@@ -227,6 +227,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     if args.require_complete && !plan.complete() {
         let error = ExportError::Incomplete {
             exclusions: plan.exclusions().to_vec(),
+            omissions: plan.omissions().to_vec(),
         };
         let mut failure = error.to_failure().at("--require-complete");
         failure.error.actual = Some(exclusions_json(&plan));
@@ -284,12 +285,19 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             manifest.snapshot.case_id
         );
     }
-    if !plan.complete() {
+    if !plan.exclusions().is_empty() {
         let _ = write!(
             text,
             "\nwithheld {} record(s) from audience {}; they are listed in --format json output only",
             plan.exclusions().len(),
             audience.as_str()
+        );
+    }
+    if !plan.omissions().is_empty() {
+        let _ = write!(
+            text,
+            "\nleft out {} further item(s) the kind could not show or copy exactly; they are listed in --format json output only",
+            plan.omissions().len()
         );
     }
     if !plan.caveated().is_empty() {
@@ -466,12 +474,18 @@ fn exclusions_json_of(error: &ExportError) -> Value {
             "lists_capped_at": MAX_LISTED,
         });
     }
-    let ExportError::Incomplete { exclusions } = error else {
+    let ExportError::Incomplete {
+        exclusions,
+        omissions,
+    } = error
+    else {
         return Value::Null;
     };
     json!({
         "exclusion_count": exclusions.len(),
         "exclusions": exclusions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
+        "omission_count": omissions.len(),
+        "omissions": omissions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
         "lists_capped_at": MAX_LISTED,
     })
 }
@@ -507,15 +521,19 @@ fn identifiers_json(plan: &ExportPlan) -> Value {
     value
 }
 
-/// The publisher-only list of withheld and caveated records.
+/// The publisher-only list of withheld records, content the kind left out
+/// and caveated records.
 fn exclusions_json(plan: &ExportPlan) -> Value {
     let exclusions = plan.exclusions();
+    let omissions = plan.omissions();
     let caveated = plan.caveated();
     json!({
-        "note": "For the publisher only: these records were withheld by the audience policy and are not named in the export; the caveated records are shown with the policy's fixed caveats.",
+        "note": "For the publisher only: these records were withheld by the audience policy and are not named in the export; the omissions are content the kind left out beyond those records (what, why, the record it belongs to and which part), which the export does not name or count either; the caveated records are shown with the policy's fixed caveats.",
         "policy": export::POLICY_VERSION,
         "exclusion_count": exclusions.len(),
         "exclusions": exclusions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
+        "omission_count": omissions.len(),
+        "omissions": omissions.iter().take(MAX_LISTED).collect::<Vec<_>>(),
         "caveated_count": caveated.len(),
         "caveated": caveated.iter().take(MAX_LISTED).collect::<Vec<_>>(),
         "lists_capped_at": MAX_LISTED,

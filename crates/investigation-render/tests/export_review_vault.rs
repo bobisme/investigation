@@ -21,8 +21,9 @@ use investigation_core::{
 use investigation_render::{
     Audience,
     export::{
-        Caveat, ExportError, ExportPlan, ExportSnapshot, Pin, Product, Retained, kind, plan_export,
-        plan_export_with, review_vault, source::read_retained, write_export,
+        Caveat, ExportError, ExportPlan, ExportSnapshot, OmissionReason, Omitted, Pin, Product,
+        Retained, kind, plan_export, plan_export_with, review_vault, source::read_retained,
+        write_export,
     },
 };
 use investigation_store::{Store, Workspace, store::ingest::IngestReceipt};
@@ -635,6 +636,37 @@ fn only_reviewed_derivatives_free_of_identifiers_are_attached_byte_for_byte() {
         for entry in plan.files().entries() {
             assert_ne!(entry.sha256(), &original_digest, "{}", entry.path());
         }
+        // The attachment left out is reported to the publisher, and the
+        // copy never reads complete (bn-1vg8), for every audience.
+        let attachment = plan
+            .omissions()
+            .iter()
+            .find(|omission| omission.content == Omitted::Attachment)
+            .unwrap_or_else(|| panic!("{audience:?}: {:?}", plan.omissions()));
+        assert_eq!(attachment.reason, OmissionReason::BytesHoldIdentifiers);
+        assert_eq!(attachment.record, Some(fixture.quoting));
+        assert!(!plan.complete(), "{audience:?}");
+        let statement = &plan.manifest().statements.completeness;
+        assert!(
+            omitted.contains(&format!("- {statement}\n")),
+            "{audience:?}: the note and the manifest agree\n{omitted}"
+        );
+        assert!(start.contains("| Completeness | `incomplete` |"), "{start}");
+        if audience == Audience::Restricted {
+            // Nothing is withheld from restricted: the attachment alone
+            // makes it incomplete, and the statement says only that.
+            assert!(plan.exclusions().is_empty());
+            assert_eq!(plan.omissions().len(), 1, "{:?}", plan.omissions());
+            assert!(
+                statement.starts_with("Incomplete: nothing in the case was withheld"),
+                "{statement}"
+            );
+        } else {
+            assert!(
+                statement.starts_with("Incomplete: the audience policy withheld"),
+                "{statement}"
+            );
+        }
     }
     // Without the retained bytes, nothing is attached and the note says so.
     let snapshot = ExportSnapshot::read(&mut fixture.store, fixture.case, &Pin::default()).unwrap();
@@ -645,6 +677,14 @@ fn only_reviewed_derivatives_free_of_identifiers_are_attached_byte_for_byte() {
             .iter()
             .all(|entry| !entry.path().as_str().starts_with("Attachments/"))
     );
+    let unread: Vec<Id> = plan
+        .omissions()
+        .iter()
+        .filter(|omission| omission.reason == OmissionReason::BytesNotRead)
+        .filter_map(|omission| omission.record)
+        .collect();
+    assert_eq!(unread.len(), 2, "{:?}", plan.omissions());
+    assert!(unread.contains(&fixture.derived) && unread.contains(&fixture.quoting));
     let _ = Retained::none();
 }
 

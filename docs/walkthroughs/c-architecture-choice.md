@@ -90,12 +90,12 @@ investigation --workspace ./demo-case export --kind decision-record --audience i
 ```
 
 ```text
-exported  decision-record  complete  exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-16d59b1df19a
+exported  decision-record  complete  exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-fe655fdab412
 ...
 ```
 
 ```sh
-cat ./demo-case/exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-16d59b1df19a/decision-record.md
+cat ./demo-case/exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-fe655fdab412/decision-record.md
 ```
 
 ```text

@@ -306,7 +306,10 @@ pub fn plan_archive(
         supersession.extend(case_supersession);
     }
     if !exclusions.is_empty() {
-        return Err(ExportError::Incomplete { exclusions });
+        return Err(ExportError::Incomplete {
+            exclusions,
+            omissions: Vec::new(),
+        });
     }
     if !caveated.is_empty() {
         return Err(ExportError::Caveated { caveated });
@@ -445,8 +448,11 @@ pub fn plan_archive(
         (sources, supersession),
         Completeness::Complete,
         Statements::archive(),
-        Vec::new(),
-        Vec::new(),
+        super::Withheld {
+            exclusions: Vec::new(),
+            omissions: Vec::new(),
+            caveated: Vec::new(),
+        },
     ))
 }
 

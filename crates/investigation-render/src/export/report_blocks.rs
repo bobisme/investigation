@@ -17,6 +17,10 @@
 //!   with a statement that it no longer holds, never on its own.
 //! - Stale, retracted, superseded and withdrawn inputs are annotated where
 //!   they are cited, not only in a list of their own.
+//! - Content derived from records that is not itself one (an advisory
+//!   flag's reason) is left out when it read anything not included, and
+//!   reported through [`ExportInput::admits`] so the export reads
+//!   incomplete.
 //! - Authored text is escaped prose ([`prose`]); captured excerpts are
 //!   bounded plain-text blocks ([`fenced_block`]). Confidence and likelihood
 //!   are always on separate lines, never in one sentence.
@@ -41,7 +45,7 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-use super::{ExportInput, dependent_rule};
+use super::{ExportInput, Omission, Omitted, dependent_rule};
 use crate::{
     evidence::{EXCERPT_CHARS, EXCERPT_LINES, bounded_excerpt, prose},
     note::{text_at, value_at, wire_word},
@@ -706,13 +710,18 @@ impl<'i, 'a> Report<'i, 'a> {
         let inner = format!("{indent}  ");
         for flag in &report.flags {
             // A reason quotes the fields it read; it is shown only when every
-            // record the rule read is included.
-            let readable = flag
+            // record the rule read is included, and reported as left out
+            // otherwise.
+            let read = flag
                 .fields
                 .iter()
                 .map(|field| field.record_ref.id)
-                .chain(flag.related_refs.iter().map(|reference| reference.id))
-                .all(|id| self.shown(id).is_some());
+                .chain(flag.related_refs.iter().map(|reference| reference.id));
+            let readable = self.input.admits(read, |reason| {
+                Omission::new(Omitted::FlagReason, reason)
+                    .of(record.header.id)
+                    .at(flag.flag_id.clone())
+            });
             if readable {
                 let _ = writeln!(
                     self.out,

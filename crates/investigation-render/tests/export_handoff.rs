@@ -20,8 +20,8 @@ use investigation_core::{
 use investigation_render::{
     Audience,
     export::{
-        Caveat, ExportPlan, ExportSnapshot, IdentifierMode, Pin, Retained, kind, plan_export,
-        plan_export_remap,
+        Caveat, ExportPlan, ExportSnapshot, IdentifierMode, OmissionReason, Omitted, Pin, Retained,
+        kind, plan_export, plan_export_remap,
     },
 };
 use investigation_store::{Store, Workspace};
@@ -413,6 +413,7 @@ fn restricted_sees_every_run_and_the_leading_outcome() {
     let mut fixture = fixture();
     let plan = export(&mut fixture, Audience::Restricted);
     assert!(plan.complete());
+    assert!(plan.omissions().is_empty(), "{:?}", plan.omissions());
     for path in ["handoff-brief.md", "handoff-overview.md"] {
         let text = file(&plan, path);
         assert!(!text.contains("- Caveat: "), "{path}");
@@ -449,6 +450,26 @@ fn internal_caveats_the_challenged_decision_and_names_nothing_restricted() {
     let plan = export(&mut fixture, Audience::Internal);
     assert!(!plan.complete());
     assert_nothing_withheld_leaks(&plan, fixture.case, &[RESTRICTED]);
+    // The gaps left out because they read withheld records are reported to
+    // the publisher (bn-1vg8); the restricted run's own gap is one of them.
+    assert!(
+        plan.omissions()
+            .iter()
+            .any(|omission| omission.content == Omitted::Gap
+                && omission.record == Some(fixture.restricted_run)
+                && omission.reason == OmissionReason::RestsOnWithheld),
+        "{:?}",
+        plan.omissions()
+    );
+    for omission in plan.omissions() {
+        assert!(
+            matches!(
+                omission.content,
+                Omitted::Gap | Omitted::Finding | Omitted::NextStep
+            ),
+            "{omission:?}"
+        );
+    }
     for path in ["handoff-brief.md", "handoff-overview.md"] {
         let text = file(&plan, path);
         // The decision's decisive objection is withheld; its state is

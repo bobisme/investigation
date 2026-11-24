@@ -846,3 +846,135 @@ fn a_bundle_outside_every_import_root_or_altered_is_refused() {
     assert_eq!(value["error"]["code"], "INTEGRITY_FAILURE", "{value}");
     assert!(heads(cwd, &fresh).as_array().unwrap().is_empty());
 }
+
+/// A remapped bundle withholds no record at `restricted`, but it carries no
+/// envelope and no retained bytes, so it reads incomplete (bn-1vg8): the
+/// receipt lists what was left out for the publisher, the manifest only
+/// says that something was, and `--require-complete` refuses it.
+#[test]
+fn a_remapped_bundle_that_withholds_nothing_still_reads_incomplete() {
+    let directory = tempfile::tempdir().unwrap();
+    let cwd = directory.path();
+    let inputs = cwd.join("inputs");
+    fs::create_dir_all(&inputs).unwrap();
+    let workspace = cwd.join("ws");
+    let (exit, init) = run(
+        cwd,
+        &[
+            "init",
+            workspace.to_str().unwrap(),
+            "--no-vault",
+            "--import-root",
+            inputs.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(exit, 0, "{init}");
+    fs::write(
+        inputs.join("out.json"),
+        format!("{{\"ok\":\"{PUBLIC}\"}}\n"),
+    )
+    .unwrap();
+    let path = inputs.join("run.envelope.json");
+    fs::write(
+        &path,
+        envelope("run", "public", PUBLIC, "out.json").to_string(),
+    )
+    .unwrap();
+    let receipt = ok(
+        cwd,
+        &workspace,
+        &["ingest", "--input", path.to_str().unwrap()],
+    );
+    let case = receipt["case_id"].as_str().unwrap().to_owned();
+
+    let canonical = export(cwd, &workspace, &case, "restricted", &cwd.join("canonical"));
+    assert_eq!(canonical["completeness"], "complete", "{canonical}");
+    assert_eq!(canonical["publisher_receipt"]["omission_count"], 0);
+
+    let out = cwd.join("remapped");
+    let args = [
+        "--case",
+        case.as_str(),
+        "export",
+        "--kind",
+        "producer-bundle",
+        "--audience",
+        "restricted",
+        "--remap-ids",
+        "--out",
+        out.to_str().unwrap(),
+    ];
+    let remapped = ok(cwd, &workspace, &args);
+    assert_eq!(remapped["completeness"], "incomplete", "{remapped}");
+    let receipt = &remapped["publisher_receipt"];
+    assert_eq!(receipt["exclusion_count"], 0, "{receipt}");
+    let omissions: Vec<(&str, &str)> = receipt["omissions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|omission| {
+            (
+                omission["content"].as_str().unwrap(),
+                omission["reason"].as_str().unwrap(),
+            )
+        })
+        .collect();
+    assert!(
+        omissions.contains(&("envelope", "identifiers_remapped"))
+            && omissions.contains(&("artifact_bytes", "identifiers_remapped")),
+        "{receipt}"
+    );
+    assert_eq!(
+        receipt["omission_count"].as_u64().unwrap() as usize,
+        omissions.len()
+    );
+    // Each names the record it belongs to, canonically, for the publisher.
+    for omission in receipt["omissions"].as_array().unwrap() {
+        let record = omission["record"].as_str().unwrap();
+        assert!(
+            remapped["publisher_receipt"]["identifiers"]["ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|pair| pair["canonical"] == record),
+            "{omission}"
+        );
+    }
+
+    // The export says only that something was left out, never what.
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(out.join("export-manifest.json")).unwrap()).unwrap();
+    assert_eq!(manifest["completeness"], "incomplete");
+    let statement = manifest["statements"]["completeness"].as_str().unwrap();
+    assert!(
+        statement.starts_with("Incomplete: nothing in the case was withheld"),
+        "{statement}"
+    );
+    let text = manifest.to_string();
+    for word in ["omission", "artifact_bytes", "envelope"] {
+        assert!(!text.contains(word), "{word} in {text}");
+    }
+
+    let refused = cwd.join("refused");
+    let mut strict = args.to_vec();
+    strict.pop();
+    strict.push(refused.to_str().unwrap());
+    strict.push("--require-complete");
+    let mut full = vec!["--workspace", workspace.to_str().unwrap(), "--actor", ACTOR];
+    full.extend_from_slice(&strict);
+    let (exit, failure) = run(cwd, &full);
+    assert_eq!(exit, 5, "{failure}");
+    assert_eq!(failure["error"]["code"], "GATE_FAILED", "{failure}");
+    assert_eq!(
+        failure["error"]["actual"]["exclusion_count"], 0,
+        "{failure}"
+    );
+    assert!(
+        failure["error"]["actual"]["omission_count"]
+            .as_u64()
+            .unwrap()
+            >= 2,
+        "{failure}"
+    );
+    assert!(!refused.exists());
+}

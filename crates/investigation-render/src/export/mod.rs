@@ -37,6 +37,13 @@
 //!   exact exclusions and caveated records go only to the publisher, never
 //!   into the export. The table of what each audience gets is in the
 //!   `inclusion` module documentation.
+//! - [`Omission`]s are content a kind leaves out beyond record inclusion: a
+//!   lesson, matrix row, gap or finding resting on what the audience may
+//!   not see, or bytes the export cannot copy exactly. The kind reports
+//!   each one ([`ExportInput::omit`], [`ExportInput::admits`]); any omission
+//!   makes the export `incomplete` too, and only the publisher learns what
+//!   was left out. What the export says instead is in the `omission` module
+//!   documentation.
 //! - [`ExportManifest`] (`inv.export-manifest.v1`) names the snapshot, the
 //!   framework, renderer and schema versions, the audience and policy
 //!   version, completeness, included source digests, supersession links and
@@ -71,6 +78,13 @@
 //!   (title with a state, summary, table row) appears. Never paraphrase or
 //!   drop it, and never add your own words about withheld material.
 //!
+//! And one report: whenever it leaves out content that is not itself a
+//! withheld record (an entry, row, cell, status, gap, reason, file or bytes
+//! of something it shows), [`ExportInput::omit`] it, or decide with
+//! [`ExportInput::admits`], which reports the omission when it refuses. A
+//! kind that prints completeness itself must report first and then ask
+//! [`ExportInput::shortfall`].
+//!
 //! - Identifiers need no code in a kind: write canonical IDs, and the
 //!   framework remaps them when the export is remapped. Take the snapshot
 //!   to show from [`ExportInput::snapshot`] (never `case.head()`): its
@@ -102,6 +116,7 @@ mod identifiers;
 mod inclusion;
 mod manifest;
 mod method_retrospective;
+mod omission;
 pub mod producer_bundle;
 mod report_blocks;
 pub mod restore;
@@ -118,7 +133,7 @@ use investigation_core::{
     PROGRAM_NAME,
     command::RevisionRef,
     derivation,
-    identity::Kind,
+    identity::{Id, Kind},
     state::Record,
     wire::{Digest, ErrorCode, Failure},
 };
@@ -136,6 +151,7 @@ pub use manifest::{
     Completeness, ExportManifest, FileDigest, MANIFEST_SCHEMA, ManifestPolicy, ManifestSnapshot,
     ManifestVersions, SourceDigest, Statements, Supersession, manifest_schema,
 };
+pub use omission::{Omission, OmissionReason, Omissions, Omitted, Shortfall};
 pub use retained::{DigestMismatch, Retained};
 pub use snapshot::{ExportSnapshot, Pin};
 pub use write::{Written, write_export};
@@ -145,7 +161,9 @@ pub use write::{Written, write_export};
 /// the audience policy has its own [`POLICY_VERSION`].
 /// v2 (W11.13): the manifest states its identifier mode, and public or
 /// `--remap-ids` exports carry remapped IDs and a bundle snapshot.
-pub const FRAMEWORK_VERSION: &str = "inv.export.v2";
+/// v3 (bn-1vg8): completeness also counts what a kind left out beyond
+/// record inclusion ([`Omission`]), with its own fixed statement.
+pub const FRAMEWORK_VERSION: &str = "inv.export.v3";
 
 /// Version of the export audience policy. v1: strict positive inclusion by
 /// effective classification, judged at the pinned and the current revision,
@@ -350,6 +368,8 @@ pub struct ExportInput<'a> {
     pub retained: &'a Retained,
     /// The snapshot the export names and whether IDs are remapped.
     pub identity: &'a ExportIdentity,
+    /// What the kind reported leaving out; see [`Self::omit`].
+    pub(crate) omissions: &'a Omissions,
 }
 
 impl ExportInput<'_> {
@@ -365,6 +385,57 @@ impl ExportInput<'_> {
     /// each [`Caveat::text`] as given.
     pub fn caveats(&self, record: &Record) -> &[Caveat] {
         self.inclusion.caveats(record)
+    }
+
+    /// Report content this kind left out beyond record inclusion. Any
+    /// omission makes the export incomplete; the publisher alone learns
+    /// what it was. Reporting the same omission again keeps one.
+    pub fn omit(&self, omission: Omission) {
+        self.omissions.report(omission);
+    }
+
+    /// Why content resting on the records `ids` names may not appear:
+    /// `None` when every one of them is included, else
+    /// [`OmissionReason::RestsOnWithheld`] when any is withheld, else
+    /// [`OmissionReason::RestsOnUnresolved`] (a record the snapshot does
+    /// not hold, which cannot be judged for the audience).
+    pub fn rests_on(&self, ids: impl IntoIterator<Item = Id>) -> Option<OmissionReason> {
+        let state = self.case.state();
+        let mut reason = None;
+        for id in ids {
+            match state.current(id) {
+                Some(record) if self.includes(record) => {}
+                Some(_) => return Some(OmissionReason::RestsOnWithheld),
+                None => reason = Some(OmissionReason::RestsOnUnresolved),
+            }
+        }
+        reason
+    }
+
+    /// Whether content resting on `ids` may appear. When it may not, the
+    /// omission `omitted` builds from the reason is reported and this
+    /// returns false: the kind then leaves the content out.
+    pub fn admits(
+        &self,
+        ids: impl IntoIterator<Item = Id>,
+        omitted: impl FnOnce(OmissionReason) -> Omission,
+    ) -> bool {
+        match self.rests_on(ids) {
+            None => true,
+            Some(reason) => {
+                self.omit(omitted(reason));
+                false
+            }
+        }
+    }
+
+    /// What made the export incomplete so far, for a kind that prints its
+    /// own completeness: report every omission before asking.
+    pub fn shortfall(&self) -> Shortfall {
+        Shortfall::of(
+            !self.inclusion.exclusions().is_empty(),
+            !self.omissions.is_empty(),
+        )
     }
 
     /// The snapshot to show: the case snapshot, or the bundle when IDs are
@@ -405,7 +476,8 @@ impl ExportInput<'_> {
 }
 
 /// A planned export: the kind's files, its manifest, and the exact
-/// exclusions and caveated records, which only the publisher sees.
+/// exclusions, omissions and caveated records, which only the publisher
+/// sees.
 #[derive(Debug, Clone)]
 pub struct ExportPlan {
     kind: &'static KindSpec,
@@ -413,6 +485,7 @@ pub struct ExportPlan {
     manifest: ExportManifest,
     manifest_bytes: Vec<u8>,
     exclusions: Vec<Exclusion>,
+    omissions: Vec<Omission>,
     caveated: Vec<Caveated>,
     identifiers: Identifiers,
 }
@@ -442,13 +515,21 @@ impl ExportPlan {
         &self.exclusions
     }
 
+    /// Content the kind left out beyond record inclusion, in a fixed
+    /// order. Private to the publisher: never written into the export.
+    pub fn omissions(&self) -> &[Omission] {
+        &self.omissions
+    }
+
     /// Records shown with caveats, in ID order. Private to the publisher.
     pub fn caveated(&self) -> &[Caveated] {
         &self.caveated
     }
 
+    /// Nothing withheld and nothing left out: the manifest reads
+    /// `complete` exactly when this holds.
     pub fn complete(&self) -> bool {
-        self.exclusions.is_empty()
+        self.exclusions.is_empty() && self.omissions.is_empty()
     }
 
     /// The canonical snapshot and, when remapped, the ID mapping. Private to
@@ -476,9 +557,13 @@ pub enum ExportError {
     DestinationUnsafe(&'static str),
     /// A destination file operation failed.
     Destination { path: String, error: std::io::Error },
-    /// `--require-complete` was given and the policy withheld records, or
-    /// the kind is never written incomplete (an archive).
-    Incomplete { exclusions: Vec<Exclusion> },
+    /// `--require-complete` was given and the policy withheld records or
+    /// the kind left content out, or the kind is never written incomplete
+    /// (an archive).
+    Incomplete {
+        exclusions: Vec<Exclusion>,
+        omissions: Vec<Omission>,
+    },
     /// The kind must show every record as recorded (an archive), and the
     /// policy would show these only with caveats.
     Caveated { caveated: Vec<Caveated> },
@@ -548,12 +633,16 @@ impl fmt::Display for ExportError {
                 formatter,
                 "{path}: {error}. The files this export created were removed."
             ),
-            Self::Incomplete { exclusions } => write!(
+            Self::Incomplete {
+                exclusions,
+                omissions,
+            } => write!(
                 formatter,
-                "The audience policy withholds {} record(s), so the export would be \
-                 incomplete, and it must be complete (--require-complete, or an archive). \
-                 Nothing was written.",
-                exclusions.len()
+                "The audience policy withholds {} record(s) and the export would leave out {} \
+                 further item(s), so it would be incomplete, and it must be complete \
+                 (--require-complete, or an archive). Nothing was written.",
+                exclusions.len(),
+                omissions.len()
             ),
             Self::Caveated { caveated } => write!(
                 formatter,
@@ -643,6 +732,7 @@ pub fn plan_export_remap(
     let mode = IdentifierMode::for_audience(audience, remap_ids);
     let mut remapper = identifiers::Remapper::new(kind, case, audience, mode)?;
     let identity = remapper.identity();
+    let omissions = Omissions::new();
     let input = ExportInput {
         kind,
         audience,
@@ -651,6 +741,7 @@ pub fn plan_export_remap(
         inclusion: &inclusion,
         retained,
         identity: &identity,
+        omissions: &omissions,
     };
     let mut files = PlanBuilder::new(generation.clone());
     renderer.plan(&input, &mut files)?;
@@ -663,12 +754,10 @@ pub fn plan_export_remap(
         return Err(RenderError::DuplicatePath(MANIFEST_FILE.to_owned()).into());
     }
     let exclusions = inclusion.exclusions();
+    let omissions = omissions.list();
     let caveated = inclusion.caveated();
-    let completeness = if exclusions.is_empty() {
-        Completeness::Complete
-    } else {
-        Completeness::Incomplete
-    };
+    let shortfall = Shortfall::of(!exclusions.is_empty(), !omissions.is_empty());
+    let completeness = shortfall.completeness();
     let (sources, supersession) = manifest_parts(case.state(), |record| input.includes(record));
     let parts = remap_parts(&mut remapper, sources, supersession)?;
     let snapshot = remapper.exported_snapshot().clone();
@@ -684,9 +773,12 @@ pub fn plan_export_remap(
         },
         parts,
         completeness,
-        Statements::fixed(completeness, audience, mode),
-        exclusions,
-        caveated,
+        Statements::fixed(shortfall, audience, mode),
+        Withheld {
+            exclusions,
+            omissions,
+            caveated,
+        },
         remapper.finish(),
     ))
 }
@@ -777,6 +869,13 @@ pub(crate) fn manifest_parts(
     (sources, supersession)
 }
 
+/// What the publisher alone learns about one plan.
+pub(crate) struct Withheld {
+    pub exclusions: Vec<Exclusion>,
+    pub omissions: Vec<Omission>,
+    pub caveated: Vec<Caveated>,
+}
+
 /// Build the manifest over planned `files` and wrap both in a plan, with
 /// canonical identifiers (a workspace archive's).
 #[allow(clippy::too_many_arguments)]
@@ -789,8 +888,7 @@ pub(crate) fn finish_plan(
     parts: (Vec<SourceDigest>, Vec<Supersession>),
     completeness: Completeness,
     statements: Statements,
-    exclusions: Vec<Exclusion>,
-    caveated: Vec<Caveated>,
+    withheld: Withheld,
 ) -> ExportPlan {
     let identifiers = Identifiers::canonical_only(snapshot.clone());
     finish_plan_identified(
@@ -802,8 +900,7 @@ pub(crate) fn finish_plan(
         parts,
         completeness,
         statements,
-        exclusions,
-        caveated,
+        withheld,
         identifiers,
     )
 }
@@ -820,8 +917,11 @@ fn finish_plan_identified(
     (sources, supersession): (Vec<SourceDigest>, Vec<Supersession>),
     completeness: Completeness,
     statements: Statements,
-    exclusions: Vec<Exclusion>,
-    caveated: Vec<Caveated>,
+    Withheld {
+        exclusions,
+        omissions,
+        caveated,
+    }: Withheld,
     identifiers: Identifiers,
 ) -> ExportPlan {
     let file_digests: Vec<FileDigest> = files
@@ -873,6 +973,7 @@ fn finish_plan_identified(
         manifest,
         manifest_bytes,
         exclusions,
+        omissions,
         caveated,
         identifiers,
     }

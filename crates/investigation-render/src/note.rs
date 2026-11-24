@@ -42,7 +42,9 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::{
-    CaseSnapshot, Generation, PlanPath, RenderError, ViewPolicy, layout, marker,
+    CaseSnapshot, Generation, PlanPath, RenderError, ViewPolicy,
+    export::Omitted,
+    layout, marker,
     text::{display_text, inline_code, inline_text, table_code},
     yaml::Frontmatter,
 };
@@ -252,7 +254,15 @@ pub(crate) struct ReviewScope<'a> {
     /// an export whose identifiers are remapped, which names a bundle
     /// rather than the case journal.
     pub positions: bool,
+    /// Reports content the export leaves out because it rests on records
+    /// it does not show: what, the record it is about, which part, and the
+    /// records it rests on (bn-1vg8).
+    pub omit: &'a LeftOut<'a>,
 }
+
+/// Reports one piece of content a review export leaves out: what, the
+/// record it is about, which part, and the records it rests on.
+pub(crate) type LeftOut<'a> = dyn Fn(Omitted, Option<Id>, Option<&str>, &[Id]) + 'a;
 
 /// Everything a note needs about its case, computed once per case and plan.
 pub struct NoteContext<'a> {
@@ -377,7 +387,14 @@ impl<'a> NoteContext<'a> {
                     if let Some(review) = review {
                         // A review export names no gap computed from
                         // anything it does not show, not even by its rule.
-                        if !reads_only_shown(state, review.shows, read) {
+                        if !reads_only_shown(state, review.shows, read.clone()) {
+                            let rests: Vec<Id> = read.map(|reference| reference.id).collect();
+                            (review.omit)(
+                                Omitted::Gap,
+                                gap.subject_refs.first().map(|subject| subject.id),
+                                Some(&gap.gap_id),
+                                &rests,
+                            );
                             continue;
                         }
                     } else if !reads_only_visible(&classifier, &audience, read) {
@@ -519,6 +536,20 @@ impl<'a> NoteContext<'a> {
             inventory.snapshot = self.case.head().clone();
         }
         Ok(inventory)
+    }
+
+    /// For a review export, report content it leaves out because it rests
+    /// on records it does not show; nothing for the working vault.
+    pub(crate) fn left_out(
+        &self,
+        content: Omitted,
+        record: Option<Id>,
+        part: Option<&str>,
+        rests_on: &[Id],
+    ) {
+        if let Some(review) = self.review {
+            (review.omit)(content, record, part, rests_on);
+        }
     }
 
     /// Whether a review export leaves any record of its case out.

@@ -273,6 +273,12 @@ fn standing(
     // Dominance among the shown options alone could make one read stronger
     // than it is, so a review export that leaves anything out lists none.
     if notes.withholds_any() {
+        notes.left_out(
+            crate::export::Omitted::ParetoStatus,
+            Some(question),
+            None,
+            &[],
+        );
         return Ok(());
     }
     f.out.push_str(

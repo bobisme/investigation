@@ -34,8 +34,9 @@
 //! included". The strongest evidence is the strongest included Observation,
 //! which can only understate the case. Lists show, and count, included
 //! records only. A gap, finding or next step appears only when every record
-//! it names or read is included. Every shown record carries its
-//! [`super::Caveat`]s on the lines under it.
+//! it names or read is included; each one left out is reported as an
+//! [`super::Omission`] (bn-1vg8), so the manifest reads incomplete. Every
+//! shown record carries its [`super::Caveat`]s on the lines under it.
 //!
 //! The snapshot each file names is [`ExportInput::snapshot`]. A remapped
 //! export (W11.13) names the bundle, not the journal: it prints no journal
@@ -60,7 +61,7 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-use super::{ExportInput, ExportRenderer, dependent_rule};
+use super::{ExportInput, ExportRenderer, Omission, Omitted, dependent_rule};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::prose,
@@ -185,8 +186,24 @@ impl<'i, 'a> Story<'i, 'a> {
             .filter(|record| self.input.includes(record))
     }
 
-    fn all_shown<'r>(&self, mut references: impl Iterator<Item = &'r RevisionRef>) -> bool {
-        references.all(|reference| self.shown(reference.id).is_some())
+    /// Whether content naming or reading `references` may appear; when it
+    /// may not, it is reported as left out: `content` about the first
+    /// subject, at `part`.
+    fn admits<'r>(
+        &self,
+        content: Omitted,
+        subjects: &[RevisionRef],
+        part: &str,
+        references: impl Iterator<Item = &'r RevisionRef>,
+    ) -> bool {
+        self.input
+            .admits(references.map(|reference| reference.id), |reason| {
+                let omission = Omission::new(content, reason).at(part);
+                match subjects.first() {
+                    Some(subject) => omission.of(subject.id),
+                    None => omission,
+                }
+            })
     }
 
     /// A safe display title. A title composed from another record's (a
@@ -226,9 +243,13 @@ impl<'i, 'a> Story<'i, 'a> {
         })
     }
 
-    /// Whether every record a gap names or read is included.
+    /// Whether every record a gap names or read is included; a gap that
+    /// fails is reported as left out.
     fn gap_shown(&self, gap: &Gap) -> bool {
-        self.all_shown(
+        self.admits(
+            Omitted::Gap,
+            &gap.subject_refs,
+            &gap.gap_id,
             gap.subject_refs
                 .iter()
                 .chain(&gap.read_set)
@@ -248,7 +269,10 @@ impl<'i, 'a> Story<'i, 'a> {
     }
 
     fn finding_shown(&self, finding: &Finding) -> bool {
-        self.all_shown(
+        self.admits(
+            Omitted::Finding,
+            &finding.subject_refs,
+            &finding.gap_id,
             finding
                 .subject_refs
                 .iter()
@@ -265,12 +289,18 @@ impl<'i, 'a> Story<'i, 'a> {
             next.recommendations
                 .iter()
                 .filter(|step| {
-                    self.all_shown(step.subject_refs.iter())
-                        && inventory
-                            .gaps
-                            .iter()
-                            .find(|gap| gap.gap_id == step.gap_id)
-                            .is_none_or(|gap| self.gap_shown(gap))
+                    // Its subjects, and everything its gap names or read.
+                    let gap = inventory.gaps.iter().find(|gap| gap.gap_id == step.gap_id);
+                    let read = step
+                        .subject_refs
+                        .iter()
+                        .chain(gap.into_iter().flat_map(|gap| {
+                            gap.subject_refs
+                                .iter()
+                                .chain(&gap.read_set)
+                                .chain(gap.prerequisites.iter().flat_map(|p| &p.subject_refs))
+                        }));
+                    self.admits(Omitted::NextStep, &step.subject_refs, &step.gap_id, read)
                 })
                 .collect(),
         )

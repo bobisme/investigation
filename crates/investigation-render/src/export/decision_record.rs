@@ -30,6 +30,10 @@
 //! from the full pinned snapshot, so withholding never makes a decision read
 //! stronger. A derived title (a decision's or a comparison's) is built here
 //! from shown records only, so it never repeats a withheld title.
+//!
+//! Every matrix row and cell, Pareto status and open gap left out this way
+//! is reported as an [`super::Omission`] (bn-1vg8), so the manifest reads
+//! incomplete whenever the record shows less than the case holds.
 
 use std::fmt::Write as _;
 
@@ -44,7 +48,10 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-use super::{ExportInput, ExportRenderer, caveats_approved, dependent_rule, human_files};
+use super::{
+    ExportInput, ExportRenderer, Omission, OmissionReason, Omitted, caveats_approved,
+    dependent_rule, human_files,
+};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::{MAX_LISTED, prose},
@@ -576,13 +583,34 @@ fn matrix(out: &mut String, input: &ExportInput<'_>, question: Id) {
         if shown_ref(input, row.option_ref).is_none() {
             continue;
         }
-        let hidden = columns
+        let hidden: Vec<usize> = columns
             .iter()
-            .any(|column| !cell_shown(input, &row.cells[*column]));
-        if hidden {
+            .copied()
+            .filter(|column| !cell_shown(input, &row.cells[*column]))
+            .collect();
+        if !hidden.is_empty() {
             complete = false;
+            let option = row.option_ref.id;
             if !approved {
+                let rests = hidden
+                    .iter()
+                    .flat_map(|column| comparisons(&row.cells[*column]));
+                input.omit(
+                    Omission::new(Omitted::MatrixRow, reason(input, rests))
+                        .of(option)
+                        .at(question.to_string()),
+                );
                 continue;
+            }
+            for column in &hidden {
+                input.omit(
+                    Omission::new(
+                        Omitted::MatrixCell,
+                        reason(input, comparisons(&row.cells[*column])),
+                    )
+                    .of(option)
+                    .at(table.criteria[*column].criterion_ref.id.to_string()),
+                );
             }
         }
         rows.push(row);
@@ -686,6 +714,11 @@ fn matrix(out: &mut String, input: &ExportInput<'_>, question: Id) {
 
     // Pareto status computed over every option and cell, so it is listed
     // only when all of them are shown.
+    if !complete {
+        input.omit(
+            Omission::new(Omitted::ParetoStatus, reason(input, table_records(table))).of(question),
+        );
+    }
     if complete && let Ok(statuses) = decision_ops::pareto(state, input.case.case_id(), question) {
         out.push_str(
             "\nPareto status (advisory and weight-free; unknown, stale, subjective or missing \
@@ -714,6 +747,30 @@ fn shown_all(input: &ExportInput<'_>, table: &ConsequencesTable) -> bool {
             shown_ref(input, row.option_ref).is_some()
                 && row.cells.iter().all(|cell| cell_shown(input, cell))
         })
+}
+
+/// The comparisons behind a cell.
+fn comparisons(cell: &TableCell) -> impl Iterator<Item = Id> + '_ {
+    cell.comparison_refs.iter().map(|reference| reference.id)
+}
+
+/// Every option, criterion and comparison of a table.
+fn table_records(table: &ConsequencesTable) -> impl Iterator<Item = Id> + '_ {
+    table
+        .criteria
+        .iter()
+        .map(|criterion| criterion.criterion_ref.id)
+        .chain(table.rows.iter().flat_map(|row| {
+            std::iter::once(row.option_ref.id).chain(row.cells.iter().flat_map(comparisons))
+        }))
+}
+
+/// Why content resting on `ids` is left out; withheld when no single record
+/// can be named (a channel the audience may not see).
+fn reason(input: &ExportInput<'_>, ids: impl IntoIterator<Item = Id>) -> OmissionReason {
+    input
+        .rests_on(ids)
+        .unwrap_or(OmissionReason::RestsOnWithheld)
 }
 
 /// Whether every comparison behind a cell is shown.
@@ -977,11 +1034,13 @@ fn warnings(out: &mut String, input: &ExportInput<'_>, decision: &Record, questi
                 .subject_refs
                 .iter()
                 .chain(&gap.read_set)
-                .chain(gap.prerequisites.iter().flat_map(|p| &p.subject_refs));
-            if !read
-                .into_iter()
-                .all(|reference| shown_ref(input, *reference).is_some())
-            {
+                .chain(gap.prerequisites.iter().flat_map(|p| &p.subject_refs))
+                .map(|reference| reference.id);
+            if !input.admits(read, |reason| {
+                Omission::new(Omitted::Gap, reason)
+                    .of(decision.header.id)
+                    .at(gap.gap_id.clone())
+            }) {
                 continue;
             }
             seen.push(gap.gap_id.as_str());

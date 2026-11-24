@@ -268,7 +268,7 @@
   "properties": {
     "completeness": {
       "$ref": "#/$defs/Completeness",
-      "description": "`incomplete` when the audience policy withheld any record of the\ncase. An incomplete export is never labelled complete."
+      "description": "`incomplete` when the audience policy withheld any record of the\ncase, or the kind left out any content beyond record inclusion (a\nlesson, matrix row, gap or attachment resting on what it may not\nshow, or bytes it could not copy exactly). An export that left\nanything out is never labelled complete; `statements.completeness`\nsays which, without naming or counting what."
     },
     "export_id": {
       "description": "`exp_<sha256 hex>` over the kind, versions, policy, snapshot,\ncompleteness and file digests: identical exports share it.",
