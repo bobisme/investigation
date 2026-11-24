@@ -557,3 +557,43 @@ fn declared_format_receipts_are_structure_checked_and_never_upgrade_an_envelope_
         serde_json::from_value(run.body["producer_run"].clone()).unwrap();
     assert_eq!(statements.receipts.len(), 3);
 }
+
+/// bn-397s: an artifact read for a re-imported bundle must hash to the digest
+/// the bundle was verified with, also when the envelope declares no
+/// `expected_sha256`: the bytes read once are the bytes checked, so a file
+/// swapped after verification refuses the run and nothing is committed.
+#[test]
+fn an_artifact_swapped_after_its_bundle_was_verified_refuses_the_run() {
+    let (_temporary, imports, mut store) = workspace(true);
+    let envelope = example();
+    assert!(envelope["artifacts"][0]["expected_sha256"].is_null());
+    let verified = investigation_store::journal::hash_bytes(
+        &fs::read(imports.join("bench-result.json")).unwrap(),
+    );
+    // The file changes after the bundle was verified.
+    fs::write(imports.join("bench-result.json"), b"{\"swapped\":true}\n").unwrap();
+    let mut swapped = submission("agent:recorder");
+    swapped
+        .verified_digests
+        .insert("bench-result.json".to_owned(), verified.clone());
+    let failure = store
+        .ingest_producer_run(&serde_json::to_vec(&envelope).unwrap(), &swapped)
+        .unwrap_err();
+    assert_eq!(
+        failure.error.code,
+        ErrorCode::IntegrityFailure,
+        "{failure:?}"
+    );
+    assert_eq!(failure.error.path.as_deref(), Some("/artifacts/0/path"));
+    assert!(store.list_cases().unwrap().is_empty());
+
+    // The verified bytes ingest, with the same check.
+    fs::copy(
+        Path::new(FIXTURE).join("bench-result.json"),
+        imports.join("bench-result.json"),
+    )
+    .unwrap();
+    let receipt = ingest(&mut store, &envelope, &swapped);
+    assert_eq!(receipt.receipt.result, CommitResult::Committed);
+    assert_eq!(receipt.artifacts[0].digest.as_ref(), Some(&verified));
+}

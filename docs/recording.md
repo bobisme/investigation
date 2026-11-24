@@ -444,7 +444,7 @@ The receipt (`producer-run-receipt`) adds `case_id`, the `run` revision, `run_ou
 
 ### Producer bundles
 
-`investigation export --kind producer-bundle` hands recorded runs back out in the same contract: per run an `inv.producer-run.v1` envelope (the original bytes for an ingested run, one built from the finalization for a captured run), the retained artifact bytes and a `producer-bundle.json` index. `investigation ingest --input DIR/producer-bundle.json` re-imports it into any workspace that has DIR beneath an import root, under the attempt identity below. See [Producer bundles](schema-v1.md#producer-bundles). A public bundle, or one exported with `--remap-ids`, is review only, with no envelopes or bytes, because remapping would rewrite identifiers inside them.
+`investigation export --kind producer-bundle` hands recorded runs back out in the same contract: per run an `inv.producer-run.v1` envelope (the original bytes for an ingested run, one built from the finalization for a captured run), the retained artifact bytes and a `producer-bundle.json` index. `investigation ingest --input DIR/producer-bundle.json` re-imports it into any workspace that has DIR beneath an import root, under the attempt identity below. See [Producer bundles](schema-v1.md#producer-bundles). A public bundle, or one exported with `--remap-ids`, is review only: no envelopes, and only artifact bytes that hold no identifier, because remapping would rewrite identifiers inside the rest.
 
 ## Executor receipts and chronology
 

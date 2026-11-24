@@ -505,14 +505,7 @@ pub(crate) fn verified(s: &State, case: Id, cell: &ComparisonBody) -> bool {
         let Ok(artifact) = exact(s, case, artifact_ref, Kind::Artifact, "/evidence_refs") else {
             return false;
         };
-        let mut artifact_content = artifact.body.clone();
-        let Some(object) = artifact_content.as_object_mut() else {
-            return false;
-        };
-        for key in crate::observation_ops::ARTIFACT_METADATA {
-            object.remove(*key);
-        }
-        let Ok(a) = decode::<ArtifactBody>(&artifact_content) else {
+        let Ok(a) = ArtifactBody::from_stored(&artifact.body) else {
             return false;
         };
         selector.validation == SelectorValidation::Verified

@@ -70,30 +70,10 @@ const ENDED: &[&str] = &[
     "invalid",
 ];
 
-/// Fields of the typed Observation body. Keys other operations keep beside
-/// it (lifecycle, origin tracing, assessments) are not part of it.
-const OBSERVATION_FIELDS: &[&str] = &[
-    "value",
-    "basis",
-    "extraction_method",
-    "validity",
-    "quality",
-    "limitations",
-    "evidence_kind",
-    "variables_changed",
-    "observed_at",
-    "measurement",
-];
-
-/// The typed Observation body, read from its own fields only.
+/// The typed Observation body, read from its own fields only
+/// ([`ObservationBody::from_stored`]).
 fn observation_body(record: &Record) -> Option<ObservationBody> {
-    let object = record.body.as_object()?;
-    let typed: serde_json::Map<String, Value> = object
-        .iter()
-        .filter(|(key, _)| OBSERVATION_FIELDS.contains(&key.as_str()))
-        .map(|(key, value)| (key.clone(), value.clone()))
-        .collect();
-    serde_json::from_value(Value::Object(typed)).ok()
+    ObservationBody::from_stored(&record.body).ok()
 }
 
 fn code(text: &str) -> String {

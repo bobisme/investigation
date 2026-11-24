@@ -41,8 +41,6 @@ pub(crate) const OBSERVATION_METADATA: &[&str] = &[
 /// Observation body key that holds the write-side guardrails a retraction
 /// satisfied, when a pinned pack declares any.
 pub const GUARDRAIL_KEY: &str = "guardrail";
-pub(crate) const ARTIFACT_METADATA: &[&str] =
-    &["status", "lifecycle", "rationale", "withdrawal_reason"];
 
 /// Store-computed result for the exact source bytes named by an observation.
 /// This value is only produced by the trusted read path, never decoded from an
@@ -535,7 +533,8 @@ fn accepted_body(
                 )
                 .at("/basis/artifact_ref"));
             }
-            let artifact: ArtifactBody = decode(&artifact_record.body, ARTIFACT_METADATA)?;
+            let artifact =
+                ArtifactBody::from_stored(&artifact_record.body).map_err(|_| integrity())?;
             if artifact.source.id.kind() != Kind::Source || context.exact(artifact.source).is_none()
             {
                 return Err(Failure::new(

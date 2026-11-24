@@ -13,7 +13,7 @@ use std::{
 use investigation_core::wire::{Digest, ErrorCode};
 use investigation_store::{
     Store, Workspace,
-    store::pins::{PinRelease, is_pin_name},
+    store::pins::{PinRelease, PinnedHead, is_pin_name},
 };
 use serde_json::json;
 
@@ -123,6 +123,45 @@ fn a_reclamation_during_archiving_is_refused_and_works_after_release() {
 
     archiver.release_pin(pin).unwrap();
     assert!(archiver.archive_pins().unwrap().is_empty());
+    reclaimer.remove_blob_unless_pinned(&digest).unwrap();
+    assert!(!blob(&root, &digest).exists());
+}
+
+/// bn-397s: an export pins the retained blobs it reads like an archive
+/// does: reclamation is refused for them while the pin lives, and works
+/// once it is released.
+#[test]
+fn an_export_pin_holds_the_blobs_it_reads_until_released() {
+    let (_temporary, root, digest) = workspace();
+    let mut exporter = open(&root);
+    let (state, archive) = exporter.read_canonical().unwrap();
+    exporter.release_pin(archive).unwrap();
+    let head = &state.heads()[0];
+    let pin = exporter
+        .pin_retained(
+            PinnedHead {
+                case_id: head.case_id,
+                sequence: head.snapshot.sequence,
+                head_hash: head.snapshot.head_hash.clone(),
+            },
+            std::slice::from_ref(&digest),
+        )
+        .unwrap();
+    assert_eq!(pin.blob_count(), 1);
+    let mut reclaimer = open(&root);
+    let failure = reclaimer.remove_blob_unless_pinned(&digest).unwrap_err();
+    assert_eq!(failure.error.code, ErrorCode::GateFailed);
+    assert!(blob(&root, &digest).is_file());
+    let listed = reclaimer.archive_pins().unwrap();
+    assert!(
+        listed
+            .iter()
+            .any(|info| info.live && Some(info.id.as_str()) == pin.id()),
+        "{listed:?}"
+    );
+
+    exporter.release_pin(pin).unwrap();
+    assert!(exporter.archive_pins().unwrap().is_empty());
     reclaimer.remove_blob_unless_pinned(&digest).unwrap();
     assert!(!blob(&root, &digest).exists());
 }

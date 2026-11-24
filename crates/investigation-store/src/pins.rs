@@ -1,5 +1,7 @@
 //! Archive pins: a recovery archive's head and blobs held against
 //! reclamation while the archive is written (plan §10.7, §16.5; W11.09).
+//! An export of one case pins the retained blobs it reads the same way
+//! while it reads them ([`Store::pin_retained`], bn-397s).
 //!
 //! A pin has two parts. The *record* is a small file below `local/pins/`
 //! naming the per-case heads and every blob digest the archive needs: it is
@@ -208,6 +210,43 @@ impl<F: DurableFs> Store<F> {
                 head_hash: head.snapshot.head_hash.clone(),
             })
             .collect();
+        let blobs: Vec<Digest> = blobs.iter().map(|blob| blob.digest.clone()).collect();
+        self.create_pin("archive", heads, blobs)
+    }
+
+    /// Pin `digests` against reclamation while an export of the case at
+    /// `head` reads them (bn-397s), as an archive pin does: the record and
+    /// lock are the same (the record's purpose is `export`), reclamation
+    /// skips the digests while the pin lives, and `archive pins` and
+    /// `doctor` list it like any pin. Release it
+    /// with [`Store::release_pin`] once the bytes are read; dropping it also
+    /// ends it.
+    ///
+    /// A blob reclaimed before this call returns is gone: reclamation only
+    /// removes bytes whose availability was withdrawn first, so read the
+    /// export's state again after pinning and pin anything new it needs.
+    pub fn pin_retained(
+        &mut self,
+        head: PinnedHead,
+        digests: &[Digest],
+    ) -> Result<ArchivePin, Failure>
+    where
+        F::Guard: 'static,
+    {
+        let _lock = self.coordinate()?;
+        self.create_pin("export", vec![head], digests.to_vec())
+    }
+
+    /// Record and lock a pin; the caller holds the coordination lock.
+    fn create_pin(
+        &mut self,
+        purpose: &str,
+        heads: Vec<PinnedHead>,
+        blobs: Vec<Digest>,
+    ) -> Result<ArchivePin, Failure>
+    where
+        F::Guard: 'static,
+    {
         if self.fs.dry_run().is_some() {
             // A dry run writes nothing, so nothing can be reclaimed either.
             return Ok(ArchivePin {
@@ -223,11 +262,12 @@ impl<F: DurableFs> Store<F> {
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(io_failure(error)),
         }
+        let blob_count = blobs.len();
         let record = PinRecord {
             schema: RECORD_SCHEMA.to_owned(),
-            purpose: "archive".to_owned(),
+            purpose: purpose.to_owned(),
             heads: heads.clone(),
-            blobs: blobs.iter().map(|blob| blob.digest.clone()).collect(),
+            blobs,
         };
         let mut bytes =
             serde_json::to_vec(&record).map_err(|error| integrity(error.to_string()))?;
@@ -258,7 +298,7 @@ impl<F: DurableFs> Store<F> {
                 Ok(guard) => Ok(ArchivePin {
                     id: Some(id),
                     heads,
-                    blobs: blobs.len(),
+                    blobs: blob_count,
                     guard: Some(Box::new(guard)),
                 }),
                 Err(failure) => {

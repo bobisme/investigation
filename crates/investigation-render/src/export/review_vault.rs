@@ -264,6 +264,7 @@ impl ExportRenderer for ReviewVault {
         }
         for attachment in attachments.copied {
             guard(attachment.path.as_str(), &attachment.bytes, &withheld)?;
+            input.copied_verbatim(attachment.path.as_str(), attachment.digest.clone());
             files.add(
                 Phase::Records,
                 attachment.path,

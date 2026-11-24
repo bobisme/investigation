@@ -25,7 +25,7 @@ use std::collections::BTreeMap;
 use investigation_core::{
     command::RevisionRef,
     identity::{Id, Kind},
-    producer_run::PRODUCER_RUN_KEY,
+    producer_run::{PRODUCER_RUN_KEY, normalized_path},
     wire::{Digest, ErrorCode, Failure},
 };
 use investigation_render::export::{
@@ -158,6 +158,18 @@ pub(crate) fn ingest(store: &mut Store, global: &Global, path: &Path) -> Result<
         let mut submission = ProducerRunSubmission::new(actor.clone());
         submission.case_id = case_id;
         submission.artifact_folder = Some(join(&prefix, &reingest.artifact_folder));
+        // The manifest check above hashed every file. Ingest reads each
+        // artifact once more and must find those exact bytes, also where the
+        // envelope declares no expected_sha256 (bn-397s).
+        let folder = format!("{}/", reingest.artifact_folder);
+        submission.verified_digests = run
+            .artifacts
+            .iter()
+            .filter_map(|artifact| {
+                let relative = artifact.file.as_deref()?.strip_prefix(&folder)?;
+                Some((normalized_path(relative)?, artifact.digest.clone()?))
+            })
+            .collect();
         let receipt = match store.ingest_producer_run(&bytes, &submission) {
             Ok(receipt) => receipt,
             Err(failure) => {

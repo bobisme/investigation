@@ -28,7 +28,10 @@ use investigation_core::{
     command::RevisionRef, derivation::artifact_body, human_file::NoteSnapshot, wire::Digest,
 };
 
-use super::{ExportInput, Omission, OmissionReason, Omitted, archive::human_member};
+use super::{
+    ExportInput, Omission, OmissionReason, Omitted, archive::human_member,
+    identifiers::may_hold_identifier,
+};
 use crate::{Phase, PlanBuilder, PlanPath, RenderError, text::inline_code};
 
 /// Why a shown snapshot's bytes are not copied.
@@ -123,6 +126,7 @@ pub(crate) fn plan_with(
                         bytes.to_vec(),
                         None,
                     )?;
+                    input.copied_verbatim(&member, snapshot.sha256.clone());
                 }
                 Ok(member)
             }
@@ -184,26 +188,6 @@ pub(crate) fn section(out: &mut String, shown: &[Shown]) {
             inline_code(&snapshot.annotation.id.to_string()),
         );
     }
-}
-
-/// Whether `bytes` may hold an identifier a remapped export rewrites: a
-/// hyphenated UUID of any version, or a run of 32 or more hex digits (an ID
-/// in its 32-digit form, or a head hash). Deliberately broader than the
-/// remapper, so a copy is never altered by it.
-fn may_hold_identifier(bytes: &[u8]) -> bool {
-    let mut run = 0usize;
-    for byte in bytes {
-        run = if byte.is_ascii_hexdigit() { run + 1 } else { 0 };
-        if run >= 32 {
-            return true;
-        }
-    }
-    bytes.windows(36).any(|window| {
-        window.iter().enumerate().all(|(index, byte)| match index {
-            8 | 13 | 18 | 23 => *byte == b'-',
-            _ => byte.is_ascii_hexdigit(),
-        })
-    })
 }
 
 #[cfg(test)]

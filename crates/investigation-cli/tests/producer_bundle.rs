@@ -756,10 +756,12 @@ fn every_byte_of_each_audience_bundle_is_free_of_withheld_material() {
             assert_eq!(mixed["reingest"]["verbatim"], true);
         } else if audience == "public" {
             // Public IDs are remapped, which would rewrite UUIDs inside
-            // envelopes and retained bytes: the bundle is review only, with
-            // the index and its manifest and no envelope or byte member.
+            // envelopes: the bundle is review only, with no envelope or
+            // capture manifest. Retained bytes that hold no identifier are
+            // left unchanged by the remap and copied exactly (bn-397s).
             assert_eq!(mixed["artifacts"].as_array().unwrap().len(), 1);
             assert!(mixed["original"].is_null() && mixed["reingest"].is_null());
+            let mut copied = 0;
             for run in runs {
                 assert!(
                     ["identifiers_remapped", "no_producer_identity"]
@@ -767,12 +769,26 @@ fn every_byte_of_each_audience_bundle_is_free_of_withheld_material() {
                     "{run}"
                 );
                 for artifact in run["artifacts"].as_array().unwrap() {
-                    assert!(artifact["file"].is_null(), "{artifact}");
+                    let Some(file) = artifact["file"].as_str() else {
+                        continue;
+                    };
+                    let content = &bytes[file];
+                    assert_eq!(
+                        investigation_store::journal::hash_bytes(content).as_str(),
+                        artifact["digest"].as_str().unwrap(),
+                        "{artifact}"
+                    );
+                    copied += 1;
                 }
             }
-            let mut members: Vec<&String> = bytes.keys().collect();
-            members.sort();
-            assert_eq!(members, ["export-manifest.json", "producer-bundle.json"]);
+            assert!(copied > 0, "no plain bytes were copied");
+            for member in bytes.keys() {
+                assert!(
+                    ["export-manifest.json", "producer-bundle.json"].contains(&member.as_str())
+                        || member.contains("/files/"),
+                    "{member}"
+                );
+            }
         } else {
             // The withheld artifact is left out, and the envelope is rebuilt
             // from what is shown rather than copied.
@@ -848,7 +864,8 @@ fn a_bundle_outside_every_import_root_or_altered_is_refused() {
 }
 
 /// A remapped bundle withholds no record at `restricted`, but it carries no
-/// envelope and no retained bytes, so it reads incomplete (bn-1vg8): the
+/// envelope, nor retained bytes that hold an identifier, so it reads
+/// incomplete (bn-1vg8): the
 /// receipt lists what was left out for the publisher, the manifest only
 /// says that something was, and `--require-complete` refuses it.
 #[test]
@@ -869,9 +886,10 @@ fn a_remapped_bundle_that_withholds_nothing_still_reads_incomplete() {
         ],
     );
     assert_eq!(exit, 0, "{init}");
+    // The bytes quote an identifier, which a remap would rewrite.
     fs::write(
         inputs.join("out.json"),
-        format!("{{\"ok\":\"{PUBLIC}\"}}\n"),
+        format!("{{\"ok\":\"{PUBLIC}\",\"trace\":\"019acd16-0003-7000-8000-000000000001\"}}\n"),
     )
     .unwrap();
     let path = inputs.join("run.envelope.json");
@@ -977,4 +995,130 @@ fn a_remapped_bundle_that_withholds_nothing_still_reads_incomplete() {
         "{failure}"
     );
     assert!(!refused.exists());
+}
+
+/// bn-397s: a remapped bundle copies a run's retained bytes exactly when they
+/// hold no identifier, so the remap leaves them unchanged, and lists them
+/// with their digest; bytes that may hold one (a UUID, a run of 32 hex
+/// digits) are left out and reported. A canonical bundle copies both.
+#[test]
+fn a_remapped_bundle_copies_only_bytes_the_remap_leaves_unchanged() {
+    let directory = tempfile::tempdir().unwrap();
+    let cwd = directory.path();
+    let inputs = cwd.join("inputs");
+    fs::create_dir_all(&inputs).unwrap();
+    let workspace = cwd.join("ws");
+    let (exit, init) = run(
+        cwd,
+        &[
+            "init",
+            workspace.to_str().unwrap(),
+            "--no-vault",
+            "--import-root",
+            inputs.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(exit, 0, "{init}");
+    let plain = format!("{{\"ok\":\"{PUBLIC} plain\"}}\n");
+    let quoting = "{\"digest\":\"0123456789abcdef0123456789abcdef01234567\"}\n";
+    fs::write(inputs.join("plain.json"), &plain).unwrap();
+    fs::write(inputs.join("quoting.json"), quoting).unwrap();
+    let mut envelope = envelope("bytes", "public", PUBLIC, "plain.json");
+    envelope["artifacts"].as_array_mut().unwrap().push(json!({
+        "role": "log", "path": "quoting.json", "classification": "public"
+    }));
+    let path = inputs.join("bytes.envelope.json");
+    fs::write(&path, envelope.to_string()).unwrap();
+    let receipt = ok(
+        cwd,
+        &workspace,
+        &["ingest", "--input", path.to_str().unwrap()],
+    );
+    let case = receipt["case_id"].as_str().unwrap().to_owned();
+
+    let artifact = |index: &Value, item: &str| -> Value {
+        index["runs"][0]["artifacts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|artifact| artifact["item"] == item)
+            .unwrap_or_else(|| panic!("{item}: {index}"))
+            .clone()
+    };
+    for audience in ["public", "internal"] {
+        let out = cwd.join(format!("bundle-{audience}"));
+        let mut args = vec![
+            "--case",
+            case.as_str(),
+            "export",
+            "--kind",
+            "producer-bundle",
+            "--audience",
+            audience,
+            "--remap-ids",
+            "--out",
+        ];
+        let out_text = out.to_str().unwrap().to_owned();
+        args.push(&out_text);
+        let value = ok(cwd, &workspace, &args);
+        assert_eq!(value["identifiers"], "remapped");
+        let bundle = files(&out);
+        let index = index(&out);
+        let copied = artifact(&index, "artifact:plain.json");
+        let file = copied["file"].as_str().expect("plain bytes are copied");
+        assert_eq!(bundle[file], plain.as_bytes(), "{audience}");
+        assert_eq!(
+            investigation_store::journal::hash_bytes(&bundle[file]).as_str(),
+            copied["digest"].as_str().unwrap()
+        );
+        let manifest: Value = serde_json::from_slice(&bundle["export-manifest.json"]).unwrap();
+        assert!(
+            manifest["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|listed| listed["path"] == file && listed["sha256"] == copied["digest"]),
+            "{manifest}"
+        );
+        let left = artifact(&index, "artifact:quoting.json");
+        assert!(left["file"].is_null(), "{left}");
+        assert!(left["digest"].is_string(), "{left}");
+        assert!(
+            !bundle
+                .values()
+                .any(|content| content.as_slice() == quoting.as_bytes()),
+            "{audience}: bytes holding an identifier were copied"
+        );
+        let omissions = value["publisher_receipt"]["omissions"].as_array().unwrap();
+        assert!(
+            omissions
+                .iter()
+                .any(|omission| omission["content"] == "artifact_bytes"
+                    && omission["reason"] == "identifiers_remapped"),
+            "{value}"
+        );
+        assert_eq!(value["completeness"], "incomplete");
+    }
+
+    // Canonical: both copied, re-importable.
+    let out = cwd.join("bundle-canonical");
+    let value = export(cwd, &workspace, &case, "internal", &out);
+    assert_eq!(value["identifiers"], "canonical");
+    let index = index(&out);
+    for item in ["artifact:plain.json", "artifact:quoting.json"] {
+        assert!(artifact(&index, item)["file"].is_string(), "{item}");
+    }
+    // `export --help` says so in one line.
+    let (exit, help) = run(cwd, &["export", "--help"]);
+    assert_eq!(exit, 0, "{help}");
+    assert!(
+        help["help"].as_str().unwrap().contains(
+            "A public or --remap-ids bundle\nis review only: no envelopes, and only artifact bytes that hold no identifier."
+        ),
+        "{help}"
+    );
+    // Each export pinned the bytes it read and released the pin after.
+    let pins = workspace.join("local/pins");
+    let left = fs::read_dir(&pins).map_or(0, Iterator::count);
+    assert_eq!(left, 0, "pin records left in {pins:?}");
 }

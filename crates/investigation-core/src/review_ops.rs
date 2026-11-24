@@ -744,7 +744,7 @@ fn qualification(
             ),
         ));
     }
-    let artifact_body: ArtifactBody = decode(&artifact.body)?;
+    let artifact_body = ArtifactBody::from_stored(&artifact.body).map_err(|_| integrity())?;
     let source = match crate::source_ops::use_successor(state, case, artifact_body.source) {
         Some(source) => source,
         None => current(state, case, artifact_body.source, "/support_refs")?,

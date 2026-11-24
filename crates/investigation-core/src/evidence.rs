@@ -454,6 +454,51 @@ pub struct ArtifactBody {
 }
 
 impl ArtifactBody {
+    /// The keys of the typed body. A stored Artifact may also carry keys that
+    /// other operations keep beside it (lifecycle, rationale, withdrawal
+    /// reason); they are not part of it.
+    pub const FIELDS: &'static [&'static str] = &[
+        "digest",
+        "size_bytes",
+        "format",
+        "source",
+        "transforms",
+        "availability",
+        "integrity",
+        "sensitivity",
+        "status",
+        "withdrawals",
+        "role",
+        "derivation",
+        "external",
+        "availability_change",
+    ];
+
+    /// The typed body of a stored Artifact, read from [`Self::FIELDS`] only,
+    /// so a key another operation keeps beside it never makes the Artifact
+    /// unreadable (bn-397s, as [`ObservationBody::from_stored`]). A `status`
+    /// that is not an evidentiary status (`withdrawn`) is a lifecycle word
+    /// kept beside the body, as the earlier metadata list treated it, and is
+    /// read as no status. For read paths.
+    pub fn from_stored(body: &serde_json::Value) -> Result<Self, serde_json::Error> {
+        let typed: serde_json::Map<String, serde_json::Value> = body
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| Self::FIELDS.contains(&key.as_str()))
+            .filter(|(key, value)| {
+                key.as_str() != "status"
+                    || value.is_null()
+                    || serde_json::from_value::<crate::source_ops::EvidentiaryStatus>(
+                        (*value).clone(),
+                    )
+                    .is_ok()
+            })
+            .map(|(key, value)| (key.clone(), value.clone()))
+            .collect();
+        serde_json::from_value(serde_json::Value::Object(typed))
+    }
+
     /// The recorded role, or for records without one: a derivative when it
     /// has transformation inputs, otherwise an original. Such records cannot
     /// mark a manifest; the ingest journal names those (`manifest` client ref).
@@ -929,4 +974,54 @@ pub fn require_record_kind(id: Id, expected: Kind) -> Result<Id, KindMismatch> {
 pub struct KindMismatch {
     pub expected: Kind,
     pub actual: Kind,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// bn-397s: a stored Artifact is read from its typed fields only, so a
+    /// key another operation keeps beside it never makes it unreadable on a
+    /// read path, while the strict decode still refuses it.
+    #[test]
+    fn a_stored_artifact_reads_from_its_own_fields_only() {
+        let schema = serde_json::to_value(schemars::schema_for!(ArtifactBody)).unwrap();
+        let mut properties: Vec<&str> = schema["properties"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        properties.sort_unstable();
+        let mut fields = ArtifactBody::FIELDS.to_vec();
+        fields.sort_unstable();
+        assert_eq!(properties, fields, "FIELDS must list every typed key");
+
+        let typed = serde_json::json!({
+            "digest":null,"size_bytes":null,"format":null,
+            "source":{"id":"src_019acd16-0000-7000-8000-000000000001","revision":1},
+            "transforms":[],"availability":"retained","integrity":"not_checked",
+            "sensitivity":"internal"
+        });
+        let mut stored = typed.clone();
+        for (key, value) in [
+            ("status", "active"),
+            ("lifecycle", "active"),
+            ("rationale", "kept beside the body"),
+            ("withdrawal_reason", "none"),
+        ] {
+            stored[key] = serde_json::json!(value);
+        }
+        assert!(crate::input::decode::<ArtifactBody>(&stored).is_err());
+        assert_eq!(
+            ArtifactBody::from_stored(&stored).unwrap(),
+            serde_json::from_value::<ArtifactBody>(typed).unwrap()
+        );
+        // A real evidentiary status is kept.
+        stored["status"] = serde_json::json!("withdrawn");
+        assert_eq!(
+            ArtifactBody::from_stored(&stored).unwrap().status,
+            Some(crate::source_ops::EvidentiaryStatus::Withdrawn)
+        );
+    }
 }

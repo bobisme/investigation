@@ -9,6 +9,7 @@
 //! snapshot and every ID pair.
 
 use std::{
+    collections::BTreeSet,
     env,
     fmt::Write as _,
     fs,
@@ -30,7 +31,7 @@ use investigation_render::{
         write_export,
     },
 };
-use investigation_store::Store;
+use investigation_store::{Store, store::pins::PinnedHead};
 use serde_json::{Value, json};
 
 use crate::{
@@ -134,7 +135,8 @@ producer-bundle.json (schema producer-bundle), each run's inv.producer-run.v1
 envelope and its retained artifact bytes. Producer statements stay labelled as
 the producer's claims. With the bundle beneath an import root, investigation
 ingest --input DIR/producer-bundle.json re-imports every run; the same run maps
-onto the recorded one and is never a new trial.
+onto the recorded one and is never a new trial. A public or --remap-ids bundle
+is review only: no envelopes, and only artifact bytes that hold no identifier.
 
 Kinds:
 ",
@@ -211,27 +213,55 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         repair.push("--remap-ids".into());
         return Err(id_map_canonical().with_argv(repair));
     }
-    let snapshot = ExportSnapshot::read(store, case, &pin)
-        .map_err(|failure| failure.with_argv(retry.clone()))?;
-    // The captured bytes of the human files records rely on (W11.14), for a
-    // review copy the reviewed derivatives it may attach, and for a producer
-    // bundle the retained artifacts its Runs name: read exactly those bytes,
-    // checked against their digests, before planning. The planner copies
-    // only those the audience may see.
-    let mut digests = snapshot_digests(&snapshot);
-    if spec.product == Product::Review {
-        digests.extend(review_vault::attachment_digests(&snapshot, audience));
+    let read = |store: &mut Store| {
+        ExportSnapshot::read(store, case, &pin).map_err(|failure| failure.with_argv(retry.clone()))
+    };
+    let mut snapshot = read(store)?;
+    // The retained bytes the export reads are pinned against reclamation
+    // while it reads them, as an archive's are (bn-397s). Reclamation only
+    // removes bytes whose availability was withdrawn first, so after each
+    // pin the state is read again: a blob reclaimed before the pin is no
+    // longer needed, and anything newly needed is pinned too.
+    let mut digests = required_digests(spec, &snapshot, audience);
+    let mut pinned = BTreeSet::new();
+    let mut pins = Vec::new();
+    loop {
+        let unpinned: Vec<Digest> = digests
+            .iter()
+            .filter(|digest| !pinned.contains(*digest))
+            .cloned()
+            .collect();
+        if unpinned.is_empty() {
+            break;
+        }
+        if pins.len() == MAX_PIN_ROUNDS {
+            return Err(Failure::new(
+                ErrorCode::WorkspaceBusy,
+                "The retained bytes this export needs kept changing while they were pinned; \
+                 retry the identical request.",
+            )
+            .with_argv(retry.clone()));
+        }
+        let head = snapshot.case().head();
+        pins.push(store.pin_retained(
+            PinnedHead {
+                case_id: case,
+                sequence: head.sequence,
+                head_hash: head.head_hash.clone(),
+            },
+            &unpinned,
+        )?);
+        pinned.extend(unpinned);
+        snapshot = read(store)?;
+        digests = required_digests(spec, &snapshot, audience);
     }
-    if spec.name == producer_bundle::KIND {
-        digests.extend(producer_bundle::required_digests(
-            snapshot.case().state(),
-            snapshot.today(),
-        ));
-    }
-    digests.sort();
-    digests.dedup();
     let retained =
         read_retained(store, &digests).map_err(|failure| failure.with_argv(retry.clone()))?;
+    // The bytes are in memory now; a failed release leaves a record no
+    // process holds, which the next pin or reclamation expires.
+    for pin in pins {
+        let _ = store.release_pin(pin);
+    }
     let plan = plan_export_remap(spec, &snapshot, audience, &retained, args.remap_ids).map_err(
         |error| {
             let failure = error.to_failure();
@@ -770,6 +800,30 @@ fn write_id_map(file: &Path, plan: &ExportPlan, audience: Audience) -> Result<()
             let _ = fs::remove_file(file);
         })
         .map_err(failed)
+}
+
+/// Rounds of pinning and reading again before an export gives up.
+const MAX_PIN_ROUNDS: usize = 4;
+
+/// The retained bytes a case export reads before planning, sorted: the
+/// captured bytes of the human files records rely on (W11.14), for a review
+/// copy the reviewed derivatives it may attach, and for a producer bundle
+/// the retained artifacts its Runs name. Each is checked against its digest
+/// when read; the planner copies only those the audience may see.
+fn required_digests(spec: &KindSpec, snapshot: &ExportSnapshot, audience: Audience) -> Vec<Digest> {
+    let mut digests = snapshot_digests(snapshot);
+    if spec.product == Product::Review {
+        digests.extend(review_vault::attachment_digests(snapshot, audience));
+    }
+    if spec.name == producer_bundle::KIND {
+        digests.extend(producer_bundle::required_digests(
+            snapshot.case().state(),
+            snapshot.today(),
+        ));
+    }
+    digests.sort();
+    digests.dedup();
+    digests
 }
 
 /// The digests of the human-file snapshots of the pinned case whose bytes

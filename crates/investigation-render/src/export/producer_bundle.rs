@@ -51,7 +51,8 @@
 //! or Source is not shown, each retained artifact's bytes and each capture
 //! manifest not copied, and each envelope not written because IDs are
 //! remapped is reported as an [`super::Omission`], so a remapped bundle of
-//! runs with retained bytes or envelopes never reads complete. A run that
+//! runs with envelopes, or with bytes it could not copy, never reads
+//! complete. A run that
 //! has no envelope in any export (no producer identity, not finalized,
 //! recorded less complete than its inventory) and bytes the case does not
 //! retain are what the case holds, not omissions; the index says so per
@@ -60,19 +61,24 @@
 //! Identifiers. Re-import is keyed on the producer namespace and external
 //! run ID, never on a record ID. But a remapped export (public always,
 //! internal or restricted with `--remap-ids`) rewrites every UUIDv7 in every
-//! file, retained bytes included: a UUID external run ID would re-import as
-//! a new trial, and rewritten artifact bytes would no longer match their
-//! recorded digests. So the audiences differ:
+//! file: a UUID external run ID would re-import as a new trial, and
+//! rewritten artifact bytes would no longer match their recorded digests.
+//! So the audiences differ:
 //!
 //! | Audience | IDs | Bundle |
 //! |---|---|---|
 //! | `internal`, `restricted` | canonical | re-importable: envelopes and retained bytes |
-//! | `public`, or `--remap-ids` | remapped | review only: the index, no envelope, no bytes |
+//! | `public`, or `--remap-ids` | remapped | review only: the index and the bytes a remap leaves unchanged, no envelope |
 //!
-//! A remapped bundle still lists every shown artifact with its retention,
-//! digest and size, with `file` null, and every run says
-//! `identifiers_remapped` (unless a stronger reason applies). The importer
-//! refuses an envelope whose bytes no longer match `reingest.sha256`.
+//! A remapped bundle copies a retained artifact's bytes only when they hold
+//! no identifier the remap could rewrite (no UUID-shaped value, no run of 32
+//! or more hex digits), and reports each copy through
+//! [`ExportInput::copied_verbatim`], so the plan is refused if a remapped
+//! copy would not hash to its recorded digest (bn-397s). Other artifacts
+//! are listed with their retention, digest and size and `file` null, and
+//! reported as left out. Every run says `identifiers_remapped` (unless a
+//! stronger reason applies). The importer refuses an envelope whose bytes
+//! no longer match `reingest.sha256`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -97,14 +103,23 @@ use schemars::{JsonSchema, Schema, schema_for};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{ExportInput, ExportRenderer, Omission, OmissionReason, Omitted, dependent_rule};
+use super::{
+    ExportInput, ExportRenderer, Omission, OmissionReason, Omitted, dependent_rule,
+    identifiers::may_hold_identifier,
+};
 use crate::{Phase, PlanBuilder, PlanPath, RenderError};
 
 /// The kind's registry name.
 pub const KIND: &str = "producer-bundle";
-/// Version of the bundle layout, its index and the envelopes it builds.
-/// Bump it when the bytes planned for the same input change.
+/// Version of the bundle layout, its index and the envelopes it builds
+/// (the published `producer-bundle` schema); a re-import reads this.
 pub const BUNDLE_FORMAT: &str = "inv.producer-bundle.v1";
+/// The renderer version the manifest names, bumped whenever the bytes
+/// planned for the same input change. The index keeps [`BUNDLE_FORMAT`].
+/// v1 was named by the format itself (`inv.producer-bundle.v1`).
+/// v2 (bn-397s): a remapped bundle copies the artifact bytes that hold no
+/// identifier.
+pub const RENDERER_VERSION: &str = "inv.export.producer-bundle.v2";
 /// The bundle index, beside the manifest.
 pub const INDEX_FILE: &str = "producer-bundle.json";
 /// The folder holding one folder per run.
@@ -383,7 +398,7 @@ pub struct ProducerBundleRenderer;
 
 impl ExportRenderer for ProducerBundleRenderer {
     fn version(&self) -> &'static str {
-        BUNDLE_FORMAT
+        RENDERER_VERSION
     }
 
     fn plan(&self, input: &ExportInput<'_>, files: &mut PlanBuilder) -> Result<(), RenderError> {
@@ -563,10 +578,10 @@ impl Shown<'_> {
             .unwrap_or_else(|| "missing".to_owned())
     }
 
-    /// The bytes of an included, retained artifact.
-    /// None when IDs are remapped, which would rewrite them.
+    /// The bytes of an included, retained artifact. A caller copying them
+    /// into a remapped export must first check they hold no identifier.
     fn bytes(&self, reference: RevisionRef) -> Result<Option<(Digest, &[u8])>, RenderError> {
-        if self.input.remapped() || self.input.inclusion.availability_withdrawn(reference.id) {
+        if self.input.inclusion.availability_withdrawn(reference.id) {
             return Ok(None);
         }
         let Some(body) = current_artifact(self.state, reference) else {
@@ -721,9 +736,10 @@ impl Planned<'_> {
     }
 }
 
-/// Copy an artifact's bytes into the run's files folder at `path`. Bytes
-/// the case retains but a remapped export cannot copy are reported as left
-/// out.
+/// Copy an artifact's bytes into the run's files folder at `path`, as a
+/// verbatim copy the framework checks against the digest. A remapped export
+/// copies only bytes that hold no identifier, which the remap leaves
+/// unchanged (bn-397s); bytes that may hold one are reported as left out.
 fn copy_artifact(
     shown: &Shown<'_>,
     planned: &mut Planned<'_>,
@@ -731,16 +747,19 @@ fn copy_artifact(
     path: &str,
 ) -> Result<Option<String>, RenderError> {
     match shown.bytes(reference)? {
-        Some((_, bytes)) => Ok(Some(planned.add(&format!("{FILES_FOLDER}/{path}"), bytes)?)),
-        None => {
-            if shown.input.remapped() && shown.retains(reference) {
-                shown.input.omit(
-                    Omission::new(Omitted::ArtifactBytes, OmissionReason::IdentifiersRemapped)
-                        .of(reference.id),
-                );
-            }
+        Some((_, bytes)) if shown.input.remapped() && may_hold_identifier(bytes) => {
+            shown.input.omit(
+                Omission::new(Omitted::ArtifactBytes, OmissionReason::IdentifiersRemapped)
+                    .of(reference.id),
+            );
             Ok(None)
         }
+        Some((digest, bytes)) => {
+            let file = planned.add(&format!("{FILES_FOLDER}/{path}"), bytes)?;
+            shown.input.copied_verbatim(&file, digest);
+            Ok(Some(file))
+        }
+        None => Ok(None),
     }
 }
 
@@ -848,13 +867,15 @@ fn plan_envelope_run(
             },
         );
     }
-    let original = if verbatim {
+    // A remapped bundle is review only: it never carries an envelope.
+    let original = if verbatim && !shown.input.remapped() {
         shown.bytes(envelope_ref)?
     } else {
         None
     };
     if let Some((digest, bytes)) = original {
         let path = planned.add(ENVELOPE_FILE, bytes)?;
+        shown.input.copied_verbatim(&path, digest.clone());
         run.original = Some(BundleFile {
             path: path.clone(),
             sha256: digest.clone(),
@@ -1153,8 +1174,14 @@ fn plan_captured_run(
                 artifact: manifest_ref,
             },
         );
-        if every_artifact_shown && let Some((digest, bytes)) = shown.bytes(manifest_ref)? {
+        let copied = if every_artifact_shown && !shown.input.remapped() {
+            shown.bytes(manifest_ref)?
+        } else {
+            None
+        };
+        if let Some((digest, bytes)) = copied {
             let path = planned.add(CAPTURE_MANIFEST_FILE, bytes)?;
+            shown.input.copied_verbatim(&path, digest.clone());
             run.original = Some(BundleFile {
                 path,
                 sha256: digest,

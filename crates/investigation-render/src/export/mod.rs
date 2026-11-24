@@ -149,7 +149,7 @@ use crate::{
     note::NoteContext,
 };
 
-pub use identifiers::{ExportIdentity, IdentifierMode, Identifiers, REMAP_VERSION};
+pub use identifiers::{ExportIdentity, IdentifierMode, Identifiers, REMAP_VERSION, Verbatim};
 pub use inclusion::{Caveat, Caveated, Exclusion, Inclusion, caveats_approved, dependent_rule};
 pub use manifest::{
     Completeness, ExportManifest, FileDigest, MANIFEST_SCHEMA, ManifestPolicy, ManifestSnapshot,
@@ -378,6 +378,8 @@ pub struct ExportInput<'a> {
     pub long_citations: &'a std::collections::BTreeMap<Id, (u64, u64)>,
     /// What the kind reported leaving out; see [`Self::omit`].
     pub(crate) omissions: &'a Omissions,
+    /// The files the kind copied byte for byte; see [`Self::copied_verbatim`].
+    pub(crate) verbatim: &'a Verbatim,
 }
 
 impl ExportInput<'_> {
@@ -400,6 +402,15 @@ impl ExportInput<'_> {
     /// what it was. Reporting the same omission again keeps one.
     pub fn omit(&self, omission: Omission) {
         self.omissions.report(omission);
+    }
+
+    /// Report that the file planned at `path` is a byte-for-byte copy of
+    /// retained evidence with `digest`. The plan is refused if the file is
+    /// missing or, after identifiers are remapped, hashes to anything else
+    /// (bn-397s). Copy bytes into a remapped export only when the shared
+    /// identifier guard (`may_hold_identifier`) finds nothing in them.
+    pub fn copied_verbatim(&self, path: &str, digest: Digest) {
+        self.verbatim.report(path, digest);
     }
 
     /// Why content resting on the records `ids` names may not appear:
@@ -794,6 +805,7 @@ pub fn plan_export_remap(
     let mut remapper = identifiers::Remapper::new(kind, case, audience, mode)?;
     let identity = remapper.identity();
     let omissions = Omissions::new();
+    let verbatim = Verbatim::new();
     let input = ExportInput {
         kind,
         audience,
@@ -804,6 +816,7 @@ pub fn plan_export_remap(
         identity: &identity,
         long_citations: snapshot.long_citations(),
         omissions: &omissions,
+        verbatim: &verbatim,
     };
     let mut files = PlanBuilder::new(generation.clone());
     renderer.plan(&input, &mut files)?;
@@ -811,6 +824,7 @@ pub fn plan_export_remap(
         files.finish(),
         &verified_chain(snapshot),
         case.state().records().map(|record| record.header.id),
+        &verbatim,
     )?;
     if files.entry(MANIFEST_FILE).is_some() {
         return Err(RenderError::DuplicatePath(MANIFEST_FILE.to_owned()).into());

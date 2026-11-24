@@ -68,6 +68,14 @@ pub struct ProducerRunSubmission {
     /// folder, so runs that declare the same path never read each other's
     /// bytes; the files are still read only beneath configured import roots.
     pub artifact_folder: Option<String>,
+    /// The digest a declared artifact's bytes must have, by normalized
+    /// declared path, whether or not the envelope declares
+    /// `expected_sha256`: a re-imported bundle passes the digests its
+    /// manifest was verified with (bn-397s). Each artifact is read once and
+    /// what was read is hashed and compared, so a file swapped after the
+    /// bundle was verified refuses the run (`INTEGRITY_FAILURE`) and nothing
+    /// is committed.
+    pub verified_digests: BTreeMap<String, Digest>,
 }
 
 impl ProducerRunSubmission {
@@ -78,6 +86,7 @@ impl ProducerRunSubmission {
             case_id: None,
             command_id: None,
             artifact_folder: None,
+            verified_digests: BTreeMap::new(),
         }
     }
 }
@@ -253,9 +262,10 @@ impl Store {
             let declared = normalized_path(&artifact.path).ok_or_else(|| {
                 invalid("Use a relative path beneath an import root.", "/artifacts")
             })?;
+            let verified = submission.verified_digests.get(&declared);
             let relative = match &submission.artifact_folder {
-                Some(folder) => Path::new(folder).join(declared),
-                None => PathBuf::from(declared),
+                Some(folder) => Path::new(folder).join(&declared),
+                None => PathBuf::from(&declared),
             };
             let Some(mut opened) = self.open_declared(&relative, index)? else {
                 staged.push(Staged::Missing);
@@ -282,6 +292,15 @@ impl Store {
                 AcquisitionChannel::LocalFile,
                 false,
             )?;
+            if verified.is_some_and(|verified| *verified != item.digest) {
+                return Err(Failure::new(
+                    ErrorCode::IntegrityFailure,
+                    "An artifact's bytes differ from the digest its bundle was verified with: \
+                     the file changed after verification. Nothing was ingested; verify the \
+                     bundle again.",
+                )
+                .at(format!("/artifacts/{index}/path")));
+            }
             let matches = artifact.expected_sha256.as_ref().is_none_or(|expected| {
                 item.digest.as_str().strip_prefix("sha256:") == Some(expected)
             });

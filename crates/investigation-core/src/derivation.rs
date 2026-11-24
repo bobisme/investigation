@@ -28,7 +28,6 @@ use crate::{
     command::RevisionRef,
     evidence::{ArtifactBody, ArtifactRole, SelectorRequest},
     identity::{Id, Kind},
-    input,
     state::State,
 };
 
@@ -146,7 +145,7 @@ pub fn artifact_body(state: &State, reference: RevisionRef) -> Option<ArtifactBo
     if reference.id.kind() != Kind::Artifact {
         return None;
     }
-    input::decode(&state.revision(reference)?.body).ok()
+    ArtifactBody::from_stored(&state.revision(reference)?.body).ok()
 }
 
 /// Lineage of one exact Artifact revision, or `None` when it does not resolve.

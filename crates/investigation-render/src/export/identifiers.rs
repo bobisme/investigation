@@ -57,7 +57,10 @@
 //! - A remapped export is a review product: it cannot restore canonical
 //!   state, so a resumable kind refuses it.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    cell::RefCell,
+    collections::{BTreeMap, BTreeSet},
+};
 
 use investigation_core::{command::RevisionRef, identity::Id, wire::Digest};
 use investigation_store::journal::hash_bytes;
@@ -371,13 +374,24 @@ impl Remapper {
     /// canonical remains. `chain` lists every head hash the case's verified
     /// journal has had, pinned and today; `ids` every record ID of the case.
     /// Neither may appear.
+    /// Every file a kind copied verbatim ([`Verbatim`]) must still hash to
+    /// its recorded digest afterwards, or the plan is refused: a remap never
+    /// ships altered evidence.
     pub(super) fn plan(
         &mut self,
         files: RenderPlan,
         chain: &[&Digest],
         ids: impl Iterator<Item = Id>,
+        verbatim: &Verbatim,
     ) -> Result<RenderPlan, ExportError> {
         if !self.remapped() {
+            verbatim.check(files.entries().iter().map(|entry| {
+                (
+                    entry.path().as_str(),
+                    entry.path().as_str(),
+                    entry.content(),
+                )
+            }))?;
             return Ok(files);
         }
         let head = (
@@ -416,6 +430,11 @@ impl Remapper {
             runs.add(path.as_str(), content);
         }
         runs.check(chain, &canonical)?;
+        verbatim.check(files.entries().iter().zip(&rewritten).map(
+            |(entry, (_, path, content, _))| {
+                (entry.path().as_str(), path.as_str(), content.as_slice())
+            },
+        ))?;
         let mut builder = PlanBuilder::new(files.generation().clone());
         for (phase, path, content, projects) in rewritten {
             builder.add(phase, path, content, projects)?;
@@ -464,6 +483,73 @@ impl Remapper {
             uuids: self.uuids,
         }
     }
+}
+
+/// The files a kind copied byte for byte from retained evidence, by planned
+/// path, with the digest they must keep (bn-397s). A kind reports each
+/// through [`super::ExportInput::copied_verbatim`]; the remapper checks them
+/// after rewriting.
+#[derive(Debug, Default)]
+pub struct Verbatim(RefCell<BTreeMap<String, Digest>>);
+
+impl Verbatim {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub(super) fn report(&self, path: &str, digest: Digest) {
+        self.0.borrow_mut().insert(path.to_owned(), digest);
+    }
+
+    /// `entries` as (planned path, written path, written bytes): every
+    /// reported path must be written and hash to its digest.
+    fn check<'e>(
+        &self,
+        entries: impl Iterator<Item = (&'e str, &'e str, &'e [u8])>,
+    ) -> Result<(), ExportError> {
+        let expected = self.0.borrow();
+        let mut seen = 0;
+        for (planned, written, bytes) in entries {
+            let Some(digest) = expected.get(planned) else {
+                continue;
+            };
+            seen += 1;
+            if &hash_bytes(bytes) != digest {
+                return Err(ExportError::IdentifierRefused {
+                    path: written.to_owned(),
+                    reason: "bytes copied verbatim would no longer match their recorded digest",
+                });
+            }
+        }
+        if seen == expected.len() {
+            Ok(())
+        } else {
+            Err(ExportError::IdentifierRefused {
+                path: String::new(),
+                reason: "a file reported as copied verbatim is not in the plan",
+            })
+        }
+    }
+}
+
+/// Whether `bytes` may hold an identifier a remap would rewrite: a run of
+/// 32 or more hex digits (a 32-digit ID, a digest, a head hash) or a
+/// UUID-shaped value in any letter case. Bytes that hold none are left
+/// unchanged by a remap.
+pub(crate) fn may_hold_identifier(bytes: &[u8]) -> bool {
+    let mut run = 0usize;
+    for byte in bytes {
+        run = if byte.is_ascii_hexdigit() { run + 1 } else { 0 };
+        if run >= 32 {
+            return true;
+        }
+    }
+    bytes.windows(UUID_LEN).any(|window| {
+        window.iter().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => *byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        })
+    })
 }
 
 /// The 64- and 32-digit hex runs of a plan, each with the first file that
@@ -641,6 +727,37 @@ fn replace_all(bytes: &[u8], from: &[u8], to: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_verbatim_copy_must_be_planned_and_keep_its_digest() {
+        let verbatim = Verbatim::new();
+        verbatim.report("runs/0001/files/out.json", hash_bytes(b"exact\n"));
+        let path = "runs/0001/files/out.json";
+        assert!(
+            verbatim
+                .check([(path, path, &b"exact\n"[..])].into_iter())
+                .is_ok()
+        );
+        // Rewritten bytes, or a copy that is not planned at all, refuse.
+        assert!(matches!(
+            verbatim.check([(path, path, &b"altered\n"[..])].into_iter()),
+            Err(ExportError::IdentifierRefused { path: written, .. }) if written == path
+        ));
+        assert!(verbatim.check(std::iter::empty()).is_err());
+        assert!(Verbatim::new().check(std::iter::empty()).is_ok());
+    }
+
+    #[test]
+    fn bytes_that_hold_no_identifier_are_told_apart_from_those_that_may() {
+        assert!(!may_hold_identifier(
+            b"{\"metric\":\"latency.p99\",\"value\":18.7}"
+        ));
+        assert!(may_hold_identifier(
+            b"x 019acd16-0003-7000-8000-000000000001 y"
+        ));
+        assert!(may_hold_identifier(b"0123456789ABCDEF0123456789abcdef"));
+        assert!(!may_hold_identifier(b"0123456789abcdef0123456789abcde"));
+    }
 
     const OBS: &str = "01a20751-8e56-7b21-9630-4b49275ec85d";
     const CASE: &str = "01a20751-9598-7d12-a156-045a6355965c";
