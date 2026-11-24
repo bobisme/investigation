@@ -40,6 +40,15 @@ therefore changes the demo too; `tests/demo.rs` checks that every scenario
 still replays, reproduces its bytes and runs its tutorial path, including
 plan §17.5 as written.
 
+`docs/walkthroughs/` holds one method walkthrough per scenario.
+`tests/walkthroughs.rs` runs each from a fresh demo workspace through the
+tutorial runner in `tests/support/tutorial.rs`, the one `tests/demo.rs` uses
+for §17.5. The runner checks exit statuses, quoted output and that refusals
+and dry runs commit nothing (the runner's module comment gives the format).
+The walkthroughs quote the demo's real IDs, so a rebuilt scenario workspace
+or a changed text output needs the walkthroughs updated as well; the test
+failure names the line and prints the new output.
+
 `docs/agent/` holds the pages that `investigation docs` prints: the agent
 instructions (`agents`) and the optional skill (`skill`). They are compiled
 into the binary, so they work offline. To add a page, add one line to `PAGES`

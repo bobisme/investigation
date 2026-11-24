@@ -12,71 +12,20 @@
 //!   validate or promote a result.
 //! - `demo` refuses a non-empty PATH and a missing parent, and writes nothing.
 
-use std::{
-    collections::BTreeMap,
-    fs,
-    path::{Path, PathBuf},
-    process::Command,
-};
+use std::{collections::BTreeMap, fs, path::Path};
 
 use serde_json::Value;
 
-const BIN: &str = env!("CARGO_BIN_EXE_investigation");
+#[path = "support/tutorial.rs"]
+mod tutorial;
 
-fn run(cwd: &Path, args: &[String]) -> (i32, String, String) {
-    let output = Command::new(BIN)
-        .current_dir(cwd)
-        .env_remove("AGENT")
-        .env_remove("FORMAT")
-        .env_remove("INVESTIGATION_READ_ONLY")
-        .env("TZ", "UTC")
-        .args(args)
-        .output()
-        .unwrap();
-    (
-        output.status.code().unwrap_or(-1),
-        String::from_utf8(output.stdout).unwrap(),
-        String::from_utf8(output.stderr).unwrap(),
-    )
-}
+use tutorial::{files, repository, run};
 
 fn json(cwd: &Path, args: &[&str]) -> Value {
     let args: Vec<String> = args.iter().map(|arg| (*arg).to_owned()).collect();
     let (code, stdout, stderr) = run(cwd, &args);
     assert_eq!(code, 0, "{args:?}\n{stdout}\n{stderr}");
     serde_json::from_str(&stdout).unwrap()
-}
-
-/// Every file under `root/relative`, by path, skipping machine-local lock and
-/// temporary files and the disposable cache.
-fn files(root: &Path, relative: &str) -> BTreeMap<String, Vec<u8>> {
-    fn walk(base: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries {
-            let path = entry.unwrap().path();
-            let name = path
-                .strip_prefix(base)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
-            let skipped = name
-                .split('/')
-                .any(|part| matches!(part, "locks" | "tmp" | "cache") || part.ends_with(".lock"));
-            if skipped {
-                continue;
-            }
-            if path.is_dir() {
-                walk(base, &path, out);
-            } else {
-                out.insert(name, fs::read(&path).unwrap());
-            }
-        }
-    }
-    let mut out = BTreeMap::new();
-    walk(root, &root.join(relative), &mut out);
-    out
 }
 
 fn same_files(
@@ -233,40 +182,44 @@ fn demo_choice_reproduces_its_bytes_and_tutorial() {
     reproduces("choice");
 }
 
-fn repository() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-/// Plan §17.5 exactly as written, `inv` being the binary.
+/// Plan §17.5 exactly as written, `inv` being the binary, through the same
+/// runner as the walkthroughs.
 #[test]
 fn plan_tutorial_path_runs_as_written_and_ends_with_a_decision_record() {
     let plan = fs::read_to_string(repository().join("notes/plan.md")).unwrap();
-    let block = plan
+    let section = plan
         .split("### 17.5 Shipped tutorial command path")
         .nth(1)
-        .and_then(|rest| rest.split("```sh").nth(1))
-        .and_then(|rest| rest.split("```").next())
+        .and_then(|rest| rest.split("\n### ").next())
         .unwrap();
-    let steps: Vec<Vec<String>> = block
-        .lines()
-        .filter_map(|line| line.strip_prefix("inv "))
-        // A trailing shell comment (an erratum note) is not part of the command.
-        .map(|line| {
-            line.split(" #")
-                .next()
-                .unwrap_or(line)
-                .split_whitespace()
-                .map(str::to_owned)
-                .collect()
+    let steps = tutorial::parse(section, "notes/plan.md §17.5", "inv");
+    assert_eq!(steps.len(), 1, "{section}");
+    let commands: Vec<Vec<String>> = steps[0]
+        .actions
+        .iter()
+        .map(|action| match action {
+            tutorial::Action::Command { argv, .. } => argv.clone(),
+            tutorial::Action::Write { .. } | tutorial::Action::Read { .. } => {
+                panic!("§17.5 runs only the binary")
+            }
         })
         .collect();
-    assert_eq!(steps.len(), 8, "{block}");
-    assert_eq!(steps[0][..2], ["demo".to_owned(), "./demo-case".to_owned()]);
+    assert_eq!(commands.len(), 8, "{section}");
+    assert_eq!(
+        commands[0][..2],
+        ["demo".to_owned(), "./demo-case".to_owned()]
+    );
     let cwd = tempfile::tempdir().unwrap();
+    let mut session = tutorial::Session::new(cwd.path());
     let mut journal = None;
-    for step in &steps {
-        let (code, stdout, stderr) = run(cwd.path(), step);
-        assert_eq!(code, 0, "{step:?}\n{stdout}\n{stderr}");
+    for (index, action) in steps[0].actions.iter().enumerate() {
+        let step = tutorial::Step {
+            origin: format!("notes/plan.md §17.5 command {}", index + 1),
+            actions: vec![action.clone()],
+            exit: 0,
+            quote: None,
+        };
+        session.run(&step);
         let state = files(&cwd.path().join("demo-case"), "state");
         assert_eq!(
             *journal.get_or_insert_with(|| state.clone()),
