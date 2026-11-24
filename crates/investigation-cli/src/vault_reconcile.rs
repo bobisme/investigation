@@ -7,7 +7,10 @@
 //! `propose-change` is the only one that changes the workspace: it records a
 //! change the caller states with `--field` and `--value`, for the few fields
 //! it supports, through the same `record` path and checks as any other
-//! command, with a fresh revision precondition. `--dry-run` checks the
+//! command, with a fresh revision precondition. A retry under the same
+//! `--command-id` returns the original receipt, as `record` does: it reuses
+//! the precondition the first call recorded, and once the path is already
+//! reconciled it records nothing and changes no file. `--dry-run` checks the
 //! request and prints what would happen, including the envelope a
 //! `propose-change` would submit, and writes nothing.
 
@@ -15,15 +18,15 @@ use std::fmt::Write as _;
 
 use investigation_core::{
     catalog::standard_catalog,
-    command::{Command as RecordCommand, Operation},
+    command::{Command as RecordCommand, Operation, RevisionRef},
     identity::{Id, Kind},
     wire::{ErrorCode, Failure},
 };
 use investigation_render::{
     VaultRenderer,
     reconcile::{
-        Disposition, Handling, MAX_PATHS, PathStep, ReconcileReport, ReconcileRequest,
-        Reconciliation, preview, reconcile_vault,
+        Disposition, Handling, MAX_PATHS, OwnedPath, PathStep, ReconcileReport, ReconcileRequest,
+        Reconciliation, owned_path, preview, reconcile_vault,
     },
     working_policy,
 };
@@ -141,9 +144,57 @@ pub(crate) fn run(
         paths: args.paths.clone(),
         discard_observed: args.discard_observed,
     };
+    // A retry of a propose-change this actor already recorded reuses the
+    // recorded precondition, so the store compares the same request.
+    let retry = if proposing && !args.dry_run {
+        recorded_preconditions(store, global, &args)?
+    } else {
+        None
+    };
+    // The first call recorded the change and reconciled the path, and only
+    // its response was lost: the store returns the original receipt, or
+    // refuses a different request under the same key, and no file changes.
+    if let Some((owned, recorded)) = &retry
+        && !owned.drifted
+    {
+        let (_, envelope) = proposal(
+            store,
+            global,
+            &args,
+            &args.paths[0],
+            owned.projects,
+            Some(recorded.clone()),
+        )?;
+        let receipt = store.record(&serde_json::to_vec(&envelope).expect("envelope serializes"))?;
+        let done = Reconciliation {
+            disposition,
+            steps: Vec::new(),
+        };
+        return Ok(output(
+            store.workspace(),
+            &args,
+            &done,
+            Some(proposed_json(&receipt)),
+            Some(Ok(None)),
+        ));
+    }
+    let recorded = retry.map(|(_, recorded)| recorded);
     let checked = preview(store.workspace(), &request).map_err(|error| error.to_failure())?;
     let envelope = if proposing {
-        Some(proposal(store, global, &args, &checked)?)
+        let [step] = checked.steps.as_slice() else {
+            return Err(invalid(
+                "propose-change reconciles one path at a time.",
+                "PATH",
+            ));
+        };
+        Some(proposal(
+            store,
+            global,
+            &args,
+            &step.path.to_string(),
+            step.projects,
+            recorded,
+        )?)
     } else {
         None
     };
@@ -165,12 +216,7 @@ pub(crate) fn run(
         }
         let bytes = serde_json::to_vec(&envelope).expect("envelope serializes");
         let receipt = store.record(&bytes)?;
-        proposed = Some(json!({
-            "command_id":command_id,
-            "transaction_id":receipt.transaction_id,
-            "updated":receipt.updated,
-            "warnings":receipt.warnings,
-        }));
+        proposed = Some(proposed_json(&receipt));
     }
     let policy = working_policy(store.workspace());
     match reconcile_vault(store, &VaultRenderer, &policy, &request, &mut |_| {}) {
@@ -179,7 +225,7 @@ pub(crate) fn run(
             &args,
             &report.done,
             proposed,
-            Some(Ok(&report)),
+            Some(Ok(Some(&report))),
         )),
         // The change is recorded; say so rather than report a failure that
         // would read as "nothing committed".
@@ -194,14 +240,56 @@ pub(crate) fn run(
     }
 }
 
-/// The `case.amend` envelope for the stated change, with the case's current
-/// revision as its precondition. Refused unless the path projects a case
-/// and the field is supported; nothing is read from the edited note.
+fn proposed_json(receipt: &investigation_core::wire::Receipt) -> Value {
+    json!({
+        "command_id":receipt.command_id,
+        "transaction_id":receipt.transaction_id,
+        "result":receipt.result,
+        "updated":receipt.updated,
+        "warnings":receipt.warnings,
+    })
+}
+
+/// For a retry: the path as the manifest records it, and the preconditions
+/// this actor's earlier `propose-change` under `--command-id` recorded in the
+/// case the path projects. `None` when there is no such command there; a
+/// command under the same key in another case is left to the store, which
+/// refuses a different request.
+fn recorded_preconditions(
+    store: &mut Store,
+    global: &Global,
+    args: &ReconcileArgs,
+) -> Result<Option<(OwnedPath, Vec<RevisionRef>)>, Failure> {
+    let (Some(key), [path]) = (args.command_id.as_deref(), args.paths.as_slice()) else {
+        return Ok(None);
+    };
+    let Some(owned) = owned_path(store.workspace(), path).map_err(|error| error.to_failure())?
+    else {
+        return Ok(None);
+    };
+    let Some(case) = owned.projects.filter(|id| id.kind() == Kind::Case) else {
+        return Ok(None);
+    };
+    let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
+    let replay = store.case(case)?;
+    Ok(replay
+        .events
+        .iter()
+        .find(|verified| verified.event.command_id == key && verified.event.actor == actor)
+        .map(|verified| (owned, verified.event.preconditions.clone())))
+}
+
+/// The `case.amend` envelope for the stated change at `path`, which projects
+/// `projects`, with the case's current revision as its precondition, or the
+/// `recorded` one for a retry. Refused unless the path projects a case and
+/// the field is supported; nothing is read from the edited note.
 fn proposal(
     store: &mut Store,
     global: &Global,
     args: &ReconcileArgs,
-    checked: &Reconciliation,
+    path: &str,
+    projects: Option<Id>,
+    recorded: Option<Vec<RevisionRef>>,
 ) -> Result<(String, Value), Failure> {
     let supported: Vec<Value> = SUPPORTED
         .iter()
@@ -211,12 +299,6 @@ fn proposal(
         let mut failure = invalid(message, "--field");
         failure.error.actual = Some(json!({"supported":supported}));
         failure
-    };
-    let [step] = checked.steps.as_slice() else {
-        return Err(invalid(
-            "propose-change reconciles one path at a time.",
-            "PATH",
-        ));
     };
     let (Some(field), Some(value)) = (args.field.as_deref(), args.value.as_deref()) else {
         return Err(invalid(
@@ -232,27 +314,27 @@ fn proposal(
              schema --list), then reconcile with preserve-as-note or discard."
         )));
     }
-    let Some(case) = step.projects.filter(|id| id.kind() == Kind::Case) else {
+    let Some(case) = projects.filter(|id| id.kind() == Kind::Case) else {
         return Err(unsupported(format!(
             "{} does not project a case, so propose-change has no supported field there. \
              Supported: title, objective and scope of a case, on its Overview note. Record \
              other changes with an operation (investigation schema --list), then reconcile \
              with preserve-as-note or discard.",
-            step.path
+            path
         )));
     };
     if value.trim().is_empty() {
         return Err(invalid("--value must not be empty.", "--value"));
     }
     // The path names the case; a --case that names another one is refused.
-    require_selected_case(store, global.case.as_deref(), case, &step.path.to_string())?;
+    require_selected_case(store, global.case.as_deref(), case, path)?;
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
-    let reference = current(store, case)?;
+    let preconditions = match recorded {
+        Some(recorded) => recorded,
+        None => vec![current(store, case)?],
+    };
     let reason = args.reason.clone().unwrap_or_else(|| {
-        format!(
-            "Proposed with vault reconcile after an edit of the generated note {}.",
-            step.path
-        )
+        format!("Proposed with vault reconcile after an edit of the generated note {path}.")
     });
     let mut payload = json!({"reason":reason});
     payload[field] = match field {
@@ -269,7 +351,7 @@ fn proposal(
         case_id: Some(case),
         actor,
         actor_descriptor: None,
-        preconditions: vec![reference],
+        preconditions,
         operations: vec![Operation {
             op: "case.amend".to_owned(),
             client_ref: None,
@@ -381,15 +463,15 @@ fn output(
     args: &ReconcileArgs,
     reconciliation: &Reconciliation,
     proposal: Option<Value>,
-    outcome: Option<Result<&ReconcileReport, Failure>>,
+    outcome: Option<Result<Option<&ReconcileReport>, Failure>>,
 ) -> Output {
     let dry_run = outcome.is_none();
     let remaining: Vec<Value> = match &outcome {
-        Some(Ok(report)) => report.remaining().into_iter().map(drift_json).collect(),
+        Some(Ok(Some(report))) => report.remaining().into_iter().map(drift_json).collect(),
         _ => Vec::new(),
     };
     let render = match &outcome {
-        Some(Ok(report)) => {
+        Some(Ok(Some(report))) => {
             let publish = &report.render.publish;
             json!({
                 "generation":publish.generation.id(),
@@ -457,6 +539,13 @@ fn output(
     }
     if let Some(proposal) = value["proposal"].as_object() {
         match proposal.get("transaction_id") {
+            Some(transaction) if proposal.get("result") == Some(&json!("already_committed")) => {
+                let _ = write!(
+                    text,
+                    "\nthe proposed change was already recorded as {transaction}; this retry \
+                     recorded nothing"
+                );
+            }
             Some(transaction) => {
                 let _ = write!(text, "\nrecorded the proposed change as {transaction}");
             }

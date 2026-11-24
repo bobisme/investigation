@@ -1294,9 +1294,6 @@ struct Retried {
     /// A staged capture item, checked through `capture recover`, not the
     /// journal.
     staged_on: Option<String>,
-    /// The retry may be refused once the first send consumed its input (a
-    /// reconciled drift); `receipt KEY` must then return the write.
-    receipt_only: bool,
 }
 
 fn new_events(
@@ -1417,7 +1414,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             changed_args: strings(&["record", "--input", "-"]),
             changed_stdin: Some(command("retry-record", &changed_question)),
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "ingest",
@@ -1427,7 +1423,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             changed_args: strings(&["ingest", "--input", "-"]),
             changed_stdin: Some(manifest("Changed source")),
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "observe",
@@ -1451,7 +1446,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "note",
@@ -1475,7 +1469,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "source add",
@@ -1491,7 +1484,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "start",
@@ -1515,7 +1507,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "case new",
@@ -1525,7 +1516,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             changed_args: strings(&["case", "new", "Changed case", "--command-id", "retry-case"]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "capture begin",
@@ -1539,7 +1529,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
                 changed
             }),
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "capture append",
@@ -1555,7 +1544,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
                                        "fact": {"kind": "phase_changed", "phase": "measure"}}),
             ),
             staged_on: Some(handle.clone()),
-            receipt_only: false,
         },
         Retried {
             command: "capture attach",
@@ -1565,7 +1553,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             changed_args: strings(&["capture", "attach", "--input", "-"]),
             changed_stdin: Some(attached("application/json")),
             staged_on: Some(handle.clone()),
-            receipt_only: false,
         },
         Retried {
             command: "capture finalize",
@@ -1575,7 +1562,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             changed_args: strings(&["capture", "finalize", "--input", "-"]),
             changed_stdin: Some(finalize(1)),
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "vault snapshot-note",
@@ -1601,7 +1587,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: false,
         },
         Retried {
             command: "vault reconcile",
@@ -1635,7 +1620,6 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             ]),
             changed_stdin: None,
             staged_on: None,
-            receipt_only: true,
         },
     ];
     let mut lost = Vec::new();
@@ -1675,18 +1659,7 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             .staged_on
             .as_deref()
             .map(|handle| staged_items(&casework, handle));
-        if retried.receipt_only {
-            let receipt = casework.ok(&["receipt", &retried.key], None);
-            let mut found = BTreeSet::new();
-            ids_in(&receipt, &mut found);
-            let transaction = &casework.event(&written[0].0, &written[0].1)["transaction_id"];
-            if written.len() != 1 || !found.contains(transaction.as_str().unwrap_or("")) {
-                lost.push(format!(
-                    "{}: receipt {} does not return the write: {receipt}",
-                    retried.command, retried.key
-                ));
-            }
-        } else if !retry.accepted() {
+        if !retry.accepted() {
             lost.push(format!(
                 "{}: the identical retry was refused: {}",
                 retried.command, retry.body
@@ -1710,7 +1683,7 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
             .filter(|id| !known.contains_key(*id))
             .filter(|id| !id.starts_with("tx_") && !id.starts_with("handle_"))
             .collect();
-        if (!retried.receipt_only && answered != original) || !phantom.is_empty() {
+        if answered != original || !phantom.is_empty() {
             lost.push(format!(
                 "{}: the retry answered {answered:?}, the lost response {original:?}",
                 retried.command
@@ -1734,8 +1707,8 @@ fn every_write_command_retried_after_a_lost_response_is_recorded_exactly_once() 
         }
         per_command.insert(
             retried.command.to_owned(),
-            json!({"key": retried.key, "recorded": recorded, "retry": retry.body["result"]
-                       .as_str().or(retry.body["commit"]["result"].as_str())
+            json!({"key": retried.key, "recorded": recorded, "retry": retry.body["proposal"]["result"]
+                       .as_str().or(retry.body["result"].as_str()).or(retry.body["commit"]["result"].as_str())
                        .or(retry.body["receipt"]["result"].as_str()),
                    "retry_code": retry.code(), "changed_retry_code": changed.code()}),
         );
@@ -1788,7 +1761,7 @@ const NOT_ORDINARY: &[(&str, &str)] = &[
     ("IO_FAILURE", "the filesystem failed the call"),
     (
         "DURABILITY_UNKNOWN",
-        "the commit outcome is unknown; receipt KEY settles it, as the lost-response test checks",
+        "the commit outcome is unknown; the identical retry returns the original receipt, as the lost-response test checks, and receipt KEY looks it up",
     ),
 ];
 

@@ -244,6 +244,39 @@ pub fn preview(
     check(&publisher, &manifest, request)
 }
 
+/// A generated path as the last render's manifest records it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OwnedPath {
+    /// The record the path projects.
+    pub projects: Option<Id>,
+    /// Whether a drift is recorded for it.
+    pub drifted: bool,
+}
+
+/// The generated file at `path` from the last render's manifest, drifted or
+/// not; `None` when the renderer owns no such path. Reads only. `vault
+/// reconcile` uses it to recognise a retried `propose-change` whose path the
+/// first call already reconciled.
+pub fn owned_path(workspace: &Workspace, path: &str) -> Result<Option<OwnedPath>, RenderError> {
+    let Ok(path) = PlanPath::new(path) else {
+        return Ok(None);
+    };
+    let probe = lock::probe(workspace)?;
+    if Publisher::inspect(workspace, &probe)?.is_none() {
+        return Err(RenderError::Busy {
+            waited: std::time::Duration::ZERO,
+        });
+    }
+    let manifest = Manifest::read(workspace)?
+        .manifest
+        .bound_to(&Projection::of(workspace))?;
+    let drift = manifest.drifted(&path);
+    Ok(manifest.get(&path).map(|owned| OwnedPath {
+        projects: drift.and_then(|drift| drift.projects).or(owned.projects),
+        drifted: drift.is_some(),
+    }))
+}
+
 /// Apply `request` and render, as one step under the render lock. See the
 /// module documentation. `propose-change` must already have recorded its
 /// change; this sets the observed bytes aside and regenerates.

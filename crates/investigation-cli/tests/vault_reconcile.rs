@@ -1,7 +1,8 @@
 //! `vault reconcile` through the CLI, with the environment cleared and an
 //! empty folder on `PATH`: no viewer application or other program is
 //! needed. A dry run writes nothing; `propose-change` records only a stated,
-//! supported change with a fresh precondition; read-only mode refuses
+//! supported change with a fresh precondition, and a retry under the same
+//! key returns the original receipt; read-only mode refuses
 //! everything but the dry run; the help teaches the command and its next
 //! step.
 
@@ -220,6 +221,103 @@ fn propose_change_records_the_stated_title_and_clears_the_drift() {
     let status = casework.run(&["vault", "status"], 0);
     assert_eq!(status["drift_count"], 0);
     assert_eq!(status["freshness"], "current");
+}
+
+/// A retry under the same `--command-id` returns the original receipt, as
+/// `record` does, whether or not the first call reconciled the note; a
+/// different change under the same key is refused and changes nothing.
+#[test]
+fn a_retry_under_the_same_command_id_returns_the_original_receipt() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.edit(&overview, "\nRetitle this.\n");
+    let reconcile = |value: &str| {
+        vec![
+            "--actor",
+            "agent:reconcile-test",
+            "vault",
+            "reconcile",
+            overview.as_str(),
+            "--disposition",
+            "propose-change",
+            "--field",
+            "title",
+            "--value",
+            value,
+            "--command-id",
+            "retitle-retry",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect::<Vec<_>>()
+    };
+    let args = reconcile("Why do lookups stall?");
+    let args: Vec<&str> = args.iter().map(String::as_str).collect();
+
+    // The change was recorded but the call stopped before the vault was
+    // reconciled: record the exact envelope the command would submit.
+    let mut dry = args.clone();
+    dry.push("--dry-run");
+    let envelope = casework.run(&dry, 0)["proposal"]["envelope"].clone();
+    let input = casework.root.join("envelope.json");
+    fs::write(&input, envelope.to_string()).unwrap();
+    let first = casework.run(
+        &[
+            "--actor",
+            "agent:reconcile-test",
+            "record",
+            "--input",
+            input.to_str().unwrap(),
+        ],
+        0,
+    );
+    fs::remove_file(&input).unwrap();
+    let transaction = first["transaction_id"].as_str().unwrap().to_owned();
+
+    // The retry finds the note still drifted: it records nothing new and
+    // reconciles the note.
+    let events = || {
+        fs::read_dir(
+            casework
+                .root
+                .join("state/cases")
+                .join(&casework.case)
+                .join("events"),
+        )
+        .unwrap()
+        .count()
+    };
+    let recorded = events();
+    let finished = casework.run(&args, 0);
+    assert_eq!(
+        finished["proposal"]["result"], "already_committed",
+        "{finished}"
+    );
+    assert_eq!(finished["proposal"]["transaction_id"], transaction.as_str());
+    assert_eq!(finished["clear"], true, "{finished}");
+    assert_eq!(events(), recorded);
+    assert_eq!(casework.title(), "Why do lookups stall?");
+
+    // Its response is lost too: the next retry finds nothing to reconcile and
+    // returns the same receipt without changing a file.
+    let before = casework.files();
+    let again = casework.run(&args, 0);
+    assert_eq!(again["result"], "vault_reconciled");
+    assert_eq!(again["proposal"]["result"], "already_committed", "{again}");
+    assert_eq!(again["proposal"]["transaction_id"], transaction.as_str());
+    assert_eq!(again["paths"], serde_json::json!([]));
+    assert_eq!(casework.files(), before);
+
+    // A different change under the same key is refused.
+    let changed = reconcile("Another title");
+    let changed: Vec<&str> = changed.iter().map(String::as_str).collect();
+    let refused = casework.run(&changed, 4);
+    assert_eq!(
+        refused["error"]["code"], "IDEMPOTENCY_KEY_REUSED",
+        "{refused}"
+    );
+    assert_eq!(casework.files(), before);
+    assert_eq!(casework.title(), "Why do lookups stall?");
 }
 
 #[test]

@@ -191,6 +191,7 @@ MEASURES = [
             test(*STORE_LIB[:2], "store::capture::attach::tests::every_acknowledged_attachment_survives_a_crash_with_its_bytes", "acknowledged attachments survive a crash"),
             test(*STORE_LIB[:2], "store::real_crash_tests::local_filesystem_publication_boundaries_and_retry", "publication boundaries on the local filesystem"),
             test(*STORE_LIB[:2], "durable::tests::crash_boundaries_preserve_only_complete_published_bytes", "only complete bytes are published"),
+            test(CLI, "vault_reconcile", "a_retry_under_the_same_command_id_returns_the_original_receipt", "a reconcile retry after a stop before the render, and after a lost response"),
             test(CLI, "drill_closure", "", "closure kill-and-retry drill through the binary"),
             test(CLI, "trial_tasks", "", "trial task 6 rehearsal: an injected lost response is retried without a duplicate", slow=True),
             test(CLI, "conformance", "", "a producer that re-records after a lost response fails conformance", slow=True),
