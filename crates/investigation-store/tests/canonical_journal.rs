@@ -23,7 +23,7 @@ use std::{
 use investigation_core::{header::Actor, identity::Id, wire::ErrorCode};
 use investigation_store::{
     Store, Workspace,
-    journal::{canonical_genesis, decode_event, hash_bytes},
+    journal::{canonical_event, canonical_genesis, decode_event, hash_bytes},
     store::journal_repair::{JournalRepair, Witness},
 };
 use serde_json::{Value, json};
@@ -216,19 +216,19 @@ fn a_reformatted_journal_file_is_refused_at_that_file_and_repaired_from_its_witn
 
             // A dry run reports and writes nothing; the repair restores the
             // written bytes, and the journal verifies again.
-            let planned = store.repair_journal(true).unwrap();
+            let planned = store.repair_journal(true, None).unwrap();
             assert!(planned.dry_run);
             assert_eq!(planned.files.len(), 1, "{label}");
             assert_eq!(planned.files[0].witness, witness, "{label}");
             assert!(planned.files[0].path.ends_with(name));
             assert_eq!(fs::read(&path).unwrap(), changed, "{label}: dry run wrote");
-            let JournalRepair { dry_run, files } = store.repair_journal(false).unwrap();
+            let JournalRepair { dry_run, files } = store.repair_journal(false, None).unwrap();
             assert!(!dry_run);
             assert_eq!(files, planned.files);
             assert_eq!(fs::read(&path).unwrap(), written, "{label}");
             assert!(issue_codes(&mut store).is_empty(), "{label}");
             // Nothing is left to repair.
-            assert!(store.repair_journal(false).unwrap().files.is_empty());
+            assert!(store.repair_journal(false, None).unwrap().files.is_empty());
         }
     }
 }
@@ -249,7 +249,7 @@ fn reformatted_numbers_and_a_byte_order_mark_stay_corrupt() {
         overwrite(&path, changed.as_bytes());
         assert_eq!(issue_codes(&mut store), ["CORRUPT_EVENT"], "{changed:.40}");
         // Nothing the repair could restore: it refuses with the same error.
-        let refused = store.repair_journal(true).unwrap_err();
+        let refused = store.repair_journal(true, None).unwrap_err();
         assert!(refused.error.message.contains("CORRUPT_EVENT"));
         assert_eq!(fs::read(&path).unwrap(), changed.as_bytes());
     }
@@ -267,7 +267,7 @@ fn without_a_witness_the_repair_names_the_file_and_writes_nothing() {
     overwrite(&head, &changed);
     // The index is disposable: without it nothing records the head's hash.
     fs::remove_file(root.join("cache/index.sqlite")).unwrap();
-    let refused = store.repair_journal(false).unwrap_err();
+    let refused = store.repair_journal(false, None).unwrap_err();
     assert_eq!(refused.error.code, ErrorCode::IntegrityFailure);
     assert!(
         refused.error.message.contains("events/000000000003.json"),
@@ -308,7 +308,7 @@ fn a_reformatted_file_the_next_event_records_was_accepted_before_and_stays_verif
     store.repair_index().unwrap();
     assert_eq!(issue_codes(&mut store), Vec::<String>::new());
     assert_eq!(store.case(case).unwrap().snapshot.sequence, 3);
-    assert!(store.repair_journal(false).unwrap().files.is_empty());
+    assert!(store.repair_journal(false, None).unwrap().files.is_empty());
     assert_eq!(fs::read(&second).unwrap(), reformatted);
 
     // Without the record, the same bytes are refused at that file, not at
@@ -331,6 +331,76 @@ fn an_edited_parent_link_keeps_its_own_diagnostic_in_any_layout() {
     overwrite(&head, &serde_json::to_vec(&event).unwrap());
     assert_eq!(issue_codes(&mut store), ["EVENT_PARENT_HASH_MISMATCH"]);
     // The repair has nothing it may restore and names the file.
-    let refused = store.repair_journal(true).unwrap_err();
+    let refused = store.repair_journal(true, None).unwrap_err();
     assert!(refused.error.message.contains("000000000003.json"));
+}
+
+/// The case journal the last program that wrote `inv.event.v0-alpha`
+/// events wrote (fixtures/historical/v0-alpha-2026-11-22).
+fn legacy_case() -> PathBuf {
+    let cases = repository().join("fixtures/historical/v0-alpha-2026-11-22/state/cases");
+    let mut found: Vec<_> = fs::read_dir(cases)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(found.len(), 1);
+    found.pop().unwrap()
+}
+
+#[test]
+fn the_legacy_event_layout_is_this_programs_layout_with_the_old_version() {
+    // Pinned before the legacy exemption of ADR 0016 can be narrowed: the
+    // v0-alpha writer wrote compact serde_json of the same field order, and
+    // its genesis version is the current one.
+    let case = legacy_case();
+    let genesis = fs::read(case.join("genesis.json")).unwrap();
+    let identity: Value = serde_json::from_slice(&genesis).unwrap();
+    let id = |key: &str| identity[key].as_str().unwrap().parse::<Id>().unwrap();
+    assert_eq!(identity["schema_version"], "inv.case-genesis.v0-alpha");
+    assert_eq!(
+        canonical_genesis(
+            &case.join("genesis.json"),
+            &genesis,
+            id("workspace_id"),
+            id("case_id")
+        )
+        .unwrap(),
+        None
+    );
+    let mut parent = hash_bytes(&genesis);
+    for sequence in 1..=2 {
+        let path = case.join(format!("events/{sequence:012}.json"));
+        let bytes = fs::read(&path).unwrap();
+        let text = std::str::from_utf8(&bytes).unwrap();
+        assert!(text.starts_with("{\"schema_version\":\"inv.event.v0-alpha\","));
+        assert!(!text.ends_with('\n'));
+        let verified = decode_event(&path, sequence, &bytes).unwrap();
+        // Upcast on read, hashed as the exact stored bytes, chained.
+        assert_eq!(verified.hash, hash_bytes(&bytes));
+        assert_eq!(verified.event.previous_hash, parent);
+        assert_eq!(verified.event.manifest_digest, None);
+        assert_eq!(verified.event.session_reads, None);
+        parent = verified.hash.clone();
+        let rewritten = String::from_utf8(serde_json::to_vec(&verified.event).unwrap()).unwrap();
+        assert_eq!(
+            rewritten.replacen(
+                "{\"schema_version\":\"inv.event.v0-alpha.2\",",
+                "{\"schema_version\":\"inv.event.v0-alpha\",",
+                1
+            ),
+            text,
+            "event {sequence}: the legacy layout changed"
+        );
+        // The exemption as it stands: another layout of a legacy event is
+        // accepted and hashed as its exact bytes, and the repair leaves it.
+        let pretty = [
+            serde_json::to_vec_pretty(&serde_json::from_slice::<Value>(&bytes).unwrap()).unwrap(),
+            b"\n".to_vec(),
+        ]
+        .concat();
+        let accepted = decode_event(&path, sequence, &pretty).unwrap();
+        assert_eq!(accepted.hash, hash_bytes(&pretty));
+        assert_eq!(accepted.event, verified.event);
+        assert_eq!(canonical_event(&path, sequence, &pretty).unwrap(), None);
+    }
 }

@@ -605,6 +605,7 @@ fn a_kill_at_every_step_leaves_path_refused_or_complete_and_a_retry_succeeds() {
         Step::Verified,
         Step::Forked,
         Step::Checked,
+        Step::Moving,
         Step::Publishing,
         Step::Published,
     ];

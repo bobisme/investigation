@@ -11,7 +11,29 @@ Accepted with W11.18 (bn-36sl); 2026-11-23. Refines plan §10.4 and §10.7, ADR 
 3. The index is rebuilt from the journal. Then `check` must pass on the staged copy, with every case head equal to the archive's. Cache, index and vault are rebuilt and never copied. The archive does not hold them.
 4. Every staged directory is synced. Each top-level entry is then moved into PATH with a no-replace rename. `state/`, which holds the workspace marker, is moved last. Before that rename, PATH has no marker, so `check` and every other command refuse PATH. After that rename, PATH is the checked workspace. The empty staging folder is removed afterwards. The vault is then rendered like any `vault render`. A render never writes an existing vault outside PATH.
 
-Nothing is written outside PATH. A kill at any step leaves one of two results. Either PATH is refused as incomplete, or PATH is complete and checked. Test `a_kill_at_every_step_leaves_path_refused_or_complete_and_a_retry_succeeds` covers each step. A retry goes to a new PATH or an emptied PATH. The restore never deletes what it did not create in the same run.
+Nothing is written outside PATH. A kill at any step leaves one of two results. Either PATH is refused as incomplete, or PATH is complete and checked. Test `a_kill_at_every_step_leaves_path_refused_or_complete_and_a_retry_succeeds` covers each step in process. A plain retry still refuses the interrupted PATH; `--resume` (Decision 3) or a new or emptied PATH retries. A plain restore never deletes what it did not create in the same run.
+
+**Decision 3 (bn-f97f): ownership marking and `--resume`.**
+
+- *Marking.* Right after the staging folder is made, the restore writes `owner.json` in it: kind `investigation.restore-staging`, the archive's `export_id` and the mode. It is written to a temporary name, synced, renamed and the folder synced. Before the first rename into PATH, the restore writes `moved.json` the same way: every top-level entry publication will move, `state/` last. The restore holds an exclusive `flock` on the staging folder for its whole run. The kernel drops that lock when the process dies.
+- *Resume.* `archive restore|fork DIR PATH --resume` on a new or empty PATH restores as usual. Otherwise it clears and restores again only when all of these hold:
+  - PATH holds a real `.restore-staging` directory, and no running restore holds its lock. A lock that is held gives `WORKSPACE_BUSY`, exit 7.
+  - `owner.json` names DIR's `export_id` and the same mode.
+  - The staging folder holds nothing but the marker files and the staged `workspace`.
+  - Every other entry of PATH is listed in `moved.json`.
+
+  It removes the listed entries, then the staged copy, then the markers, `owner.json` last. A resume killed part way can therefore be resumed again. If `state/` was already published, it removes only the leftover staging folder. It does this after it checks that PATH opens as the workspace this archive restores or forks and passes `check`, and it reports `already_published`.
+- *Unmarked staging.* An empty staging folder, or one holding only `owner.json.tmp`, is a restore killed before its marker was in place. Resume clears it, and only when PATH holds nothing else. Any other unmarked staging folder is refused.
+- *Refusals* name what was found, remove nothing, and exit 2 with `error.path` `PATH`. Each one has a test in `restore_kill.rs`:
+  - a user's folder;
+  - a staging name that is a link;
+  - an unmarked folder that holds data;
+  - a forged marker;
+  - another archive;
+  - the other mode;
+  - an added entry in PATH or in the staging folder;
+  - a running restore.
+- *Real kills.* A build with debug assertions compiles in a test pause. With `INVESTIGATION_TEST_PAUSE_RESTORE=<Step>`, the process marks the file `INVESTIGATION_TEST_PAUSE_READY` names at that step and waits. Release builds have no such code. `a_restore_killed_at_every_step_is_resumed_to_the_same_workspace` runs the binary with each step set, both restore and fork, and sends SIGKILL. The steps are Staging, Verified, Forked, Checked, Moving (one entry moved), Publishing and Published. After the kill, PATH holds no marker and only the restore's own entries, or it is the complete checked workspace. A plain run refuses it. A resume killed after clearing PATH (step Cleared) is resumed again. The final resume gives the archive's heads with the expected identity.
 
 **Decision 2: what a fork keeps, and what it changes.**
 

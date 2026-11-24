@@ -881,6 +881,16 @@ fn replay(
             {
                 return Err(non_canonical(reformatted));
             }
+            // A fork's inherited head records the hash of the origin's bytes:
+            // a reformatted file there is named as such, not as a fork that
+            // differs from its origin.
+            if !canonical
+                && writers.inherited.is_some_and(|inherited| {
+                    inherited.sequence == sequence && inherited.head_hash != verified.hash
+                })
+            {
+                return Err(non_canonical(path));
+            }
             apply_event(
                 &mut result,
                 &mut seen,

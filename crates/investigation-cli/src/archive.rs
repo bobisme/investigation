@@ -25,7 +25,9 @@ use investigation_core::{
 use investigation_render::{
     VaultRenderer,
     export::{
-        restore::{Mode, Refusal, Restored, restore_archive},
+        restore::{
+            Completed, Mode, Refusal, Restored, Resumed, STAGING, restore_archive, resume_archive,
+        },
         verify::{VerifyReport, verify_export},
     },
     render_vault, working_policy,
@@ -132,6 +134,9 @@ pub(crate) struct PublishArgs {
     /// The new workspace: a directory that does not exist (its parent must) or is empty.
     #[arg(value_name = "PATH")]
     path: PathBuf,
+    /// Clear an interrupted run of this command at PATH, only what it wrote there, then run it again.
+    #[arg(long)]
+    resume: bool,
 }
 
 pub(crate) const RESTORE_HELP: &str = "\
@@ -140,9 +145,17 @@ The copy check runs on is staged inside PATH, on the destination filesystem;
 the index is rebuilt from the journal, check must pass there with every case
 head equal to the archive's, and only then is the copy moved into PATH, with
 state/ (the workspace marker) last. A restore stopped part way leaves PATH
-without a marker, so check refuses it; a non-empty PATH is refused, so retry
-into a new or emptied PATH. Nothing is written outside PATH, and DIR is never
-written. The vault, when enabled, is rendered afterwards.
+without a marker, so check refuses it; a non-empty PATH is refused, so run the
+same command with --resume to retry there. Nothing is written outside PATH,
+and DIR is never written. The vault, when enabled, is rendered afterwards.
+
+--resume clears an interrupted restore at PATH and restores again. It clears
+only a .restore-staging folder that a restore of this same archive made
+(its ownership marker names the archive's export_id) and that no running
+restore holds, and only the entries that restore listed as moved into PATH.
+Anything else in PATH is refused, naming it, and nothing is removed. If the
+interrupted restore had already published state/, only its leftover staging
+folder is removed. On a new or empty PATH, --resume restores as usual.
 
 The result is the same workspace: same workspace ID, journals, heads, record
 and command IDs, so every old command ID returns its original receipt. Use it
@@ -152,6 +165,7 @@ archive fork.
 Examples:
   investigation archive restore ./backup ./recovered --format json
   investigation archive restore ./backup ./recovered --format text
+  investigation archive restore ./backup ./recovered --resume --format json
 
 Next: investigation --workspace ./recovered check --format json";
 
@@ -169,6 +183,7 @@ origin and two forks never pass for one writer.
 Examples:
   investigation archive fork ./backup ./alternative --format json
   investigation archive fork ./backup ./alternative --format text
+  investigation archive fork ./backup ./alternative --resume --format json
 
 Next: investigation --workspace ./alternative check --format json";
 
@@ -345,7 +360,7 @@ fn publish(args: &PublishArgs, mode: Mode) -> Result<Output, Failure> {
         Mode::Exact => "restore",
         Mode::Fork => "fork",
     };
-    let restored = restore_archive(&args.dir, &args.path, mode).map_err(|refusal| {
+    let refused = |refusal: Refusal| -> Failure {
         match refusal {
             Refusal::Destination(reason) => {
                 let mut failure = Failure::new(ErrorCode::InvalidInput, reason).at("PATH");
@@ -378,12 +393,30 @@ fn publish(args: &PublishArgs, mode: Mode) -> Result<Output, Failure> {
                 format!("The {verb} of {shown} stopped: {reason}"),
             )
             .at("PATH"),
+            Refusal::NotResumable(reason) => {
+                let mut failure = Failure::new(
+                    ErrorCode::InvalidInput,
+                    format!("PATH cannot be resumed: {reason}"),
+                )
+                .at("PATH");
+                failure.error.actual = Some(json!({"path": path}));
+                failure
+            }
+            Refusal::Busy(reason) => Failure::new(ErrorCode::WorkspaceBusy, reason).at("PATH"),
             Refusal::Interrupted(step) => Failure::new(
                 ErrorCode::IoFailure,
                 format!("The {verb} was stopped at {step:?}."),
             ),
         }
-    })?;
+    };
+    let restored = if args.resume {
+        match resume_archive(&args.dir, &args.path, mode).map_err(refused)? {
+            Resumed::Restored(restored) => *restored,
+            Resumed::Completed(completed) => return Ok(completed_output(&completed, &shown)),
+        }
+    } else {
+        restore_archive(&args.dir, &args.path, mode).map_err(refused)?
+    };
     let vault = render_restored(&restored);
     Ok(publish_output(&restored, &shown, vault))
 }
@@ -415,6 +448,43 @@ fn render_restored(restored: &Restored) -> Value {
         }),
         Err(error) => pending(error.to_string()),
     }
+}
+
+/// `--resume` found the interrupted run published: only its leftover
+/// staging folder was removed.
+fn completed_output(completed: &Completed, shown: &str) -> Output {
+    let root = completed.root.to_string_lossy().into_owned();
+    let check_argv = [
+        PROGRAM_NAME,
+        "--workspace",
+        root.as_str(),
+        "check",
+        "--format",
+        "json",
+    ];
+    let check = &completed.check;
+    let value = json!({
+        "workspace": root,
+        "workspace_id": completed.workspace_id,
+        "mode": match completed.mode { Mode::Exact => "exact", Mode::Fork => "fork" },
+        "archive": {"directory": shown, "export_id": completed.export_id},
+        "cleared": [STAGING],
+        "check": {
+            "ok": check.integrity_ok(),
+            "heads": check.heads,
+            "verified_blobs": check.verified_blobs,
+            "unavailable_artifacts": check.unavailable_artifacts,
+            "index": check.index,
+        },
+        "next": [{"kind": "local_read", "argv": check_argv}],
+    });
+    let text = format!(
+        "already_published  {root}\nworkspace {}  {} case(s)\nThe interrupted run had published; only its leftover {STAGING} folder was removed, and check passes.\nNext: {}",
+        completed.workspace_id,
+        check.heads.len(),
+        check_argv.join(" ")
+    );
+    Output::success("already_published", value, text)
 }
 
 fn publish_output(restored: &Restored, shown: &str, vault: Value) -> Output {

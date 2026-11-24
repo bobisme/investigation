@@ -33,10 +33,11 @@ use investigation_store::{
 use serde_json::{Value, json};
 
 const ACTOR: &str = "agent:migration-tester";
-const HISTORICAL: [&str; 4] = [
+const HISTORICAL: [&str; 5] = [
     "alpha-pilot-332e69ec",
     "alpha-pilot-37b1a42c",
     "alpha-pilot-bb3ab553",
+    "v0-alpha-2026-11-22",
     "v1-2026-11-24",
 ];
 /// Layout directories git does not keep.

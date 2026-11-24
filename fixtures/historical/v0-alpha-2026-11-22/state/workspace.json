@@ -1,0 +1,6 @@
+{
+  "schema_version": "inv.workspace.v1",
+  "schema_family": "inv.record.v0-alpha",
+  "workspace_id": "ws_01a20f0a-fd1f-7ba3-beec-db391681a06e",
+  "genesis_sequence": 0
+}

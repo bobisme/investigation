@@ -35,9 +35,11 @@ use std::{
 use investigation_core::{identity::Id, wire::Digest};
 use investigation_store::{
     Store, Workspace,
+    journal::hash_bytes,
     store::{
         CaseHead, Severity,
         archive::{MAX_INDEX_BYTES, copy_hashed, restore_layout},
+        journal_repair::ArchivedHeads,
     },
 };
 use serde::Serialize;
@@ -249,7 +251,7 @@ fn verify_with(dir: &Path, copy: CopyTo<'_>) -> io::Result<Checked> {
     Ok((report, None))
 }
 
-fn read_manifest(path: &Path) -> Result<ExportManifest, String> {
+pub(super) fn read_manifest(path: &Path) -> Result<ExportManifest, String> {
     let bytes = read_small(path)?;
     let manifest: ExportManifest = serde_json::from_slice(&bytes)
         .map_err(|error| format!("The manifest does not parse: {error}."))?;
@@ -263,7 +265,7 @@ fn read_manifest(path: &Path) -> Result<ExportManifest, String> {
 }
 
 /// A file of at most [`MAX_INDEX_BYTES`], never through a final link.
-fn read_small(path: &Path) -> Result<Vec<u8>, String> {
+pub(super) fn read_small(path: &Path) -> Result<Vec<u8>, String> {
     let file = open_member(path).map_err(|error| format!("{:?}", error.kind()))?;
     let mut bytes = Vec::new();
     file.take(MAX_INDEX_BYTES + 1)
@@ -772,4 +774,60 @@ fn private_directory(scratch: &Path) -> io::Result<PathBuf> {
         io::ErrorKind::AlreadyExists,
         "no free private directory name",
     ))
+}
+
+/// The case heads the workspace archive in `dir` records, for use as a
+/// `repair journal` witness (ADR 0016). This checks only that the claim is
+/// the archive's own: the manifest's `export_id` recomputes, `archive.json`
+/// is the member the manifest lists, by digest and size, and its recovery
+/// head recomputes and is the manifest's snapshot. It does not verify the
+/// archived journal, which the repair never reads. `Err` says why the
+/// archive cannot serve.
+pub fn archived_heads(dir: &Path) -> Result<ArchivedHeads, String> {
+    let manifest = read_manifest(&dir.join(MANIFEST_FILE))?;
+    if expected_export_id(&manifest) != manifest.export_id {
+        return Err("Its export_id does not match the manifest's own fields.".to_owned());
+    }
+    if manifest.product != Product::Archive {
+        return Err("It is not a workspace archive.".to_owned());
+    }
+    let listed = manifest
+        .files
+        .iter()
+        .find(|file| file.path == INDEX_FILE)
+        .ok_or_else(|| "Its manifest lists no archive.json.".to_owned())?;
+    let bytes = read_small(&dir.join(INDEX_FILE))?;
+    if hash_bytes(&bytes) != listed.sha256 || bytes.len() as u64 != listed.bytes {
+        return Err("archive.json is not the file its manifest lists.".to_owned());
+    }
+    let index: ArchiveIndex = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("archive.json does not parse: {error}."))?;
+    if index.format != ARCHIVE_FORMAT {
+        return Err(format!(
+            "The archive format {} is not {ARCHIVE_FORMAT}.",
+            index.format
+        ));
+    }
+    let heads: Vec<(Id, u64, Digest)> = index
+        .cases
+        .iter()
+        .map(|case| (case.case_id, case.sequence, case.head_hash.clone()))
+        .collect();
+    let recomputed = recovery_head(
+        index.workspace_id,
+        heads
+            .iter()
+            .map(|(case, sequence, hash)| (*case, *sequence, hash)),
+    );
+    if recomputed != index.recovery_head || index.recovery_head != manifest.snapshot.head_hash {
+        return Err(
+            "The recovery head in archive.json does not match its case heads and the manifest."
+                .to_owned(),
+        );
+    }
+    Ok(ArchivedHeads {
+        workspace_id: index.workspace_id,
+        export_id: manifest.export_id,
+        heads,
+    })
 }

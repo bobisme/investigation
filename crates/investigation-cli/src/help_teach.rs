@@ -62,7 +62,7 @@ const TEACH: &[Teach] = &[
     t!(&["repair"], ["investigation --workspace ./casework repair index --format json"], "investigation --workspace ./casework check --format json"),
     t!(&["repair", "index"], [], "investigation --workspace ./casework check --format json"),
     t!(&["repair", "staging"], [], "investigation --workspace ./casework check --format json"),
-    t!(&["repair", "journal"], ["investigation --workspace ./casework repair journal --dry-run --format json", "investigation --workspace ./casework repair journal --format json"], "investigation --workspace ./casework check --format json"),
+    t!(&["repair", "journal"], ["investigation --workspace ./casework repair journal --dry-run --format json", "investigation --workspace ./casework repair journal --format json", "investigation --workspace ./casework repair journal --archive ./backup --format json"], "investigation --workspace ./casework check --format json"),
     t!(&["vault"], [], "investigation --workspace ./casework vault status --format json"),
     t!(&["vault", "render"], [], "investigation --workspace ./casework vault status --format json"),
     t!(&["vault", "status"], [], "investigation --workspace ./casework vault conflicts --format json"),

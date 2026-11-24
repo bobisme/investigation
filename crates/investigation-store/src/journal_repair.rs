@@ -10,6 +10,11 @@
 //!
 //! - the next file of the case: event 1 names the genesis's hash, and each
 //!   later event its predecessor's, in `previous_hash`;
+//! - for a fork, the case head it inherited, at that sequence, which its
+//!   workspace marker records;
+//! - a workspace archive of this workspace, or of a fork's origin, given
+//!   with `--archive`: the case head its `archive.json` records, at that
+//!   sequence. The caller checks the archive's own consistency first.
 //! - for the last file of a case, which no file names, the disposable index:
 //!   the head it recorded for the case, at the same sequence.
 //!
@@ -39,8 +44,23 @@ const STAGED: &str = "state/tmp/journal-repair";
 pub enum Witness {
     /// The next file of the case names it as `previous_hash`.
     NextEvent,
+    /// The fork's marker records it as the head the fork inherited.
+    InheritedHead,
+    /// The given archive's `archive.json` records it as a case head.
+    Archive,
     /// The index recorded it as the case head.
     Index,
+}
+
+/// The case heads a workspace archive records in its `archive.json`, as a
+/// witness for [`Store::repair_journal`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArchivedHeads {
+    /// The workspace the archive was made from.
+    pub workspace_id: Id,
+    pub export_id: String,
+    /// Case, sequence and head hash.
+    pub heads: Vec<(Id, u64, Digest)>,
 }
 
 /// One journal file whose written bytes are, or would be, restored.
@@ -75,8 +95,33 @@ impl Store {
     /// Restore the bytes of every journal file another program rewrote
     /// without changing its content, when a witness records their hash; see
     /// the module documentation. With `dry_run`, report and write nothing.
-    pub fn repair_journal(&mut self, dry_run: bool) -> Result<JournalRepair, Failure> {
+    pub fn repair_journal(
+        &mut self,
+        dry_run: bool,
+        archive: Option<&ArchivedHeads>,
+    ) -> Result<JournalRepair, Failure> {
         let _lock = self.coordinate()?;
+        let origin = self.workspace.fork().map(|fork| fork.origin_workspace_id);
+        if let Some(archive) = archive
+            && archive.workspace_id != self.workspace.id()
+            && Some(archive.workspace_id) != origin
+        {
+            let mut failure = Failure::new(
+                ErrorCode::InvalidInput,
+                format!(
+                    "Nothing was repaired. The archive {} was made from workspace {}, not from this \
+                     workspace or the workspace it was forked from, so it records no head of this \
+                     journal. Pass an archive of this workspace.",
+                    archive.export_id, archive.workspace_id
+                ),
+            )
+            .at("--archive");
+            failure.error.actual = Some(json!({
+                "archive_workspace_id": archive.workspace_id,
+                "workspace_id": self.workspace.id(),
+            }));
+            return Err(failure);
+        }
         let heads = Projection::inspect(&self.index_path(), self.workspace.id()).ok();
         let mut planned = Vec::new();
         let mut unwitnessed = Vec::new();
@@ -123,17 +168,36 @@ impl Store {
                 if recorded.as_deref() == Some(found.as_str()) {
                     continue;
                 }
-                let witness = match files.get(position + 1) {
-                    Some(_) => (recorded.as_deref() == Some(restored.as_str()))
-                        .then_some(Witness::NextEvent),
-                    None => heads
+                let sequence = position as u64;
+                let next = files.get(position + 1).is_some()
+                    && recorded.as_deref() == Some(restored.as_str());
+                let inherited = self
+                    .workspace
+                    .writers(case_id)
+                    .inherited
+                    .is_some_and(|head| head.sequence == sequence && head.head_hash == restored);
+                let archived = archive.is_some_and(|archive| {
+                    archive.heads.iter().any(|(id, at, hash)| {
+                        *id == case_id && *at == sequence && *hash == restored
+                    })
+                });
+                // The index is disposable, so it witnesses only the last
+                // file, which nothing else in the journal names.
+                let indexed = files.get(position + 1).is_none()
+                    && heads
                         .as_ref()
                         .and_then(|heads| heads.iter().find(|(id, _)| *id == case_id))
-                        .filter(|(_, head)| {
-                            head.sequence == position as u64 && head.head_hash == restored
-                        })
-                        .map(|_| Witness::Index),
-                };
+                        .is_some_and(|(_, head)| {
+                            head.sequence == sequence && head.head_hash == restored
+                        });
+                let witness = [
+                    (next, Witness::NextEvent),
+                    (inherited, Witness::InheritedHead),
+                    (archived, Witness::Archive),
+                    (indexed, Witness::Index),
+                ]
+                .into_iter()
+                .find_map(|(holds, witness)| holds.then_some(witness));
                 let path = relative.display().to_string();
                 match witness {
                     Some(witness) => planned.push(Planned {
@@ -155,10 +219,11 @@ impl Store {
             let mut failure = Failure::new(
                 ErrorCode::IntegrityFailure,
                 format!(
-                    "Nothing was repaired. No later journal file and no index head records the hash \
-                     of the bytes this program would write for {}, so its content cannot be told \
-                     apart from an edit. Restore the workspace from an archive \
-                     (investigation archive restore).",
+                    "Nothing was repaired. No later journal file, inherited fork head, archive \
+                     head or index head records the hash of the bytes this program would write \
+                     for {}, so its content cannot be told apart from an edit. If an archive of \
+                     this workspace holds that head, pass it with --archive DIR; otherwise \
+                     restore the workspace from an archive (investigation archive restore).",
                     unwitnessed.join(", ")
                 ),
             );
