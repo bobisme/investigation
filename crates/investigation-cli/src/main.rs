@@ -714,12 +714,7 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
             )
         })
         .collect();
-    let primary = outcomes
-        .iter()
-        .filter(|record| {
-            record.body["lifecycle"] != "superseded" && record.body["status"] != "superseded"
-        })
-        .max_by_key(|record| (record.header.acceptance_sequence, record.header.id));
+    let primary = investigation_core::brief_select::primary_outcome(&replay.state);
     if let Some(primary) = primary {
         let overlay = &record_effective[&primary.header.id];
         effective.material_caveat = overlay.material_caveat.clone();

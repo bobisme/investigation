@@ -21,7 +21,7 @@
 use std::{collections::BTreeSet, fmt::Write as _};
 
 use investigation_core::{
-    PROGRAM_NAME,
+    PROGRAM_NAME, brief_select,
     classification::Field,
     command::RevisionRef,
     freshness::{Freshness, dependency_edges},
@@ -50,13 +50,15 @@ const SHOWN_REASONS: usize = 3;
 
 // The caveat and contradiction reasons `brief` reports, word for word, so the
 // two reads can be compared for the same snapshot.
-const EXTERNAL_BYTES: &str = "The cited bytes are held at an external location and are not retained here (source_unavailable). Selectors on them cannot be verified.";
-const MISSING_BYTES: &str = "Expected retained bytes are missing or fail integrity verification.";
-const BASIS_CHANGED: &str = "The exact review or evidence basis has changed.";
-const CONDITIONS_OPEN: &str = "Material conditions remain unresolved.";
-const HARD_CRITERIA_OPEN: &str = "The proposed choice depends on unresolved hard criteria.";
-const OBJECTIONS_OPEN: &str = "Open objections apply to the record or its basis.";
-const DISPUTED: &str = "An open critical objection applies to the record or its basis, or an objection was raised after its review.";
+pub(crate) const EXTERNAL_BYTES: &str = "The cited bytes are held at an external location and are not retained here (source_unavailable). Selectors on them cannot be verified.";
+pub(crate) const MISSING_BYTES: &str =
+    "Expected retained bytes are missing or fail integrity verification.";
+pub(crate) const BASIS_CHANGED: &str = "The exact review or evidence basis has changed.";
+pub(crate) const CONDITIONS_OPEN: &str = "Material conditions remain unresolved.";
+pub(crate) const HARD_CRITERIA_OPEN: &str =
+    "The proposed choice depends on unresolved hard criteria.";
+pub(crate) const OBJECTIONS_OPEN: &str = "Open objections apply to the record or its basis.";
+pub(crate) const DISPUTED: &str = "An open critical objection applies to the record or its basis, or an objection was raised after its review.";
 
 /// The concise section the Overview shows after the ladder.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,19 +135,10 @@ pub(crate) fn focus(case: &Record, state: &State) -> Focus {
     .unwrap_or(Focus::Research)
 }
 
-fn is_live(record: &Record) -> bool {
-    record.body["lifecycle"] != "superseded" && record.body["status"] != "superseded"
-}
-
 /// The outcome whose answer, caveat and contradiction lead the Overview, as
 /// in `brief`: the newest Conclusion or Decision that is not superseded.
 pub(crate) fn primary_outcome(state: &State) -> Option<&Record> {
-    state
-        .records()
-        .filter(|record| {
-            matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision) && is_live(record)
-        })
-        .max_by_key(|record| (record.header.acceptance_sequence, record.header.id))
+    brief_select::primary_outcome(state)
 }
 
 /// The case's freshness word as `brief` reports it: `stale` when the case
@@ -191,18 +184,18 @@ fn recorded_unavailable(state: &State, read: &[RevisionRef]) -> Vec<RevisionRef>
 
 /// Everything the opening summary and the answer rung say about the leading
 /// outcome, computed once.
-struct Standing<'a> {
-    outcome: &'a Record,
+pub(crate) struct Standing<'a> {
+    pub(crate) outcome: &'a Record,
     /// The brief's effective status word.
-    state: String,
-    read: Vec<RevisionRef>,
-    unavailable: Vec<RevisionRef>,
+    pub(crate) state: String,
+    pub(crate) read: Vec<RevisionRef>,
+    pub(crate) unavailable: Vec<RevisionRef>,
     /// Open objections on the outcome or its basis, critical first.
-    open: Vec<OpenObjection>,
+    pub(crate) open: Vec<OpenObjection>,
 }
 
 impl<'a> Standing<'a> {
-    fn new(notes: &NoteContext<'a>, outcome: &'a Record) -> Self {
+    pub(crate) fn new(notes: &NoteContext<'a>, outcome: &'a Record) -> Self {
         let state = notes.case().state();
         let read = read_set(state, outcome);
         let unavailable = recorded_unavailable(state, &read);
@@ -230,6 +223,202 @@ fn sort_objections(open: &mut [OpenObjection]) {
             objection.objection_ref.id,
         )
     });
+}
+
+/// The root question: the one the leading outcome answers, otherwise the
+/// earliest recorded.
+pub(crate) fn root_question(state: &State, outcome: Option<&Record>) -> Option<Id> {
+    if let Some(outcome) = outcome
+        && let Some(reference) = refs(outcome.body.get("question_ref")).first()
+    {
+        return Some(reference.id);
+    }
+    state
+        .records()
+        .filter(|record| record.header.id.kind() == Kind::Question)
+        .min_by_key(|record| (record.header.acceptance_sequence, record.header.id))
+        .map(|record| record.header.id)
+}
+
+/// The Observations the strongest evidence is chosen from: those the leading
+/// outcome rests on, or every Observation of a case without one.
+pub(crate) fn evidence_candidates<'a>(
+    state: &'a State,
+    standing: Option<&Standing<'_>>,
+) -> Vec<&'a Record> {
+    match standing {
+        Some(standing) => standing
+            .read
+            .iter()
+            .filter(|reference| reference.id.kind() == Kind::Observation)
+            .filter_map(|reference| state.current(reference.id))
+            .collect(),
+        None => state
+            .records()
+            .filter(|record| record.header.id.kind() == Kind::Observation)
+            .collect(),
+    }
+}
+
+/// The strongest of `candidates`: current before stale, valid before
+/// partial or unknown, read from an original acquisition before a
+/// derivative or an assertion, earliest first.
+pub(crate) fn strongest_observation<'a>(
+    notes: &NoteContext<'_>,
+    candidates: impl IntoIterator<Item = &'a Record>,
+) -> Option<&'a Record> {
+    let state = notes.case().state();
+    candidates.into_iter().min_by_key(|record| {
+        let fresh = notes
+            .effective(record)
+            .is_none_or(|effective| effective.freshness == Freshness::Current);
+        let validity = match text_at(&record.body, "validity") {
+            Some("valid") => 0,
+            Some("partial") => 1,
+            Some("unknown") | None => 2,
+            _ => 3,
+        };
+        (
+            !fresh,
+            validity,
+            original_artifact(state, record).is_none(),
+            record.header.acceptance_sequence,
+            record.header.id,
+        )
+    })
+}
+
+/// The original Artifact an Observation was read from, if it was.
+pub(crate) fn original_artifact(state: &State, observation: &Record) -> Option<Id> {
+    let reference = refs(observation.body["basis"].get("artifact_ref"))
+        .first()
+        .copied()?;
+    let artifact = state.revision(reference)?;
+    is_original(artifact).then_some(reference.id)
+}
+
+/// Open objections on the leading outcome or its basis, or on any record of
+/// the case when there is no outcome yet; critical first.
+pub(crate) fn open_objections(
+    state: &State,
+    case_id: Id,
+    standing: Option<&Standing<'_>>,
+) -> Vec<OpenObjection> {
+    if let Some(standing) = standing {
+        return standing.open.clone();
+    }
+    let subjects: BTreeSet<Id> = state.records().map(|record| record.header.id).collect();
+    let mut open = objection_policy::open_objections(state, case_id, &subjects).unwrap_or_default();
+    sort_objections(&mut open);
+    open
+}
+
+/// The brief's material caveat for the leading outcome, before it is
+/// worded: the first that applies in the brief's order of precedence.
+pub(crate) enum MaterialCaveat<'s> {
+    /// Cited bytes are not retained here; `external` when every one is held
+    /// at an external location.
+    Unavailable {
+        external: bool,
+        artifacts: &'s [RevisionRef],
+    },
+    BasisChanged,
+    /// Unresolved conditions or hard criteria, with the criteria named.
+    Conditions {
+        reason: &'static str,
+        criteria: Vec<RevisionRef>,
+    },
+    /// Open objections on the outcome or its basis.
+    Objections(Vec<RevisionRef>),
+    /// The first caveat recorded on the outcome, if any. Authored text.
+    Recorded(Option<&'s str>),
+}
+
+pub(crate) fn material_caveat<'s>(state: &State, standing: &'s Standing<'_>) -> MaterialCaveat<'s> {
+    let outcome = standing.outcome;
+    if !standing.unavailable.is_empty() {
+        let external = standing.unavailable.iter().all(|reference| {
+            state
+                .revision(*reference)
+                .is_some_and(|artifact| artifact.body["availability"] == "external")
+        });
+        return MaterialCaveat::Unavailable {
+            external,
+            artifacts: &standing.unavailable,
+        };
+    }
+    let criteria: Vec<RevisionRef> = outcome.body["hard_conditions"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|condition| refs(condition.get("criterion_ref")).first().copied())
+        .collect();
+    match standing.state.as_str() {
+        "needs_review" => return MaterialCaveat::BasisChanged,
+        "conditional" => {
+            return MaterialCaveat::Conditions {
+                reason: CONDITIONS_OPEN,
+                criteria,
+            };
+        }
+        "proposed" if !criteria.is_empty() => {
+            return MaterialCaveat::Conditions {
+                reason: HARD_CRITERIA_OPEN,
+                criteria,
+            };
+        }
+        _ => {}
+    }
+    if !standing.open.is_empty() {
+        return MaterialCaveat::Objections(
+            standing
+                .open
+                .iter()
+                .map(|objection| objection.objection_ref)
+                .collect(),
+        );
+    }
+    MaterialCaveat::Recorded(
+        outcome.body["caveats"]
+            .as_array()
+            .and_then(|items| items.first())
+            .and_then(Value::as_str),
+    )
+}
+
+/// The brief's contradiction for the leading outcome, before it is worded.
+pub(crate) enum Contradiction {
+    /// The outcome is disputed; its open objections.
+    Disputed(Vec<RevisionRef>),
+    /// The contradicting records the outcome names.
+    Named(Vec<RevisionRef>),
+    None,
+}
+
+pub(crate) fn contradiction(standing: &Standing<'_>) -> Contradiction {
+    if standing.state == "disputed" {
+        return Contradiction::Disputed(
+            standing
+                .open
+                .iter()
+                .map(|objection| objection.objection_ref)
+                .collect(),
+        );
+    }
+    let named = refs(standing.outcome.body.get("contradiction_refs"));
+    if named.is_empty() {
+        Contradiction::None
+    } else {
+        Contradiction::Named(named)
+    }
+}
+
+/// An Assumption still open: unassessed or challenged.
+pub(crate) fn is_open_assumption(assumption: &Record) -> bool {
+    matches!(
+        text_at(&assumption.body, "status"),
+        Some("unassessed" | "challenged") | None
+    )
 }
 
 /// Everything the Overview reads, computed once per case.
@@ -334,16 +523,10 @@ impl<'a> Overview<'_, 'a> {
     /// The root question: the one the leading outcome answers, otherwise
     /// the earliest recorded.
     fn question(&self) -> Option<Id> {
-        if let Some(standing) = &self.standing
-            && let Some(reference) = refs(standing.outcome.body.get("question_ref")).first()
-        {
-            return Some(reference.id);
-        }
-        self.state
-            .records()
-            .filter(|record| record.header.id.kind() == Kind::Question)
-            .min_by_key(|record| (record.header.acceptance_sequence, record.header.id))
-            .map(|record| record.header.id)
+        root_question(
+            self.state,
+            self.standing.as_ref().map(|standing| standing.outcome),
+        )
     }
 
     fn opening(&self, out: &mut String) -> Result<(), RenderError> {
@@ -403,43 +586,14 @@ impl<'a> Overview<'_, 'a> {
         if !self.outcome_visible() {
             return Ok("(withheld with the answer)".to_owned());
         }
-        let candidates: Vec<&Record> = match &self.standing {
-            Some(standing) => standing
-                .read
+        let candidates = evidence_candidates(self.state, self.standing.as_ref());
+        let best = strongest_observation(
+            self.notes,
+            candidates
                 .iter()
-                .filter(|reference| reference.id.kind() == Kind::Observation)
-                .filter_map(|reference| self.state.current(reference.id))
-                .collect(),
-            None => self
-                .state
-                .records()
-                .filter(|record| record.header.id.kind() == Kind::Observation)
-                .collect(),
-        };
-        let visible: Vec<&Record> = candidates
-            .iter()
-            .copied()
-            .filter(|record| self.notes.visible(record))
-            .collect();
-        let best = visible.into_iter().min_by_key(|record| {
-            let fresh = self
-                .notes
-                .effective(record)
-                .is_none_or(|effective| effective.freshness == Freshness::Current);
-            let validity = match text_at(&record.body, "validity") {
-                Some("valid") => 0,
-                Some("partial") => 1,
-                Some("unknown") | None => 2,
-                _ => 3,
-            };
-            (
-                !fresh,
-                validity,
-                self.origin(record).is_none(),
-                record.header.acceptance_sequence,
-                record.header.id,
-            )
-        });
+                .copied()
+                .filter(|record| self.notes.visible(record)),
+        );
         let Some(best) = best else {
             return Ok(match candidates.first() {
                 Some(withheld) => format!("{} (withheld)", self.link(withheld.header.id)?),
@@ -470,11 +624,7 @@ impl<'a> Overview<'_, 'a> {
 
     /// The original Artifact an Observation was read from, if it was.
     fn origin(&self, observation: &Record) -> Option<Id> {
-        let reference = refs(observation.body["basis"].get("artifact_ref"))
-            .first()
-            .copied()?;
-        let artifact = self.state.revision(reference)?;
-        is_original(artifact).then_some(reference.id)
+        original_artifact(self.state, observation)
     }
 
     /// The strongest open objection on the leading outcome or its basis, or
@@ -483,24 +633,11 @@ impl<'a> Overview<'_, 'a> {
         if !self.outcome_visible() {
             return Ok("withheld with the answer".to_owned());
         }
-        let open = match &self.standing {
-            Some(standing) => standing.open.clone(),
-            None => {
-                let subjects: BTreeSet<Id> = self
-                    .state
-                    .records()
-                    .map(|record| record.header.id)
-                    .collect();
-                let mut open = objection_policy::open_objections(
-                    self.state,
-                    self.notes.case().case_id(),
-                    &subjects,
-                )
-                .unwrap_or_default();
-                sort_objections(&mut open);
-                open
-            }
-        };
+        let open = open_objections(
+            self.state,
+            self.notes.case().case_id(),
+            self.standing.as_ref(),
+        );
         let Some(strongest) = open.first() else {
             return Ok(if self.standing.is_some() {
                 "none open on the answer or its basis".to_owned()
@@ -708,86 +845,57 @@ impl<'a> Overview<'_, 'a> {
 
     /// The brief's material caveat, in the same order of precedence.
     fn caveat(&self, standing: &Standing<'_>) -> Result<String, RenderError> {
-        let outcome = standing.outcome;
-        if !standing.unavailable.is_empty() {
-            let external = standing.unavailable.iter().all(|reference| {
-                self.state
-                    .revision(*reference)
-                    .is_some_and(|artifact| artifact.body["availability"] == "external")
-            });
-            return Ok(format!(
+        Ok(match material_caveat(self.state, standing) {
+            MaterialCaveat::Unavailable {
+                external,
+                artifacts,
+            } => format!(
                 "{} Artifacts: {}.",
                 if external {
                     EXTERNAL_BYTES
                 } else {
                     MISSING_BYTES
                 },
-                self.links(&standing.unavailable)?
-            ));
-        }
-        let conditions: Vec<RevisionRef> = outcome.body["hard_conditions"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|condition| refs(condition.get("criterion_ref")).first().copied())
-            .collect();
-        let with_conditions = |reason: &str| -> Result<String, RenderError> {
-            Ok(if conditions.is_empty() {
+                self.links(artifacts)?
+            ),
+            MaterialCaveat::BasisChanged => BASIS_CHANGED.to_owned(),
+            MaterialCaveat::Conditions { reason, criteria } if criteria.is_empty() => {
                 reason.to_owned()
-            } else {
-                format!("{reason} Hard conditions: {}.", self.links(&conditions)?)
-            })
-        };
-        match standing.state.as_str() {
-            "needs_review" => return Ok(BASIS_CHANGED.to_owned()),
-            "conditional" => return with_conditions(CONDITIONS_OPEN),
-            "proposed" if !conditions.is_empty() => return with_conditions(HARD_CRITERIA_OPEN),
-            _ => {}
-        }
-        if !standing.open.is_empty() {
-            let objections: Vec<RevisionRef> = standing
-                .open
-                .iter()
-                .map(|objection| objection.objection_ref)
-                .collect();
-            return Ok(format!(
-                "{OBJECTIONS_OPEN} Objections: {}.",
-                self.links(&objections)?
-            ));
-        }
-        if !self.notes.may_show(outcome, Field::Content) {
-            return Ok("withheld".to_owned());
-        }
-        Ok(outcome.body["caveats"]
-            .as_array()
-            .and_then(|items| items.first())
-            .and_then(Value::as_str)
-            .map_or_else(
-                || "none recorded".to_owned(),
-                |caveat| format!("recorded caveat: {}", prose(caveat)),
-            ))
+            }
+            MaterialCaveat::Conditions { reason, criteria } => {
+                format!("{reason} Hard conditions: {}.", self.links(&criteria)?)
+            }
+            MaterialCaveat::Objections(objections) => {
+                format!(
+                    "{OBJECTIONS_OPEN} Objections: {}.",
+                    self.links(&objections)?
+                )
+            }
+            MaterialCaveat::Recorded(_)
+                if !self.notes.may_show(standing.outcome, Field::Content) =>
+            {
+                "withheld".to_owned()
+            }
+            MaterialCaveat::Recorded(None) => "none recorded".to_owned(),
+            MaterialCaveat::Recorded(Some(caveat)) => {
+                format!("recorded caveat: {}", prose(caveat))
+            }
+        })
     }
 
     /// The brief's contradiction: a disputed outcome's open objections, or
     /// the contradicting records it names.
     fn contradiction(&self, standing: &Standing<'_>) -> Result<String, RenderError> {
-        if standing.state == "disputed" {
-            let objections: Vec<RevisionRef> = standing
-                .open
-                .iter()
-                .map(|objection| objection.objection_ref)
-                .collect();
-            return Ok(if objections.is_empty() {
-                DISPUTED.to_owned()
-            } else {
+        Ok(match contradiction(standing) {
+            Contradiction::Disputed(objections) if objections.is_empty() => DISPUTED.to_owned(),
+            Contradiction::Disputed(objections) => {
                 format!("{DISPUTED} Objections: {}.", self.links(&objections)?)
-            });
-        }
-        let named = refs(standing.outcome.body.get("contradiction_refs"));
-        if named.is_empty() {
-            return Ok("none recorded".to_owned());
-        }
-        Ok(format!("contradicting records {}", self.links(&named)?))
+            }
+            Contradiction::Named(named) => {
+                format!("contradicting records {}", self.links(&named)?)
+            }
+            Contradiction::None => "none recorded".to_owned(),
+        })
     }
 
     // --------------------------------------------------------- synopsis rung
@@ -1201,13 +1309,7 @@ impl<'a> Overview<'_, 'a> {
         let assumptions: Vec<&Record> = self
             .of_kind(Kind::Assumption)
             .into_iter()
-            .filter(|assumption| {
-                !self.notes.visible(assumption)
-                    || matches!(
-                        text_at(&assumption.body, "status"),
-                        Some("unassessed" | "challenged") | None
-                    )
-            })
+            .filter(|assumption| !self.notes.visible(assumption) || is_open_assumption(assumption))
             .collect();
         self.list(
             out,
@@ -1319,7 +1421,10 @@ impl<'a> Overview<'_, 'a> {
         )?;
 
         out.push_str("\n### Sensitivity and reversal\n\n");
-        let Some(decision) = decisions.iter().find(|decision| is_live(decision)) else {
+        let Some(decision) = decisions
+            .iter()
+            .find(|decision| brief_select::is_live(decision))
+        else {
             out.push_str("No live decision states reversal conditions.\n");
             return Ok(());
         };

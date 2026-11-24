@@ -514,7 +514,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
     let root = directory.path();
     let workspace = fixtures::workspace("scenario-a", &root.join("ws"), false);
     let case = cases(&workspace).remove(0);
-    let out = root.join("handoff");
+    let out = root.join("producer-bundle");
     let (exit, value) = run(
         root,
         &[
@@ -536,6 +536,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
     assert_eq!(
         value["error"]["expected"]["available"],
         json!([
+            "handoff",
             "case-report",
             "decision-record",
             "method-retrospective",

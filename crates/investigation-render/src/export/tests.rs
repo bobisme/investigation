@@ -23,6 +23,7 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
         ("export/archive.rs", include_str!("archive.rs")),
         ("export/retained.rs", include_str!("retained.rs")),
         ("export/human_files.rs", include_str!("human_files.rs")),
+        ("export/handoff.rs", include_str!("handoff.rs")),
     ];
     let forbidden = [
         ["std", "::fs"].concat(),
@@ -59,6 +60,7 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
         ("export/identifiers.rs", include_str!("identifiers.rs")),
         ("export/manifest.rs", include_str!("manifest.rs")),
         ("export/case_report.rs", include_str!("case_report.rs")),
+        ("export/handoff.rs", include_str!("handoff.rs")),
         ("export/snapshot.rs", include_str!("snapshot.rs")),
         ("export/write.rs", include_str!("write.rs")),
         ("export/archive.rs", include_str!("archive.rs")),
@@ -103,6 +105,7 @@ fn the_registry_lists_every_section_15_4_kind_once() {
     assert_eq!(
         available_kinds(),
         [
+            "handoff",
             "case-report",
             "decision-record",
             "method-retrospective",
@@ -115,7 +118,8 @@ fn the_registry_lists_every_section_15_4_kind_once() {
     );
     assert_eq!(kind("case-report").map(KindSpec::scope), Some(Scope::Case));
     assert!(kind("case-report").is_some_and(KindSpec::available));
-    assert!(kind("handoff").is_some_and(|spec| !spec.available()));
+    assert!(kind("handoff").is_some_and(KindSpec::available));
+    assert!(kind("analysis-report").is_some_and(|spec| !spec.available()));
     assert!(kind("vault").is_none());
     let resumable: Vec<_> = KINDS
         .iter()
@@ -162,10 +166,12 @@ fn the_manifest_schema_is_closed_and_requires_every_field() {
 
 #[test]
 fn an_unavailable_kind_is_refused_by_name() {
-    let error = ExportError::KindNotAvailable { kind: "handoff" };
+    let error = ExportError::KindNotAvailable {
+        kind: "analysis-report",
+    };
     let failure = error.to_failure();
     assert_eq!(failure.error.code, ErrorCode::InvalidInput);
-    assert!(failure.error.message.contains("handoff"));
+    assert!(failure.error.message.contains("analysis-report"));
     assert!(failure.error.message.contains("case-report"));
 }
 

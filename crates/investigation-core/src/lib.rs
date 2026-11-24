@@ -10,6 +10,7 @@ pub mod authored_text;
 pub mod basis;
 pub mod blindspot;
 pub mod blindspot_review;
+pub mod brief_select;
 pub mod case;
 mod case_ops;
 pub mod catalog;

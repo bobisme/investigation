@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 
 use investigation_core::{
+    brief_select,
     identity::{Id, Kind},
     state::{Record, State},
 };
@@ -162,10 +163,6 @@ pub(crate) fn follow_up(prefix: &[String], tail: &[&str]) -> Vec<String> {
     argv
 }
 
-fn is_live(record: &Record) -> bool {
-    record.body["lifecycle"] != "superseded" && record.body["status"] != "superseded"
-}
-
 /// Produce a deterministic brief bounded by the exact compact JSON byte count.
 /// `today` is the current head when `replay` is pinned to an earlier snapshot.
 pub fn brief(
@@ -175,32 +172,20 @@ pub fn brief(
     max_bytes: usize,
     inputs: &BriefInputs,
 ) -> Result<Value, BriefError> {
-    let mut records: Vec<&Record> = replay.state.records().collect();
-    records.sort_by_key(|r| (r.header.acceptance_sequence, r.header.id));
-    let case = records
-        .iter()
-        .find(|r| r.header.id.kind() == Kind::Case)
-        .copied();
-    let mut selected: Vec<&Record> = Vec::new();
-    if inputs.selected_outcomes.is_empty() {
-        // Live outcomes first, newest first, so the leading outcome whose
-        // caveat heads the brief is the last to be cut; superseded ones last.
-        let outcomes =
-            records.iter().rev().copied().filter(|record| {
-                matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision)
-            });
-        let (live, past): (Vec<_>, Vec<_>) = outcomes.partition(|record| is_live(record));
-        selected.extend(live);
-        selected.extend(past);
+    let state = &replay.state;
+    let case = brief_select::in_acceptance_order(state)
+        .into_iter()
+        .find(|r| r.header.id.kind() == Kind::Case);
+    let selected: Vec<&Record> = if inputs.selected_outcomes.is_empty() {
+        brief_select::outcomes(state)
     } else {
-        for id in &inputs.selected_outcomes {
-            if let Some(record) = replay.state.current(*id)
-                && matches!(record.header.id.kind(), Kind::Conclusion | Kind::Decision)
-            {
-                selected.push(record);
-            }
-        }
-    }
+        inputs
+            .selected_outcomes
+            .iter()
+            .filter_map(|id| state.current(*id))
+            .filter(|record| brief_select::is_outcome(record))
+            .collect()
+    };
     let effective_of = |record: &Record| {
         inputs
             .record_effective
@@ -218,15 +203,8 @@ pub fn brief(
             }
         })
         .collect::<Vec<_>>();
-    let questions = records
-        .iter()
-        .filter(|record| {
-            record.header.id.kind() == Kind::Question
-                && matches!(
-                    record.body.get("disposition").and_then(Value::as_str),
-                    Some("open" | "deferred")
-                )
-        })
+    let questions = brief_select::unresolved_questions(state)
+        .into_iter()
         .map(|record| views::index_entry(record, replay, today, None))
         .collect::<Vec<_>>();
     let full_outcomes = if level == BriefLevel::Deep {
@@ -245,14 +223,8 @@ pub fn brief(
     } else {
         Vec::new()
     };
-    let evidence = records
-        .iter()
-        .filter(|record| {
-            matches!(
-                record.header.id.kind(),
-                Kind::Observation | Kind::Comparison
-            )
-        })
+    let evidence = brief_select::evidence(state)
+        .into_iter()
         .map(|record| {
             let effective = effective_of(record);
             match level {
@@ -261,13 +233,7 @@ pub fn brief(
             }
         })
         .collect::<Vec<_>>();
-    let inquiries: Vec<&Record> = records
-        .iter()
-        .copied()
-        .filter(|record| {
-            record.header.id.kind() == Kind::Inquiry && record.body["lifecycle"] != "retired"
-        })
-        .collect();
+    let inquiries = brief_select::active_inquiries(state);
     let inquiries = if level == BriefLevel::Compact {
         Section::by_level("inquiries", inquiries.len())
     } else {

@@ -95,6 +95,7 @@
 pub mod archive;
 mod case_report;
 mod decision_record;
+mod handoff;
 mod human_files;
 mod identifiers;
 mod inclusion;
@@ -255,7 +256,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Report,
         purpose: "Continue the case as a fresh agent or person.",
         contains: "Snapshot, question, knowns and unknowns, strongest counterargument, next investigation step.",
-        renderer: None,
+        renderer: Some(&handoff::Handoff),
     },
     KindSpec {
         name: "case-report",
