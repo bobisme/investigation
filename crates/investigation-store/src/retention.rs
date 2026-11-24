@@ -24,7 +24,11 @@
 //!
 //! [`Store::reclaim_blobs`] removes a blob only when, under one hold of the
 //! coordination lock, nothing holds it and at least one reference to it was
-//! explicitly withdrawn. Imports, archive pins, capture begin and
+//! explicitly withdrawn. [`Store::reclaim_withdrawn`] is the workspace-wide
+//! sweep: it selects every digest a withdrawn reference records, in every
+//! case, and applies the same per-digest decision under the same single hold
+//! of the lock (one hold for the whole sweep, not one per digest); without
+//! `apply` it decides and removes nothing. Imports, archive pins, capture begin and
 //! finalization and every commit take the same lock, so none can slip in
 //! between the recheck and the removal; a commit after it publishes the
 //! bytes again from its own staged copy. Each removal is one unlink followed
@@ -266,6 +270,9 @@ pub enum ReclaimOutcome {
     /// No reference to these bytes was withdrawn: reclamation never removes
     /// bytes whose loss of availability is not committed.
     NotWithdrawn,
+    /// A dry run found nothing holding the stored blob: a sweep with `apply`
+    /// would remove it. Nothing was removed.
+    WouldReclaim,
 }
 
 /// One digest's outcome, with the obligations rechecked under the lock.
@@ -296,14 +303,52 @@ impl<F: DurableFs> Store<F> {
         digests: &BTreeSet<Digest>,
         released: &BTreeSet<Id>,
     ) -> Result<Vec<DigestObligations>, Failure> {
-        let verified = self.load_verified()?;
-        let unsettled_staging = self.refuse_unsettled_staging(&verified).is_err();
+        let verified = super::FreeLater::new(self.load_verified()?);
+        self.obligations_locked(&verified, released, |_| digests.clone())
+    }
+
+    /// One verified replay of `case_id` and the obligations on the digests
+    /// `plan` picks from it, treating the Artifacts it names as released, all
+    /// from one verified load under one hold of the coordination lock. The
+    /// preview of a withdrawal needs both; loading them together replays the
+    /// journal once instead of twice, and the obligations then describe
+    /// exactly the snapshot of the returned replay.
+    pub fn case_with_obligations(
+        &mut self,
+        case_id: Id,
+        plan: impl FnOnce(&CaseReplay) -> Result<(BTreeSet<Digest>, BTreeSet<Id>), Failure>,
+    ) -> Result<(CaseReplay, Vec<DigestObligations>), Failure> {
+        let _lock = self.coordinate()?;
+        let mut verified = super::FreeLater::new(self.load_verified()?);
+        let replay = verified
+            .cases
+            .get(&case_id)
+            .ok_or_else(|| super::missing_case(case_id))?;
+        let (digests, released) = plan(replay)?;
+        let obligations = self.obligations_locked(&verified, &released, |_| digests)?;
+        let replay = verified
+            .cases
+            .remove(&case_id)
+            .ok_or_else(|| super::missing_case(case_id))?;
+        Ok((replay, obligations))
+    }
+
+    /// The obligations on the digests `select` picks from every digest the
+    /// verified journals record, with the holder scan run once.
+    fn obligations_locked(
+        &mut self,
+        verified: &super::WorkspaceReplay,
+        released: &BTreeSet<Id>,
+        select: impl FnOnce(&BTreeMap<Digest, RecordHolders>) -> BTreeSet<Digest>,
+    ) -> Result<Vec<DigestObligations>, Failure> {
+        let unsettled_staging = self.refuse_unsettled_staging(verified).is_err();
         let pins = self.live_pins()?;
         let staging = self.staging_directories()?;
         let records = record_holders(
             verified.cases.iter().map(|(id, replay)| (*id, replay)),
             released,
         )?;
+        let digests = select(&records);
         digests
             .iter()
             .map(|digest| {
@@ -362,6 +407,39 @@ impl<F: DurableFs> Store<F> {
         // the format on disk is newer than this program writes.
         self.refuse_unwritable_format()?;
         let found = self.retention_obligations_locked(digests, &BTreeSet::new())?;
+        self.reclaim_locked(found, true)
+    }
+
+    /// Every digest that a withdrawn reference in any case records, decided
+    /// as [`Self::reclaim_blobs`] decides each named digest, all under one
+    /// hold of the coordination lock. With `apply`, each blob nothing holds
+    /// is removed and synced before the next; without it nothing is written
+    /// (not even the disposable verdict cache) and such a blob is reported as
+    /// [`ReclaimOutcome::WouldReclaim`]. Digests no withdrawn reference
+    /// records are never considered. Results are in digest order.
+    pub fn reclaim_withdrawn(&mut self, apply: bool) -> Result<Vec<Reclamation>, Failure> {
+        let _lock = self.coordinate()?;
+        if apply {
+            self.refuse_unwritable_format()?;
+        }
+        let verified = super::FreeLater::new(self.load_verified()?);
+        let found = self.obligations_locked(&verified, &BTreeSet::new(), |records| {
+            records
+                .iter()
+                .filter(|(_, holders)| !holders.withdrawn.is_empty())
+                .map(|(digest, _)| digest.clone())
+                .collect()
+        })?;
+        self.reclaim_locked(found, apply)
+    }
+
+    /// The per-digest decision of a reclamation, for a caller that holds the
+    /// coordination lock and has just rechecked `found` under it.
+    fn reclaim_locked(
+        &mut self,
+        found: Vec<DigestObligations>,
+        apply: bool,
+    ) -> Result<Vec<Reclamation>, Failure> {
         let mut done = Vec::with_capacity(found.len());
         for obligations in found {
             let outcome = if obligations.withdrawn.is_empty() {
@@ -369,10 +447,14 @@ impl<F: DurableFs> Store<F> {
             } else if obligations.held_by_records() {
                 ReclaimOutcome::HeldByRecords
             } else if !obligations.stored {
-                self.forget_verdict(&obligations.digest);
+                if apply {
+                    self.forget_verdict(&obligations.digest);
+                }
                 ReclaimOutcome::AlreadyAbsent
             } else if obligations.waiting() {
                 ReclaimOutcome::Waiting
+            } else if !apply {
+                ReclaimOutcome::WouldReclaim
             } else {
                 self.remove_blob(&obligations.digest)?;
                 self.forget_verdict(&obligations.digest);

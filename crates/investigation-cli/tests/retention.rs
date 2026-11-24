@@ -831,3 +831,157 @@ fn finalized_capture_staging_holds_withdrawn_bytes_until_it_is_retired() {
     let check = run(root, &["check"], None, 0);
     assert_eq!(check["issues"], json!([]), "{check}");
 }
+
+/// Every file below `root` with its bytes, except the test's own inputs.
+fn files(root: &Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    fn walk(
+        root: &Path,
+        dir: &Path,
+        out: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>,
+    ) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                out.insert(
+                    path.strip_prefix(root).unwrap().to_owned(),
+                    fs::read(&path).unwrap(),
+                );
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(root, root, &mut out);
+    out
+}
+
+#[test]
+fn a_workspace_sweep_is_a_dry_run_until_applied_and_names_no_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+    fs::write(root.join("shared.txt"), SHARED).unwrap();
+    fs::write(root.join("kept.txt"), "kept bytes, never withdrawn\n").unwrap();
+    let (case_a, art_a, digest) = start(root, "start-a", "shared.txt");
+    let (case_b, art_b, _) = start(root, "start-b", "shared.txt");
+    let (_case_c, _, kept) = start(root, "start-c", "kept.txt");
+    let a_refs = same_digest(root, &case_a, &art_a);
+    let b_refs = same_digest(root, &case_b, &art_b);
+    // A copy of the bytes under another name, as an export might hold it, and
+    // a file of the same size with other bytes.
+    fs::create_dir_all(root.join("exports/bundle/files")).unwrap();
+    fs::write(root.join("exports/bundle/files/capture.bin"), SHARED).unwrap();
+    fs::write(
+        root.join("exports/bundle/other.bin"),
+        SHARED.replace('7', "8"),
+    )
+    .unwrap();
+
+    // Each refusal changes nothing.
+    let sweep = |extra: &[&str], exit: i32| {
+        let mut args = vec!["retention", "reclaim"];
+        args.extend(extra);
+        run(root, &args, None, exit)
+    };
+    let before = files(root);
+    for (label, args) in [
+        (
+            "--all with --case",
+            vec!["--case", case_a.as_str(), "--all"],
+        ),
+        ("--all with an Artifact", vec!["--all", art_a.as_str()]),
+        ("--apply without --all", vec!["--apply"]),
+        ("--apply with an Artifact", vec!["--apply", art_a.as_str()]),
+        ("read-only dry run", vec!["--read-only", "--all"]),
+        ("read-only apply", vec!["--read-only", "--all", "--apply"]),
+    ] {
+        let refused = sweep(&args, 2);
+        assert_eq!(refused["ok"], false, "{label}: {refused}");
+        assert_eq!(files(root), before, "{label} wrote");
+    }
+    let wrong_case = sweep(&["--case", &case_a, "--all"], 2);
+    assert_eq!(wrong_case["error"]["code"], "INVALID_INPUT");
+    assert_eq!(wrong_case["error"]["path"], "--case");
+
+    // Nothing withdrawn yet: nothing to consider, and nothing changes.
+    let empty = sweep(&["--all"], 0);
+    assert_eq!(empty["result"], "retention_reclaim_previewed");
+    assert_eq!(empty["dry_run"], true);
+    assert_eq!(empty["held_for_others"]["digests"], json!([]));
+    assert_eq!(files(root), before);
+
+    // Case A withdraws; case B still holds the bytes, counted, never named.
+    let operations: Vec<Value> = a_refs.iter().map(expire).collect();
+    record(root, &case_a, "expire-a", Value::Array(operations), 0);
+    let held = sweep(&["--all", "--apply"], 0);
+    assert_eq!(held["result"], "retention_reclaimed");
+    assert_eq!(held["scope"], "workspace");
+    assert_eq!(digests(&held["held_for_others"]), [digest.as_str()]);
+    let counts = &held["held_for_others"]["digests"][0]["counts"];
+    assert!(counts["references"].as_u64().unwrap() >= 1, "{held}");
+    assert_eq!(held["reclaimed"]["digests"], json!([]));
+    for id in [&case_a, &case_b, &art_a, &art_b] {
+        assert!(
+            !held.to_string().contains(id.as_str()),
+            "{id} named: {held}"
+        );
+    }
+    assert!(blob(root, &digest).is_file());
+
+    // The preview of B's withdrawal finds the export copy by its content.
+    let previewed = preview(root, &case_b, &[&art_b]);
+    let copies = previewed["downstream_copies"].to_string();
+    assert!(
+        copies.contains("exports/bundle/files/capture.bin"),
+        "{copies}"
+    );
+    assert!(!copies.contains("other.bin"), "{copies}");
+
+    // B withdraws too: the dry run says what --apply would remove, and
+    // removes nothing.
+    let operations: Vec<Value> = b_refs.iter().map(expire).collect();
+    record(root, &case_b, "expire-b", Value::Array(operations), 0);
+    let before = files(root);
+    let planned = sweep(&["--all"], 0);
+    assert_eq!(planned["result"], "retention_reclaim_previewed");
+    assert_eq!(planned["writes"], "nothing");
+    assert_eq!(digests(&planned["would_reclaim"]), [digest.as_str()]);
+    assert_eq!(planned["would_reclaim"]["bytes"], SHARED.len());
+    assert!(planned.get("reclaimed").is_none(), "{planned}");
+    assert_eq!(
+        planned["next"][0]["argv"],
+        json!([
+            "investigation",
+            "retention",
+            "reclaim",
+            "--all",
+            "--apply",
+            "--format",
+            "json"
+        ])
+    );
+    let residual = planned["residual"].to_string();
+    assert!(
+        residual.contains("exports/bundle/files/capture.bin"),
+        "{residual}"
+    );
+    assert!(residual.contains("found by content"), "{residual}");
+    assert!(!residual.contains("other.bin"), "{residual}");
+    assert_eq!(files(root), before, "the dry run wrote");
+
+    let done = sweep(&["--all", "--apply"], 0);
+    assert_eq!(digests(&done["reclaimed"]), [digest.as_str()]);
+    assert_eq!(done["next"][0]["argv"][1], "check");
+    assert!(!blob(root, &digest).exists());
+    // Bytes no withdrawn reference records are never considered.
+    assert!(blob(root, &kept).is_file());
+    assert!(!done.to_string().contains(&kept), "{done}");
+    // The export copy is residual: reclamation never removes it.
+    assert!(root.join("exports/bundle/files/capture.bin").is_file());
+    let again = sweep(&["--all", "--apply"], 0);
+    assert_eq!(digests(&again["already_absent"]), [digest.as_str()]);
+    assert_eq!(again["reclaimed"]["digests"], json!([]));
+    let check = run(root, &["check"], None, 0);
+    assert_eq!(check["issues"], json!([]), "{check}");
+}

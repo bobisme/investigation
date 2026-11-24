@@ -285,3 +285,153 @@ fn pin_status_names_what_a_live_pin_holds_back_and_a_stale_pin_holds_nothing() {
     let done = store.reclaim_blobs(&digests).unwrap();
     assert_eq!(done[0].outcome, ReclaimOutcome::Reclaimed);
 }
+
+/// Every file below `root` with its bytes.
+fn files(root: &Path) -> std::collections::BTreeMap<std::path::PathBuf, Vec<u8>> {
+    fn walk(dir: &Path, out: &mut std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else {
+                let bytes = fs::read(&path).unwrap();
+                out.insert(path, bytes);
+            }
+        }
+    }
+    let mut out = std::collections::BTreeMap::new();
+    walk(root, &mut out);
+    out
+}
+
+fn expire_all(store: &mut Store, case: Id, digest: &Digest, key: &str) {
+    let operations: Vec<_> = references(store, case, digest)
+        .iter()
+        .map(|holder| {
+            json!({"op":"artifact.expire","payload":{
+                "artifact_ref": holder, "reason":"retention_period_ended",
+                "rationale":"The case keeps raw captures for 90 days."
+            }})
+        })
+        .collect();
+    let request = json!({
+        "schema_version":"inv.command.v1", "command_id":key, "actor":ACTOR,
+        "case_id":case, "preconditions":[], "operations":operations,
+    });
+    store
+        .record(&serde_json::to_vec(&request).unwrap())
+        .unwrap();
+}
+
+fn ingest_new_case(root: &Path, key: &str, file: &str) -> (Id, Digest) {
+    let manifest = json!({
+        "schema_version":"inv.ingest.v1", "command_id":key, "actor":ACTOR,
+        "new_case":{"title":"Another case"},
+        "source":{"title":"Log","format":"text/plain"},
+        "paths":[root.join(file)],
+    });
+    let ingested = open(root)
+        .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+        .unwrap();
+    let case = ingested
+        .receipt
+        .created
+        .iter()
+        .find(|change| change.id.kind() == Kind::Case)
+        .unwrap()
+        .id;
+    (case, ingested.items[0].digest.clone())
+}
+
+fn outcomes(
+    done: &[investigation_store::store::retention::Reclamation],
+) -> Vec<(Digest, ReclaimOutcome)> {
+    done.iter()
+        .map(|done| (done.obligations.digest.clone(), done.outcome))
+        .collect()
+}
+
+#[test]
+fn a_workspace_sweep_rechecks_every_withdrawn_digest_and_removes_only_when_applied() {
+    let temporary = tempfile::tempdir().unwrap();
+    let (root, case, digest) = workspace(&temporary);
+    fs::write(root.join("kept.txt"), b"kept, never withdrawn\n").unwrap();
+    // The same bytes in a second case, and other bytes in a third.
+    let (other, same) = ingest_new_case(&root, "capture-2", "source.txt");
+    assert_eq!(same, digest);
+    let (_, kept) = ingest_new_case(&root, "capture-3", "kept.txt");
+    let hex = digest.as_str().strip_prefix("sha256:").unwrap();
+    let blob = root.join("state/blobs/sha256").join(&hex[..2]).join(hex);
+    let mut store = open(&root);
+
+    // Nothing withdrawn: the sweep considers nothing.
+    assert!(store.reclaim_withdrawn(true).unwrap().is_empty());
+
+    // A reference in another case still holds the bytes.
+    expire_all(&mut store, case, &digest, "expire-1");
+    let held = store.reclaim_withdrawn(true).unwrap();
+    assert_eq!(
+        outcomes(&held),
+        [(digest.clone(), ReclaimOutcome::HeldByRecords)]
+    );
+    assert!(blob.is_file());
+
+    // An archive pin taken while the other case still retained the bytes
+    // holds them, in a dry run and when applied, until it ends.
+    let mut archiver = open(&root);
+    let (_state, pin) = archiver.read_canonical().unwrap();
+    expire_all(&mut store, other, &digest, "expire-2");
+    for apply in [false, true] {
+        let waiting = store.reclaim_withdrawn(apply).unwrap();
+        assert_eq!(
+            outcomes(&waiting),
+            [(digest.clone(), ReclaimOutcome::Waiting)]
+        );
+        assert!(blob.is_file());
+    }
+    archiver.release_pin(pin).unwrap();
+
+    // Withdrawn everywhere and unpinned: the dry run decides and writes
+    // nothing.
+    let before = files(&root);
+    let planned = store.reclaim_withdrawn(false).unwrap();
+    assert_eq!(
+        outcomes(&planned),
+        [(digest.clone(), ReclaimOutcome::WouldReclaim)]
+    );
+    assert_eq!(files(&root), before, "the dry run wrote");
+
+    // A format that forbids writes refuses the removal, not the dry run.
+    let marker = root.join("state/workspace.json");
+    let original = fs::read(&marker).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    value["format"] = json!({"version": 2, "read_requires": 1, "write_requires": 2});
+    fs::write(&marker, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    assert!(store.reclaim_withdrawn(true).is_err());
+    assert!(blob.is_file());
+    let planned = store.reclaim_withdrawn(false).unwrap();
+    assert_eq!(planned[0].outcome, ReclaimOutcome::WouldReclaim);
+    fs::write(&marker, original).unwrap();
+
+    let done = store.reclaim_withdrawn(true).unwrap();
+    assert_eq!(
+        outcomes(&done),
+        [(digest.clone(), ReclaimOutcome::Reclaimed)]
+    );
+    assert!(!blob.exists());
+    let kept_hex = kept.as_str().strip_prefix("sha256:").unwrap();
+    assert!(
+        root.join("state/blobs/sha256")
+            .join(&kept_hex[..2])
+            .join(kept_hex)
+            .is_file()
+    );
+    let again = store.reclaim_withdrawn(true).unwrap();
+    assert_eq!(
+        outcomes(&again),
+        [(digest.clone(), ReclaimOutcome::AlreadyAbsent)]
+    );
+    let report = store.check().unwrap();
+    assert!(report.integrity_ok(), "{:?}", report.issues);
+    assert_eq!(report.reclaimed_blobs, 1);
+}

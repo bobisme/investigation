@@ -74,12 +74,28 @@ fn stored(store: &Store<MemoryFs>, digest: &Digest) -> bool {
 /// or after both.
 #[test]
 fn an_interrupted_reclamation_removes_each_blob_once_on_retry_at_every_step() {
+    interrupted(7_000, |store, digests| store.reclaim_blobs(digests));
+}
+
+/// The same fault schedule through the workspace sweep, which selects the
+/// two withdrawn digests itself under the same single hold of the lock.
+#[test]
+fn an_interrupted_workspace_sweep_removes_each_blob_once_on_retry_at_every_step() {
+    interrupted(8_000, |store, _| store.reclaim_withdrawn(true));
+}
+
+type Reclaim = fn(
+    &mut Store<MemoryFs>,
+    &BTreeSet<Digest>,
+) -> Result<Vec<super::retention::Reclamation>, Failure>;
+
+fn interrupted(seed: u64, reclaim: Reclaim) {
     let mut before_any = 0;
     let mut between = 0;
     let mut held_safe = 0;
     let mut clean = 0;
     for fault in 1..=80 {
-        let (mut store, root) = setup(7_000 + fault);
+        let (mut store, root) = setup(seed + fault);
         let (first_case, first) = ingest(&mut store, "capture-1", b"token=abc123 one copy\n");
         let (second_case, second) = ingest(&mut store, "capture-2", b"token=def456 one copy\n");
         expire_all(&mut store, first_case, &first);
@@ -91,7 +107,7 @@ fn an_interrupted_reclamation_removes_each_blob_once_on_retry_at_every_step() {
         let digests = BTreeSet::from([first.clone(), second.clone()]);
 
         store.fs.fail_at(fault as usize);
-        let attempt = store.reclaim_blobs(&digests);
+        let attempt = reclaim(&mut store, &digests);
         restart(&mut store);
         let present: Vec<bool> = digests
             .iter()
@@ -133,7 +149,8 @@ fn an_interrupted_reclamation_removes_each_blob_once_on_retry_at_every_step() {
             }
         }
 
-        let retry = store.reclaim_blobs(&digests).unwrap();
+        let retry = reclaim(&mut store, &digests).unwrap();
+        assert_eq!(retry.len(), 2, "fault {fault}");
         for (reclamation, present) in retry.iter().zip(&present) {
             assert_eq!(
                 reclamation.outcome,

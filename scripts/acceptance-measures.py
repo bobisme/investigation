@@ -168,6 +168,7 @@ MEASURES = [
         "tests": [
             test(CLI, NEW, "targeting_fuzz_shard_", "seeded fuzz of every case-targeting write command against a journal oracle"),
             test(CLI, NEW, "retention_reclaim_removes_only_bytes_of_the_case_it_names", "retention reclaim, which records nothing, removes only bytes of the case it names"),
+            test(CLI, "retention", "a_workspace_sweep_is_a_dry_run_until_applied_and_names_no_record", "retention reclaim --all names no case: it refuses --case, is a dry run until --apply and names no record"),
             test(CLI, NEW, "every_write_command_is_fuzzed_for_targeting_or_names_no_case", "every write command in read_only::EFFECTS is fuzzed or names no case"),
             test(CLI, "cli", "record_retries_and_rejects_input_without_changing_the_case", "a --case that disagrees with the request is refused"),
             test(CLI, "note_on_case", "", "notes land on the selected case or the named record"),

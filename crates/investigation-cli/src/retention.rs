@@ -22,6 +22,13 @@
 //! and reports what was removed, what stays held and why, and the copies it
 //! cannot remove. A retry after an interruption reports removed bytes as
 //! already absent.
+//!
+//! `retention reclaim --all` (bn-s9td) sweeps the workspace: every digest a
+//! withdrawn reference in any case records, decided per digest exactly as
+//! the named form decides, all under one hold of the coordination lock
+//! (`Store::reclaim_withdrawn`). It is a dry run that removes nothing unless
+//! `--apply` is given, and it names no record: holders and quoting records
+//! belong to their cases, so the sweep only counts them.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -52,11 +59,13 @@ references or live archive pins still hold, the bytes a later reclamation
 could remove, and the copies of the bytes it knows of. It writes nothing.
 
 reclaim removes the stored bytes of Artifacts whose availability was already
-withdrawn, when nothing else holds them, and keeps every record.
+withdrawn, when nothing else holds them, and keeps every record. With --all it
+sweeps every case and is a dry run unless --apply is given.
 
 Examples:
   investigation retention preview art_01a20751-9140-7d72-bbd2-181cd705230d --format json
   investigation retention reclaim art_01a20751-9140-7d72-bbd2-181cd705230d --format json
+  investigation retention reclaim --all --format json
 
 Next: investigation schema artifact.expire --format json";
 
@@ -88,19 +97,33 @@ removal is synced before the next. Records, digests, sizes, provenance and the
 journal never change. Run it again after an interruption or once a holder
 ends; bytes already removed are reported as already_absent.
 
+--all sweeps the whole workspace instead: every digest that a withdrawn
+reference in any case records, each decided as above, all under one hold of
+the lock. Without --apply it is a dry run: it reports would_reclaim and changes
+nothing. With --apply it removes what nothing holds. It takes no --case and
+names no record; holders in every case are only counted. Read-only mode
+refuses it, dry run included.
+
 Quoted text, derivatives (their own digests), the index, rendered notes,
 exports, backups and filesystem free blocks are not removed; the residual list
-names the ones this workspace knows of.
+names the ones this workspace knows of. An export is listed when it names the
+digest or holds a file with exactly the released bytes, found by content.
 
 Examples:
   investigation retention reclaim art_01a20751-9140-7d72-bbd2-181cd705230d --format json
   investigation --case case_01a20751-9140-7d72-bbd2-181cd705230d retention reclaim art_01a2 art_01a3 --format text
+  investigation retention reclaim --all --format json
+  investigation retention reclaim --all --apply --format json
 
 Next: investigation check --format json";
 
 const NOTICE: &str = "Preview only: nothing was changed. artifact.expire withdraws a reference's availability; it deletes nothing. The stored bytes stay until investigation retention reclaim finds no remaining obligation, and copies outside this workspace cannot be recalled.";
 
 const RECLAIM_NOTICE: &str = "Only stored blobs that nothing holds were removed; every record, digest and the journal are unchanged. Copies listed as residual, and copies outside this workspace, remain.";
+
+const SWEEP_PREVIEW_NOTICE: &str = "Dry run: nothing was changed. Run again with --apply to remove the blobs listed as would_reclaim; each is rechecked under the coordination lock first, and every record, digest and the journal stay unchanged.";
+
+const SWEEP_LIMITATION: &str = "A workspace sweep names no record. Quoted text and derivatives of the bytes are records of their cases, and the index holds the quoted text; retention preview with --case and the Artifact IDs lists them.";
 
 const LIMITATIONS: &[&str] = &[
     "Downstream copies are those this workspace records or holds: staged copies, blob verdicts, quoting records, the index, rendered notes and exports under exports/. Exports written elsewhere and copies sent on are not known.",
@@ -114,7 +137,7 @@ pub(crate) enum RetentionCommand {
     Preview(PreviewArgs),
     /// Remove stored bytes of withdrawn Artifacts that nothing else holds; keeps every record.
     #[command(after_help = RECLAIM_HELP)]
-    Reclaim(PreviewArgs),
+    Reclaim(ReclaimArgs),
 }
 
 #[derive(clap::Args)]
@@ -124,6 +147,23 @@ pub(crate) struct PreviewArgs {
     artifacts: Vec<String>,
 }
 
+#[derive(clap::Args)]
+pub(crate) struct ReclaimArgs {
+    /// Artifact IDs of the selected case; a unique typed prefix works.
+    #[arg(
+        value_name = "ARTIFACT",
+        required_unless_present = "all",
+        conflicts_with = "all"
+    )]
+    artifacts: Vec<String>,
+    /// Sweep every case for withdrawn bytes nothing holds; a dry run unless --apply is given.
+    #[arg(long)]
+    all: bool,
+    /// With --all, remove the blobs the sweep finds that nothing holds.
+    #[arg(long, requires = "all", conflicts_with = "artifacts")]
+    apply: bool,
+}
+
 pub(crate) fn run(
     store: &mut Store,
     global: &Global,
@@ -131,7 +171,8 @@ pub(crate) fn run(
 ) -> Result<Output, Failure> {
     match command {
         RetentionCommand::Preview(args) => preview(store, global, &args),
-        RetentionCommand::Reclaim(args) => reclaim(store, global, &args),
+        RetentionCommand::Reclaim(args) if args.all => sweep(store, global, args.apply),
+        RetentionCommand::Reclaim(args) => reclaim(store, global, &args.artifacts),
     }
 }
 
@@ -169,19 +210,23 @@ fn resolve_artifacts(
 
 fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Output, Failure> {
     let case = select_case(store, global.case.as_deref())?;
-    let replay = store.case(case)?;
-    let ids = resolve_artifacts(&replay.state, case, &args.artifacts)?;
-    let losses = retention_ops::preview(&replay.state, case, &ids);
+    // One verified load gives the case and the obligations under one hold of
+    // the coordination lock (the holder scan, timed by the bench).
+    let mut losses = Vec::new();
+    let (replay, obligations) = store.case_with_obligations(case, |replay| {
+        let ids = resolve_artifacts(&replay.state, case, &args.artifacts)?;
+        losses = retention_ops::preview(&replay.state, case, &ids);
+        let releasing = losses
+            .iter()
+            .filter(|loss| loss.outcome == LossOutcome::BecomesUnavailable);
+        let released: BTreeSet<Id> = releasing.clone().map(|loss| loss.artifact_ref.id).collect();
+        let digests: BTreeSet<Digest> = releasing.filter_map(|loss| loss.digest.clone()).collect();
+        Ok((digests, released))
+    })?;
     let releasing: Vec<&ReferenceLoss> = losses
         .iter()
         .filter(|loss| loss.outcome == LossOutcome::BecomesUnavailable)
         .collect();
-    let released: BTreeSet<Id> = releasing.iter().map(|loss| loss.artifact_ref.id).collect();
-    let digests: BTreeSet<Digest> = releasing
-        .iter()
-        .filter_map(|loss| loss.digest.clone())
-        .collect();
-    let obligations = store.retention_obligations(&digests, &released)?;
     let root = store.workspace().root().to_owned();
 
     let references: Vec<Value> = losses.iter().map(reference_view).collect();
@@ -209,6 +254,8 @@ fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
     };
     let copies = downstream(store, &replay.state, &root, &releasing);
     let outside = exposure_cli::outside(store);
+    let snapshot = replay.snapshot.clone();
+    investigation_store::store::free_later(replay);
 
     let next = json!([{
         "argv": [PROGRAM_NAME, "schema", retention_ops::OPERATION, "--format", "json"],
@@ -270,7 +317,7 @@ fn preview(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
         json!({
             "writes": "nothing",
             "case_id": case,
-            "snapshot": replay.snapshot,
+            "snapshot": snapshot,
             "references": references,
             "logical_loss": {
                 "references": releasing.len(),
@@ -326,15 +373,214 @@ const fn reclaim_word(outcome: ReclaimOutcome) -> &'static str {
         ReclaimOutcome::HeldByRecords => "held_for_others",
         ReclaimOutcome::Waiting => "waiting",
         ReclaimOutcome::NotWithdrawn => "not_withdrawn",
+        ReclaimOutcome::WouldReclaim => "would_reclaim",
     }
+}
+
+/// Reclamations grouped by outcome word, each group with its byte total.
+/// `held` renders one digest that records still hold.
+fn grouped(
+    done: &[investigation_store::store::retention::Reclamation],
+    held: impl Fn(&DigestObligations) -> Value,
+) -> BTreeMap<&'static str, Value> {
+    let mut groups: BTreeMap<&'static str, Vec<Value>> = BTreeMap::new();
+    for reclamation in done {
+        let entry = &reclamation.obligations;
+        let view = match reclamation.outcome {
+            ReclaimOutcome::HeldByRecords => held(entry),
+            ReclaimOutcome::Waiting => waiting_view(entry),
+            _ => json!({"digest": entry.digest, "size_bytes": entry.size_bytes}),
+        };
+        groups
+            .entry(reclaim_word(reclamation.outcome))
+            .or_default()
+            .push(view);
+    }
+    [
+        "reclaimed",
+        "would_reclaim",
+        "already_absent",
+        "held_for_others",
+        "waiting",
+    ]
+    .into_iter()
+    .map(|name| {
+        let items = groups.remove(name).unwrap_or_default();
+        let bytes: u64 = items
+            .iter()
+            .filter_map(|item| item["size_bytes"].as_u64())
+            .sum();
+        (name, json!({"digests": items, "bytes": bytes}))
+    })
+    .collect()
+}
+
+fn argv_line(next: &Value) -> String {
+    next[0]["argv"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// The step after a reclamation: `check` once nothing waits, otherwise
+/// retiring staging (when staged copies hold bytes) and the retry `argv`.
+fn after_reclaim(
+    done: &[investigation_store::store::retention::Reclamation],
+    retry: Vec<String>,
+) -> Value {
+    let waiting = done
+        .iter()
+        .any(|reclamation| reclamation.outcome == ReclaimOutcome::Waiting);
+    if !waiting {
+        return json!([{
+            "argv": [PROGRAM_NAME, "check", "--format", "json"],
+            "kind": "local_read",
+            "effect": "Verifies every case and every blob a record still holds; removed bytes only withdrawn references record are counted as reclaimed_blobs.",
+        }]);
+    }
+    let retry = json!({
+        "argv": retry,
+        "kind": "local_write",
+        "effect": "Retries the reclamation once the archive pin or capture staging that holds the bytes has ended.",
+    });
+    let staged = done
+        .iter()
+        .any(|reclamation| !reclamation.obligations.staged_copies.is_empty());
+    if staged {
+        json!([{
+            "argv": [PROGRAM_NAME, "repair", "staging", "--format", "json"],
+            "kind": "local_write",
+            "effect": "Retires finalized capture staging, whose copies of the bytes hold them until then.",
+        }, retry])
+    } else {
+        json!([retry])
+    }
+}
+
+/// `retention reclaim --all`: every withdrawn digest of the workspace,
+/// decided under one hold of the coordination lock; a dry run unless
+/// `apply`. Names no record: every holder is only counted.
+fn sweep(store: &mut Store, global: &Global, apply: bool) -> Result<Output, Failure> {
+    if global.case.is_some() {
+        let mut argv = vec![PROGRAM_NAME.to_owned()];
+        argv.extend(["retention", "reclaim", "--all", "--format", "json"].map(str::to_owned));
+        return Err(Failure::new(
+            ErrorCode::InvalidInput,
+            "retention reclaim --all sweeps every case and takes no --case. Drop --case, or name the \
+             Artifacts of one case instead of --all; nothing was changed.",
+        )
+        .at("--case")
+        .with_argv(argv));
+    }
+    let done = store.reclaim_withdrawn(apply)?;
+    let root = store.workspace().root().to_owned();
+    let swept: Vec<&DigestObligations> = done.iter().map(|done| &done.obligations).collect();
+    let residual = workspace_copies(&root, &swept);
+    let outside = exposure_cli::outside(store);
+    let groups = grouped(&done, counted_view);
+    let mut retry: Vec<String> = [PROGRAM_NAME, "retention", "reclaim", "--all", "--apply"]
+        .map(str::to_owned)
+        .to_vec();
+    retry.extend(["--format".to_owned(), "json".to_owned()]);
+    let would = done
+        .iter()
+        .any(|reclamation| reclamation.outcome == ReclaimOutcome::WouldReclaim);
+    let next = if apply {
+        after_reclaim(&done, retry)
+    } else if would {
+        json!([{
+            "argv": retry,
+            "kind": "local_write",
+            "effect": "Removes the blobs listed as would_reclaim after rechecking each under the coordination lock; every record stays.",
+        }])
+    } else {
+        after_reclaim(&done, {
+            let mut again = retry;
+            again.retain(|arg| arg != "--apply");
+            again
+        })
+    };
+    let notice = if apply {
+        RECLAIM_NOTICE
+    } else {
+        SWEEP_PREVIEW_NOTICE
+    };
+    let mut lines = vec![format!(
+        "retention reclaim --all  {}",
+        if apply {
+            "every case"
+        } else {
+            "every case  dry run: nothing was changed"
+        }
+    )];
+    for reclamation in &done {
+        let entry = &reclamation.obligations;
+        lines.push(format!(
+            "{:<16} {}  {} byte(s)",
+            reclaim_word(reclamation.outcome),
+            entry.digest,
+            entry.size_bytes.unwrap_or_default()
+        ));
+    }
+    if done.is_empty() {
+        lines.push("no withdrawn reference records a digest; nothing to reclaim".to_owned());
+    }
+    copy_lines(&mut lines, "residual", &residual);
+    lines.push(notice.to_owned());
+    lines.push(format!("Next: {}", argv_line(&next)));
+    let mut limitations: Vec<&str> = LIMITATIONS.to_vec();
+    limitations.push(SWEEP_LIMITATION);
+    let mut body = json!({
+        "scope": "workspace",
+        "dry_run": !apply,
+        "writes": if apply { "blobs" } else { "nothing" },
+        "residual": residual,
+        "outside": outside,
+        "limitations": limitations,
+        "notice": notice,
+        "next": next,
+    });
+    for (name, group) in groups {
+        if apply && name == "would_reclaim" || !apply && name == "reclaimed" {
+            continue;
+        }
+        body[name] = group;
+    }
+    Ok(Output::success(
+        if apply {
+            "retention_reclaimed"
+        } else {
+            "retention_reclaim_previewed"
+        },
+        body,
+        lines.join("\n"),
+    ))
+}
+
+/// One held digest with every holder counted and none named.
+fn counted_view(entry: &DigestObligations) -> Value {
+    json!({
+        "digest": entry.digest,
+        "size_bytes": entry.size_bytes,
+        "counts": {
+            "references": entry.references.len(),
+            "method_packs": entry.method_packs.len(),
+            "attachments": entry.attachments.len(),
+        },
+        "archive_pins": entry.archive_pins,
+        "unsettled_staging": entry.unsettled_staging,
+    })
 }
 
 /// `retention reclaim`: remove the stored bytes of withdrawn Artifacts of
 /// the case that nothing else holds.
-fn reclaim(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Output, Failure> {
+fn reclaim(store: &mut Store, global: &Global, artifacts: &[String]) -> Result<Output, Failure> {
     let case = select_case(store, global.case.as_deref())?;
     let replay = store.case(case)?;
-    let ids = resolve_artifacts(&replay.state, case, &args.artifacts)?;
+    let ids = resolve_artifacts(&replay.state, case, artifacts)?;
     let losses = retention_ops::preview(&replay.state, case, &ids);
     for (index, loss) in losses.iter().enumerate() {
         if !retention_ops::availability_withdrawn(&replay.state, loss.artifact_ref.id) {
@@ -368,61 +614,18 @@ fn reclaim(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
     let residual = downstream(store, &replay.state, &root, &withdrawn);
     let outside = exposure_cli::outside(store);
 
-    let mut groups: BTreeMap<&'static str, Vec<Value>> = BTreeMap::new();
-    for reclamation in &done {
-        let entry = &reclamation.obligations;
-        let view = match reclamation.outcome {
-            ReclaimOutcome::HeldByRecords => held_view(case, entry),
-            ReclaimOutcome::Waiting => waiting_view(entry),
-            _ => json!({"digest": entry.digest, "size_bytes": entry.size_bytes}),
-        };
-        groups
-            .entry(reclaim_word(reclamation.outcome))
-            .or_default()
-            .push(view);
-    }
-    let group = |name: &str| {
-        let items = groups.get(name).cloned().unwrap_or_default();
-        let bytes: u64 = items
-            .iter()
-            .filter_map(|item| item["size_bytes"].as_u64())
-            .sum();
-        json!({"digests": items, "bytes": bytes})
-    };
-    let settled = !groups.contains_key("waiting");
+    let groups = grouped(&done, |entry| held_view(case, entry));
+    let group = |name: &str| groups[name].clone();
     let mut argv = vec![
         PROGRAM_NAME.to_owned(),
         "--case".to_owned(),
         case.to_string(),
+        "retention".to_owned(),
+        "reclaim".to_owned(),
     ];
-    let next = if settled {
-        json!([{
-            "argv": [PROGRAM_NAME, "check", "--format", "json"],
-            "kind": "local_read",
-            "effect": "Verifies every case and every blob a record still holds; removed bytes only withdrawn references record are counted as reclaimed_blobs.",
-        }])
-    } else {
-        argv.extend(["retention".to_owned(), "reclaim".to_owned()]);
-        argv.extend(losses.iter().map(|loss| loss.artifact_ref.id.to_string()));
-        argv.extend(["--format".to_owned(), "json".to_owned()]);
-        let retry = json!({
-            "argv": argv,
-            "kind": "local_write",
-            "effect": "Retries the reclamation once the archive pin or capture staging that holds the bytes has ended.",
-        });
-        let staged = done
-            .iter()
-            .any(|reclamation| !reclamation.obligations.staged_copies.is_empty());
-        if staged {
-            json!([{
-                "argv": [PROGRAM_NAME, "repair", "staging", "--format", "json"],
-                "kind": "local_write",
-                "effect": "Retires finalized capture staging, whose copies of the bytes hold them until then.",
-            }, retry])
-        } else {
-            json!([retry])
-        }
-    };
+    argv.extend(losses.iter().map(|loss| loss.artifact_ref.id.to_string()));
+    argv.extend(["--format".to_owned(), "json".to_owned()]);
+    let next = after_reclaim(&done, argv);
 
     let mut lines = vec![format!("retention reclaim  case {case}")];
     for reclamation in &done {
@@ -436,16 +639,7 @@ fn reclaim(store: &mut Store, global: &Global, args: &PreviewArgs) -> Result<Out
     }
     copy_lines(&mut lines, "residual", &residual);
     lines.push(RECLAIM_NOTICE.to_owned());
-    lines.push(format!(
-        "Next: {}",
-        next[0]["argv"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect::<Vec<_>>()
-            .join(" ")
-    ));
+    lines.push(format!("Next: {}", argv_line(&next)));
     Ok(Output::success(
         "retention_reclaimed",
         json!({
@@ -598,6 +792,68 @@ fn downstream(
             files.insert(path, (Area::Index, "search text of the quoting records"));
         }
     }
+    let sizes: BTreeMap<String, u64> = releasing
+        .iter()
+        .filter_map(|loss| {
+            let hex = loss.digest.as_ref()?.as_str().strip_prefix("sha256:")?;
+            Some((hex.to_owned(), loss.size_bytes?))
+        })
+        .collect();
+    copies.extend(file_copies(root, files, &hexes, &sizes));
+    copies
+}
+
+/// Workspace files that copy or name the swept digests: staged copies, blob
+/// verdicts and exports. Names no record.
+fn workspace_copies(root: &Path, swept: &[&DigestObligations]) -> Vec<Value> {
+    let hexes: BTreeSet<String> = swept
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .digest
+                .as_str()
+                .strip_prefix("sha256:")
+                .map(str::to_owned)
+        })
+        .collect();
+    let sizes: BTreeMap<String, u64> = swept
+        .iter()
+        .filter_map(|entry| {
+            let hex = entry.digest.as_str().strip_prefix("sha256:")?;
+            Some((hex.to_owned(), entry.size_bytes?))
+        })
+        .collect();
+    let mut files = BTreeMap::new();
+    for (path, hex) in exposure::digest_named_files(root) {
+        if hexes.contains(&hex) && exposure::area(&path) == Area::Staging {
+            files.insert(path, (Area::Staging, "a staged copy of the bytes"));
+        }
+    }
+    for hex in &hexes {
+        let verdict = verdict_path(hex);
+        if root.join(&verdict).is_file() {
+            files.insert(
+                verdict,
+                (
+                    Area::BlobVerdict,
+                    "names the digest and file identity of the bytes; holds no bytes",
+                ),
+            );
+        }
+    }
+    file_copies(root, files, &hexes, &sizes)
+}
+
+/// `files` plus every export below exports/ that names one of `hexes` or
+/// holds exactly the bytes of one, found by content among the files of a
+/// recorded size (bounded by `exposure.copy_hash_*`), as residual entries.
+fn file_copies(
+    root: &Path,
+    mut files: BTreeMap<PathBuf, (Area, &'static str)>,
+    hexes: &BTreeSet<String>,
+    sizes: &BTreeMap<String, u64>,
+) -> Vec<Value> {
+    let exports = Path::new("exports");
     let forms: Vec<Form> = hexes
         .iter()
         .map(|hex| Form {
@@ -606,7 +862,6 @@ fn downstream(
         })
         .collect();
     if !forms.is_empty() {
-        let exports = Path::new("exports");
         let report = exposure::scan(&root.join(exports), &forms, &BTreeMap::new());
         for hit in report.hits {
             files.insert(
@@ -618,12 +873,37 @@ fn downstream(
             );
         }
     }
-    for (path, (area, detail)) in files {
-        copies.push(json!({
-            "kind": area.as_str(),
-            "path": path.to_string_lossy(),
-            "detail": detail,
-        }));
+    let mut sought: BTreeMap<u64, BTreeSet<String>> = BTreeMap::new();
+    for (hex, size) in sizes {
+        sought.entry(*size).or_default().insert(hex.clone());
     }
+    let found = exposure::copies_by_content(&root.join(exports), &sought);
+    for (path, _) in found.copies {
+        // A copy of the bytes outranks a file that only names the digest.
+        files.insert(
+            exports.join(path),
+            (
+                Area::Export,
+                "an export file that holds exactly the bytes, found by content",
+            ),
+        );
+    }
+    let mut copies: Vec<Value> = files
+        .into_iter()
+        .map(|(path, (area, detail))| {
+            json!({
+                "kind": area.as_str(),
+                "path": path.to_string_lossy(),
+                "detail": detail,
+            })
+        })
+        .collect();
+    copies.extend(found.not_compared.into_iter().map(|unopened| {
+        json!({
+            "kind": Area::Export.as_str(),
+            "path": exports.join(unopened.path).to_string_lossy(),
+            "detail": format!("a file of a released size, {}; it may hold a copy of the bytes", unopened.reason),
+        })
+    }));
     copies
 }

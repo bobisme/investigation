@@ -77,6 +77,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // obligations under the commit lock; writes nothing.
     ("retention preview", Effect::Read),
     // Removes stored blobs nothing holds; records and journals are unchanged.
+    // --all without --apply is a dry run that writes nothing, but the named
+    // form writes without any flag, so the leaf stays a write: read-only
+    // mode refuses the dry run too (fail closed).
     ("retention reclaim", Effect::Write),
     ("repair index", Effect::Write),
     // A dry run by default; --apply writes a backup archive under exports/

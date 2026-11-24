@@ -94,8 +94,12 @@ harness (`crates/investigation-bench`). It generates a 10,000-object /
 50,000-relation workspace, the sparse 1,000 × 200 choice fixture and an
 exhaustive small choice fixture through the store API, checks that grouped
 `next` output is complete against the generator's ground truth, and times
-warm `brief`, `next`, frontier pages, a single-operation `record`, `repair
-index` and `vault render` against the targets. It writes a JSON report to
+warm `brief`, `next`, frontier pages, `retention preview` of one Artifact, a
+single-operation `record`, `repair index` and `vault render` against the
+targets. The large fixture's profile also times the retention holder scan in
+process (`holder_scan`: `record_holders` and `Store::retention_obligations`),
+the work `retention preview` and `retention reclaim` do under the
+coordination lock. It writes a JSON report to
 `target/bench/report.json` with the machine, build profile, load average,
 sample counts, warmup, trial order and nearest-rank percentiles with their
 n. `just check` runs only a smoke run on tiny fixtures; timings on a shared

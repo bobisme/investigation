@@ -1137,7 +1137,10 @@ fn targeting_fuzz_shard_2_lands_every_write_in_its_named_case_or_refuses_it() {
 
 /// Write commands that name their case but record nothing in a journal, so the
 /// journal oracle of the fuzz cannot see where they land; each has its own
-/// targeting test, named here.
+/// targeting test, named here. `retention reclaim --all` is the one form that
+/// names no case: it sweeps the workspace, refuses `--case` (probed below) and
+/// names no record; retention::a_workspace_sweep_is_a_dry_run_until_applied_and_names_no_record
+/// covers it.
 const TARGETED_WITHOUT_A_JOURNAL: &[(&str, &str)] = &[(
     "retention reclaim",
     "retention_reclaim_removes_only_bytes_of_the_case_it_names",
@@ -1226,6 +1229,17 @@ fn retention_reclaim_removes_only_bytes_of_the_case_it_names() {
         (
             "one Artifact of each case".into(),
             strings(&["--case", &case_a, "retention", "reclaim", &art_a, &art_b]),
+        ),
+        (
+            "a workspace sweep given a case".into(),
+            strings(&[
+                "--case",
+                &case_a,
+                "retention",
+                "reclaim",
+                "--all",
+                "--apply",
+            ]),
         ),
     ];
     if shared.len() > "case_".len() {

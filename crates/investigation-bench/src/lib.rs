@@ -131,7 +131,8 @@ pub fn run(config: &Config) -> Result<Value, String> {
 
     let large = fixtures::large(&config.fixtures_dir.join("large"), large_shape)?;
     fixtures_out.push(describe(&binary, &large)?);
-    let large_profile = profile::next_phases(&large, config.samples.clamp(1, 10))?;
+    let mut large_profile = profile::next_phases(&large, config.samples.clamp(1, 10))?;
+    large_profile["holder_scan"] = profile::holder_scan(&large, config.samples.clamp(1, 10))?;
     measurements.extend(measure_fixture(config, &binary, &large, &large_profile)?);
     profiles.push(large_profile);
 
@@ -163,7 +164,7 @@ pub fn run(config: &Config) -> Result<Value, String> {
             "source": "notes/plan.md §10.5",
             "warm_read_p95_ms": READ_TARGET_MS,
             "warm_mutation_p95_ms": MUTATION_TARGET_MS,
-            "read_target_applies_to": "brief, next (top three) and the first page of the gap frontier and of a group drill-down",
+            "read_target_applies_to": "brief, next (top three), the first page of the gap frontier and of a group drill-down, and retention preview of one Artifact (the holder scan, W11.19)",
             "mutation_target_applies_to": "one record command with one operation, excluding file ingestion and render",
             "no_target": "index rebuild and vault render are reported without a target",
             "note": "Engineering targets for a documented ordinary workstation, not promises of current performance.",
@@ -386,6 +387,11 @@ fn hint(name: &str, profile: &Value) -> String {
         "brief" => format!(
             "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases ({summary})."
         ),
+        "retention_preview" => format!(
+            "retention preview replays the case, runs artifact.expire on a copy and scans holders; holder scan: record_holders p50 {}, retention_obligations p50 {} ({summary}).",
+            profile["holder_scan"]["record_holders_ms"]["p50_ms"],
+            profile["holder_scan"]["retention_obligations_ms"]["p50_ms"]
+        ),
         _ => format!("Largest in-process phase: {largest} ({summary}); profile it first."),
     }
 }
@@ -413,6 +419,27 @@ fn measure_fixture(
             &["--case", &case, "frontier", "--format", "json"],
         ),
     ];
+    // The retention holder scan: every Artifact revision and journal event
+    // of every case, under the coordination lock (W11.19).
+    let artifact = fixture
+        .revisions
+        .keys()
+        .find(|id| id.kind() == Kind::Artifact)
+        .map(ToString::to_string);
+    if let Some(artifact) = &artifact {
+        reads.push(read(
+            "retention_preview",
+            &[
+                "--case",
+                &case,
+                "retention",
+                "preview",
+                artifact,
+                "--format",
+                "json",
+            ],
+        ));
+    }
     if let Some(truth) = &fixture.choice {
         let criterion = truth.criteria.last().expect("criteria").to_string();
         reads.push(read(

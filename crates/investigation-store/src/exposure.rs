@@ -14,9 +14,15 @@
 //! the diagnosis keeps the read-path rule that restricted bytes are not
 //! opened unless explicitly requested. Matches are reported by path only;
 //! the searched bytes and their surroundings are never returned.
+//!
+//! [`copies_by_content`] finds whole-file copies of known bytes by their
+//! SHA-256, for the residual a retention reclamation reports: it hashes only
+//! regular files whose size equals that of one of the sought digests, and at
+//! most [`MAX_COPY_HASH_FILES`] files and [`MAX_COPY_HASH_BYTES`] bytes per
+//! scan; a candidate past either bound is reported as not compared.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs::{self, File},
     io::{ErrorKind, Read},
     path::{Component, Path, PathBuf},
@@ -31,6 +37,10 @@ use investigation_core::identity::Id;
 pub const MIN_TEXT_BYTES: usize = 4;
 /// Most bytes of exposed text the diagnosis searches for.
 pub const MAX_TEXT_BYTES: usize = 4096;
+/// Most files one [`copies_by_content`] scan hashes.
+pub const MAX_COPY_HASH_FILES: u64 = 2_000;
+/// Most bytes one [`copies_by_content`] scan hashes.
+pub const MAX_COPY_HASH_BYTES: u64 = 256 * 1024 * 1024;
 
 const READ_CHUNK: usize = 64 * 1024;
 
@@ -361,6 +371,90 @@ pub fn scan(root: &Path, forms: &[Form], skip: &BTreeMap<PathBuf, String>) -> Sc
     report
 }
 
+/// Whole-file copies of known bytes below `root`, found by content.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CopyScan {
+    /// Relative path and the lowercase SHA-256 hex it matched.
+    pub copies: Vec<(PathBuf, String)>,
+    /// Candidates of a sought size that were not hashed, and why.
+    pub not_compared: Vec<Unopened>,
+    pub hashed_files: u64,
+    pub hashed_bytes: u64,
+}
+
+/// Find every regular file below `root` whose bytes are exactly those of one
+/// of the sought digests. `sought` maps a byte size to the hex digests of
+/// that size; only files of a sought size are opened, so a scan reads no
+/// more than the candidates that could match. Hashing stops at
+/// [`MAX_COPY_HASH_FILES`] files or [`MAX_COPY_HASH_BYTES`] bytes; each
+/// candidate past the bound is listed in `not_compared`. Nothing is written
+/// and no link is followed.
+pub fn copies_by_content(root: &Path, sought: &BTreeMap<u64, BTreeSet<String>>) -> CopyScan {
+    let mut report = CopyScan::default();
+    if sought.is_empty() {
+        return report;
+    }
+    walk(root, Path::new(""), &mut |relative, entry| {
+        if entry != Entry::File {
+            return;
+        }
+        let Ok(size) = fs::symlink_metadata(root.join(relative)).map(|meta| meta.len()) else {
+            return;
+        };
+        let Some(hexes) = sought.get(&size) else {
+            return;
+        };
+        let not_compared = |reason: &str| Unopened {
+            path: relative.to_owned(),
+            area: area(relative),
+            reason: reason.to_owned(),
+        };
+        if report.hashed_files >= MAX_COPY_HASH_FILES
+            || report.hashed_bytes.saturating_add(size) > MAX_COPY_HASH_BYTES
+        {
+            report.not_compared.push(not_compared(
+                "past the content comparison bound (exposure.copy_hash_files, exposure.copy_hash_bytes); not compared",
+            ));
+            return;
+        }
+        match hash_file(&root.join(relative), size) {
+            Ok((hex, read)) => {
+                report.hashed_files += 1;
+                report.hashed_bytes += read;
+                if read == size && hexes.contains(&hex) {
+                    report.copies.push((relative.to_owned(), hex));
+                }
+            }
+            Err(_) => report
+                .not_compared
+                .push(not_compared("could not be read; not compared")),
+        }
+    });
+    report
+}
+
+/// The SHA-256 hex of at most `size + 1` bytes of the file, and the bytes
+/// read: a file that grew since its size was taken reads one byte more and
+/// so never matches.
+fn hash_file(path: &Path, size: u64) -> std::io::Result<(String, u64)> {
+    use sha2::{Digest as _, Sha256};
+    let mut file = File::open(path)?.take(size.saturating_add(1));
+    let mut hasher = Sha256::new();
+    let mut chunk = vec![0; READ_CHUNK];
+    let mut total = 0u64;
+    loop {
+        let read = match file.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(read) => read,
+            Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        hasher.update(&chunk[..read]);
+        total += read as u64;
+    }
+    Ok((format!("{:x}", hasher.finalize()), total))
+}
+
 /// The labels of `forms` found in the file, and the bytes read.
 fn search_file(path: &Path, forms: &[&Form]) -> std::io::Result<(Vec<&'static str>, u64)> {
     let mut file = File::open(path)?;
@@ -480,6 +574,39 @@ mod tests {
             [PathBuf::from("exports/held"), PathBuf::from("exports/link")]
         );
         assert_eq!(report.files, 2);
+    }
+
+    #[test]
+    fn copies_are_found_by_content_only_among_files_of_a_sought_size() {
+        use sha2::{Digest as _, Sha256};
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        let bytes = b"the released bytes".to_vec();
+        let hex = format!("{:x}", Sha256::digest(&bytes));
+        fs::create_dir_all(root.join("bundle/files")).unwrap();
+        fs::write(root.join("bundle/files/renamed.bin"), &bytes).unwrap();
+        // Same size, other bytes: hashed, not a copy.
+        fs::write(root.join("bundle/other.bin"), b"the released bytez").unwrap();
+        // Another size: never opened.
+        fs::write(root.join("bundle/big.bin"), b"unrelated and longer").unwrap();
+        std::os::unix::fs::symlink(
+            root.join("bundle/files/renamed.bin"),
+            root.join("bundle/link.bin"),
+        )
+        .unwrap();
+        let sought = BTreeMap::from([(bytes.len() as u64, BTreeSet::from([hex.clone()]))]);
+        let report = copies_by_content(root, &sought);
+        assert_eq!(
+            report.copies,
+            [(PathBuf::from("bundle/files/renamed.bin"), hex)]
+        );
+        assert_eq!(report.hashed_files, 2);
+        assert_eq!(report.hashed_bytes, 2 * bytes.len() as u64);
+        assert!(report.not_compared.is_empty());
+        assert_eq!(
+            copies_by_content(root, &BTreeMap::new()),
+            CopyScan::default()
+        );
     }
 
     #[test]

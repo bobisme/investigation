@@ -378,6 +378,20 @@ pub const LIMITS: &[Limit] = &[
         NO_REFUSAL,
     ),
     limit(
+        "exposure.copy_hash_files",
+        exposure::MAX_COPY_HASH_FILES,
+        Items,
+        "Files one retention preview or reclaim hashes below exports/ to find copies of the released bytes; only files of a released size are hashed. Past the bound a candidate is listed as not compared.",
+        NO_REFUSAL,
+    ),
+    limit(
+        "exposure.copy_hash_bytes",
+        exposure::MAX_COPY_HASH_BYTES,
+        Bytes,
+        "Bytes one retention preview or reclaim hashes below exports/ to find copies of the released bytes. Past the bound a candidate is listed as not compared.",
+        NO_REFUSAL,
+    ),
+    limit(
         "archive.index_bytes",
         archive::MAX_INDEX_BYTES,
         Bytes,

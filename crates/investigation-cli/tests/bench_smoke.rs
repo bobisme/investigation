@@ -65,6 +65,7 @@ fn smoke_run_reports_every_measurement_with_environment_and_targets() {
             "brief",
             "next_top_three",
             "frontier_first_page",
+            "retention_preview",
             "record_single_operation",
             "index_rebuild",
             "vault_render_first",
@@ -109,5 +110,13 @@ fn smoke_run_reports_every_measurement_with_environment_and_targets() {
     assert!(targeted >= 8);
     for profile in report["profiles"].as_array().unwrap() {
         assert!(profile["pareto_ms"]["n"].as_u64().unwrap() >= 1);
+    }
+    // The retention holder scan is timed in process on the large fixture.
+    let large = &report["profiles"][1];
+    assert_eq!(large["fixture"], "large");
+    let holders = &large["holder_scan"];
+    assert!(holders["digests"].as_u64().unwrap() >= 1, "{holders}");
+    for phase in ["record_holders_ms", "retention_obligations_ms"] {
+        assert!(holders[phase]["n"].as_u64().unwrap() >= 1, "{holders}");
     }
 }
