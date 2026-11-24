@@ -5,11 +5,11 @@
 //! Review and never states that an investigation is complete.
 
 use investigation_core::{
-    blindspot::{AuditRequest, AuditResponse, audit},
+    blindspot::{AuditRequest, AuditResponse, audit_disclosed},
     catalog::standard_catalog,
     command::RevisionRef,
     identity::{Id, ResolveError, resolve_prefix},
-    wire::{Digest, ErrorCode, Failure, Snapshot},
+    wire::{ErrorCode, Failure},
 };
 use investigation_store::Store;
 use serde_json::json;
@@ -17,6 +17,7 @@ use serde_json::json;
 use crate::{
     Global, Output, display_argv,
     selection::{select_case, workspace_argv},
+    snapshot::{self, SnapshotArgs},
 };
 
 pub(crate) const AFTER_HELP: &str = "\
@@ -29,77 +30,55 @@ evidence or explanations nobody has proposed. Record a semantic challenge with
 review.submit (kind blindspot); see investigation guide blindspot.
 
 --subject narrows the findings to one conclusion, comparison or decision and the
-records it cites. --snapshot re-reads an earlier verified snapshot of the case, so
-the same snapshot always gives the same audit and gap IDs.
+records it cites. --snapshot SEQUENCE [--head-hash DIGEST] re-reads an earlier
+verified snapshot of the case, labelled historical, so the same snapshot always
+gives the same audit and gap IDs; a wrong head hash is refused. Which records a
+finding withholds follows today's audience state.
 
 Examples:
   investigation blindspots --case <ID> --format json
   investigation blindspots --case <ID> --subject <CONCLUSION_ID> --format json
-  investigation blindspots --case <ID> --snapshot 12 --format json";
+  investigation blindspots --case <ID> --snapshot 12 --head-hash <DIGEST> --format json";
 
 #[derive(clap::Args)]
 pub(crate) struct Args {
     /// Narrow to one conclusion, comparison or decision and the records it cites.
     #[arg(long, value_name = "ID")]
     subject: Option<String>,
-    /// Audit the case as of this verified snapshot sequence instead of the head.
-    #[arg(long, value_name = "SEQUENCE")]
-    snapshot: Option<u64>,
-    /// Require this head hash at --snapshot.
-    #[arg(long, value_name = "DIGEST", requires = "snapshot")]
-    head_hash: Option<String>,
+    #[command(flatten)]
+    snapshot: SnapshotArgs,
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
     let case_id = select_case(store, global.case.as_deref())?;
     let mut prefix = workspace_argv(store.workspace());
     prefix.extend(["--case".into(), case_id.to_string()]);
-    let head = store.case(case_id)?;
-    let replay = match args.snapshot {
-        None => head,
-        Some(sequence) => {
-            let head_hash = match &args.head_hash {
-                Some(text) => text.parse::<Digest>().map_err(|error| {
-                    Failure::new(ErrorCode::InvalidInput, error).at("--head-hash")
-                })?,
-                None => head
-                    .state
-                    .verified_snapshot(sequence)
-                    .cloned()
-                    .ok_or_else(|| {
-                        let mut failure = Failure::new(
-                            ErrorCode::UnknownReference,
-                            "The sequence is not a verified snapshot of this case journal.",
-                        )
-                        .at("--snapshot");
-                        failure.error.expected = Some(json!({"latest": head.snapshot}));
-                        failure
-                    })?,
-            };
-            head.at_snapshot(&Snapshot {
-                sequence,
-                head_hash,
-            })
-            .map_err(|failure| {
-                let mut argv = prefix.clone();
-                argv.extend(["blindspots".into(), "--format".into(), "json".into()]);
-                failure.with_argv(argv)
-            })?
-        }
-    };
+    let retry = json_argv(&prefix, &["blindspots"]);
+    let pinned = snapshot::resolve(store.case(case_id)?, &args.snapshot, retry)?;
+    let replay = pinned.read();
     let subject = args
         .subject
         .as_deref()
         .map(|selector| resolve_subject(&replay.state, selector))
         .transpose()?;
-    let mut response = audit(
+    let mut response = audit_disclosed(
         &replay.state,
         &replay.snapshot,
         case_id,
         &AuditRequest { subject },
+        pinned.today().unwrap_or(&replay.state),
     )?;
     decorate(&prefix, &mut response);
-    let text = render(&response);
+    // Only a historical audit is labelled, so a read of the head keeps the
+    // exact `inv.audit.v1` bytes it always had.
+    response.historical_read = pinned.label();
+    response.historical = response.historical_read.as_ref().map(|_| true);
+    let label = response
+        .historical_read
+        .as_ref()
+        .map(|label| snapshot::label_text(&json!({ "historical_read": label })))
+        .unwrap_or_default();
+    let text = render(&response, &label);
     Ok(Output::new(response, text))
 }
 
@@ -172,9 +151,9 @@ fn decorate(prefix: &[String], response: &mut AuditResponse) {
         .extend(schema_argv(prefix, "review.submit"));
 }
 
-fn render(response: &AuditResponse) -> String {
+fn render(response: &AuditResponse, historical: &str) -> String {
     let mut text = format!(
-        "case {}  snapshot {} ({})  checks {}\n",
+        "case {}  snapshot {} ({})  checks {}\n{historical}",
         response.scope.case_id,
         response.snapshot.sequence,
         response.snapshot.head_hash,

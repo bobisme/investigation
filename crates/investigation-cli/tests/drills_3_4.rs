@@ -562,8 +562,9 @@ impl Drill {
             }
         }
         if let Some(earlier) = step.get("replays").and_then(Value::as_str) {
-            // The earlier audit, re-run at its own snapshot, is byte-identical:
-            // what was recorded later is never reported against it.
+            // The earlier audit, re-run at its own snapshot, is byte-identical
+            // apart from its historical label: what was recorded later is
+            // never reported against it.
             let snapshot = &self.bindings[earlier]["snapshot"];
             let mut replay = vec![
                 "--case".to_owned(),
@@ -577,7 +578,24 @@ impl Drill {
             replay.extend(["--format".to_owned(), "json".to_owned()]);
             let (code, bytes) = self.output(&replay, None);
             assert_eq!(code, Some(0), "{bytes}");
-            assert_eq!(bytes, self.audits[earlier], "{}", self.context());
+            let mut replayed: Value = serde_json::from_str(&bytes).unwrap();
+            // The labelled audit is still a valid `inv.audit.v1` response.
+            let schema: Value = serde_json::from_str(
+                &fs::read_to_string(fixtures::repository().join("schemas/v1/audit.schema.json"))
+                    .unwrap(),
+            )
+            .unwrap();
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            assert!(validator.is_valid(&replayed), "{bytes}");
+            let fields = replayed.as_object_mut().unwrap();
+            assert_eq!(fields.remove("historical"), Some(Value::Bool(true)));
+            assert!(fields.remove("historical_read").is_some(), "{bytes}");
+            assert_eq!(
+                serde_json::to_string(&replayed).unwrap() + "\n",
+                self.audits[earlier],
+                "{}",
+                self.context()
+            );
         }
         if let Some(name) = step.get("as").and_then(Value::as_str) {
             self.audits.insert(name.to_owned(), raw);

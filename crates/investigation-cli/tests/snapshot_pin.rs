@@ -1,9 +1,13 @@
-//! `frontier`, `next` and `retrospective` pinned with `--snapshot SEQUENCE
-//! [--head-hash DIGEST]` (bn-1i89), with the same semantics and refusal as
-//! `brief` and `show`, over a copy of the checked-in Scenario A workspace:
+//! `frontier`, `next`, `retrospective` (bn-1i89) and `blindspots` (bn-8fwv)
+//! pinned with `--snapshot SEQUENCE [--head-hash DIGEST]`, with the same
+//! semantics and refusal as `brief` and `show`, over a copy of the checked-in
+//! Scenario A workspace:
 //!
 //! - a pinned read after later commits returns the view the head gave before
 //!   them, labelled historical, while the unpinned read moves on;
+//! - a pinned `show`, `brief` or `explain` differs from the head's read of
+//!   the same snapshot only by its label, `current_evidentiary_use` and, for
+//!   a bounded read, the items its budget keeps, each counted as omitted;
 //! - a wrong head hash, or a sequence that is no verified snapshot, is
 //!   refused with a repair argv that reads the current head;
 //! - every command a canonical handoff prints runs as written, and each
@@ -21,6 +25,10 @@ use serde_json::{Value, json};
 
 #[path = "support/fixtures.rs"]
 mod fixtures;
+
+/// A Conclusion of the Scenario A case, cited by Observations of an
+/// Artifact.
+const CONCLUSION: &str = "concl_01a20751-91b0-7003-9309-18ce4a1e3796";
 
 const BRIEF: &str = "handoff-brief.md";
 const OVERVIEW: &str = "handoff-overview.md";
@@ -124,6 +132,54 @@ fn unlabelled(value: &Value) -> Value {
     value
 }
 
+/// `value` without `keys`, at any depth.
+fn without(value: &Value, keys: &[&str]) -> Value {
+    match value {
+        Value::Object(object) => Value::Object(
+            object
+                .iter()
+                .filter(|(key, _)| !keys.contains(&key.as_str()))
+                .map(|(key, child)| (key.clone(), without(child, keys)))
+                .collect(),
+        ),
+        Value::Array(items) => Value::Array(items.iter().map(|item| without(item, keys)).collect()),
+        other => other.clone(),
+    }
+}
+
+/// Every value of `key` in `value`, at any depth.
+fn every<'v>(value: &'v Value, key: &str, found: &mut Vec<(&'v Value, &'v Value)>) {
+    match value {
+        Value::Object(object) => {
+            if let Some(child) = object.get(key) {
+                found.push((value, child));
+            }
+            for child in object.values() {
+                every(child, key, found);
+            }
+        }
+        Value::Array(items) => items.iter().for_each(|item| every(item, key, found)),
+        _ => {}
+    }
+}
+
+/// A bounded read of one snapshot keeps or counts every item the head's
+/// read of it kept or counted: per section, shown plus omitted is equal.
+fn assert_same_items(name: &str, head: &Value, pinned: &Value) {
+    let sections = head["omitted_items"].as_object().unwrap();
+    assert!(!sections.is_empty(), "{name}");
+    for (section, head_omitted) in sections {
+        let total = |view: &Value, omitted: &Value| {
+            view[section].as_array().map_or(0, Vec::len) as u64 + omitted.as_u64().unwrap()
+        };
+        assert_eq!(
+            total(pinned, &pinned["omitted_items"][section]),
+            total(head, head_omitted),
+            "{name}: {section}"
+        );
+    }
+}
+
 /// The read is labelled historical at `pin`, with a newer latest head.
 fn assert_historical(name: &str, view: &Value, pin: &[String; 4]) {
     assert_eq!(view["historical"], true, "{name}: {view}");
@@ -149,11 +205,13 @@ fn a_pinned_read_after_later_commits_returns_the_old_view() {
     let (workspace, case) = scenario(directory.path());
     let pin = head_pin(&workspace, &case);
     let pin: Vec<&str> = pin.iter().map(String::as_str).collect();
-    let reads: [&[&str]; 4] = [
+    let reads: [&[&str]; 6] = [
         &["frontier"],
         &["next"],
         &["retrospective"],
         &["retrospective", "--draft"],
+        &["blindspots"],
+        &["blindspots", "--subject", CONCLUSION],
     ];
     let read = |tail: &[&str], pinned: bool| {
         let mut args = vec!["--case", case.as_str()];
@@ -167,7 +225,13 @@ fn a_pinned_read_after_later_commits_returns_the_old_view() {
     let gap = before[0]["gaps"][0]["gap_id"].as_str().unwrap().to_owned();
     let explain_before = read(&["frontier", "--explain", &gap], false);
     for view in before.iter().chain([&explain_before]) {
-        assert_eq!(view["historical"], false, "{view}");
+        // `blindspots` keeps its `inv.audit.v1` bytes at the head: no label.
+        let head = if view["schema_version"] == "inv.audit.v1" {
+            Value::Null
+        } else {
+            json!(false)
+        };
+        assert_eq!(view["historical"], head, "{view}");
     }
 
     commit_later_run(&workspace, &case, "snapshot-pin-later");
@@ -254,6 +318,7 @@ fn a_wrong_head_hash_is_refused() {
         &["next"],
         &["retrospective"],
         &["retrospective", "--draft"],
+        &["blindspots"],
     ] {
         let name = tail.join(" ");
         let mut args = vec!["--case", case.as_str()];
@@ -308,6 +373,91 @@ fn a_wrong_head_hash_is_refused() {
         args.extend(["--snapshot", &pin[1]]);
         assert_eq!(invoke(&workspace, &args, None).0, 2, "{args:?}");
     }
+}
+
+#[test]
+fn a_pinned_brief_or_explain_differs_from_the_head_only_by_its_label_current_use_and_budget() {
+    let directory = tempfile::tempdir().unwrap();
+    let (workspace, case) = scenario(directory.path());
+    let pin = head_pin(&workspace, &case);
+    let pin: Vec<&str> = pin.iter().map(String::as_str).collect();
+    let ample = "1000000";
+    let reads: Vec<Vec<&str>> = vec![
+        vec!["show", CONCLUSION, "--depth", "full"],
+        vec!["brief"],
+        vec!["brief", "--level", "deep"],
+        vec!["explain", case.as_str()],
+        vec!["explain", CONCLUSION],
+    ];
+    let read = |tail: &[&str], budget: Option<&str>, pinned: bool| {
+        let mut args = vec!["--case", case.as_str()];
+        args.extend(tail);
+        if let Some(budget) = budget {
+            args.extend(["--max-bytes", budget]);
+        }
+        if pinned {
+            args.extend(&pin);
+        }
+        json(&workspace, &args, 0)
+    };
+    let bounded = |tail: &[&str]| tail[0] != "show";
+    let budget = |tail: &[&str]| bounded(tail).then_some(ample);
+    let head: Vec<(Value, Value)> = reads
+        .iter()
+        .map(|tail| (read(tail, None, false), read(tail, budget(tail), false)))
+        .collect();
+
+    commit_later_run(&workspace, &case, "snapshot-pin-bounded");
+
+    let (mut current_uses, mut complete_reads) = (0, 0);
+    for (tail, (head_default, head_ample)) in reads.iter().zip(&head) {
+        let name = tail.join(" ");
+        let pinned_ample = read(tail, budget(tail), true);
+        assert_historical(&name, &pinned_ample, &head_pin_of(head_default));
+        // At the head, evidentiary use is today's use; nothing repeats it.
+        let mut uses = Vec::new();
+        every(head_ample, "current_evidentiary_use", &mut uses);
+        assert!(uses.is_empty(), "{name}: the head shows current use");
+        // A historical read adds today's use beside the use it recorded,
+        // which nothing has changed here.
+        every(&pinned_ample, "current_evidentiary_use", &mut uses);
+        for (record, current) in &uses {
+            assert_eq!(record["evidentiary_use"], **current, "{name}: {record}");
+        }
+        current_uses += uses.len();
+        // With room for everything, nothing else differs.
+        let strip = ["historical", "historical_read", "current_evidentiary_use"];
+        assert_eq!(
+            without(&pinned_ample, &strip),
+            without(head_ample, &strip),
+            "{name}: a pinned read with room for everything differs from the head"
+        );
+        if !bounded(tail) {
+            continue;
+        }
+        // Within the default budget the label and today's use take room, so
+        // the pinned read may keep fewer items, but it counts every one it
+        // leaves out and its complete read gives them all back.
+        let pinned_default = read(tail, None, true);
+        assert_same_items(&name, head_default, &pinned_default);
+        let bytes = serde_json::to_vec(&pinned_default).unwrap().len() + 1;
+        let limit: usize = if tail[0] == "brief" { 16_384 } else { 32_768 };
+        assert!(bytes <= limit, "{name}: {bytes} bytes");
+        if let Some(argv) = pinned_default["complete_read_argv"].as_array() {
+            let argv: Vec<&str> = argv.iter().map(|arg| arg.as_str().unwrap()).collect();
+            let complete = json(&workspace, &argv[1..], 0);
+            complete_reads += 1;
+            let strip = ["historical_read", "complete_read_argv"];
+            assert_eq!(
+                without(&complete, &strip),
+                without(&pinned_ample, &strip),
+                "{name}: the complete read is not the whole pinned read"
+            );
+        }
+    }
+    assert!(current_uses > 0, "no historical read showed current use");
+    // Scenario A's default brief is full, so some pinned read is cut.
+    assert!(complete_reads > 0, "no pinned read was cut by its budget");
 }
 
 /// Every inline `investigation ...` command of `text`, in order.
@@ -402,24 +552,27 @@ fn every_command_a_handoff_prints_runs_as_written_and_gives_the_pinned_view() {
                 continue;
             }
             let view = json(&workspace, args, 0);
-            let snapshot = if view["historical_read"].is_object() {
-                assert_historical(&name, &view, &pin);
-                &view["historical_read"]["snapshot"]
-            } else {
-                // `blindspots` names its snapshot without the label.
-                &view["snapshot"]
-            };
-            assert_eq!(snapshot["sequence"].to_string(), pin[1], "{name}");
-            assert_eq!(snapshot["head_hash"], pin[3].as_str(), "{name}");
-            if ["frontier", "next", "retrospective"].contains(&args[2]) {
-                let (mut old, mut new) = (unlabelled(before), unlabelled(&view));
+            assert_historical(&name, &view, &pin);
+            assert_eq!(view["snapshot"], before["snapshot"], "{name}");
+            let (mut old, mut new) = (unlabelled(before), unlabelled(&view));
+            match args[2] {
                 // Only the draft a pinned retrospective offers carries the pin.
-                if args[2] == "retrospective" {
+                "retrospective" => {
                     old.as_object_mut().unwrap().remove("next");
                     new.as_object_mut().unwrap().remove("next");
                 }
-                assert_eq!(old, new, "{name}");
+                "show" => {
+                    old = without(&old, &["current_evidentiary_use"]);
+                    new = without(&new, &["current_evidentiary_use"]);
+                }
+                // Bounded reads: see the brief and explain test below.
+                "brief" | "explain" => {
+                    assert_same_items(&name, before, &view);
+                    continue;
+                }
+                _ => {}
             }
+            assert_eq!(old, new, "{name}");
         }
     }
 }

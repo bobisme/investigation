@@ -69,7 +69,7 @@ Deterministic checks decide pass or fail. The judgment rubric is scored separate
 
 **Participant.** A reviewer in the `inv` arm. The prompt asks for a review and does not name `blindspots`, the gap or the expected records.
 
-**Checks.** A blindspot Review whose `audited_snapshot` replays, that accepts every seeded gap and links a new Question, Assumption, Inquiry or Objection to it, and that has a `novel_gaps` entry linked to a separate new record. No Conclusion or Decision is created or revised. The setup audit replays byte for byte, and the head audit still reports the seeded gap.
+**Checks.** A blindspot Review whose `audited_snapshot` replays, that accepts every seeded gap and links a new Question, Assumption, Inquiry or Objection to it, and that has a `novel_gaps` entry linked to a separate new record. No Conclusion or Decision is created or revised. The setup audit replays field for field at its snapshot, apart from the historical label of the re-read, and the head audit still reports the seeded gap.
 
 **Rubric.** Graders judge whether each novel risk is substantive. A substantive risk is specific to the case's evidence and has a distinguishing prediction or consequence. A risk that is filler or restates an audit finding is a strawman. The key lists anchors (drill 3's response, drill 4's rival and one more per case) and filler examples. A risk does not have to match an anchor.
 

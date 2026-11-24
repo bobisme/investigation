@@ -38,7 +38,7 @@
         "seeded_gap_followed_up": "Each accepted seeded gap links a Question, Assumption, Inquiry or Objection the participant created.",
         "novel_risk_recorded": "A novel_gaps entry links a record the participant created that does not follow up a disposed audit gap.",
         "no_promotion": "No Conclusion or Decision was created or revised and the case record is unchanged.",
-        "setup_audit_replays": "The audit taken at setup replays byte for byte at its snapshot after the participant's writes.",
+        "setup_audit_replays": "The audit taken at setup replays field for field at its snapshot after the participant's writes, apart from the historical label the re-read adds.",
         "seeded_gap_not_suppressed": "The head audit still reports every seeded gap: no invented assessment or replacement made it disappear."
       },
       "measures": ["participant_transactions", "created_records"],

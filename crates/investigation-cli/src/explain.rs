@@ -70,7 +70,10 @@ Contradicting assessments and open objections are walked first.
 
 --snapshot SEQUENCE [--head-hash DIGEST] walks the case as known at that head.
 Disclosure and byte availability follow today's audience, withdrawal and
-retention state.
+retention state, so evidence nodes also show current_evidentiary_use. The label
+and that field share --max-bytes, so a pinned walk can keep fewer nodes than the
+head's walk of the same snapshot; omitted counts each one and complete_read_argv
+reads them all.
 
 Examples:
   investigation explain <CONCLUSION_ID> --format json

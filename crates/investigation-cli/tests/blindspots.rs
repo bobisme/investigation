@@ -419,6 +419,18 @@ fn audits_are_bounded_deterministic_pinned_and_schema_valid() {
         None,
         0,
     );
+    // The earlier audit, labelled historical; the head's audit has no label.
+    let mut pinned: Value = serde_json::from_str(&pinned).unwrap();
+    assert_eq!(pinned["historical"], true, "{pinned}");
+    assert_eq!(
+        pinned["historical_read"]["snapshot"]["sequence"].to_string(),
+        pinned_at
+    );
+    let first: Value = serde_json::from_str(&first).unwrap();
+    assert!(first.get("historical").is_none(), "{first}");
+    let fields = pinned.as_object_mut().unwrap();
+    fields.remove("historical");
+    fields.remove("historical_read");
     assert_eq!(pinned, first);
     let unknown = run(
         root,

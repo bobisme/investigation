@@ -68,6 +68,19 @@ LAYERED = {"brief.compact", "brief.standard", "brief.delta", "show.title", "show
 DEEP = {"brief.deep", "show.full", "explain", "review-packet", "retrospective"}
 
 
+def unlabelled(raw):
+    """A blindspots audit without the label a historical re-read adds: the same
+    audit the head gave at that snapshot, field for field."""
+    try:
+        audit = json.loads(raw)
+    except ValueError:
+        return None
+    if isinstance(audit, dict):
+        audit.pop("historical", None)
+        audit.pop("historical_read", None)
+    return audit
+
+
 class Failed(Exception):
     pass
 
@@ -818,7 +831,7 @@ def grade9(root, baseline, instance, calls, answer):
     code, raw = inv.raw(["--read-only", "--case", baseline["case"], "blindspots", "--snapshot",
                          str(snapshot["sequence"]), "--head-hash", snapshot["head_hash"], "--format", "json"])
     raw = raw.replace(str(Path(root).resolve()), "<workspace>")
-    check(results, "setup_audit_replays", code == 0 and raw == baseline["audit"]["raw"])
+    check(results, "setup_audit_replays", code == 0 and unlabelled(raw) == json.loads(baseline["audit"]["raw"]))
     head, _ = inv.json(["--read-only", "--case", baseline["case"], "blindspots"])
     persisting = {check_["gap_id"] for check_ in head["checks"]}
     check(results, "seeded_gap_not_suppressed", seeded <= persisting,

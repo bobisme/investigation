@@ -218,6 +218,14 @@ pub struct AuditResponse {
     pub limits: String,
     /// Added by the command: the method card and review schema to continue with.
     pub follow_up_argvs: Vec<Vec<String>>,
+    /// Added by the command: true when `--snapshot` pins the audit before
+    /// the current head. Absent from an audit of the head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub historical: Option<bool>,
+    /// Added by the command to a historical audit: the pinned and latest
+    /// snapshots and the policy that disclosure follows today's state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub historical_read: Option<serde_json::Value>,
 }
 
 /// The published schema of [`AuditResponse`].
@@ -467,6 +475,20 @@ pub fn audit(
     case_id: Id,
     request: &AuditRequest,
 ) -> Result<AuditResponse, Failure> {
+    audit_disclosed(state, snapshot, case_id, request, state)
+}
+
+/// [`audit`] of a `state` pinned before the current head, whose findings
+/// withhold the records that the classification in `disclosure` (today's
+/// state) withholds, so a historical audit never names what today's audience
+/// policy hides.
+pub fn audit_disclosed(
+    state: &State,
+    snapshot: &Snapshot,
+    case_id: Id,
+    request: &AuditRequest,
+    disclosure: &State,
+) -> Result<AuditResponse, Failure> {
     let gaps = enumerate_gaps(state, snapshot, case_id)?;
     let freshness = FreshnessIndex::build(state, case_id);
     let context = AuditContext {
@@ -506,7 +528,7 @@ pub fn audit(
             .map(|reference| reference.id)
             .collect()
     });
-    let classifier = Classifier::new(state);
+    let classifier = Classifier::new(disclosure);
     let policy = AudiencePolicy::default();
     let withheld = |reference: &RevisionRef| {
         state
@@ -632,5 +654,7 @@ pub fn audit(
         checks_run,
         limits: LIMITS.into(),
         follow_up_argvs: Vec::new(),
+        historical: None,
+        historical_read: None,
     })
 }

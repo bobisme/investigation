@@ -58,7 +58,10 @@ disputed records, new gaps, retrospectives and stale synopses.
 
 --snapshot SEQUENCE [--head-hash DIGEST] reads the case as known at that head
 and labels the output historical. Disclosure and byte availability follow
-today's audience, withdrawal and retention state.
+today's audience, withdrawal and retention state, so evidence items also show
+current_evidentiary_use. The label and that field share --max-bytes, so a pinned
+brief can keep fewer items than the head's brief of the same snapshot; omitted
+counts each one and complete_read_argv reads them all.
 
 Examples:
   investigation brief --case <ID> --format json

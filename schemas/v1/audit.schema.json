@@ -426,6 +426,16 @@
       },
       "type": "array"
     },
+    "historical": {
+      "description": "Added by the command: true when `--snapshot` pins the audit before\nthe current head. Absent from an audit of the head.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "historical_read": {
+      "description": "Added by the command to a historical audit: the pinned and latest\nsnapshots and the policy that disclosure follows today's state."
+    },
     "limits": {
       "type": "string"
     },
