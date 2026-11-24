@@ -29,6 +29,72 @@ every feature a rendered vault uses is listed as emitted. A renderer change
 that adds a feature must add it to the profile first. Re-check the documentation
 and raise `supported_range.max` before relying on a newer release.
 
+## Integration gate
+
+The offline tests show what the files say. Whether a real viewer opens them the same way is
+the job of an optional gate, `scripts/obsidian-ui-check.py` (W12.07, plan §13.4: "No Obsidian
+automation is part of the core headless test suite"). It drives a running desktop app through
+the app's official command line interface. `just check` never runs it and needs no viewer; it
+runs the adapter's own tests against a fake CLI (`scripts/test-obsidian-ui-check.py`).
+
+```sh
+just obsidian-ui prepare ~/inv-ui     # no viewer involved
+# open ~/inv-ui/investigation-ui-check in the viewer once ("Open folder as vault");
+# keep Restricted Mode on, so no community plugin runs
+just obsidian-ui run ~/inv-ui         # report: target/obsidian-ui/report.{json,txt}
+```
+
+A sandboxed install of the viewer (a Flatpak, for example) opens only the folders it is
+granted, often just your home folder, so keep DIR there.
+
+`prepare` renders the Scenario A to D fixture workspaces into one dedicated vault, each under
+its own managed prefix (`Investigation/scenario-a` and so on, existing-vault mode). It adds one
+note of "the owner" with a deliberately unresolved link, and a `UI Check Probe/` folder of
+probe notes and Bases. It writes no viewer configuration and records the hash of every file in
+`DIR/expected.json`.
+
+`run` checks, and the report names the viewer release, the profile resolution, the vault and
+each result:
+
+| Check | What passes |
+|---|---|
+| `cli.version`, `profile.resolution` | `version` names a release, and `investigation doctor --viewer-release RELEASE` resolves it to the optional features |
+| `vault.target`, `vault.unchanged` | `vault=investigation-ui-check vault info=path` is exactly the prepared folder, whose files still hold their prepared bytes |
+| `plugins.community_disabled` | `plugins:enabled filter=community` is empty (Restricted Mode is only read, never toggled) |
+| `setup.*` | `investigation obsidian setup` previews the two keys and writes nothing; `--apply` changes only those keys of `app.json` and no other file of `.obsidian` (except the viewer's own `workspace.json`); after `reload` the viewer keeps both and creates a new link as a vault-root wikilink; a second apply changes nothing |
+| `viewer.files`, `notes.open`, `notes.aliases` | the viewer lists every prepared file; one note of each generated type opens as Markdown; each title alias is reported |
+| `links.anchors` | every excerpt anchor a link names is in the viewer's block cache |
+| `bases.rows` | `base:query path=... view=... format=paths` of each Base returns exactly the rows of its static table |
+| `bases.operators` | probe Bases: `!=` and `> 0` select as the offline evaluator does, and the frontier filter gives the same rows in either and-order; rows for an absent property are recorded, not judged |
+| `links.unresolved` | `unresolved verbose` names no source inside a managed prefix, and does name the owner's planted link |
+| `canvas.open` | each `Map.canvas` is listed, opens as a Canvas, and every file node resolves |
+
+Every call is an argv list, never a shell string. `vault=<name>` comes first and every file is
+named with `path=<exact vault path>`, never `file=`, as the CLI documentation advises. Three
+checks (active view, block cache, new-link form) use the CLI's `eval` with fixed JavaScript
+from the script; `--no-eval` skips them. Exit status: 0 when every check passes, and also when
+no CLI is found or it does not answer `version` (status `skipped`, with the reason); 1 when a
+check fails; 2 when the run cannot start (status `blocked`), for example when the vault has not
+been opened in the viewer yet.
+
+The commands used were checked against <https://obsidian.md/help/cli> on 2026-11-24 (the page
+carries no revision). It documents commands and parameters but not exit codes, error output,
+or the JSON shape of `unresolved` and `eval`; the script fails a check on output it does not
+understand and keeps the raw output in the report. The CLI needs the 1.12 installer or later,
+and "if Obsidian is not running, the first command you run launches Obsidian". On Linux the
+app registers the CLI by copying it to `~/.local/bin/obsidian`; pass `--obsidian PATH` (and
+`--obsidian-arg` for a launcher's own arguments) when the `obsidian` on `PATH` is something
+else.
+
+`timings --vault VAULT [--samples N] [--allow-restart]` measures the viewer side of the vault
+load test against a vault kept by `just load-test DIR --cases 130` (pass
+`DIR/viewer_1_15_1/vault`): CLI round trip, one Base query, Canvas open, search, and window
+reload until every file is listed. A cold open needs `--allow-restart`, because `restart`
+restarts the whole app. The report ends with a table in the form of `docs/vault-load.md`.
+
+When the gate has passed on a release, record that release in `compatibility-profile.json`
+(`pinned_release.verification` becomes `integration`).
+
 ## Native Bases
 
 The renderer can plan one native Base beside each static table view, at

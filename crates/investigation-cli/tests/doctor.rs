@@ -310,3 +310,58 @@ fn doctor_writes_nothing_and_runs_in_read_only_mode() {
     let refused = casework.run_in(&casework.root, &["doctor", "bundle"], 2);
     assert_eq!(refused["error"]["code"], "INVALID_INPUT");
 }
+
+/// W12.07: `--viewer-release` reports the bundled compatibility profile's
+/// resolution of a stated release, the integration gate's doctor-style
+/// record. Without the flag the report has no viewer section.
+#[test]
+fn a_stated_viewer_release_is_resolved_against_the_bundled_profile() {
+    let casework = Casework::new(false);
+    assert!(casework.run(&["doctor"]).get("viewer").is_none());
+
+    let inside = casework.run(&["doctor", "--viewer-release", "1.15.0"]);
+    let viewer = &inside["viewer"];
+    assert_eq!(viewer["stated_release"], "1.15.0");
+    assert_eq!(viewer["resolved_release"], "1.15.0");
+    assert_eq!(viewer["level"], "optional");
+    let allowed: Vec<&str> = viewer["allowed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|id| id.as_str().unwrap())
+        .collect();
+    for id in [
+        "base.file",
+        "base.filters",
+        "canvas.file",
+        "canvas.labeled_edges",
+    ] {
+        assert!(allowed.contains(&id), "{id}: {allowed:?}");
+    }
+    assert_eq!(viewer["withheld"], serde_json::json!([]));
+    assert_eq!(viewer["profile"]["supported_range"]["max"], "1.15.1");
+
+    for outside in ["1.12.6", "9.0.0", "not a release"] {
+        let report = casework.run(&["doctor", "--viewer-release", outside]);
+        let viewer = &report["viewer"];
+        assert_eq!(viewer["level"], "baseline", "{outside}");
+        assert!(viewer["resolved_release"].is_null(), "{outside}");
+        assert_eq!(viewer["allowed"], serde_json::json!([]), "{outside}");
+        assert!(
+            viewer["withheld"]
+                .as_array()
+                .unwrap()
+                .contains(&"base.file".into()),
+            "{outside}"
+        );
+    }
+    let text = casework.stdout_in(
+        &casework.root,
+        &["doctor", "--viewer-release", "1.15.0", "--format", "text"],
+        0,
+    );
+    assert!(
+        text.contains("\nviewer release  1.15.0  optional"),
+        "{text}"
+    );
+}

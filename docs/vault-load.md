@@ -58,6 +58,8 @@ Cases are planned in parallel, and the snapshot read keeps each case's state but
 
 The acceptance for this bone also names Obsidian's own behaviour: cold open, a Base query for one case, Canvas open and search. The harness runs headless and does not drive Obsidian. Those figures are not in this page and must not be inferred from it. When someone measures them, record the Obsidian release, the machine, the vault (use `--fixtures` to keep the generated one), and counts, repetitions and order, as the harness does.
 
+`scripts/obsidian-ui-check.py timings` (W12.07) measures them through the viewer's CLI, outside `just check`, against a kept vault: `TMPDIR=/var/tmp just load-test ~/vault-load-10k --cases 130 --samples 1` (under your home folder, so a sandboxed viewer can open it), open `~/vault-load-10k/viewer_1_15_1/vault` in the viewer once, then `just obsidian-ui timings --vault ~/vault-load-10k/viewer_1_15_1/vault --samples 5` (add `--allow-restart` for cold opens; it restarts the whole app). It writes `target/obsidian-ui/timings.json` and a table in this page's form, with the release, machine, counts, samples and order. No such run is recorded yet (see obsidian/README.md, "Integration gate").
+
 ## Guidance
 
 - Tested scale: up to 49,401 generated notes in one vault and 650 cases. Below about 5,000 notes every measured command finished within a few seconds on this machine, apart from the first render. Treat 10,000 notes as the point where a full render takes minutes and commits and reads take about a second.

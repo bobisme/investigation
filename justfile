@@ -64,6 +64,18 @@ load-test dir *options:
     cargo build --release --locked -p investigation-cli -p investigation-bench
     target/release/investigation-bench --load --fixtures {{dir}} {{options}}
 
+# Optional real-viewer gate (W12.07, plan §13.4): drives a running Obsidian
+# through its official CLI. Not part of `check`, which tests this adapter only
+# against a fake CLI. `prepare DIR` needs no viewer; `run DIR` and `timings`
+# call the CLI, which launches the app if it is not running, and skip with exit
+# 0 when no CLI is found. See obsidian/README.md, "Integration gate".
+# e.g. `just obsidian-ui prepare ~/inv-ui`, open
+# ~/inv-ui/investigation-ui-check in the viewer once, then
+# `just obsidian-ui run ~/inv-ui`. Reports go to target/obsidian-ui/.
+obsidian-ui *options:
+    cargo build --locked -p investigation-cli
+    python3 -B scripts/obsidian-ui-check.py --bin target/debug/investigation {{options}}
+
 # Release candidate package for Linux x86_64 (REL.04): builds the committed
 # tree twice at different paths (locked, offline, SOURCE_DATE_EPOCH, host
 # paths remapped), fails unless both are byte-identical, and writes the

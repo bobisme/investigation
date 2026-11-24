@@ -31,8 +31,9 @@ use investigation_core::{
 };
 use investigation_recording::{CAPABILITIES_VERSION, CaptureCapabilities};
 use investigation_render::{
-    Generation, MANIFEST_VERSION, RENDERER_VERSION, VaultState, VerifiedSnapshot, vault_status,
-    working_policy,
+    Generation, MANIFEST_VERSION, RENDERER_VERSION, VaultState, VerifiedSnapshot,
+    compat::{Profile, Tier},
+    vault_status, working_policy,
 };
 use investigation_store::{
     Store, Workspace,
@@ -61,8 +62,11 @@ the selected workspace's index, staging, lock, archive pin and vault state.
 Each finding
 names a repair. It writes nothing, probes no external tool and uploads nothing;
 a workspace it cannot use is reported as a finding with exit status 0.
+--viewer-release RELEASE adds how the bundled viewer compatibility profile
+resolves a release you state (doctor never probes a viewer to find it).
 Examples:
   investigation doctor --format json
+  investigation doctor --viewer-release 1.15.1 --format json
   investigation doctor bundle --preview --format json";
 
 const BUNDLE_HELP: &str = "\
@@ -75,6 +79,9 @@ Example: investigation doctor bundle --preview --format json";
 pub(crate) struct Args {
     #[command(subcommand)]
     command: Option<DoctorCommand>,
+    /// Also report how the bundled viewer compatibility profile resolves this stated release.
+    #[arg(long, value_name = "RELEASE")]
+    viewer_release: Option<String>,
 }
 
 #[derive(clap::Subcommand)]
@@ -149,7 +156,10 @@ struct Report {
 }
 
 pub(crate) fn run(args: Args, global: &Global) -> Result<Output, Failure> {
-    let report = diagnose(global, &NativeFilesystemDetector)?;
+    let mut report = diagnose(global, &NativeFilesystemDetector)?;
+    if let Some(release) = &args.viewer_release {
+        report.value["viewer"] = viewer_compat(release);
+    }
     match args.command {
         None => Ok(doctor_output(report)),
         Some(DoctorCommand::Bundle { preview }) => {
@@ -234,6 +244,50 @@ fn diagnose(global: &Global, detector: &dyn FilesystemDetector) -> Result<Report
         value,
         findings,
         private_paths,
+    })
+}
+
+/// How the bundled compatibility profile resolves a viewer release the caller
+/// states: the profile's pinned release and range, and the optional features
+/// that release would allow. Pure; nothing contacts a viewer.
+pub(crate) fn viewer_compat(stated: &str) -> Value {
+    let profile = Profile::bundled();
+    let resolved = profile.resolve(Some(stated));
+    let optional: Vec<&str> = profile
+        .features
+        .iter()
+        .filter(|feature| feature.tier == Tier::Optional)
+        .map(|feature| feature.id.as_str())
+        .collect();
+    let level = if resolved.release.is_some() {
+        "optional"
+    } else {
+        "baseline"
+    };
+    json!({
+        "stated_release": stated,
+        "profile": {
+            "schema": profile.schema,
+            "revision": profile.profile_revision,
+            "pinned_release": profile.pinned_release.version,
+            "verification": profile.pinned_release.verification,
+            "supported_range": {
+                "min": profile.supported_range.min,
+                "max": profile.supported_range.max,
+            },
+        },
+        "resolved_release": resolved.release,
+        "level": level,
+        "allowed": resolved.optional,
+        "withheld": optional
+            .iter()
+            .filter(|id| !resolved.optional.contains(**id))
+            .collect::<Vec<_>>(),
+        "reason": if resolved.release.is_some() {
+            "inside the supported range: the optional features allowed are listed"
+        } else {
+            "absent, unparseable or outside the supported range: plain Markdown only"
+        },
     })
 }
 
@@ -854,6 +908,20 @@ fn doctor_output(report: Report) -> Output {
                 workspace["vault"]["freshness"].as_str().unwrap_or("")
             ));
         }
+    }
+    if let Some(viewer) = value.get("viewer") {
+        text.push_str(&format!(
+            "\nviewer release  {}  {}  ({} optional feature(s); profile {}..{})",
+            viewer["stated_release"].as_str().unwrap_or(""),
+            viewer["level"].as_str().unwrap_or(""),
+            viewer["allowed"].as_array().map_or(0, Vec::len),
+            viewer["profile"]["supported_range"]["min"]
+                .as_str()
+                .unwrap_or(""),
+            viewer["profile"]["supported_range"]["max"]
+                .as_str()
+                .unwrap_or(""),
+        ));
     }
     for finding in &findings {
         text.push_str(&format!(
