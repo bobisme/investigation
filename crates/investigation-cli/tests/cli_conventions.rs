@@ -446,8 +446,28 @@ fn prose_in_the_command_position_is_answered_with_the_first_steps() {
         ),
         "{message}"
     );
+    // With no workspace near, the repair is the first step itself (bn-gef3);
+    // beside a workspace it is onboard, which names that workspace's next step.
     assert_eq!(
         prose["error"]["repair"]["argv"],
+        json!([
+            "investigation",
+            "init",
+            "./casework",
+            "--actor",
+            "agent:investigator",
+            "--no-vault",
+            "--import-root",
+            ".",
+            "--format",
+            "json"
+        ])
+    );
+    std::fs::create_dir(cwd.join("casework")).unwrap();
+    std::fs::write(cwd.join("casework/investigation.toml"), "").unwrap();
+    let beside = json(cwd, &["Initial discovery of the source"], 2);
+    assert_eq!(
+        beside["error"]["repair"]["argv"],
         json!(["investigation", "onboard", "--format", "json"])
     );
     // An unknown word points at the operations; its repair stays the root help.
@@ -553,4 +573,140 @@ fn text_values_may_start_with_a_hyphen() {
         let receipt = json(cwd, &argv, 0);
         assert_eq!(receipt["result"], "committed", "{receipt}");
     }
+}
+
+/// bn-gef3: the run-4 help-only misses. A command written as a flag, a
+/// workspace path where the command expects its own argument, and a file
+/// given to `source` without `add` each get a refusal whose repair is the
+/// command that works; `source add` in a workspace with no case repairs to
+/// `start` with the same file.
+#[test]
+fn first_use_slips_of_the_help_only_runs_repair_to_the_working_command() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path().canonicalize().unwrap();
+    let cwd = cwd.as_path();
+    std::fs::write(cwd.join("source.txt"), "one line\n").unwrap();
+
+    let flag = json(cwd, &["--init", "Investigation into the overbaking"], 2);
+    let message = flag["error"]["message"].as_str().unwrap();
+    assert!(
+        message.starts_with("--init is not an option: init is a command"),
+        "{message}"
+    );
+    assert_eq!(flag["error"]["repair"]["argv"][1], json!("init"));
+    let other = json(cwd, &["--brief"], 2);
+    assert_eq!(
+        other["error"]["repair"]["argv"],
+        json!(["investigation", "brief", "--help", "--format", "json"])
+    );
+    // An unknown flag that names no command keeps the generic refusal.
+    let bogus = json(cwd, &["--bogus"], 2);
+    assert_eq!(
+        bogus["error"]["repair"]["argv"],
+        json!(["investigation", "--help", "--format", "json"])
+    );
+
+    let init = invoke(
+        cwd,
+        &[
+            "init",
+            "ws",
+            "--no-vault",
+            "--import-root",
+            ".",
+            "--format",
+            "json",
+        ],
+        &[],
+        b"",
+    );
+    assert_eq!(init.status.code(), Some(0), "{init:?}");
+    let source = cwd.join("source.txt").display().to_string();
+    let positional = json(
+        cwd,
+        &[
+            "start",
+            "ws",
+            "--actor",
+            ACTOR,
+            "What happened?",
+            "--attach",
+            &source,
+        ],
+        2,
+    );
+    let repair: Vec<String> =
+        serde_json::from_value(positional["error"]["repair"]["argv"].clone()).unwrap();
+    assert_eq!(
+        repair,
+        [
+            "investigation",
+            "--workspace",
+            "ws",
+            "--format",
+            "json",
+            "start",
+            "--actor",
+            ACTOR,
+            "What happened?",
+            "--attach",
+            &source
+        ]
+    );
+    assert!(
+        positional["error"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("ws is a workspace"),
+        "{positional}"
+    );
+
+    let bare = json(cwd, &["--workspace", "ws", "source", &source], 2);
+    let repair: Vec<String> =
+        serde_json::from_value(bare["error"]["repair"]["argv"].clone()).unwrap();
+    assert_eq!(
+        repair,
+        [
+            "investigation",
+            "--format",
+            "json",
+            "--workspace",
+            "ws",
+            "source",
+            "add",
+            &source
+        ]
+    );
+    let no_case = json(
+        cwd,
+        &[
+            "--workspace",
+            "ws",
+            "--actor",
+            ACTOR,
+            "source",
+            "add",
+            &source,
+        ],
+        3,
+    );
+    let repair: Vec<String> =
+        serde_json::from_value(no_case["error"]["repair"]["argv"].clone()).unwrap();
+    assert_eq!(
+        &repair[3..],
+        [
+            "--actor", ACTOR, "start", "QUESTION", "--attach", &source, "--format", "json"
+        ]
+    );
+    // The repaired start runs.
+    let mut start = repair[1..].to_vec();
+    let question = start.iter().position(|word| word == "QUESTION").unwrap();
+    start[question] = "What happened?".to_owned();
+    let started = invoke(
+        cwd,
+        &start.iter().map(String::as_str).collect::<Vec<_>>(),
+        &[],
+        b"",
+    );
+    assert_eq!(started.status.code(), Some(0), "{started:?}");
 }

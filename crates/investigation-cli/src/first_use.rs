@@ -588,6 +588,207 @@ pub(crate) fn attachment_path(workspace: &Workspace, path: &Path) -> PathBuf {
     path.to_owned()
 }
 
+/// The repair for prose in the command position: `init` when no workspace
+/// encloses or sits beside the working directory, else `onboard`, which
+/// names the workspace's next step.
+pub(crate) fn prose_repair() -> Vec<String> {
+    let enclosing = env::current_dir().is_ok_and(|cwd| {
+        cwd.ancestors()
+            .any(|dir| dir.join("investigation.toml").is_file())
+    });
+    if enclosing || !nearby_workspaces().is_empty() {
+        argv(&[PROGRAM_NAME, "onboard", "--format", "json"])
+    } else {
+        init_argv()
+    }
+}
+
+/// The `init` command of the first step, as an argv.
+fn init_argv() -> Vec<String> {
+    argv(&[
+        PROGRAM_NAME,
+        "init",
+        "./casework",
+        "--actor",
+        EXAMPLE_ACTOR,
+        "--no-vault",
+        "--import-root",
+        ".",
+        "--format",
+        "json",
+    ])
+}
+
+/// Repairs for parse errors that cost help-only agents their first calls in
+/// the W17.03 runs (bn-gef3): a command written as a flag (`--init`), a
+/// workspace path given where the command expects its own argument
+/// (`start ./casework 'QUESTION'`), and a file given to `source` without
+/// its subcommand. `None` leaves the error to the generic refusal.
+pub(crate) fn parse_repair(
+    error: &clap::Error,
+    root: &clap::Command,
+    args: &[OsString],
+) -> Option<Failure> {
+    let words: Vec<String> = args
+        .iter()
+        .skip(1)
+        .map(|arg| arg.to_str().map(str::to_owned))
+        .collect::<Option<_>>()?;
+    match error.kind() {
+        clap::error::ErrorKind::UnknownArgument => {
+            command_as_flag(error, root, &words).or_else(|| workspace_as_argument(root, &words))
+        }
+        clap::error::ErrorKind::InvalidSubcommand => source_without_subcommand(error, &words),
+        _ => None,
+    }
+}
+
+/// `investigation --init ...`: a root command written as a flag.
+fn command_as_flag(error: &clap::Error, root: &clap::Command, words: &[String]) -> Option<Failure> {
+    let clap::error::ContextValue::String(flag) =
+        error.get(clap::error::ContextKind::InvalidArg)?
+    else {
+        return None;
+    };
+    let name = flag.strip_prefix("--")?.split('=').next()?;
+    let command = root.find_subcommand(name)?;
+    let at = words
+        .iter()
+        .position(|word| word == flag || word.starts_with(&format!("{flag}=")))?;
+    if words[..at]
+        .iter()
+        .any(|word| root.find_subcommand(word).is_some())
+    {
+        return None;
+    }
+    let name = command.get_name();
+    let repair = if matches!(name, "init" | "start") {
+        init_argv()
+    } else {
+        argv(&[PROGRAM_NAME, name, "--help", "--format", "json"])
+    };
+    let message = format!(
+        "{flag} is not an option: {name} is a command, written without dashes. To start a case \
+         from a local file:\n  {}\n  {PROGRAM_NAME} --workspace ./casework --actor {EXAMPLE_ACTOR} \
+         start 'QUESTION' --attach FILE --format json",
+        init_argv().join(" ")
+    );
+    Some(Failure::new(ErrorCode::InvalidInput, message).with_argv(repair))
+}
+
+/// Whether `path` is the root of a workspace.
+fn is_workspace(path: &str) -> bool {
+    Path::new(path).join("investigation.toml").is_file()
+}
+
+/// `investigation start ./casework 'QUESTION' ...`: a workspace path where
+/// the command expects its own positional argument. The repair names it
+/// with `--workspace` and keeps every other word.
+fn workspace_as_argument(root: &clap::Command, words: &[String]) -> Option<Failure> {
+    if words
+        .iter()
+        .any(|word| word == "--workspace" || word.starts_with("--workspace="))
+    {
+        return None;
+    }
+    // Long options of the whole tree that take a value, so that a value is
+    // never taken for a positional argument.
+    fn valued(command: &clap::Command, out: &mut Vec<String>) {
+        for arg in command.get_arguments() {
+            if let Some(long) = arg.get_long()
+                && arg.get_action().takes_values()
+            {
+                out.push(format!("--{long}"));
+            }
+        }
+        for sub in command.get_subcommands() {
+            valued(sub, out);
+        }
+    }
+    let mut flags = Vec::new();
+    valued(root, &mut flags);
+    let mut command = root;
+    let mut skip = false;
+    let mut found = None;
+    for (index, word) in words.iter().enumerate() {
+        if std::mem::take(&mut skip) {
+            continue;
+        }
+        if word.starts_with('-') {
+            skip = flags.contains(word);
+            continue;
+        }
+        if let Some(sub) = command.find_subcommand(word) {
+            command = sub;
+            continue;
+        }
+        if command.get_name() == "init" {
+            return None;
+        }
+        if is_workspace(word) {
+            found = Some(index);
+            break;
+        }
+    }
+    let index = found?;
+    let path = &words[index];
+    let mut repair = argv(&[PROGRAM_NAME, "--workspace", path]);
+    repair.extend(
+        words
+            .iter()
+            .enumerate()
+            .filter(|(at, _)| *at != index)
+            .map(|(_, word)| word.clone()),
+    );
+    let message = format!(
+        "{path} is a workspace. Name it with --workspace {path} before the command; the \
+         command's own arguments, such as the QUESTION of start, follow the command."
+    );
+    Some(Failure::new(ErrorCode::InvalidInput, message).with_argv(repair))
+}
+
+/// `investigation source FILE`: `source` needs its subcommand, `add`.
+fn source_without_subcommand(error: &clap::Error, words: &[String]) -> Option<Failure> {
+    let clap::error::ContextValue::String(word) =
+        error.get(clap::error::ContextKind::InvalidSubcommand)?
+    else {
+        return None;
+    };
+    let at = words.iter().position(|each| each == word)?;
+    if at == 0 || words[at - 1] != "source" || !Path::new(word).is_file() {
+        return None;
+    }
+    let mut repair = vec![PROGRAM_NAME.to_owned()];
+    repair.extend(words[..at].iter().cloned());
+    repair.push("add".to_owned());
+    repair.extend(words[at..].iter().cloned());
+    let message = format!(
+        "source takes a subcommand: source add {word} retains the file in an existing case. \
+         With no case yet, {PROGRAM_NAME} start 'QUESTION' --attach {word} opens a case and \
+         retains the file in one transaction."
+    );
+    Some(Failure::new(ErrorCode::InvalidInput, message).with_argv(repair))
+}
+
+/// For `source add FILE` in a workspace with no case: the `start` command
+/// that opens a case and retains the same file.
+pub(crate) fn start_for_source_add(workspace_argv: Vec<String>) -> Option<Vec<String>> {
+    let words: Vec<String> = env::args_os()
+        .skip(1)
+        .map(|arg| arg.into_string().ok())
+        .collect::<Option<_>>()?;
+    let at = words
+        .windows(2)
+        .position(|pair| pair == ["source", "add"])?;
+    let file = words.get(at + 2).filter(|word| !word.starts_with('-'))?;
+    let mut argv = workspace_argv;
+    if let Some(actor) = words.windows(2).find(|pair| pair[0] == "--actor") {
+        argv.extend(actor.iter().cloned());
+    }
+    argv.extend(["start", "QUESTION", "--attach", file, "--format", "json"].map(str::to_owned));
+    Some(argv)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

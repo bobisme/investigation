@@ -1,0 +1,42 @@
+{
+  "schema": "first-use-targets.v1",
+  "bone": "bn-gef3 (W17.03b, hosted-agent arm)",
+  "preregistered": "2026-11-24, committed before any measured hosted run",
+  "host": "Claude Code in print mode, model alias haiku; the host and model version strings each session reports are recorded per assignment",
+  "arms": [
+    "docs",
+    "help-only"
+  ],
+  "baseline": "docs",
+  "treatment": "help-only",
+  "assignments_per_arm": 12,
+  "rule": "The help-only arm meets the W17.03 target under the hosted agent when every target below is met. Counts are assignments out of 12 per arm: six comparison cases, two replicates (claude-haiku-a, claude-haiku-b), matched by case, replicate and seed.",
+  "targets": {
+    "receipt": {
+      "measure": "receipt_within_three_after_contact",
+      "margin": 2,
+      "min": 6,
+      "text": "Persisted Source and Case within three calls after first CLI contact: help-only >= docs - 2, and help-only >= 6/12."
+    },
+    "handoff": {
+      "measure": "source_linked_handoff",
+      "margin": 2,
+      "text": "Source-linked handoff (persisted record, answer cites a decisive line and states the limitation): help-only >= docs - 2."
+    },
+    "unsupported_claims": {
+      "measure": "unwarranted_claims",
+      "max": 0,
+      "text": "Assignments whose successor answer matches a false-promotion pattern: help-only = 0/12."
+    },
+    "refused_share": {
+      "measure": "refused_call_share",
+      "max_increase": 0.1,
+      "text": "Friction budget 1: refused investigator CLI calls / investigator CLI calls, help-only <= docs + 0.10."
+    },
+    "recovery": {
+      "measure": "refused_unstuck",
+      "max_decrease": 0.1,
+      "text": "Friction budget 2: share of refused CLI calls (both phases) after which a later call of the same command succeeds, help-only >= docs - 0.10."
+    }
+  }
+}

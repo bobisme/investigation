@@ -90,6 +90,19 @@ use selection::{
 };
 use views::ViewDepth;
 
+/// The two first commands, printed right under the one-line description and
+/// before the command list. In the W17.03 help-only runs, agents that read
+/// `--help | head -50` never reached the examples after the option list.
+const START_HERE: &str = "\
+Start here: two commands open a case on a file in the working directory.
+  investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json
+  investigation --workspace ./casework --actor agent:investigator start 'QUESTION' --attach ./FILE --format json
+init takes the new workspace's path; every later command names it with --workspace.";
+
+/// The root help: description, [`START_HERE`], then clap's usual sections.
+const ROOT_TEMPLATE: &str =
+    "{about-with-newline}\n{before-help}{usage-heading} {usage}\n\n{all-args}{after-help}";
+
 const FIRST_STEPS: &str = "\
 Use investigation when a question needs multiple observations, a comparison, or a handoff.
 The workspace preserves evidence and attributed revisions. Writes return a durable receipt.
@@ -128,6 +141,8 @@ the failure names its cause in error.code and its retry in error.repair.";
     name = PROGRAM_NAME,
     version,
     about = "Preserve evidence, test explanations, and evaluate options.",
+    before_help = START_HERE,
+    help_template = ROOT_TEMPLATE,
     after_help = FIRST_STEPS,
     color = ColorChoice::Never,
     arg_required_else_help = true
@@ -1338,7 +1353,7 @@ fn main() -> ExitCode {
     let format = requested_format(&args);
     let parser = help_teach::command_tree();
     let help = help_argv(&parser, &args);
-    let parsed = parser.try_get_matches_from(args);
+    let parsed = parser.clone().try_get_matches_from(&args);
     let output = match parsed {
         Ok(mut matches) => {
             // `open_workspace` refuses a write this program must not make
@@ -1355,7 +1370,8 @@ fn main() -> ExitCode {
                 }
             }
         }
-        Err(error) => parse_error(error, help),
+        Err(error) => first_use::parse_repair(&error, &parser, &args)
+            .map_or_else(|| parse_error(error, help), Output::failure),
     };
 
     // Authored and recorded text never reaches a terminal with a literal
@@ -1430,12 +1446,7 @@ fn parse_error(error: clap::Error, help: Vec<String>) -> Output {
                 .map(ToString::to_string)
                 .unwrap_or_default();
             let (advice, repair) = if word.contains(char::is_whitespace) {
-                (
-                    ROOT_PROSE_ADVICE,
-                    [PROGRAM_NAME, "onboard", "--format", "json"]
-                        .map(str::to_owned)
-                        .to_vec(),
-                )
+                (ROOT_PROSE_ADVICE, first_use::prose_repair())
             } else {
                 (ROOT_WORD_ADVICE, help)
             };

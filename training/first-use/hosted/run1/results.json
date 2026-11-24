@@ -1,0 +1,5173 @@
+{
+  "schema": "first-use-results.v1",
+  "runs": [
+    {
+      "directory": "run1",
+      "role": "comparison",
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "seed": 51701,
+      "models": {
+        "claude-haiku-a": {
+          "host": "claude",
+          "host_version": "2.1.331 (Claude Code)",
+          "model": "haiku"
+        },
+        "claude-haiku-b": {
+          "host": "claude",
+          "host_version": "2.1.331 (Claude Code)",
+          "model": "haiku"
+        }
+      },
+      "binaries": {
+        "docs": {
+          "path": "investigation-e5681dd",
+          "sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+          "commit": "e5681ddb"
+        },
+        "help-only": {
+          "path": "investigation-e5681dd",
+          "sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+          "commit": "e5681ddb"
+        }
+      },
+      "runner_sha256": "052d30b89d4f6c3f64c7cd52907b5b64392306137d24a3c9d2af26075847c99b",
+      "fixture_commit": "bd3ba664a96358ff106310285b98ab5386aa7e61",
+      "blocks": [
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-a",
+          "block_seed": 745346620,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "claude-haiku-a",
+          "block_seed": 2124881018,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-a",
+          "block_seed": 1557843569,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "claude-haiku-a",
+          "block_seed": 1081929851,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-a",
+          "block_seed": 1592218822,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "claude-haiku-a",
+          "block_seed": 545735307,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "claude-haiku-b",
+          "block_seed": 897622071,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-b",
+          "block_seed": 1411254907,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-b",
+          "block_seed": 1779656773,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "claude-haiku-b",
+          "block_seed": 589334537,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "claude-haiku-b",
+          "block_seed": 365780597,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "claude-haiku-b",
+          "block_seed": 1706133070,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        }
+      ],
+      "docs_page": {
+        "argv": [
+          "investigation",
+          "docs",
+          "agents"
+        ],
+        "file": "/work/AGENTS.md",
+        "sha256": "aa52aeb92bde4abfd54ff1e9a2f3b04caa757bd9ef7d8cb418d369d0b8dec665",
+        "bytes": 6398
+      }
+    }
+  ],
+  "assignments": [
+    {
+      "id": "e13e162f-442c-409d-b561-ca54386ef8c6",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 120391,
+        "input_tokens": 60,
+        "output_tokens": 22710,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 26,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 68702,
+        "input_tokens": 32,
+        "output_tokens": 13604,
+        "cli_calls": 14,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 12,
+        "question.create": 1,
+        "option.create": 3,
+        "criterion.create": 3
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          17
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 189093,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 1,
+          "schema": 12,
+          "docs": 0
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 1,
+          "schema": 5,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 4,
+          "verb": "schema",
+          "command": "investigation --workspace ./casework brief --format json 2>&1 | head -c 6000; echo; echo '---'; investigation --workspace ./casework schema observe 2>&1 | head -c 2000",
+          "cause": "{\"case\":{\"basis_revision\":1,\"closure_outcome\":null,\"contradi",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "evidence read",
+          "command": "investigation schema observation.add --format json 2>&1 | head -c 2500; echo; echo '---A2'; investigation --workspace ./casework evidence read art_01a20f3b-7871-7df0-8a99-d0a692e6d728 --lines 1:5 2>&1 | head -c 800; echo; echo '---A3'; inve",
+          "cause": "{\"available\":true,\"effects\":\"Record an attributed Observatio",
+          "hint": "investigation schema evidence-selector",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "mkdir -p /tmp/inv && cat > /tmp/inv/tx1.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"tx_choir_eval_01\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f3b-7871-7df0-8a99-d074f395345b\",\n  \"preconditions\": [",
+          "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "record",
+          "command": "cd /tmp/inv && python3 -I -c '\nimport json\nd=json.load(open(\"/tmp/inv/tx1.json\"))\nfor op in d[\"operations\"]:\n    op[\"payload\"].pop(\"preferred_direction\",None)\njson.dump(d,open(\"/tmp/inv/tx1.json\",\"w\"),indent=1)\nprint(\"ok\")' && cd /work && i",
+          "cause": "INVALID_INPUT /operations/4/payload Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 5,
+          "verb": "(unknown)",
+          "command": "C=case_01a20f3b-7871-7df0-8a99-d074f395345b; W=\"--workspace /work/casework --case $C\"; investigation $W --help 2>&1 | head -60; echo ---; investigation $W frontier 2>&1 | head -c 5000; echo ---; investigation $W next 2>&1 | head -c 5000",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "b23afaeb-d269-4681-a8fe-201cf3b13c06",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 109072,
+        "input_tokens": 60,
+        "output_tokens": 20654,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 27,
+        "cli_error_calls": 6,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 32205,
+        "input_tokens": 10,
+        "output_tokens": 6078,
+        "cli_calls": 4,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 12,
+        "question.create": 1,
+        "option.create": 3,
+        "criterion.create": 3,
+        "comparison.add": 9,
+        "conclusion.create": 1,
+        "decision.propose": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          12,
+          17
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 141277,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 15,
+          "docs": 1
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f3e-6512-7a11-b47d-ba771e998218\"; S=src_01a20f3e-6512-7a11-b47d-ba85174ff836\ninvestigation $W observe 'Hard requirement H1: every singer must get the current score wi",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "record",
+          "command": "cd /tmp/choir && sed -i 's/\"preconditions\":\\[{\"kind\":\"snapshot\",\"sequence\":9}\\] ,/\"preconditions\":[],/' build.py && python3 -I build.py && investigation --workspace /work/casework --actor agent:investigator record --input /tmp/choir/tx1.jso",
+          "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "record",
+          "command": "cd /tmp/choir && sed -i 's/\"hard\",\"none\"/\"hard\",\"unordered\"/' build.py && python3 -I build.py && cd /work && investigation --workspace /work/casework --actor agent:investigator record --input /tmp/choir/tx1.json --format json 2>&1 | head -c",
+          "cause": "INVALID_INPUT /operations/4/payload/threshold A hard criterion requires a checkable threshold.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "cd /tmp/choir && python3 - <<'EOF'\nimport re\nsrc=open('build.py').read()\nsrc=src.replace('\"preferred_direction\":dirn}, cref)',\n '\"preferred_direction\":dirn, **({\"threshold\":{\"kind\":\"qualitative\",\"requirement\":name}} if kind==\"hard\" else {\"t",
+          "cause": "INVALID_INPUT /operations/17/payload/evidence_refs/0 Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "record",
+          "command": "cd /tmp/choir && python3 - <<'EOF'\nsrc=open('build.py').read()\nsrc=src.replace(' \"evidence_refs\":[OBS[\"o2link\"],OBS[\"o1sign\"],OBS[\"noemail\"],OBS[\"survey\"],OBS[\"unknown\"]],',\n ' \"evidence_refs\":[{\"id\":OBS[k],\"revision\":1} for k in [\"o2link\",",
+          "cause": "GATE_FAILED /operations/17/payload/choice Selected option must be among alternatives.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "blindspots",
+          "command": "investigation --workspace /work/casework check --format json 2>&1 | head -c 800; echo; echo ===; investigation --workspace /work/casework repair index --format json 2>&1 | head -c 800; echo; echo ===; investigation --workspace /work/casewor",
+          "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+          "hint": "investigation repair index --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 4,
+          "verb": "show",
+          "command": "cd /work; investigation --workspace ./casework --actor agent:investigator brief --format json 2>&1 | head -150; echo ---; investigation --workspace ./casework --actor agent:investigator show --format json 2>&1 | head -150",
+          "cause": "missing <ID>",
+          "hint": "investigation show --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "35ac0783-1ce2-430b-8768-15b14073b19f",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 19,
+        "elapsed_ms": 66997,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 17,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 6,
+        "elapsed_ms": 28525,
+        "input_tokens": 12,
+        "output_tokens": 5043,
+        "cli_calls": 5,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 12,
+        "question.create": 1,
+        "hypothesis.create": 2,
+        "assessment.add": 2,
+        "conclusion.create": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          6,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 95522,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 9,
+          "docs": 1
+        },
+        "successor": {
+          "help": 3,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "C=\"--workspace /work/casework --actor agent:investigator --case case_01a20f48-b302-7500-a34d-5cc717301880\"; S=src_01a20f48-b303-70c1-9d0d-f671737882ac\ninvestigation $C observe 'Misting is scheduled 02:00 to 02:06 nightly' --source $S --quot",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -80; echo ---; investigation schema hypothesis.propose 2>&1 | head -60",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 14,
+          "verb": "record",
+          "command": "cat > /tmp/inv/tx2.json <<'EOF'\n{\"schema_version\":\"inv.command.v1\",\"command_id\":\"agent-tx-assess-concl-1\",\"actor\":\"agent:investigator\",\"case_id\":\"case_01a20f48-b302-7500-a34d-5cc717301880\",\"preconditions\":[],\"operations\":[\n{\"op\":\"assessment",
+          "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "brief",
+          "command": "cat /work/casework/README.txt; echo ---; cd /work && investigation --workspace /work/casework --actor agent:investigator case list --format json 2>&1 | head -80; echo ---; investigation --workspace /work/casework --actor agent:investigator ",
+          "cause": "unrecognized subcommand list",
+          "hint": "investigation case --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "7b6b6c3a-573f-4142-b1ff-a4a7bfc1c6bb",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 21,
+        "elapsed_ms": 87765,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 19,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 3,
+        "elapsed_ms": 23735,
+        "input_tokens": 8,
+        "output_tokens": 3760,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 10,
+        "question.create": 1,
+        "hypothesis.create": 3,
+        "assessment.add": 3,
+        "conclusion.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [
+          "bay_wide_humidity"
+        ],
+        "cited_lines": [
+          14
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 111500,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 11,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -c 3000; echo ---; investigation schema hypothesis.add 2>&1 | head -c 2000; echo ---; investigation schema assessment.add 2>&1 | head -c 2000",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "record",
+          "command": "cat > /work/notes_tx1.json <<'EOF'\n{\n  \"actor\": null,\n  \"case_id\": \"case_01a20f4a-25c9-7a62-9f54-c491e5f37a9d\",\n  \"command_id\": \"tx-agent-q-hyp-1\",\n  \"operations\": [\n    {\"op\": \"question.create\", \"client_ref\": \"q\",\n     \"payload\": {\"wording",
+          "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 16,
+          "verb": "record",
+          "command": "cat > /tmp/inv/tx2.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4a-25c9-7a62-9f54-c491e5f37a9d\",\n  \"command_id\": \"tx-agent-hyp-c-assess-1\",\n  \"operations\": [\n    {\"op\": \"hypothesis.create\", \"client_ref\": \"hC\",\n  ",
+          "cause": "GATE_FAILED /operations/2/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "d67d19cc-e83e-4ef9-977d-12afb6f8a72a",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 102105,
+        "input_tokens": 60,
+        "output_tokens": 19177,
+        "first_contact_call": 1,
+        "first_onboard_call": 5,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 27,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 20678,
+        "input_tokens": 12,
+        "output_tokens": 3353,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 10,
+        "question.create": 1,
+        "measurement.assess": 10,
+        "hypothesis.create": 3,
+        "assessment.add": 3,
+        "conclusion.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          10,
+          12,
+          20
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 122783,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 2,
+          "schema": 11,
+          "docs": 1
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "cd /tmp/inv && cat > tx2.json <<'EOF'\n{\n \"schema_version\": \"inv.command.v1\",\n \"command_id\": \"cmd-k2-tx2-hypotheses-assessments\",\n \"actor\": \"agent:investigator\",\n \"case_id\": \"case_01a20f40-940d-7e31-91df-cf32dad68a1e\",\n \"preconditions\": [],\n",
+          "cause": "GATE_FAILED /operations/3/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "cab6a7ff-3cdb-455e-9628-0d775b1187ee",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 115022,
+        "input_tokens": 60,
+        "output_tokens": 21987,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 27,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 3,
+        "elapsed_ms": 16451,
+        "input_tokens": 8,
+        "output_tokens": 2914,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 8,
+        "question.create": 1,
+        "hypothesis.create": 3,
+        "assessment.add": 1,
+        "conclusion.create": 1,
+        "conclusion.amend": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          7,
+          10
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 131473,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 14,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "(unknown)",
+          "command": "cd /work; W=\"--workspace /work/casework --actor agent:investigator\"; S=src_01a20f42-61e3-7712-9466-67a95880d24c; C=case_01a20f42-61e3-7712-9466-679fc9c8c1a3\ninvestigation $W --case $C observe 'Controller peak reading recorded as 1204 C for ",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "record",
+          "command": "mkdir -p /tmp/k2-tx && cat > /tmp/k2-tx/tx1.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"k2-firing112-tx1-hypotheses-0001\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f42-61e3-7712-9466-679fc9c8c1a3\",\n",
+          "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+          "hint": "investigation --workspace /work/casework show case_01a20f42-61e3-7712-9466-679fc9c8c1a3 --case case_01a20f42-61e3-7712-9466-679fc9c8c1a3 --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "record",
+          "command": "cat > /tmp/k2-tx/tx4.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"k2-firing112-tx4-amend-conclusion-0004\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f42-61e3-7712-9466-679fc9c8c1a3\",\n  \"preconditions\"",
+          "cause": "INVALID_INPUT /operations/0/client_ref Only an operation that creates a record can declar",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "brief",
+          "command": "cat > /tmp/k2-tx/tx5.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"k2-firing112-tx5-request-review-0005\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f42-61e3-7712-9466-679fc9c8c1a3\",\n  \"preconditions\": ",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f43-5fdd-7603-b28c-fc04e394f178 --case case_01a20f42-61e3-7712-9466-679fc9c8c1a3 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "record",
+          "command": "cat > /tmp/k2-tx/tx6.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"k2-firing112-tx6-measurement-assess-0006\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f42-61e3-7712-9466-679fc9c8c1a3\",\n  \"precondition",
+          "cause": "REVISION_CONFLICT /operations/5/payload/evidence_refs/0 The referenced record changed. Read the current re",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "15049f51-6e2c-4da0-8eb1-4b303e75cba6",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 19,
+        "elapsed_ms": 83308,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 19,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 39006,
+        "input_tokens": 12,
+        "output_tokens": 7593,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 15,
+        "observation.retract": 1,
+        "question.create": 1,
+        "hypothesis.create": 2,
+        "assessment.add": 1,
+        "annotation.add": 2
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          12,
+          13,
+          15,
+          16,
+          18,
+          19,
+          22
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 122314,
+      "discovery": {
+        "investigator": {
+          "help": 4,
+          "onboard": 0,
+          "schema": 6,
+          "docs": 1
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "C=case_01a20f36-f2b6-7e93-bf57-ef6494883ea0; S=src_01a20f36-f2b6-7e93-bf57-ef7faa7ab216; W=\"--workspace /work/casework --actor agent:investigator --case $C\"\ninvestigation $W observe 'Overbaking of rye batches recorded on three Mondays (29 A",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "6532d6fb-a3ca-40af-a854-b7cd1ce21434",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 136023,
+        "input_tokens": 60,
+        "output_tokens": 26062,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 27,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 9,
+        "elapsed_ms": 40246,
+        "input_tokens": 20,
+        "output_tokens": 7194,
+        "cli_calls": 8,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 14,
+        "question.create": 1,
+        "hypothesis.create": 3
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          12,
+          15,
+          18
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 176269,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 1,
+          "schema": 17,
+          "docs": 1
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "schema",
+          "command": "cd /work; grep -n '' source.txt; echo ---; investigation schema observe --format json 2>&1 | head -c 2500; echo; echo ---; investigation schema --list 2>&1 | head -c 2000",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "observe",
+          "command": "cd /work; investigation --workspace ./casework --actor agent:investigator --case case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0 observe 'Shift log records 12 discarded rye loaves for dark crust on Mon 29 Apr, kitchen clock 05:10' --source src_01",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 18,
+          "verb": "record",
+          "command": "cd /work; cat > /tmp/tx_hyp.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"cmd-hyp-001-monday-overbake\",\n  \"actor\": \"agent:investigator\",\n  \"preconditions\": [],\n  \"case_id\": \"case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0\"",
+          "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+          "hint": "investigation --workspace /work/casework show case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0 --case case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0 --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "record",
+          "command": "cd /work; O(){ echo \"{\\\"id\\\":\\\"$1\\\",\\\"revision\\\":1}\"; }\nH1=hyp_01a20f39-d9f7-7a11-9b6f-f7f21b853182; H2=hyp_01a20f39-d9f7-7a11-9b6f-f7d7c7034fc4; H3=hyp_01a20f39-d9f7-7a11-9b6f-f7e338cd0ec7\nD1=obs_01a20f39-63a7-7790-829c-3aebde363f40; D2=ob",
+          "cause": "INVALID_INPUT /operations Malformed JSON",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 28,
+          "verb": "record",
+          "command": "cd /work; python3 -I - <<'EOF'\nimport json\np=\"/tmp/tx_assess.json\"\ns=open(p).read()\ns=s.replace('overbakes\"}}}},','overbakes\"}}},',1)\nopen(p,\"w\").write(s)\nd=json.load(open(p)); print(\"valid JSON, ops:\", len(d[\"operations\"]))\nEOF\ninvestigati",
+          "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "show",
+          "command": "investigation --workspace /work/casework --case case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0 brief --level full --max-bytes 47410 2>&1 | grep -v '^cite obs' | head -c 15000; echo ---; investigation --workspace /work/casework --case case_01a20f",
+          "cause": "invalid value for --level",
+          "hint": "investigation brief --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f38-ca6d-76e3-b542-47e8f0ba59c0\"; investigation $W frontier 2>&1 | head -c 6000; echo ---; investigation $W next 2>&1 | head -c 4000; echo ---; investigation $W blindspots 2>&1 | head -c 3000",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation frontier --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "861418e3-7ffa-4f24-b148-02c8ca948169",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 25,
+        "elapsed_ms": 88411,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 25,
+        "cli_error_calls": 7,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 18962,
+        "input_tokens": 10,
+        "output_tokens": 2806,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5,
+        "conclusion.create": 1,
+        "measurement.assess": 4,
+        "conclusion.amend": 3,
+        "conclusion.request_review": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 107373,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 1,
+          "schema": 10,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "record",
+          "command": "mkdir -p /tmp/claim-check && cat > /tmp/claim-check/conclusion.json <<'EOF'\n{\n  \"actor\": null,\n  \"case_id\": \"case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4\",\n  \"command_id\": \"claim-check-conclusion-v1\",\n  \"operations\": [\n    {\n      \"op\": \"concl",
+          "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 12,
+          "verb": "brief",
+          "command": "cat > /tmp/claim-check/review.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4\",\n  \"command_id\": \"claim-check-request-review-v1\",\n  \"operations\": [\n    {\"op\": \"conclusion.request_review",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4c-45b5-7030-84db-666e07a9a058 --case case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "record",
+          "command": "cat > /tmp/claim-check/validity.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4\",\n  \"command_id\": \"claim-check-validity-v1\",\n  \"operations\": [\n    {\"op\": \"measurement.assess\", \"payload",
+          "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4b-f5b4-7d20-a8ed-ed8ffe4100ba changed s",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4c-45b5-7030-84db-666e07a9a058 --case case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4 --depth full --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 18,
+          "verb": "blindspots",
+          "command": "sed -i 's/\"revision\": 1}/\"revision\": 2}/; s/claim-check-request-review-v1/claim-check-request-review-v2/' /tmp/claim-check/review.json && grep -n revision /tmp/claim-check/review.json && investigation --workspace ./casework record --input /",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4c-45b5-7030-84db-666e07a9a058 --case case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 19,
+          "verb": "record",
+          "command": "cat > /tmp/claim-check/validity2.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4\",\n  \"command_id\": \"claim-check-validity-v2\",\n  \"operations\": [\n    {\"op\": \"measurement.assess\", \"payloa",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4c-45b5-7030-84db-666e07a9a058 --case case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np='/tmp/claim-check/amend.json'\nd=json.load(open(p))\nd['command_id']='claim-check-amend-v3'\nd['operations'][0]['payload']['conclusion_ref']['revision']=2\nd['operations'][0]['payload']['reason']='Pin all four su",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4c-45b5-7030-84db-666e07a9a058 --case case_01a20f4b-d5b5-7a12-90a9-5fb43227aca4 --depth full --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np='/tmp/claim-check/amend3.json'\nd=json.load(open(p))\nd['command_id']='claim-check-amend-v4'\nd['operations'][0]['payload']['conclusion_ref']['revision']=3\nd['operations'][0]['payload']['reason']='Move the parti",
+          "cause": "GATE_FAILED /operations/0/payload/preconditions Include every current required revision as a trans",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "7468d99d-5cb1-456f-8a6e-a561afaffc7d",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 19,
+        "elapsed_ms": 45805,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 5,
+        "source_case_call": 5,
+        "cli_calls": 19,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 16010,
+        "input_tokens": 8,
+        "output_tokens": 2775,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5,
+        "conclusion.create": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 61815,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 0,
+          "schema": 9,
+          "docs": 1
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "(unknown)",
+          "command": "C=\"--workspace /work/casework --actor agent:investigator --case case_01a20f4d-85e3-7802-b6a3-431506d50557 --format json\"; \ninvestigation $C observe 'Newsletter claims the river reached a record 6.1 metres at Millford bridge, the highest eve",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "schema",
+          "command": "investigation schema --list --format json 2>&1 | head -c 3000; echo; echo ===; investigation schema assessment.record --format json 2>&1 | head -c 2500; echo; echo ===; investigation schema conclusion.record --format json 2>&1 | head -c 250",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "record",
+          "command": "cat > /tmp/concl.json <<'EOF'\n{\n  \"operations\": [\n    {\n      \"operation\": \"conclusion.create\",\n      \"case\": \"case_01a20f4d-85e3-7802-b6a3-431506d50557\",\n      \"payload\": {\n        \"statement\": \"The evidence does not support the claim that",
+          "cause": "INVALID_INPUT /operations/0/case Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "772da745-1651-4a5a-921b-b78f35efe5cc",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-a",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 140403,
+        "input_tokens": 60,
+        "output_tokens": 29385,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 25,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 22248,
+        "input_tokens": 10,
+        "output_tokens": 3612,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 11,
+        "question.create": 1,
+        "option.create": 2,
+        "criterion.create": 3,
+        "comparison.add": 6,
+        "conclusion.create": 1,
+        "decision.propose": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 162651,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 12,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 19,
+          "verb": "record",
+          "command": "mkdir -p /tmp/inv-scripts && cat > /tmp/inv-scripts/tx_eval.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"inv-eval-2026-11-24-a\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f44-62a3-7e81-a33a-7fa06c849e",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "record",
+          "command": "cat > /tmp/inv-scripts/tx_concl.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"inv-concl-2026-11-24-a\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f44-62a3-7e81-a33a-7fa06c849e99\",\n  \"preconditions\": [],",
+          "cause": "GATE_FAILED /operations/1/payload/reversal_conditions Link an assumption, criterion or comparison.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "30922924-1826-4539-a778-5683ed75ec3b",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-a",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 26,
+        "elapsed_ms": 94360,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 22,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 24671,
+        "input_tokens": 12,
+        "output_tokens": 4466,
+        "cli_calls": 5,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 13,
+        "question.create": 1,
+        "option.create": 2,
+        "criterion.create": 3,
+        "comparison.add": 6,
+        "assessment.add": 1,
+        "decision.propose": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          13,
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 119031,
+      "discovery": {
+        "investigator": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 13,
+          "docs": 1
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "record",
+          "command": "mkdir -p /tmp/txn && cat > /tmp/txn/tx1.json <<'EOF'\n{\n  \"command_id\": \"tx-transport-analysis-1\",\n  \"case_id\": \"case_01a20f46-e5ee-7123-a6a5-74203aa5e1d1\",\n  \"preconditions\": [],\n  \"schema_version\": \"inv.command.v1\",\n  \"operations\": [\n    {",
+          "cause": "INVALID_INPUT Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "record",
+          "command": "cd /tmp/txn && python3 -I -c '\nimport json\nd=json.load(open(\"/tmp/txn/tx1.json\"))\nd[\"actor\"]=\"agent:investigator\"\nrefs=[\"question:0\",\"option:0\",\"option:1\",\"criterion:0\",\"criterion:1\",\"criterion:2\"]\nfor i,r in enumerate(refs):\n    d[\"operati",
+          "cause": "INVALID_INPUT /operations/13/payload/reversal_conditions/0/reason Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "show",
+          "command": "investigation --workspace ./casework --actor agent:investigator brief --format json 2>&1 | head -c 6000; echo; echo ---; investigation --workspace /work/casework --actor agent:investigator show --format json 2>&1 | head -c 4000",
+          "cause": "missing <ID>",
+          "hint": "investigation show --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "f1f15ff2-ea24-44c5-af4c-ed2ee4debda2",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 133709,
+        "input_tokens": 60,
+        "output_tokens": 26413,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 27,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 11,
+        "elapsed_ms": 51651,
+        "input_tokens": 20,
+        "output_tokens": 9046,
+        "cli_calls": 11,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 15,
+        "question.create": 1,
+        "option.create": 3,
+        "criterion.create": 3,
+        "criterion.amend": 1,
+        "comparison.add": 9
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          17
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 185360,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 12,
+          "docs": 1
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 1,
+          "schema": 1,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "schema",
+          "command": "investigation schema observe 2>&1 | head -c 3000; echo; echo \"--- list ---\"; investigation schema --list 2>&1 | head -c 3000",
+          "cause": "operation: Unknown operation. Run investigation schema --lis",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace ./casework --actor agent:investigator --case case_01a20f5d-1a0a-7c82-99e5-ffcb0f401a39\"; S=src_01a20f5d-1a0a-7c82-99e5-ffd1134b70bf\ninvestigation $W observe 'Several members have said they will not create accounts.' --source ",
+          "cause": "Retry or inspect with investigation observe --help --format ",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace ./casework --actor agent:investigator --case case_01a20f5d-1a0a-7c82-99e5-ffcb0f401a39\"; S=src_01a20f5d-1a0a-7c82-99e5-ffd1134b70bf\ninvestigation $W observe 'Scores should update within a day of the director changes (preferen",
+          "cause": "unexpected argument --workspace ./casework --actor agent:inv",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 5,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f5d-1a0a-7c82-99e5-ffcb0f401a39\"; for id in opt_01a20f5e-3283-7aa1-af56-3672ddc33eed opt_01a20f5e-3283-7aa1-af56-368c9ef3159b q_01a20f5e-1b88-75d3-8a92-581d00229520 cmp_01a20f5e-c8a1-7843-b0af-",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation show --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "14a572a6-7f07-4641-9367-6f19b04b6c32",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 118283,
+        "input_tokens": 60,
+        "output_tokens": 21858,
+        "first_contact_call": 1,
+        "first_onboard_call": 3,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 28,
+        "cli_error_calls": 8,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 9,
+        "elapsed_ms": 31276,
+        "input_tokens": 18,
+        "output_tokens": 5122,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 13
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          12,
+          17
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 149559,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 1,
+          "schema": 15,
+          "docs": 1
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "(unknown)",
+          "command": "C=\"--workspace /work/casework --actor agent:investigator\"; S=src_01a20f5f-ee06-7a31-be23-980d2749cf8a; F=\"--format json\"\ninvestigation $C observe 'Several members said they will not create accounts' --source $S --quote 'Several members have",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "schema",
+          "command": "investigation schema wire --format json 2>&1 | head -c 3000; echo; echo ===; investigation schema record --format json 2>&1 | head -c 3000",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "record",
+          "command": "mkdir -p /work/notes && cat > /work/notes/record-recommendation.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"choir-rec-001\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f5f-ee06-7a31-be23-97f886e01764\",",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "record",
+          "command": "investigation --workspace /work/casework --actor agent:investigator record --input /work/notes/record-recommendation.json --format json 2>&1 | head -c 3000",
+          "cause": "INVALID_INPUT /operations/4/payload/threshold A hard criterion requires a checkable threshold.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 23,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np=\"/work/notes/record-recommendation.json\"\nd=json.load(open(p))\nfor op in d[\"operations\"]:\n    if op[\"client_ref\"]==\"h1\":\n        op[\"payload\"][\"threshold\"]={\"kind\":\"qualitative\",\"requirement\":\"Every singer can",
+          "cause": "INVALID_INPUT /operations/7/payload/basis A result requires a measured or qualitative basis.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np=\"/work/notes/record-recommendation.json\"\nd=json.load(open(p))\nfor op in d[\"operations\"]:\n    if op[\"op\"]==\"comparison.add\":\n        pl=op[\"payload\"]\n        if pl[\"outcome\"]==\"unknown\":\n            pl[\"basis\"",
+          "cause": "INVALID_INPUT /operations/16/payload/evidence_refs/0 Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np=\"/work/notes/record-recommendation.json\"\nd=json.load(open(p))\nfor op in d[\"operations\"]:\n    if op[\"op\"]==\"decision.propose\":\n        pl=op[\"payload\"]\n        pl[\"evidence_refs\"]=[{\"id\":i,\"revision\":1} for i ",
+          "cause": "GATE_FAILED /operations/16/payload/choice Selected option must be among alternatives.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 28,
+          "verb": "record",
+          "command": "python3 - <<'EOF'\nimport json\np=\"/work/notes/record-recommendation.json\"\nd=json.load(open(p))\nfor op in d[\"operations\"]:\n    if op[\"op\"]==\"decision.propose\":\n        op[\"payload\"][\"compared_alternatives\"]=[{\"client_ref\":\"opt1\"},{\"client_ref",
+          "cause": "GATE_FAILED /operations/16/payload/reversal_conditions Link an assumption, criterion or comparison.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "84d84c83-79e1-4fbb-989b-66b0079ede1d",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 22,
+        "elapsed_ms": 84398,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 21,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 8,
+        "elapsed_ms": 44481,
+        "input_tokens": 18,
+        "output_tokens": 8168,
+        "cli_calls": 7,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 13,
+        "question.create": 1,
+        "hypothesis.create": 3,
+        "assessment.add": 2,
+        "conclusion.create": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          6
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 128879,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 9,
+          "docs": 1
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f51-bcf3-7a21-8b93-bf20c1ff66ab --format json\"; S=src_01a20f51-bcf3-7a21-8b93-bf3a6ebb4e47\ninvestigation $W observe 'Alarm threshold is relative humidity above 92% fo",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "record",
+          "command": "mkdir -p /tmp/inv-tx && cat > /tmp/inv-tx/tx1.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f51-bcf3-7a21-8b93-bf20c1ff66ab\",\n  \"command_id\": \"tx-hyp-assess-bay4-001\",\n  \"operations\": [\n    {\"op\": \"question.create\"",
+          "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+          "hint": "investigation --workspace /work/casework show case_01a20f51-bcf3-7a21-8b93-bf20c1ff66ab --case case_01a20f51-bcf3-7a21-8b93-bf20c1ff66ab --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 14,
+          "verb": "record",
+          "command": "cd /tmp/inv-tx && python3 - <<'EOF'\nimport json\nt=json.load(open('tx1.json'))\nt['command_id']='tx-hyp-assess-bay4-002'\nops=t['operations']\nby={o.get('client_ref'):o for o in ops}\nby['h_fault']['payload']['rival_refs']=[]\nby['h_bay']['payloa",
+          "cause": "GATE_FAILED /operations/4/payload/rival_expectations Compare every live rival, using not_assessed with",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "record",
+          "command": "cd /tmp/inv-tx && python3 - <<'EOF'\nimport json\nt=json.load(open('tx2.json'))\nt['command_id']='tx-hyp-assess-bay4-003'\nfor o in t['operations']:\n    if o.get('client_ref')=='a_local':\n        o['payload']['rival_expectations']=[\n          {",
+          "cause": "GATE_FAILED /operations/4/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 5,
+          "verb": "(unknown)",
+          "command": "cd /work; W=\"--workspace ./casework --case case_01a20f51-bcf3-7a21-8b93-bf20c1ff66ab\"; investigation $W search \"misting\" --format json 2>&1 | head -c 3000; echo; echo ---; investigation $W show concl_01a20f52-cdc5-7ab0-8b53-c9ca12c1e7fb --d",
+          "cause": "unexpected argument --workspace ./casework --case case_01a20",
+          "hint": "investigation search --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "47fd6648-cc84-4137-9da9-7b07414b7bef",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 21,
+        "elapsed_ms": 66417,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 21,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 3,
+        "elapsed_ms": 19000,
+        "input_tokens": 8,
+        "output_tokens": 3283,
+        "cli_calls": 3,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 9,
+        "question.create": 1,
+        "hypothesis.create": 3,
+        "assessment.add": 3,
+        "conclusion.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          14
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 85417,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 1,
+          "schema": 9,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 5,
+          "verb": "(unknown)",
+          "command": "S=src_01a20f53-a7e7-79b2-8bd1-dd04097f78e7; C=case_01a20f53-a7e7-79b2-8bd1-dcf7ba17ea89; W=\"--workspace /work/casework --actor agent:investigator --case $C\"\ninvestigation $W observe 'Alarm threshold is relative humidity above 92% for 60 sec",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "(unknown)",
+          "command": "S=src_01a20f53-a7e7-79b2-8bd1-dd04097f78e7; C=case_01a20f53-a7e7-79b2-8bd1-dcf7ba17ea89; W=\"--workspace /work/casework --actor agent:investigator --case $C\"\ninvestigation $W observe 'Alarm windows on the four nights (2-5 June) start 02:00:5",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -60; echo ---; investigation schema hypothesis.propose 2>&1 | head -40; echo ---; investigation schema assessment.record 2>&1 | head -40",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 16,
+          "verb": "record",
+          "command": "cat > /tmp/inv/tx2.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f53-a7e7-79b2-8bd1-dcf7ba17ea89\",\n  \"command_id\": \"tx-assess-bay4-alarms-001\",\n  \"operations\": [\n    {\"op\": \"assessment.add\", \"payload\": {\n      \"sub",
+          "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "blindspots",
+          "command": "nl -ba source.txt; echo ---; investigation --workspace /work/casework case list 2>&1 | head -20; echo ---; investigation --workspace /work/casework blindspots 2>&1 | head -c 4000",
+          "cause": "unrecognized subcommand list",
+          "hint": "investigation case --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "6599bd27-f632-472b-9c0d-2217bc63b4e9",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 24,
+        "elapsed_ms": 87053,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 23,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 20318,
+        "input_tokens": 12,
+        "output_tokens": 3452,
+        "cli_calls": 5,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 8,
+        "question.create": 1,
+        "hypothesis.create": 3,
+        "assessment.add": 3,
+        "conclusion.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          10
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 107371,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 13,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -c 3000; echo ---; investigation schema observe 2>&1 | head -c 2000",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f54-fd31-7292-a642-4f725a425cd3\"; S=src_01a20f54-fd31-7292-a642-4f89ca22535a\ninvestigation $W observe 'Controller peak reading for firing 112 is 1204 C' --source $S -",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "blindspots",
+          "command": "cat > /tmp/r1.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f54-fd31-7292-a642-4f725a425cd3\",\n  \"command_id\": \"k2-request-review-20261124\",\n  \"operations\": [\n    {\n      \"op\": \"conclusion.request_review\",\n      \"pa",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f55-f64b-78d1-8f97-8561f531265f --case case_01a20f54-fd31-7292-a642-4f725a425cd3 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f54-fd31-7292-a642-4f725a425cd3\"; investigation $W blindspots 2>&1 | head -c 5000; echo ---NEXT; investigation $W next 2>&1 | head -c 5000; echo ---SHOW; investigation $W show case_01a20f54-fd3",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation blindspots --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "c75c3c5a-e188-40f9-a37c-f93278207961",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 21,
+        "elapsed_ms": 69526,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 20,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 24425,
+        "input_tokens": 12,
+        "output_tokens": 4242,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 7,
+        "question.create": 1,
+        "hypothesis.create": 2,
+        "assessment.add": 2,
+        "conclusion.create": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          10,
+          12
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 93951,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 8,
+          "docs": 1
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "record",
+          "command": "cat > /tmp/inv/tx2.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f56-a448-7a81-a5e2-6b95e4474be7\",\n  \"command_id\": \"tx-k2-assess-0001\",\n  \"operations\": [\n    {\"op\": \"assessment.add\", \"client_ref\": \"a1\", \"payload\": ",
+          "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "06c3c16b-c0f7-4e2f-b3a9-6c42dace45c8",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 23,
+        "elapsed_ms": 88555,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 22,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 13,
+        "elapsed_ms": 74404,
+        "input_tokens": 28,
+        "output_tokens": 14296,
+        "cli_calls": 9,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 14,
+        "question.create": 1,
+        "hypothesis.create": 2,
+        "assessment.add": 2,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          10,
+          12,
+          13,
+          15,
+          16,
+          18,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 162959,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 9,
+          "docs": 1
+        },
+        "successor": {
+          "help": 3,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f58-0eee-7f40-8bc3-534831d91394\"; S=src_01a20f58-0eef-73b2-bc68-efcb426e682d\ninvestigation $W observe 'Shift log records rye dark-crust discards on three Mondays (29 ",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "schema",
+          "command": "investigation schema --list --format json 2>&1 | head -c 3000; echo; investigation schema hypothesis.propose --format json 2>&1 | head -c 2000; echo; investigation schema assessment.record --format json 2>&1 | head -c 2500",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "record",
+          "command": "mkdir -p /tmp/inv && cat > /tmp/inv/tx1.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f58-0eee-7f40-8bc3-534831d91394\",\n  \"command_id\": \"tx-explain-monday-overbake-1\",\n  \"schema_version\": \"inv.command.v1\",\n  \"preco",
+          "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+          "hint": "investigation --workspace /work/casework show case_01a20f58-0eee-7f40-8bc3-534831d91394 --case case_01a20f58-0eee-7f40-8bc3-534831d91394 --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "record",
+          "command": "cat > /tmp/inv/tx2.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f58-0eee-7f40-8bc3-534831d91394\",\n  \"command_id\": \"tx-explain-monday-overbake-3\",\n  \"schema_version\": \"inv.command.v1\",\n  \"preconditions\": [],\n  \"ope",
+          "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 19,
+          "verb": "record",
+          "command": "cd /tmp/inv && python3 - <<'EOF'\nimport json\np='/tmp/inv/tx2.json'\nd=json.load(open(p))\nd[\"command_id\"]=\"tx-explain-monday-overbake-4\"\nh1={\"id\":\"hyp_01a20f58-d7f7-78a1-afb4-e63baffdf2be\",\"revision\":1}\nh2={\"id\":\"hyp_01a20f58-d7f7-78a1-afb4-e",
+          "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 9,
+          "verb": "(unknown)",
+          "command": "cd /work; W=\"--workspace /work/casework --actor agent:investigator\"; for id in ann_01a20f59-461a-7cf3-87c2-ec7349211655 hyp_01a20f58-d7f7-78a1-afb4-e63baffdf2be hyp_01a20f58-d7f7-78a1-afb4-e64f7d700867 assess_01a20f59-2637-7682-9fd8-00a5c4d",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "9c44f04c-0ef1-4eba-90ba-a3b42f822676",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 144584,
+        "input_tokens": 60,
+        "output_tokens": 27599,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 27,
+        "cli_error_calls": 7,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 22650,
+        "input_tokens": 8,
+        "output_tokens": 3653,
+        "cli_calls": 4,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 17,
+        "question.create": 1,
+        "hypothesis.create": 2,
+        "assessment.add": 2,
+        "conclusion.create": 1,
+        "measurement.assess": 3,
+        "conclusion.amend": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": false,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          6,
+          13,
+          16,
+          19,
+          24
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 167234,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 15,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664\"; S=src_01a20f5a-8c1f-7ca0-8ff8-b0b004b2f454\no(){ investigation $W observe \"$1\" --source $S --quote \"$2\" --limitations \"$3\" --format j",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation brief --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -80; echo ---; investigation schema hypothesis.propose 2>&1 | head -60",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 14,
+          "verb": "record",
+          "command": "mkdir -p /tmp/invtx && cat > /tmp/invtx/t1.json <<'EOF'\n{\n  \"actor\": null,\n  \"case_id\": null,\n  \"command_id\": \"cmd-monday-q-h-0001\",\n  \"operations\": [\n    {\"client_ref\": \"q\", \"op\": \"question.create\", \"payload\": {\n      \"importance\": \"high\",",
+          "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "record",
+          "command": "cat > /tmp/invtx/t4.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664\",\n  \"command_id\": \"cmd-monday-concl-review-0001\",\n  \"operations\": [\n    {\"op\": \"conclusion.request_review\", \"payload",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f5b-d359-7d93-9acf-bdd09dec204a --case case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "investigation --workspace /work/casework record --input /tmp/invtx/t4.json --format json 2>&1 | head -c 1000",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f5b-d359-7d93-9acf-bdd09dec204a --case case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664 --depth full --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "record",
+          "command": "cd /tmp/invtx && cat > t6.json <<'EOF'\n{\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664\",\n  \"command_id\": \"cmd-monday-concl-amend-0001\",\n  \"operations\": [\n    {\"op\": \"conclusion.amend\", \"payload\": {",
+          "cause": "REVISION_CONFLICT /operations/0/payload/conclusion_ref The record changed. Inspect its current revision.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "record",
+          "command": "cd /tmp/invtx && sed -i 's/\"revision\": 1}}}/\"revision\": 2}}}/; s/cmd-monday-concl-review-0001/cmd-monday-concl-review-0002/' t4.json && grep -c '\"revision\": 2' t4.json && cd /work && investigation --workspace /work/casework record --input /",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f5b-d359-7d93-9acf-bdd09dec204a --case case_01a20f5a-8c1f-7ca0-8ff8-b0ae6d39f664 --depth full --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 1,
+          "verb": "onboard",
+          "command": "ls -la /work /tools 2>&1; investigation onboard --format json --workspace /work 2>&1 | head -c 4000",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 2,
+          "verb": "brief",
+          "command": "investigation brief 2>&1 | head -c 12000",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "47df59b2-4695-48c1-9b10-1ed22f6aa231",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 112179,
+        "input_tokens": 60,
+        "output_tokens": 20647,
+        "first_contact_call": 1,
+        "first_onboard_call": 1,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 27,
+        "cli_error_calls": 6,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 19508,
+        "input_tokens": 10,
+        "output_tokens": 2985,
+        "cli_calls": 4,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 6,
+        "conclusion.create": 1,
+        "measurement.assess": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 131687,
+      "discovery": {
+        "investigator": {
+          "help": 4,
+          "onboard": 1,
+          "schema": 13,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "(unknown)",
+          "command": "S=src_01a20f4e-7281-7022-b8af-5fdf838844e3; W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f4e-7281-7022-b8af-5fca21bef3fc\";\ninvestigation $W observe 'The parish newsletter claims the river reached a record 6.1 me",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 14,
+          "verb": "schema",
+          "command": "investigation record --help 2>&1 | head -c 2000; echo ===; investigation schema wire --format json 2>&1 | head -c 2500",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "record",
+          "command": "cat > /tmp/inv/review.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"agent-investigator-request-review-millford-001\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4e-7281-7022-b8af-5fca21bef3fc\",\n  \"preco",
+          "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4f-4306-73b0-a960-02e58e00cde4 --case case_01a20f4e-7281-7022-b8af-5fca21bef3fc --depth full --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "cat > /tmp/inv/measure.json <<'EOF'\n{\n  \"schema_version\": \"inv.command.v1\",\n  \"command_id\": \"agent-investigator-measure-validity-millford-001\",\n  \"actor\": \"agent:investigator\",\n  \"case_id\": \"case_01a20f4e-7281-7022-b8af-5fca21bef3fc\",\n  \"pr",
+          "cause": "GATE_FAILED /operations/0/payload/verification A valid or partial judgment needs a qualifying ins",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "record",
+          "command": "cd /tmp/inv && python3 -I - <<'EOF'\nimport json\np='/tmp/inv/measure.json'\nd=json.load(open(p))\njust={\n \"obs_01a20f4e-bf17-7470-a40c-e4d05a3594c5\":\"The water office's own provisional and not-quality-checked annotation on this row. This is th",
+          "cause": "GATE_FAILED /operations/3/payload/verification A valid or partial judgment needs a qualifying ins",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "show",
+          "command": "investigation record --input /tmp/inv/measure.json --workspace /work/casework --format json 2>&1 | head -c 800; echo; echo ===; investigation record --input /tmp/inv/review.json --workspace /work/casework --dry-run --format json 2>&1 | head",
+          "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4e-bf17-7470-a40c-e4d05a3594c5 changed s",
+          "hint": "investigation --workspace /work/casework show concl_01a20f4f-4306-73b0-a960-02e58e00cde4 --case case_01a20f4e-7281-7022-b8af-5fca21bef3fc --depth full --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 1,
+          "verb": "onboard",
+          "command": "ls -la /work /tools 2>&1; investigation onboard --format json --workspace /work 2>&1 | head -c 4000",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f4e-7281-7022-b8af-5fca21bef3fc\"; investigation $W blindspots 2>&1 | head -c 3000; echo ---; investigation $W next 2>&1 | head -c 3000; echo ---; investigation $W evidence read art_01a20f4e-728",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation blindspots --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "63da6d71-29c7-4a19-a5b6-ea57dda5ad05",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 17,
+        "elapsed_ms": 54735,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 16,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 27700,
+        "input_tokens": 16,
+        "output_tokens": 4113,
+        "cli_calls": 7,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 6,
+        "question.create": 1,
+        "hypothesis.create": 1,
+        "assessment.add": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 82435,
+      "discovery": {
+        "investigator": {
+          "help": 5,
+          "onboard": 0,
+          "schema": 5,
+          "docs": 1
+        },
+        "successor": {
+          "help": 4,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --actor agent:investigator --case case_01a20f50-7870-7113-8f62-a4bef343950a\"; S=src_01a20f50-7870-7113-8f62-a4c2431bb8d0\ninvestigation $W observe 'Newsletter claims the river reached a record 6.1 m at Millford ",
+          "cause": "unexpected argument --workspace /work/casework --actor agent",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 12,
+          "verb": "record",
+          "command": "cat > /tmp/inv_scripts/tx1.json <<'EOF'\n{\n  \"actor\": null,\n  \"case_id\": \"case_01a20f50-7870-7113-8f62-a4bef343950a\",\n  \"command_id\": \"assess-record-claim-v1\",\n  \"operations\": [\n    {\"op\": \"question.create\", \"client_ref\": \"q\", \"payload\": {\n ",
+          "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "2e60709f-71c9-4f39-b614-dc5f60e14720",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 15,
+        "elapsed_ms": 48588,
+        "input_tokens": null,
+        "output_tokens": null,
+        "first_contact_call": 1,
+        "first_onboard_call": 3,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 13,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 9,
+        "elapsed_ms": 44249,
+        "input_tokens": 20,
+        "output_tokens": 7957,
+        "cli_calls": 8,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 8,
+        "observation.retract": 1,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 92837,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 1,
+          "schema": 1,
+          "docs": 0
+        },
+        "successor": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "show",
+          "command": "cd /work; W=/work/casework; investigation --workspace $W --actor agent:investigator brief case_01a20f62-42a5-7522-8071-52f69cd9760e --format json 2>&1 | head -200; echo ---; investigation --workspace $W --actor agent:investigator show case_",
+          "cause": "unexpected argument positional",
+          "hint": "investigation brief --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "ed515c28-aa95-4e49-b8e2-4511a600d751",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "claude-haiku-b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "aab0ad3b10e93485d72afd7e038e802b7a2666a278ab7fa6bb42f092f9e692d9",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 28,
+        "elapsed_ms": 128212,
+        "input_tokens": 56,
+        "output_tokens": 26130,
+        "first_contact_call": 2,
+        "first_onboard_call": 2,
+        "first_receipt_call": 5,
+        "source_case_call": 5,
+        "cli_calls": 22,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": null
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 12,
+        "elapsed_ms": 41119,
+        "input_tokens": 20,
+        "output_tokens": 7713,
+        "cli_calls": 11,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 10,
+        "question.create": 1,
+        "option.create": 2,
+        "criterion.create": 3,
+        "comparison.add": 6,
+        "conclusion.create": 1,
+        "decision.propose": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 169331,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 15,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "schema",
+          "command": "investigation schema --list 2>&1 | head -c 4000; echo; echo ---; investigation schema assessment.record 2>&1 | head -c 2500; echo ---; investigation schema conclusion.record 2>&1 | head -c 2500; echo ---; investigation schema decision.recor",
+          "cause": "assess  assessment.add, assessment.retract, assessment.super",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "record",
+          "command": "mkdir -p /tmp/inv-tx && cat > /tmp/inv-tx/tx1.json <<'EOF'\n{\n  \"command_id\": \"tx-transport-eval-1\",\n  \"operations\": [\n    {\"op\": \"question.create\", \"payload\": {\n      \"wording\": \"Which tram door sensor gateway transport should be recommende",
+          "cause": "INVALID_INPUT Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 18,
+          "verb": "record",
+          "command": "python3 -I - <<'EOF'\nimport json\np=\"/tmp/inv-tx/tx1.json\"\nd=json.load(open(p))\nd[\"actor\"]=\"agent:investigator\"\nd[\"case_id\"]=\"case_01a20f63-9f29-76a2-b269-3c9cffee963a\"\nd[\"schema_version\"]=\"inv.command.v1\"\nfor op in d[\"operations\"]:\n    if o",
+          "cause": "UNKNOWN_REFERENCE /operations/1/payload/question_ref Expected an existing revision in this case or an a",
+          "hint": "investigation --workspace /work/casework show case_01a20f63-9f29-76a2-b269-3c9cffee963a --case case_01a20f63-9f29-76a2-b269-3c9cffee963a --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "record",
+          "command": "python3 -I - <<'EOF'\nimport json\nC=\"case_01a20f63-9f29-76a2-b269-3c9cffee963a\"\nR=lambda i:{\"id\":i,\"revision\":1}\nQ=\"q_01a20f64-a728-7e30-951a-66406d4b9680\"\nOX=\"opt_01a20f64-a728-7e30-951a-6659247a8ecc\"\nOY=\"opt_01a20f64-a728-7e30-951a-66619cd",
+          "cause": "INVALID_INPUT /operations/7/payload/evidence_refs/0 Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 23,
+          "verb": "record",
+          "command": "python3 -I - <<'EOF'\nimport json\ntx=json.load(open(\"/tmp/inv-tx/tx2.json\"))\ndec=tx[\"operations\"][7][\"payload\"]\ndec[\"evidence_refs\"]=[{\"id\":i,\"revision\":1} for i in dec[\"evidence_refs\"]]\njson.dump(tx,open(\"/tmp/inv-tx/tx2.json\",\"w\"),indent=1",
+          "cause": "INVALID_INPUT /operations/7/payload/hard_conditions/0 Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "C=\"--workspace /work/casework --case case_01a20f63-9f29-76a2-b269-3c9cffee963a\"; investigation $C blindspots 2>&1 | head -c 5000; echo ---DOCTOR---; investigation --workspace /work/casework doctor 2>&1 | head -c 3000; echo ---SHOW---; inves",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation blindspots --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 7,
+          "verb": "doctor",
+          "command": "investigation --workspace /work/casework repair index --format json 2>&1 | head -c 3000; echo; echo ---DOCTOR---; investigation --workspace /work/casework doctor 2>&1 | head -c 2000",
+          "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+          "hint": "investigation repair index --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 8,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f63-9f29-76a2-b269-3c9cffee963a\"; investigation $W show opt_01a20f64-a728-7e30-951a-6659247a8ecc --depth full 2>&1 | head -c 4000; echo ---CMP1---; investigation $W show cmp_01a20f65-3824-7cc0-",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation show --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 9,
+          "verb": "(unknown)",
+          "command": "W=\"--workspace /work/casework --case case_01a20f63-9f29-76a2-b269-3c9cffee963a\"; investigation $W guide stalled 2>&1 | head -c 3000; echo ---FRONTIER---; investigation $W frontier 2>&1 | head -c 3000",
+          "cause": "unexpected argument --workspace /work/casework --case case_0",
+          "hint": "investigation guide --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    }
+  ],
+  "comparison": {
+    "runs": [
+      "run1"
+    ],
+    "arms": [
+      "docs",
+      "help-only"
+    ],
+    "targets": {
+      "schema": "first-use-targets.v1",
+      "bone": "bn-gef3 (W17.03b, hosted-agent arm)",
+      "preregistered": "2026-11-24, committed before any measured hosted run",
+      "host": "Claude Code in print mode, model alias haiku; the host and model version strings each session reports are recorded per assignment",
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "baseline": "docs",
+      "treatment": "help-only",
+      "assignments_per_arm": 12,
+      "rule": "The help-only arm meets the W17.03 target under the hosted agent when every target below is met. Counts are assignments out of 12 per arm: six comparison cases, two replicates (claude-haiku-a, claude-haiku-b), matched by case, replicate and seed.",
+      "targets": {
+        "receipt": {
+          "measure": "receipt_within_three_after_contact",
+          "margin": 2,
+          "min": 6,
+          "text": "Persisted Source and Case within three calls after first CLI contact: help-only >= docs - 2, and help-only >= 6/12."
+        },
+        "handoff": {
+          "measure": "source_linked_handoff",
+          "margin": 2,
+          "text": "Source-linked handoff (persisted record, answer cites a decisive line and states the limitation): help-only >= docs - 2."
+        },
+        "unsupported_claims": {
+          "measure": "unwarranted_claims",
+          "max": 0,
+          "text": "Assignments whose successor answer matches a false-promotion pattern: help-only = 0/12."
+        },
+        "refused_share": {
+          "measure": "refused_call_share",
+          "max_increase": 0.1,
+          "text": "Friction budget 1: refused investigator CLI calls / investigator CLI calls, help-only <= docs + 0.10."
+        },
+        "recovery": {
+          "measure": "refused_unstuck",
+          "max_decrease": 0.1,
+          "text": "Friction budget 2: share of refused CLI calls (both phases) after which a later call of the same command succeeds, help-only >= docs - 0.10."
+        }
+      }
+    }
+  },
+  "summary": {
+    "by_arm": {
+      "docs": {
+        "assignments": 12,
+        "receipt_within_three_after_contact": {
+          "count": 12,
+          "of": 12
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 12,
+          "of": 12
+        },
+        "ran_onboard": {
+          "count": 12,
+          "of": 12
+        },
+        "persisted_source_and_case": {
+          "count": 12,
+          "of": 12
+        },
+        "source_linked_handoff": {
+          "count": 11,
+          "of": 12
+        },
+        "successor_answered": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_citation": {
+          "count": 11,
+          "of": 12
+        },
+        "successor_limitation": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_answer": {
+          "count": 12,
+          "of": 12
+        },
+        "unwarranted_claims": {
+          "count": 1,
+          "of": 12
+        },
+        "successor_used_cli": {
+          "count": 12,
+          "of": 12
+        },
+        "investigator_failed_cli_calls": 54,
+        "investigator_cli_calls": 296,
+        "investigator_budget_or_timeout": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_budget_or_timeout": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 3.0,
+        "median_calls_contact_to_source_case": 2.0,
+        "mean_total_seconds": 143.7,
+        "mean_investigator_calls": 26.2,
+        "refused_calls": {
+          "investigator": 54,
+          "successor": 14
+        },
+        "refused_unstuck": {
+          "count": 43,
+          "of": 68
+        },
+        "refused_with_hint": {
+          "count": 48,
+          "of": 68
+        },
+        "hint_followed": {
+          "count": 24,
+          "of": 48
+        },
+        "friction_causes": [
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --workspace /work/casework --case case_0",
+            "calls": 8,
+            "assignments": 6,
+            "with_hint": 8,
+            "hint_followed": 4,
+            "unstuck": 1
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --workspace /work/casework --actor agent",
+            "calls": 6,
+            "assignments": 5,
+            "with_hint": 5,
+            "hint_followed": 4,
+            "unstuck": 3
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+            "calls": 6,
+            "assignments": 3,
+            "with_hint": 6,
+            "hint_followed": 2,
+            "unstuck": 4
+          },
+          {
+            "verb": "schema",
+            "cause": "assess  assessment.add, assessment.retract, assessment.super",
+            "calls": 5,
+            "assignments": 5,
+            "with_hint": 5,
+            "hint_followed": 5,
+            "unstuck": 5
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+            "calls": 3,
+            "assignments": 3,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 3
+          },
+          {
+            "verb": "blindspots",
+            "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "brief",
+            "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "onboard",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 2
+          },
+          {
+            "verb": "schema",
+            "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 2,
+            "unstuck": 2
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "Retry or inspect with investigation observe --help --format ",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --workspace ./casework --actor agent:inv",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "blindspots",
+            "cause": "unrecognized subcommand list",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "brief",
+            "cause": "no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "doctor",
+            "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "evidence read",
+            "cause": "{\"available\":true,\"effects\":\"Record an attributed Observatio",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "invalid value for --limitations",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/preconditions Include every current required revision as a trans",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/verification A valid or partial judgment needs a qualifying ins",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/1/payload/reversal_conditions Link an assumption, criterion or comparison.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/2/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/3/payload/verification A valid or partial judgment needs a qualifying ins",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations Malformed JSON",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/0/client_ref Only an operation that creates a record can declar",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/4/payload Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/7/payload/evidence_refs/0 Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/7/payload/hard_conditions/0 Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "REVISION_CONFLICT /operations/0/payload/conclusion_ref The record changed. Inspect its current revision.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4b-f5b4-7d20-a8ed-ed8ffe4100ba changed s",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "REVISION_CONFLICT /operations/5/payload/evidence_refs/0 The referenced record changed. Read the current re",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "UNKNOWN_REFERENCE /operations/1/payload/question_ref Expected an existing revision in this case or an a",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "schema",
+            "cause": "operation: Unknown operation. Run investigation schema --lis",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "schema",
+            "cause": "{\"case\":{\"basis_revision\":1,\"closure_outcome\":null,\"contradi",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "show",
+            "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4e-bf17-7470-a40c-e4d05a3594c5 changed s",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "show",
+            "cause": "invalid value for --level",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          }
+        ],
+        "ran_docs_page": {
+          "count": 2,
+          "of": 12
+        },
+        "ran_help": {
+          "count": 5,
+          "of": 12
+        }
+      },
+      "help-only": {
+        "assignments": 12,
+        "receipt_within_three_after_contact": {
+          "count": 10,
+          "of": 12
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 3,
+          "of": 3
+        },
+        "ran_onboard": {
+          "count": 3,
+          "of": 12
+        },
+        "persisted_source_and_case": {
+          "count": 12,
+          "of": 12
+        },
+        "source_linked_handoff": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_answered": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_citation": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_limitation": {
+          "count": 12,
+          "of": 12
+        },
+        "successor_answer": {
+          "count": 12,
+          "of": 12
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_used_cli": {
+          "count": 12,
+          "of": 12
+        },
+        "investigator_failed_cli_calls": 36,
+        "investigator_cli_calls": 251,
+        "investigator_budget_or_timeout": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_budget_or_timeout": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 4.0,
+        "median_calls_contact_to_source_case": 3.0,
+        "mean_total_seconds": 114.4,
+        "mean_investigator_calls": 22.1,
+        "refused_calls": {
+          "investigator": 36,
+          "successor": 6
+        },
+        "refused_unstuck": {
+          "count": 25,
+          "of": 42
+        },
+        "refused_with_hint": {
+          "count": 21,
+          "of": 42
+        },
+        "hint_followed": {
+          "count": 11,
+          "of": 21
+        },
+        "friction_causes": [
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --workspace /work/casework --actor agent",
+            "calls": 9,
+            "assignments": 8,
+            "with_hint": 8,
+            "hint_followed": 6,
+            "unstuck": 2
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+            "calls": 3,
+            "assignments": 3,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 3
+          },
+          {
+            "verb": "schema",
+            "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+            "calls": 3,
+            "assignments": 3,
+            "with_hint": 3,
+            "hint_followed": 3,
+            "unstuck": 3
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/4/payload/threshold A hard criterion requires a checkable threshold.",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 2
+          },
+          {
+            "verb": "show",
+            "cause": "missing <ID>",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --workspace ./casework --case case_01a20",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "blindspots",
+            "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "brief",
+            "cause": "unrecognized subcommand list",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/16/payload/choice Selected option must be among alternatives.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/16/payload/reversal_conditions Link an assumption, criterion or comparison.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/17/payload/choice Selected option must be among alternatives.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/3/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/4/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "GATE_FAILED /operations/4/payload/rival_expectations Compare every live rival, using not_assessed with",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/0/case Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/13/payload/reversal_conditions/0/reason Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/16/payload/evidence_refs/0 Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/17/payload/evidence_refs/0 Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operations/7/payload/basis A result requires a measured or qualitative basis.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "schema",
+            "cause": "assess  assessment.add, assessment.retract, assessment.super",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "show",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          }
+        ],
+        "ran_docs_page": {
+          "count": 11,
+          "of": 12
+        },
+        "ran_help": {
+          "count": 12,
+          "of": 12
+        }
+      }
+    },
+    "by_model": {
+      "claude-haiku-a": {
+        "docs": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 6,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 6,
+            "of": 6
+          },
+          "ran_onboard": {
+            "count": 6,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 6,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 1,
+            "of": 6
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 26,
+          "investigator_cli_calls": 149,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 3.0,
+          "median_calls_contact_to_source_case": 2.0,
+          "mean_total_seconds": 146.4,
+          "mean_investigator_calls": 26.3,
+          "refused_calls": {
+            "investigator": 26,
+            "successor": 3
+          },
+          "refused_unstuck": {
+            "count": 22,
+            "of": 29
+          },
+          "refused_with_hint": {
+            "count": 18,
+            "of": 29
+          },
+          "hint_followed": {
+            "count": 9,
+            "of": 18
+          },
+          "friction_causes": [
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --case case_0",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "brief",
+              "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+              "calls": 2,
+              "assignments": 1,
+              "with_hint": 2,
+              "hint_followed": 1,
+              "unstuck": 2
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 2
+            },
+            {
+              "verb": "record",
+              "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 2
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --actor agent",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "blindspots",
+              "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "evidence read",
+              "cause": "{\"available\":true,\"effects\":\"Record an attributed Observatio",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "observe",
+              "cause": "invalid value for --limitations",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/preconditions Include every current required revision as a trans",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/1/payload/reversal_conditions Link an assumption, criterion or comparison.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/2/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations Malformed JSON",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/0/client_ref Only an operation that creates a record can declar",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/4/payload Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4b-f5b4-7d20-a8ed-ed8ffe4100ba changed s",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "REVISION_CONFLICT /operations/5/payload/evidence_refs/0 The referenced record changed. Read the current re",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "assess  assessment.add, assessment.retract, assessment.super",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "{\"case\":{\"basis_revision\":1,\"closure_outcome\":null,\"contradi",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "show",
+              "cause": "invalid value for --level",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            }
+          ],
+          "ran_docs_page": {
+            "count": 1,
+            "of": 6
+          },
+          "ran_help": {
+            "count": 3,
+            "of": 6
+          }
+        },
+        "help-only": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 4,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 1,
+            "of": 1
+          },
+          "ran_onboard": {
+            "count": 1,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 6,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 16,
+          "investigator_cli_calls": 131,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 4.0,
+          "median_calls_contact_to_source_case": 3.0,
+          "mean_total_seconds": 110.5,
+          "mean_investigator_calls": 23.2,
+          "refused_calls": {
+            "investigator": 16,
+            "successor": 3
+          },
+          "refused_unstuck": {
+            "count": 12,
+            "of": 19
+          },
+          "refused_with_hint": {
+            "count": 10,
+            "of": 19
+          },
+          "hint_followed": {
+            "count": 6,
+            "of": 10
+          },
+          "friction_causes": [
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --actor agent",
+              "calls": 4,
+              "assignments": 4,
+              "with_hint": 4,
+              "hint_followed": 4,
+              "unstuck": 0
+            },
+            {
+              "verb": "show",
+              "cause": "missing <ID>",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "blindspots",
+              "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "brief",
+              "cause": "unrecognized subcommand list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/17/payload/choice Selected option must be among alternatives.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/3/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/0/case Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/13/payload/reversal_conditions/0/reason Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/17/payload/evidence_refs/0 Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/4/payload/preferred_direction Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/4/payload/threshold A hard criterion requires a checkable threshold.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "assess  assessment.add, assessment.retract, assessment.super",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            }
+          ],
+          "ran_docs_page": {
+            "count": 6,
+            "of": 6
+          },
+          "ran_help": {
+            "count": 6,
+            "of": 6
+          }
+        }
+      },
+      "claude-haiku-b": {
+        "docs": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 6,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 6,
+            "of": 6
+          },
+          "ran_onboard": {
+            "count": 6,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 6,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 28,
+          "investigator_cli_calls": 147,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 3.0,
+          "median_calls_contact_to_source_case": 2.0,
+          "mean_total_seconds": 141.1,
+          "mean_investigator_calls": 26.2,
+          "refused_calls": {
+            "investigator": 28,
+            "successor": 11
+          },
+          "refused_unstuck": {
+            "count": 21,
+            "of": 39
+          },
+          "refused_with_hint": {
+            "count": 30,
+            "of": 39
+          },
+          "hint_followed": {
+            "count": 15,
+            "of": 30
+          },
+          "friction_causes": [
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --case case_0",
+              "calls": 6,
+              "assignments": 4,
+              "with_hint": 6,
+              "hint_followed": 3,
+              "unstuck": 1
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --actor agent",
+              "calls": 5,
+              "assignments": 4,
+              "with_hint": 4,
+              "hint_followed": 3,
+              "unstuck": 3
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+              "calls": 4,
+              "assignments": 2,
+              "with_hint": 4,
+              "hint_followed": 1,
+              "unstuck": 2
+            },
+            {
+              "verb": "schema",
+              "cause": "assess  assessment.add, assessment.retract, assessment.super",
+              "calls": 4,
+              "assignments": 4,
+              "with_hint": 4,
+              "hint_followed": 4,
+              "unstuck": 4
+            },
+            {
+              "verb": "onboard",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "Retry or inspect with investigation observe --help --format ",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace ./casework --actor agent:inv",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "blindspots",
+              "cause": "GATE_FAILED /operations/0/payload/support_refs An invalid or unevaluated observation cannot provi",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "blindspots",
+              "cause": "unrecognized subcommand list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "brief",
+              "cause": "no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "doctor",
+              "cause": "INTEGRITY_FAILURE Accepted record has unreadable dependency referenc",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/verification A valid or partial judgment needs a qualifying ins",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/3/payload/verification A valid or partial judgment needs a qualifying ins",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/7/payload/evidence_refs/0 Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/7/payload/hard_conditions/0 Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "REVISION_CONFLICT /operations/0/payload/conclusion_ref The record changed. Inspect its current revision.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "UNKNOWN_REFERENCE /operations/1/payload/question_ref Expected an existing revision in this case or an a",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "operation: Unknown operation. Run investigation schema --lis",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "show",
+              "cause": "REVISION_CONFLICT /operations/0/payload/read_set obs_01a20f4e-bf17-7470-a40c-e4d05a3594c5 changed s",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            }
+          ],
+          "ran_docs_page": {
+            "count": 1,
+            "of": 6
+          },
+          "ran_help": {
+            "count": 2,
+            "of": 6
+          }
+        },
+        "help-only": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 6,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 2,
+            "of": 2
+          },
+          "ran_onboard": {
+            "count": 2,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 6,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 20,
+          "investigator_cli_calls": 120,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 4.0,
+          "median_calls_contact_to_source_case": 3.0,
+          "mean_total_seconds": 118.4,
+          "mean_investigator_calls": 21.0,
+          "refused_calls": {
+            "investigator": 20,
+            "successor": 3
+          },
+          "refused_unstuck": {
+            "count": 13,
+            "of": 23
+          },
+          "refused_with_hint": {
+            "count": 11,
+            "of": 23
+          },
+          "hint_followed": {
+            "count": 5,
+            "of": 11
+          },
+          "friction_causes": [
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace /work/casework --actor agent",
+              "calls": 5,
+              "assignments": 4,
+              "with_hint": 4,
+              "hint_followed": 2,
+              "unstuck": 2
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 2
+            },
+            {
+              "verb": "record",
+              "cause": "UNKNOWN_REFERENCE /operations/1/payload/rival_refs/0 Use an exact reference or an earlier alias of a pe",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 2
+            },
+            {
+              "verb": "schema",
+              "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 2,
+              "unstuck": 2
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --workspace ./casework --case case_01a20",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/0/payload/rival_expectations Compare every live rival, using not_assessed with",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/16/payload/choice Selected option must be among alternatives.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/16/payload/reversal_conditions Link an assumption, criterion or comparison.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/4/payload/evidence_refs/0 Use an inconclusive or non_diagnostic relation for",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "GATE_FAILED /operations/4/payload/rival_expectations Compare every live rival, using not_assessed with",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /actor Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/16/payload/evidence_refs/0 Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/4/payload/threshold A hard criterion requires a checkable threshold.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operations/7/payload/basis A result requires a measured or qualitative basis.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "show",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            }
+          ],
+          "ran_docs_page": {
+            "count": 5,
+            "of": 6
+          },
+          "ran_help": {
+            "count": 6,
+            "of": 6
+          }
+        }
+      }
+    },
+    "paired": {
+      "pairs": 12,
+      "mean_total_seconds": {
+        "docs": 143.7,
+        "help-only": 114.4
+      },
+      "mean_difference_seconds": -29.3,
+      "help-only_to_docs_time_ratio": 0.796,
+      "pairs_help-only_faster": 11,
+      "source_linked_handoff": {
+        "docs": 11,
+        "help-only": 12
+      },
+      "successor_citation_and_limitation": {
+        "docs": 11,
+        "help-only": 12
+      }
+    },
+    "targets": {
+      "met": true,
+      "targets": {
+        "receipt": {
+          "met": true,
+          "value": 10,
+          "treatment": {
+            "count": 10,
+            "of": 12
+          },
+          "baseline": {
+            "count": 12,
+            "of": 12
+          }
+        },
+        "handoff": {
+          "met": true,
+          "value": 12,
+          "treatment": {
+            "count": 12,
+            "of": 12
+          },
+          "baseline": {
+            "count": 11,
+            "of": 12
+          }
+        },
+        "unsupported_claims": {
+          "met": true,
+          "value": 0,
+          "treatment": {
+            "count": 0,
+            "of": 12,
+            "upper_95": 0.221
+          },
+          "baseline": {
+            "count": 1,
+            "of": 12
+          }
+        },
+        "refused_share": {
+          "met": true,
+          "value": -0.039,
+          "treatment": 0.143,
+          "baseline": 0.182
+        },
+        "recovery": {
+          "met": true,
+          "value": -0.037,
+          "treatment": {
+            "count": 25,
+            "of": 42
+          },
+          "baseline": {
+            "count": 43,
+            "of": 68
+          }
+        }
+      }
+    },
+    "comparison": {
+      "runs": [
+        "run1"
+      ],
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "targets": {
+        "schema": "first-use-targets.v1",
+        "bone": "bn-gef3 (W17.03b, hosted-agent arm)",
+        "preregistered": "2026-11-24, committed before any measured hosted run",
+        "host": "Claude Code in print mode, model alias haiku; the host and model version strings each session reports are recorded per assignment",
+        "arms": [
+          "docs",
+          "help-only"
+        ],
+        "baseline": "docs",
+        "treatment": "help-only",
+        "assignments_per_arm": 12,
+        "rule": "The help-only arm meets the W17.03 target under the hosted agent when every target below is met. Counts are assignments out of 12 per arm: six comparison cases, two replicates (claude-haiku-a, claude-haiku-b), matched by case, replicate and seed.",
+        "targets": {
+          "receipt": {
+            "measure": "receipt_within_three_after_contact",
+            "margin": 2,
+            "min": 6,
+            "text": "Persisted Source and Case within three calls after first CLI contact: help-only >= docs - 2, and help-only >= 6/12."
+          },
+          "handoff": {
+            "measure": "source_linked_handoff",
+            "margin": 2,
+            "text": "Source-linked handoff (persisted record, answer cites a decisive line and states the limitation): help-only >= docs - 2."
+          },
+          "unsupported_claims": {
+            "measure": "unwarranted_claims",
+            "max": 0,
+            "text": "Assignments whose successor answer matches a false-promotion pattern: help-only = 0/12."
+          },
+          "refused_share": {
+            "measure": "refused_call_share",
+            "max_increase": 0.1,
+            "text": "Friction budget 1: refused investigator CLI calls / investigator CLI calls, help-only <= docs + 0.10."
+          },
+          "recovery": {
+            "measure": "refused_unstuck",
+            "max_decrease": 0.1,
+            "text": "Friction budget 2: share of refused CLI calls (both phases) after which a later call of the same command succeeds, help-only >= docs - 0.10."
+          }
+        }
+      }
+    }
+  }
+}

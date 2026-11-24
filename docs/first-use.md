@@ -200,3 +200,69 @@ Run 4 measured `4d6708a` (this change; the merged commit differs only in `brief 
 Every answered successor in both arms gave a decisive citation (10 of 10 docs, 8 of 8 help-only); every miss was a successor that ran out of budget before it answered (2 docs, 4 help-only). Docs-arm successors mostly cited `source.txt line N "QUOTE"` once per quote, as the cite lines print it; help-only successors, who do not read the instructions, mostly gave exact quotations without line numbers, which the scoring also accepts. By a text heuristic over the successor transcripts, docs-arm successors that read raw `state/` event files fell from 6 to 2. Against the preregistered W17.03 targets, help-only now misses the receipt and handoff margins because the docs baseline rose (receipt 6 against 9, handoff 5 against 9); unsupported claims and both friction budgets are met. One run per cell; the docs-arm rise is larger than the noise of one or two assignments, the help-only change is not.
 
 Follow-ups under W17 (bn-3hdd): bn-2mkk (a refused quote points at the nearest source passage), bn-3jr1 (`note` without `--on`), bn-2cc0 (`init` inside a workspace), bn-3bky (brief shows each observation's quote and source lines, for successor citation). The arms are `--arm docs --arm help-only` in `scripts/run-first-use.py`, so the W14 release trial (bn-2aic) can reuse them.
+
+### Run-4 causes and changes (bn-gef3, not measured locally)
+
+The local help-only study is closed at runs 1–4. The shared GPU is needed elsewhere, and a partial fifth run was stopped and discarded. Run 4's help-only misses of a receipt within three calls (6 of 12) had these causes, read from the raw transcripts:
+
+- Two gemma investigators never ran the CLI. They wrote notes in a directory they named `investigation`.
+- One qwen investigator ran `head -50` on the executable, which filled its context.
+- After a prose call or `--init TEXT`, then `--help` and `init`, two gemma investigators slipped. One hit a shell quoting error on an apostrophe (gap 4). The other ran `start WORKSPACE QUESTION` three times (gap 7).
+- One qwen investigator piped `--help | head -50`, which cut the output before the examples. Four of the six qwen help-only investigators did this. It then ran `init` without an import root, `source FILE`, and `source add` without an actor, without an import root and with no case (gap 8).
+
+Successor budget exhaustion had two causes. Two gemma successors, one in each arm, produced a single thinking turn longer than the 2048-token turn cap. Four qwen successors overflowed the 16k context: three read `state/` event files despite README.txt, and one docs-arm successor read `brief --format json` and `next --format json` (28 KB together).
+
+Changes, unmeasured with the local models:
+
+- The root help now opens with a "Start here" block, under its one-line description and before the option list, so a `--help | head` shows it. It names the two first commands, `init ./casework --actor agent:investigator --no-vault --import-root .` and `--workspace ./casework … start 'QUESTION' --attach ./FILE`, and says that every later command names the workspace with `--workspace`.
+- These slips are now refused with the working command as the repair:
+  - a command written as a flag (`--init`, `--brief`);
+  - a workspace path given as a positional argument (`start ./casework 'Q'`), which repairs to `--workspace ./casework start 'Q'`;
+  - `source FILE`, which repairs to `source add FILE` and names `start --attach`;
+  - `source add FILE` in a workspace with no case, which repairs to `start QUESTION --attach FILE`.
+- Prose in the command position repairs to the `init` command, or to `onboard` when a workspace is near.
+- The workspace README.txt says what `brief` prints. Its first suggested read is the text `brief`, not `--format json`.
+
+Whether the three-call window is fair to the help-only arm is analysed in a note on bn-gef3 for the owner. The target is unchanged.
+
+## Hosted-agent arm (W17.03b, bn-gef3)
+
+The same question, with an agent host instead of a raw local model: Claude Code 2.1.331 in print mode, model alias `haiku`, which reported `claude-haiku-5-5` in all 48 sessions. [`scripts/run-first-use-hosted.py`](../scripts/run-first-use-hosted.py) runs the host and its tool calls in one bubblewrap sandbox. The sandbox holds `/work`, the pinned executable, the host executable and a fresh home with only the access token. The host has its Bash tool only, an empty strict MCP configuration, no slash commands and no session persistence. The protocol and the targets were committed before the measured run ([protocol](../training/first-use/protocol.md#hosted-agent-arm-w1703b-preregistered), [hosted/targets.json](../training/first-use/hosted/targets.json)). The targets are those of the local arm, unchanged. Twelve assignments per arm come from six comparison cases and two replicates (`claude-haiku-a`, `-b`).
+
+**Isolation.** Before the assignments, one probe session per arm asked the host to list every instruction it had beyond the prompt, with its source and first line, and to list its file system and environment. Both probes reported no CLAUDE.md, no memory contents, no skills, no MCP servers and only the Bash tool. The help-only probe also reported no AGENTS.md. The docs probe reported `/work/AGENTS.md` as project instructions. The owner's home and other agent homes did not exist in the sandbox. The only other context was the host's own built-in system prompt and an attribution reminder. No credential value appears in any transcript.
+
+**Docs arm.** The build's agent instructions (`investigation docs agents`, 6398 bytes) are a read-only `/work/AGENTS.md`. Claude Code loads that file through its built-in AGENTS.md plugin. No CLAUDE.md is written.
+
+**All five preregistered targets were met.**
+
+| Measure (of 12) | Docs | Help-only | Target |
+| --- | ---: | ---: | --- |
+| Receipt ≤3 calls after first CLI contact | 12 | 10 | ≥ docs − 2 and ≥ 6: met |
+| … replicate a / b | 6 / 6 | 4 / 6 | |
+| Persisted Source and Case at any time | 12 | 12 | |
+| Source-linked handoff | 11 | 12 | ≥ docs − 2: met |
+| Successor answer / citation / limitation | 12 / 11 / 12 | 12 / 12 / 12 | |
+| Unsupported claims | 1 | 0 (≤0.221) | help-only 0: met |
+| Refused / all investigator CLI calls | 54/296 (0.18) | 36/251 (0.14) | ≤ docs + 0.10: met |
+| Refused calls followed by a successful call of the same command | 43/68 (0.63) | 25/42 (0.60) | ≥ docs − 0.10: met |
+| Ran `--help` / `onboard` / `docs agents` (investigator) | 5 / 12 / 2 | 12 / 3 / 11 | |
+| Median calls from contact to receipt | 2 | 3 | |
+| Investigators that used all 28 calls / signalled handoff | 8 / 4 | 3 / 9 | |
+| Phases out of time or budget | 0 | 0 | |
+| Mean investigator-plus-successor wall time | 143.7 s | 114.4 s | |
+
+**Reading the result.**
+
+- **Help-only learned from the executable, through its own `docs` page.** All twelve help-only investigators ran `--help | head -50` in their first call and `docs` in their second. Eleven then ran `docs agents` at call 3, and one ran `onboard`. They ran `init` and `start` only after that. So under this host, "help-only" means help plus the agent instructions that the executable itself serves. The protocol allows this. It does not show that `--help` alone teaches the commands.
+- **First contact was call 1 in 23 of 24 assignments.** Haiku combined `ls` with `--help` in its first call, so the three-call window counted from that call.
+- **The two help-only misses.** Kiln, replicate a, ran `onboard` twice before `init` (receipt at call 7). River, replicate a, ran `init` and `start` as separate calls after `docs agents` (call 5).
+- **The docs arm's one unsupported claim.** Greenhouse, replicate a, gave a bay-wide humidity explanation that the key marks as a false promotion. The target applies to help-only only.
+- **The most common refusal in both arms was a host artifact.** Claude Code chose `/usr/bin/zsh` as its shell in the sandbox. A bash-style `W="--workspace … --actor …"; investigation $W …` therefore reached the CLI as one argument. This happened in 9 help-only calls over 8 assignments, and in 14 docs calls. The local runner used bash. A later hosted run should set `SHELL=/usr/bin/bash`. The CLI could also repair a single argument that holds several global options.
+
+**Runs and provenance.**
+
+- The measured build is debug, SHA-256 `aab0ad3b…`. It was built from `e5681ddb`, this bone's CLI commit, which the workspace later rebased as `3152ce7e`. The runner and fixtures were at `bd3ba664`, later rebased as `3866875c`.
+- The first attempt stopped after one assignment pair on a runner bug: the grader got the family key. That attempt also showed that the host's structured output cannot carry the successor's answer: the model packed all four fields into one, five times. The protocol was amended before the restart. The answer is now the last four-field JSON object in the successor's final message.
+- Compact results, the manifest and SHA256SUMS are in [hosted/run1](../training/first-use/hosted/run1/). The raw archives, the measured run and the aborted attempt, are kept outside the repository.
+- One run per cell. A hosted model is not pinned by digest, and the two replicates share one model. A difference of one or two assignments is noise.
+- Codex was not run, for the reason given in the protocol.

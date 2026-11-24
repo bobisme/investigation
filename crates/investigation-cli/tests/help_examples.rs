@@ -77,11 +77,30 @@ fn the_core_examples_in_help_run_in_a_fixture_workspace() {
     let cwd = directory.path();
     fs::write(cwd.join("results.log"), "request waited 28 seconds\n").unwrap();
 
-    // init, then start, exactly as the top-level help shows them.
+    // The "Start here" lines above the command list, with only their two
+    // placeholders filled, in a directory of their own.
+    let first = tempfile::tempdir().unwrap();
+    fs::write(first.path().join("notes.txt"), "one line\n").unwrap();
+    ok(first.path(), &example(&root_help(), "init"));
+    let start = example(
+        &root_help(),
+        "--workspace ./casework --actor agent:investigator start 'QUESTION'",
+    );
+    ok(
+        first.path(),
+        &start
+            .replace("'QUESTION'", "'What happened?'")
+            .replace("./FILE", "./notes.txt"),
+    );
+
+    // init, then start, exactly as the top-level help's examples show them.
     ok(cwd, &example(&root_help(), "init"));
     let started = ok(
         cwd,
-        &example(&root_help(), "--workspace ./casework --actor"),
+        &example(
+            &root_help(),
+            "--workspace ./casework --actor agent:investigator start 'Why",
+        ),
     );
     let case = started["created"]
         .as_array()

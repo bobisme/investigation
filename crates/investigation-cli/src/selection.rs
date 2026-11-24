@@ -279,7 +279,13 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
     };
     let mut failure = Failure::new(ErrorCode::CaseRequired, message).at("/case_id");
     failure.error.actual = Some(json!(cases));
-    let mut argv = workspace_argv(store.workspace());
+    let argv = workspace_argv(store.workspace());
+    if cases.is_empty()
+        && let Some(start) = crate::first_use::start_for_source_add(argv.clone())
+    {
+        return Err(failure.with_argv(start));
+    }
+    let mut argv = argv;
     argv.extend(["onboard", "--format", "json"].map(str::to_owned));
     Err(failure.with_argv(argv))
 }

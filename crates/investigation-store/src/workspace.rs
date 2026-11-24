@@ -886,10 +886,13 @@ fn verify_layout(root: &Path, vault: &VaultPolicy) -> Result<(), WorkspaceError>
 pub fn pointer_text() -> String {
     format!(
         "This directory is an investigation workspace. Read it with the {PROGRAM_NAME} command,\n\
-         not by opening files under state/ or cache/:\n\
+         not by opening files under state/ or cache/, which hold large JSON events and raw bytes:\n\
          \n\
-         \x20 {PROGRAM_NAME} --workspace DIR brief --format json\n\
+         \x20 {PROGRAM_NAME} --workspace DIR brief\n\
          \x20 {PROGRAM_NAME} --workspace DIR onboard --format json\n\
+         \n\
+         brief prints the handoff: the question, outcomes, cite lines for the evidence and open\n\
+         questions. --level compact prints the shortest form; --format json prints the same as JSON.\n\
          \n\
          DIR is the path to this directory, for example ./casework. Inside it, --workspace\n\
          can be omitted. state/ holds the canonical journal and retained bytes; cache/ holds\n\

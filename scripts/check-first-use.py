@@ -20,6 +20,9 @@ RESULTS = ROOT / "training/first-use/results.json"
 FAMILY = runpy.run_path(str(ROOT / "scripts/check-fixture-families.py"))
 RUNNER = runpy.run_path(str(ROOT / "scripts/run-first-use.py"))
 ANALYSIS = runpy.run_path(str(ROOT / "scripts/analyze-first-use.py"))
+HOSTED = runpy.run_path(str(ROOT / "scripts/run-first-use-hosted.py"))
+# Each directory of measured runs and the preregistered targets its runs are judged by.
+STUDIES = {"help-only": ROOT / "training/first-use/help-only", "hosted": ROOT / "training/first-use/hosted"}
 
 
 def load(path):
@@ -112,6 +115,80 @@ def check_friction():
     assert not result["targets"]["unsupported_claims"]["met"] and result["targets"]["handoff"]["met"]
 
 
+def check_hosted():
+    """The hosted arm keeps the local prompts, targets and per-call contact measure."""
+    texts, local = HOSTED["prompts"]("help-only"), RUNNER["prompts"]("help-only")
+    assert texts["investigator"] == local["investigator"]
+    assert texts["successor"] == local["successor"].replace(HOSTED["SUBMIT_FROM"], HOSTED["SUBMIT_TO"])
+    assert "submit_answer" not in texts["successor"] and "AGENTS.md" not in "".join(texts.values())
+    hosted, local = (load(STUDIES[name] / "targets.json") for name in ("hosted", "help-only"))
+    assert hosted["arms"] == local["arms"] and hosted["assignments_per_arm"] == local["assignments_per_arm"]
+    strip = lambda targets: {name: {k: v for k, v in target.items() if k != "text"}
+                             for name, target in targets["targets"].items()}
+    assert strip(hosted) == strip(local), "hosted targets must match the help-only targets"
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        trace = root / "s.strace"
+        trace.write_text(
+            '7 10.0 execve("/opt/host/claude", ["claude"], 0x1 /* 1 vars */) = 0\n'
+            '8 11.5 execve("/usr/bin/bash", ["bash"], 0x1 /* 1 vars */) = 0\n'
+            '9 12.5 execve("/tools/investigation", ["investigation", "--help"], 0x1 /* 1 vars */) = 0\n'
+            '9 13.5 execve("/tools/investigation", ["investigation", "init"], 0x1 /* 1 vars */ <unfinished ...>\n'
+            '9 13.6 <... execve resumed>) = 0\n', encoding="utf-8")
+        calls = [{"ended": 12.0}, {"ended": 13.0}, {"ended": 14.0}, {}]
+        HOSTED["split_trace"](trace, calls, root / "s.trace")
+        contact = [RUNNER["invoked_cli"](root / "s.trace" / f"{n:04}.log") for n in range(1, 5)]
+        assert contact == [False, True, True, False], contact
+
+
+def check_hosted_cleanup():
+    """A hosted session that fails midway leaves no token copy behind, a leftover
+    copy stops the next session, and the end-of-run check exits nonzero. Uses a
+    fake credentials file and never starts a host."""
+    names = ("HOMES", "CREDENTIALS", "sandbox")
+    module = HOSTED["session"].__globals__
+    saved = {name: module[name] for name in names}
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        homes, credentials, output = root / "homes", root / "credentials.json", root / "output"
+        credentials.write_text(json.dumps({"claudeAiOauth": {
+            "accessToken": "fake-access-token", "refreshToken": "fake-refresh-token",
+            "expiresAt": 4_102_444_800_000, "scopes": [], "subscriptionType": "fake"}}), encoding="utf-8")
+        (root / "work").mkdir()
+        output.mkdir()
+
+        def fail(*_args):
+            raise RuntimeError("stopped midway")
+
+        def start():
+            HOSTED["session"]("fake", "investigator", {"objective": "o", "initial": {"sha256": "0" * 64}},
+                              root / "work", None, output / "investigator.jsonl",
+                              {"seconds": 1, "tool_calls": 1}, {"investigator": "p"}, "midway")
+
+        def raises(call, error):
+            try:
+                call()
+            except error as caught:
+                return caught
+            raise AssertionError(f"expected {error.__name__}")
+
+        module.update(HOMES=homes, CREDENTIALS=credentials, sandbox=fail)
+        try:
+            assert str(raises(start, RuntimeError)) == "stopped midway"
+            assert homes.is_dir() and not any(homes.iterdir()), sorted(homes.rglob("*"))
+            HOSTED["verify_clean"](output)
+            leftover = homes / "earlier/.claude/.credentials.json"
+            leftover.parent.mkdir(parents=True)
+            leftover.write_text("{}", encoding="utf-8")
+            assert "earlier session remains" in str(raises(start, RuntimeError))
+            assert "token copy left" in str(raises(lambda: HOSTED["verify_clean"](output), SystemExit))
+            leftover.unlink()
+            (output / "leak.txt").write_text("fake-refresh-token", encoding="utf-8")
+            assert "credential found in leak.txt" in str(raises(lambda: HOSTED["verify_clean"](output), SystemExit))
+        finally:
+            module.update(saved)
+
+
 def check_grading():
     key = load(KEYS / "river-gauge-record.json")["variants"]["default"]
     with tempfile.TemporaryDirectory() as directory:
@@ -134,8 +211,8 @@ def check_results():
     if not RESULTS.exists():
         return None
     count = 0
-    targets = load(ROOT / "training/first-use/help-only/targets.json")
-    for path in [RESULTS, *sorted((ROOT / "training/first-use/help-only").glob("run*/results.json"))]:
+    studies = {path: name for name, directory in STUDIES.items() for path in sorted(directory.glob("run*/results.json"))}
+    for path in [RESULTS, *studies]:
         results = load(path)
         assert results["schema"] == "first-use-results.v1", path
         rows = results["assignments"]
@@ -145,7 +222,8 @@ def check_results():
         for row in rows:
             assert row["arm"] in arms and (KEYS / f"{row['family']}.json").exists(), path
         if path != RESULTS:
-            # Help-only runs are judged against the committed preregistered targets.
+            # Help-only and hosted runs are judged against their committed preregistered targets.
+            targets = load(STUDIES[studies[path]] / "targets.json")
             assert results["comparison"]["targets"] == targets, f"targets differ from preregistration: {path}"
         count += len(rows)
     return count
@@ -189,6 +267,8 @@ if __name__ == "__main__":
     check_schedule()
     check_arms()
     check_friction()
+    check_hosted()
+    check_hosted_cleanup()
     check_grading()
     rows = check_results()
     if "--shell" in sys.argv[1:]:
