@@ -4,3 +4,7 @@
 /repo.git/
 
 /target/
+
+# Python bytecode: built output; `just hygiene` fails if any is tracked.
+__pycache__/
+*.pyc

@@ -42,7 +42,10 @@
 //!    leaving. Never regenerate it with the new build. List its files in
 //!    `fixtures/historical/SHA256SUMS`, add a row to that README, and add
 //!    its name to `HISTORICAL` in `crates/investigation-cli/tests/migration.rs`.
-//!    Leave the older directories as they are.
+//!    Leave the older directories as they are. Last, make its files
+//!    writable (`chmod -R u+w fixtures/historical/<directory>`): the binary
+//!    writes journal files and blobs read-only, and a read-only tracked file
+//!    makes a later checkout fail part-way. `just hygiene` warns about any.
 //! 2. Implement [`Migration`] with `version()` 2. Declare every area it
 //!    changes in `touches()`, raise `read_requires` for anything an older
 //!    reader must not ignore, and make `apply` idempotent.

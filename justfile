@@ -1,6 +1,6 @@
-check: format lint test boundaries audit
+check: format lint test boundaries hygiene audit
 
-check-offline: format lint test boundaries (audit "--offline")
+check-offline: format lint test boundaries hygiene (audit "--offline")
 
 format:
     cargo fmt --all --check
@@ -24,6 +24,11 @@ test:
 
 boundaries:
     python3 scripts/check-boundaries.py
+
+# Fails on tracked Python bytecode; warns, with the chmod fix, on a tracked
+# file that is read-only in this worktree, which breaks a later checkout.
+hygiene:
+    python3 scripts/check-worktree.py
 
 audit *options:
     cargo-deny --locked --all-features {{options}} check advisories licenses sources
