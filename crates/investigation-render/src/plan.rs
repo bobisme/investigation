@@ -76,7 +76,12 @@ use crate::{
 /// of "cannot be read as an Observation", and gains a `## Claim origin`
 /// section (origin, restatement chain, acquisitions, traces, dependence
 /// judgments) (bn-1brz).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v24";
+/// v25: local-path elision recognises more roots (`/dev/shm/`, `/Volumes/`,
+/// `/System/Volumes/`, `/nix/`, `/gnu/`, `/snap/`, `/scratch/`, `/gpfs/`,
+/// `/lustre/`, `/afs/`, `/net/`, `/workspace/`, `/workspaces/`, `/builds/`,
+/// `/cygdrive/`) and `file:` URLs, so a legacy title or identity holding one
+/// renders `[local path elided]` (bn-uar0).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v25";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

@@ -936,11 +936,13 @@ mod tests {
             value["reason"],
             format!("cannot read {ELIDED} or <WORKSPACE>/state")
         );
+        // `/scratch/` is a known root, elided with its punctuation kept;
+        // `/data2/` is not, and the bundle's catch-all elides the token.
         let mut value = json!("under /scratch/x/y, see state/locks and (/data2/z)");
         redact(&mut value, &[]);
         assert_eq!(
             value,
-            format!("under {ELIDED} see state/locks and ({ELIDED}")
+            format!("under {ELIDED}, see state/locks and ({ELIDED}")
         );
     }
 }
