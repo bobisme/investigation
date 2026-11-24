@@ -1,6 +1,6 @@
-check: format lint test boundaries hygiene audit
+check: format lint test boundaries neutrality hygiene audit
 
-check-offline: format lint test boundaries hygiene (audit "--offline")
+check-offline: format lint test boundaries neutrality hygiene (audit "--offline")
 
 format:
     cargo fmt --all --check
@@ -24,6 +24,13 @@ test:
 
 boundaries:
     python3 scripts/check-boundaries.py
+
+# The Milestone B proof's neutrality step alone (plan §20.1 X3): root and
+# subcommand help, every schema, a fresh workspace and its onboard text against
+# the deny-list, named tools and security terms; each allowed match names its
+# plan text. About 3 s once the binary is built (the tests have built it).
+neutrality:
+    python3 scripts/check-neutrality.py
 
 # Fails on tracked Python bytecode; warns, with the chmod fix, on a tracked
 # file that is read-only in this worktree, which breaks a later checkout.

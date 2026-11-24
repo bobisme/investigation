@@ -9,8 +9,10 @@ and runs every check from that copy, so uncommitted files cannot change the resu
 compiles the test executables in the copy, then installs BIN at the path they were
 compiled against, so the Rust tests, the scenario scripts and the vault renders run the
 same bytes. It runs the tests and scripts with a cleared environment: PATH holds only
-python3, no producer, viewer application or extra method pack is installed, and, when
-bubblewrap is available, there is no network.
+python3 and openssl (the release-trial self-test seals a throwaway trial-task bundle with
+`openssl enc`, the sealed format), no producer, viewer application or extra method pack
+is installed, and, when bubblewrap is available, there is no network. The report's
+environment record names the openssl it linked, or says it is absent.
 
 The report covers the four scenarios with their W10 steps, the conformance suite with
 the reference, Python and Rust producers, the four producer kinds, vault renders and
@@ -29,6 +31,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import runpy
 import shutil
 import subprocess
 import sys
@@ -46,21 +49,6 @@ DRILL_TARGETS = {
     "6": ("investigation-cli", "drill_closure", None),
     "6/crash-model": ("investigation-store", "investigation_store", "closure_drill_tests"),
 }
-# Named external tools and security concepts that the default surfaces must not contain,
-# beyond the reviewed deny-list in scripts/neutrality-denylist.txt.
-NAMED_TOOLS = (
-    "obsidian", "jira", "github", "gitlab", "bitbucket", "asana", "trello",
-    "docker", "kubernetes", "pytest", "valgrind", "wireshark", "prometheus", "grafana", "datadog",
-    "sentry", "jaeger", "jmeter", "locust", "burp", "nmap", "metasploit", "semgrep", "codeql",
-    "sonarqube", "openai", "chatgpt", "claude", "ollama", "copilot",
-)
-SECURITY_TERMS = (
-    "cve", "cwe", "cvss", "owasp", "exploit", "vulnerability", "vulnerabilities", "attack",
-    "attacker", "threat model", "malware", "pentest", "penetration test", "privilege escalation",
-    "xss", "csrf", "sql injection", "red team", "security", "credential",
-)
-# A named tool the default surfaces may mention, with the reason. Reported, never hidden.
-ALLOWED_NAMED = {}
 FIRST_USE_FAMILY = "kiln-thermocouple-offset"
 
 
@@ -91,6 +79,14 @@ class Proof:
         pathbin = scratch / "pathbin"
         pathbin.mkdir()
         (pathbin / "python3").symlink_to(sys.executable)
+        # Not a producer or viewer: scripts/seal-release-families.py encrypts sealed bundles
+        # with `openssl enc` (AES-256-CBC, PBKDF2), which no Python standard module provides.
+        openssl = shutil.which("openssl")
+        if openssl:
+            (pathbin / "openssl").symlink_to(openssl)
+        version = subprocess.run([openssl, "version"], capture_output=True, text=True).stdout.strip() if openssl else None
+        self.path_record = {"programs": ["python3", "openssl"] if openssl else ["python3"],
+                            "openssl": version or "absent: the release-trial self-test cannot seal"}
         for name in ("home", "tmp"):
             (scratch / name).mkdir()
         self.env = {"PATH": str(pathbin), "HOME": str(scratch / "home"), "TMPDIR": str(scratch / "tmp"),
@@ -234,7 +230,7 @@ class Proof:
         detail = {"executables": len(self.tests), "passed": counts["ok"], "failed": counts["FAILED"],
                   "ignored": counts["ignored"], "failures": failures,
                   "doctests": "not run: they need the toolchain at run time",
-                  "environment": {"PATH": "python3 only", "network": "none" if self.isolate else "not isolated",
+                  "environment": {"PATH": self.path_record, "network": "none" if self.isolate else "not isolated",
                                   "producers_installed": 0, "viewer_on_path": False}}
         self.report["test_suite"] = detail
         assert not failures, failures
@@ -385,60 +381,16 @@ class Proof:
 
     # ---- neutrality -----------------------------------------------------------------
     def neutrality(self):
-        denylist = [line.strip() for line in (self.src / "scripts/neutrality-denylist.txt").read_text().splitlines()
-                    if line.strip() and not line.startswith("#")]
-        categories = {"deny-list": denylist, "named tool": NAMED_TOOLS, "security concept": SECURITY_TERMS}
-        patterns = [(category, term, re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE))
-                    for category, terms in categories.items() for term in terms]
+        """scripts/check-neutrality.py from the clean copy: every match is reported, and the
+        allowed ones carry the plan text that allows them."""
+        scan = runpy.run_path(str(self.src / "scripts/check-neutrality.py"))
         work = self.scratch / "neutrality"
         work.mkdir()
-        surfaces = {}
-        help_text = self.cli("--help", cwd=work).stdout
-        surfaces["default help"] = {"investigation --help": help_text}
-        commands = re.findall(r"(?m)^  ([a-z][a-z-]*)\s{2,}", help_text.split("Commands:", 1)[1].split("Options:", 1)[0])
-        surfaces["subcommand help"] = {f"investigation {name} --help": self.cli(name, "--help", cwd=work).stdout
-                                       for name in commands if name != "help"}
-        listed = self.json("schema", "--list", cwd=work)
-        operations = [name for stage in listed["stages"] for name in stage["operations"]]
-        published = {"investigation schema --list": json.dumps(listed)}
-        for name in operations:
-            published[f"investigation schema {name}"] = self.cli("schema", name, "--format", "json", cwd=work).stdout
-        for path in sorted((self.src / "schemas").rglob("*")):
-            if path.is_file():
-                published[str(path.relative_to(self.src))] = path.read_text(encoding="utf-8")
-        surfaces["published schemas"] = published
-        self.cli("init", "fresh", cwd=work)
-        fresh = work / "fresh"
-        files = {f"fresh workspace/{path.relative_to(fresh)}": path.read_bytes().decode("utf-8", "replace")
-                 for path in sorted(fresh.rglob("*")) if path.is_file()}
-        files["investigation onboard"] = self.cli("--workspace", fresh, "onboard", "--format", "json", cwd=work).stdout
-        surfaces["fresh workspace"] = files
-        doctor = self.json("--workspace", fresh, "doctor", cwd=work)
-        packs = self.json("--workspace", fresh, "method", "list", cwd=work)
-        hits = {}
-        for surface, documents in surfaces.items():
-            for document, content in documents.items():
-                for number, line in enumerate(content.splitlines(), start=1):
-                    for category, term, pattern in patterns:
-                        if pattern.search(line):
-                            hits.setdefault(surface, []).append(
-                                {"category": category, "term": term, "where": f"{document}:{number}",
-                                 "line": line.strip()[:160]})
-        required = ("default help", "published schemas", "fresh workspace")
-        blocking = [hit for surface in required for hit in hits.get(surface, [])
-                    if not (hit["category"] == "named tool" and hit["term"] in ALLOWED_NAMED)]
-        built_in = [pack["pack_id"] for pack in doctor["capabilities"]["method_packs"]["built_in"]]
-        self.report["versions"]["doctor"] = doctor["versions"]
-        detail = {
-            "surfaces_scanned": {surface: len(documents) for surface, documents in surfaces.items()},
-            "terms": {category: len(terms) for category, terms in categories.items()},
-            "hits": hits, "allowed": {term: ALLOWED_NAMED[term] for term in ALLOWED_NAMED
-                                      if any(hit["term"] == term for found in hits.values() for hit in found)},
-            "blocking": blocking, "built_in_packs": built_in, "method_list": packs,
-            "viewer_on_ambient_path": bool(shutil.which("obsidian")),
-        }
-        assert not blocking, blocking
-        assert built_in == ["general"], built_in
+        detail = scan["scan"](lambda *args: self.cli(*args, cwd=work).stdout, self.src, work)
+        self.report["versions"]["doctor"] = detail.pop("versions")
+        detail["viewer_on_ambient_path"] = bool(shutil.which("obsidian"))
+        assert not detail["blocking"], detail["blocking"]
+        assert detail["built_in_packs"] == ["general"], detail["built_in_packs"]
         return detail
 
     # ---- first use ------------------------------------------------------------------
@@ -559,7 +511,7 @@ def main():
         report = proof.report
         report["started_at"] = began.isoformat(timespec="seconds")
         report["environment"] = {"network": "none (bubblewrap --unshare-net)" if proof.isolate else "not isolated",
-                                 "path": "python3 only", "env": "cleared"}
+                                 "path": proof.path_record, "env": "cleared"}
         sections = {}
         prepared = all(proof.step(name, function)["ok"] for name, function in (
             ("export clean copy", proof.export), ("build test executables", proof.build),

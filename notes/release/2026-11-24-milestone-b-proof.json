@@ -1,0 +1,997 @@
+{
+  "schema": "milestone-b-proof.v1",
+  "versions": {
+    "git": {
+      "commit": "47770e26b2baa725d334a05a19a22451f6686ae4",
+      "subject": "docs: milestone-b X3 names the neutrality scan's two plan-cited allowances, and the proof environment holds python3 and openssl",
+      "uncommitted_changes_excluded": false
+    },
+    "binary": {
+      "path": "<workspace>/target/debug/investigation",
+      "sha256": "eff057b698a12e4d96a976290520471fbdcd191c7d50c069243bd9cfd02fa8ea",
+      "version": "investigation 0.1.0"
+    },
+    "toolchain": {
+      "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+      "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "python": "3.14.5"
+    },
+    "host": {
+      "kernel": "7.2.8-arch1-2",
+      "machine": "x86_64"
+    },
+    "doctor": {
+      "binary": "0.1.0",
+      "capture_capabilities": "inv.capture-capabilities.v1",
+      "catalog": {
+        "command": "inv.command.v1",
+        "operations_available": 68,
+        "operations_reserved": 0,
+        "operations_total": 68
+      },
+      "command": "inv.command.v1",
+      "freshness_rules": 7,
+      "gap_rules": "slice-gaps.v1",
+      "index_schema": 6,
+      "journal_event": "inv.event.v0-alpha.2",
+      "method_pack": "inv.method-pack.v1",
+      "next_rules": "slice-next.v2",
+      "program": "investigation",
+      "record_family": "inv.record.v0-alpha",
+      "render_manifest": "inv.render-manifest.v0",
+      "response": "inv.response.v1",
+      "vault_renderer": "inv.vault-renderer.v26",
+      "workspace_marker": "inv.workspace.v1"
+    }
+  },
+  "started_at": "2026-11-24T20:24:53+00:00",
+  "environment": {
+    "network": "none (bubblewrap --unshare-net)",
+    "path": {
+      "programs": [
+        "python3",
+        "openssl"
+      ],
+      "openssl": "OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)"
+    },
+    "env": "cleared"
+  },
+  "test_suite": {
+    "executables": 175,
+    "passed": 1477,
+    "failed": 0,
+    "ignored": 4,
+    "failures": [],
+    "doctests": "not run: they need the toolchain at run time",
+    "environment": {
+      "PATH": {
+        "programs": [
+          "python3",
+          "openssl"
+        ],
+        "openssl": "OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)"
+      },
+      "network": "none",
+      "producers_installed": 0,
+      "viewer_on_path": false
+    }
+  },
+  "complete": true,
+  "test_suite_summary": {
+    "executables": 175,
+    "passed": 1477,
+    "failed": 0,
+    "ignored": 4,
+    "doctests": "not run: they need the toolchain at run time",
+    "environment": {
+      "PATH": {
+        "programs": [
+          "python3",
+          "openssl"
+        ],
+        "openssl": "OpenSSL 3.6.5 29 Sep 2026 (Library: OpenSSL 3.6.5 29 Sep 2026)"
+      },
+      "network": "none",
+      "producers_installed": 0,
+      "viewer_on_path": false
+    }
+  },
+  "scenario_a": {
+    "command": "scripts/scenario_a_proof.py",
+    "seconds": 2.14,
+    "case": "case_01a20f3d-443a-7ee3-88bb-dfb305993692",
+    "validated": {
+      "id": "concl_01a20f3d-486d-75c3-9258-078995694126",
+      "revision": 3
+    },
+    "w10": {
+      "blindspots": "comparability.environment_differs on the refused candidate",
+      "blindspot_review": "rev_01a20f3d-49d5-7a92-b0f6-d2cc4f977856",
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    },
+    "successor": {
+      "outcome": {
+        "id": "concl_01a20f3d-486d-75c3-9258-078995694126",
+        "revision": 3
+      },
+      "evidence": {
+        "id": "obs_01a20f3d-45e3-7972-b6a8-5f4f1f94483b",
+        "revision": 1
+      }
+    }
+  },
+  "scenario_b": {
+    "command": "scripts/scenario_b_proof.py",
+    "seconds": 9.61,
+    "case": "case_01a20f3d-4c9f-7262-b1bb-d6845ec72b7f",
+    "properties": 37,
+    "decimals_checked": 220,
+    "case_outcome": "inconclusive",
+    "w10": {
+      "blindspots": "before and after the blindspot review",
+      "blindspot_review": "rev_01a20f3d-63cb-7821-97f0-e04b9f9869ce",
+      "retrospective": "retro_01a20f3d-65ee-7a00-b271-264d679a0f45"
+    }
+  },
+  "scenario_c": {
+    "command": "scripts/scenario_c_proof.py",
+    "seconds": 3.06,
+    "case": "case_01a20f3d-721b-74c3-a7c5-3d930976edb3",
+    "decision": "dec_01a20f3d-76c7-7e43-842e-4523dc599b08",
+    "case_outcome": "inconclusive",
+    "w10": {
+      "blindspots": "criterion.hard_unmeasured before and after the threshold change",
+      "blindspot_review": "rev_01a20f3d-7b50-73e3-bfc3-abb5dece59e2",
+      "stale_reviews": [
+        "review.stale/rev_01a20f3d-7713-7d01-aa7c-54f91d24b8b8",
+        "review.stale/rev_01a20f3d-7780-7a71-b984-16e12730c93c",
+        "review.stale/rev_01a20f3d-7b50-73e3-bfc3-abb5dece59e2"
+      ],
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    }
+  },
+  "scenario_d": {
+    "target": "investigation-cli/scenario_d",
+    "tests": [
+      "scenario_d_baseline_conditional_conclusion_from_sources_alone",
+      "scenario_d_injected_instructions_stay_inert_and_the_result_equals_the_baseline",
+      "scenario_d_later_edition_twin_erratum_does_not_apply_to_the_named_build"
+    ],
+    "w10": {
+      "blindspots": "duplicate-origin trap and empty-search absence",
+      "blindspot_review": "every gap dispositioned; one reviewer gap recorded as a Question",
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    }
+  },
+  "final_audits": {
+    "scenario-a/case_01a20f3d-443a-7ee3-88bb-dfb305993692": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 5,
+      "lifecycle": "closed",
+      "closure_outcome": "answered",
+      "retrospective": {
+        "id": "retro_01a20f3d-4b33-7f31-8637-6a924767ec3b",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-a/case_01a20f3d-4bd3-7140-9022-8dd8bb467f5c": {
+      "outcome": "no_structural_gap_identified_under_checks",
+      "findings": 0,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": null,
+      "retrospective_waived": true
+    },
+    "scenario-b/case_01a20f3d-4c9f-7262-b1bb-d6845ec72b7f": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 21,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": {
+        "id": "retro_01a20f3d-65ee-7a00-b271-264d679a0f45",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-c/case_01a20f3d-721b-74c3-a7c5-3d930976edb3": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 3,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": {
+        "id": "retro_01a20f3d-7d69-7b21-9b22-d370d704a486",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-d/case_01a20f3c-f97d-7360-b4ae-b4e3f4b9621b": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 5,
+      "lifecycle": "closed",
+      "closure_outcome": "answered",
+      "retrospective": {
+        "id": "retro_01a20f3d-0ca7-7e43-a5fe-4b42e5100355",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    }
+  },
+  "conformance": {
+    "command": "scripts/run-conformance.py with the reference, Python and Rust producers",
+    "seconds": 6.92,
+    "producers": {
+      "reference": {
+        "cases_passed": 20,
+        "cases": 20
+      },
+      "python": {
+        "cases_passed": 20,
+        "cases": 20
+      },
+      "rust": {
+        "cases_passed": 20,
+        "cases": 20
+      }
+    },
+    "equivalent_to_reference": "40/40",
+    "rust_test": {
+      "target": "investigation-cli/conformance",
+      "tests": [
+        "every_case_round_trips_through_a_producer_bundle",
+        "non_idempotent_producer_fails_the_suite",
+        "reference_and_both_examples_pass_and_record_equal_state",
+        "suite_maps_every_plan_item_to_a_case",
+        "two_producers_are_compared_case_by_case"
+      ]
+    }
+  },
+  "producer_kinds": {
+    "target": "investigation-cli/producer_kinds",
+    "tests": [
+      "four_producer_kinds_record_through_one_envelope_and_differ_only_in_data",
+      "the_crates_hold_no_branch_on_a_fixture_producer_or_its_assertion_kinds",
+      "the_same_capture_lifecycle_records_all_four_kinds_and_names_what_is_missing"
+    ]
+  },
+  "vault": {
+    "renders": {
+      "scenario-a": {
+        "state": "complete",
+        "notes": 64,
+        "seconds": 0.08
+      },
+      "scenario-b": {
+        "state": "complete",
+        "notes": 119,
+        "seconds": 0.31
+      },
+      "scenario-c": {
+        "state": "complete",
+        "notes": 60,
+        "seconds": 0.13
+      },
+      "scenario-d": {
+        "state": "complete",
+        "notes": 69,
+        "seconds": 0.09
+      }
+    },
+    "goldens": "Golden vaults match.",
+    "fixtures": {
+      "target": "investigation-cli/vault_fixtures",
+      "tests": [
+        "each_base_lists_the_rows_of_its_static_table_and_only_its_case",
+        "every_conclusion_and_decision_has_a_ladder_from_overview_to_evidence_selector",
+        "every_link_alias_and_excerpt_anchor_resolves",
+        "golden_vaults_match_their_checked_in_workspaces",
+        "human_folders_keep_their_bytes_through_scenario_renders",
+        "identical_snapshots_publish_identical_bytes_across_runs_environments_and_file_order",
+        "no_golden_note_shows_an_unreadable_record_fallback",
+        "scenario_vaults_need_no_community_plugin",
+        "scenario_vaults_use_only_features_the_compatibility_profile_lists",
+        "title_changes_keep_file_names_anchors_and_links",
+        "unrelated_changes_keep_every_note_path_and_anchor"
+      ]
+    },
+    "scenario_vaults": {
+      "target": "investigation-cli/vault_scenarios",
+      "tests": [
+        "scenario_a_renders_every_record_type_with_links_both_ways",
+        "scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision"
+      ]
+    },
+    "commands": {
+      "target": "investigation-cli/vault_commands",
+      "tests": [
+        "a_render_that_stops_reports_partial_and_the_next_render_completes_it",
+        "a_workspace_without_a_vault_reports_it_and_refuses_to_render",
+        "read_only_rejects_render_and_allows_status_and_conflicts",
+        "render_succeeds_with_drift_present_and_lists_it",
+        "status_is_stale_after_a_commit_and_current_after_a_render"
+      ]
+    }
+  },
+  "drills": {
+    "1-2": {
+      "target": "investigation-cli/adversarial_drills",
+      "tests": [
+        "drill_1_title_only_cold_start_evaluative",
+        "drill_1_title_only_cold_start_explanatory",
+        "drill_2_stale_synopsis_after_a_source_withdrawal_explanatory",
+        "drill_2_stale_synopsis_after_a_threshold_change_evaluative"
+      ]
+    },
+    "3-4": {
+      "target": "investigation-cli/drills_3_4",
+      "tests": [
+        "completeness_language_is_detected_as_a_word",
+        "drill_3_evaluative_queue_choice_ignores_an_unmeasured_recovery_guarantee",
+        "drill_3_explanatory_root_cause_ignores_a_corrupted_clock",
+        "drill_4_evaluative_reviewer_adds_a_rival_option_no_check_names",
+        "drill_4_explanatory_reviewer_adds_a_rival_explanation_no_check_names",
+        "every_drill_fixture_is_replayed_by_a_test"
+      ]
+    },
+    "5": {
+      "target": "investigation-cli/drill_lesson_transfer",
+      "tests": [
+        "an_admitted_lesson_is_read_and_recorded_but_never_rewrites_a_pack_or_pin"
+      ]
+    },
+    "6": {
+      "target": "investigation-cli/drill_closure",
+      "tests": [
+        "a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch",
+        "a_nonmaterial_case_waives_and_a_record_case_holding_data_needs_neither",
+        "new_material_evidence_after_the_account_requires_an_updated_one"
+      ]
+    },
+    "6/crash-model": {
+      "target": "investigation-store/investigation_store [closure_drill_tests]",
+      "tests": [
+        "store::closure_drill_tests::a_batch_that_never_committed_cannot_be_retried_past_a_concurrent_revision_or_new_evidence",
+        "store::closure_drill_tests::every_crash_point_of_the_closure_batch_leaves_both_or_neither_and_the_retry_keeps_the_ids"
+      ]
+    }
+  },
+  "neutrality": {
+    "surfaces_scanned": {
+      "default help": 1,
+      "subcommand help": 39,
+      "published schemas": 163,
+      "fresh workspace": 5
+    },
+    "terms": {
+      "deny-list": 8,
+      "named tool": 30,
+      "security concept": 20
+    },
+    "hits": {
+      "default help": [
+        {
+          "category": "named tool",
+          "term": "obsidian",
+          "where": "investigation --help:40",
+          "line": "obsidian       Preview or apply a few named native viewer settings in a vault you name",
+          "allowed": "The plan's command catalog (§9.1) names `obsidian setup` as an optional review integration that touches only named owned files, and §13.3 step 1 is `inv obsidian setup --vault PATH`. The subcommand is optional and acts only on a vault the user names, so it does not make the viewer a requirement (X3)."
+        }
+      ],
+      "subcommand help": [
+        {
+          "category": "named tool",
+          "term": "obsidian",
+          "where": "investigation obsidian --help:3",
+          "line": "Usage: investigation obsidian [OPTIONS] <COMMAND>"
+        },
+        {
+          "category": "named tool",
+          "term": "obsidian",
+          "where": "investigation obsidian --help:25",
+          "line": "Example: investigation obsidian setup --vault /home/me/Notes"
+        },
+        {
+          "category": "named tool",
+          "term": "obsidian",
+          "where": "investigation obsidian --help:26",
+          "line": "Next: investigation obsidian setup --vault /home/me/Notes --format json"
+        }
+      ],
+      "published schemas": [
+        {
+          "category": "security concept",
+          "term": "security",
+          "where": "schemas/v1/export-manifest.schema.json:137",
+          "line": "\"description\": \"What an export is for. Review exports and recovery archives have\\ndifferent completeness and security guarantees (§16.3).\",",
+          "allowed": "The plan (§15.4) says a review vault and a recovery archive have different completeness/security guarantees: a property of the tool's own export products (what an export may disclose, §16.3), not a security domain, practice or target that a case must adopt (§1.1 Domain)."
+        }
+      ]
+    },
+    "allowed": [
+      {
+        "surface": "default help",
+        "category": "named tool",
+        "term": "obsidian",
+        "where": "investigation --help:40",
+        "line": "obsidian       Preview or apply a few named native viewer settings in a vault you name",
+        "allowed": "The plan's command catalog (§9.1) names `obsidian setup` as an optional review integration that touches only named owned files, and §13.3 step 1 is `inv obsidian setup --vault PATH`. The subcommand is optional and acts only on a vault the user names, so it does not make the viewer a requirement (X3)."
+      },
+      {
+        "surface": "published schemas",
+        "category": "security concept",
+        "term": "security",
+        "where": "schemas/v1/export-manifest.schema.json:137",
+        "line": "\"description\": \"What an export is for. Review exports and recovery archives have\\ndifferent completeness and security guarantees (§16.3).\",",
+        "allowed": "The plan (§15.4) says a review vault and a recovery archive have different completeness/security guarantees: a property of the tool's own export products (what an export may disclose, §16.3), not a security domain, practice or target that a case must adopt (§1.1 Domain)."
+      }
+    ],
+    "blocking": [],
+    "built_in_packs": [
+      "general"
+    ],
+    "method_list": {
+      "case_id": null,
+      "case_mode": null,
+      "content_trust": "method_guidance",
+      "guidance_rule_version": "guidance.v1",
+      "ok": true,
+      "packs": [
+        {
+          "card_count": 23,
+          "digest": "sha256:f056541136b8f1b3a628960f424f828ab86d142aa423ef1a43e99a334dc966d3",
+          "origin": "built_in",
+          "pack_id": "general",
+          "status": "available",
+          "title": "General investigation methods",
+          "version": "0.1.0"
+        }
+      ],
+      "result": "method_list",
+      "schema_version": "inv.response.v1",
+      "stages": [
+        {
+          "cards": [
+            {
+              "name": "frame",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "The question is ambiguous or has no stated consequence.",
+              "title": "Frame the question",
+              "triggers": "case fact no_question; record kind question"
+            },
+            {
+              "name": "reference-class",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A new explanatory question, forecast or inside-view estimate of cost, effort or reliability.",
+              "title": "Name a reference class",
+              "triggers": "record kind question; record kind hypothesis"
+            },
+            {
+              "name": "stalled",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Repeated work has not narrowed the question or changed any conclusion.",
+              "title": "Decide what to do when work stalls",
+              "triggers": "case fact stalled"
+            }
+          ],
+          "stage": "frame"
+        },
+        {
+          "cards": [
+            {
+              "name": "source-quality",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Documents of different kinds support the same case.",
+              "title": "Characterise the sources",
+              "triggers": "case fact multiple_sources; gap rule observation.invalid_or_missing_source_match"
+            },
+            {
+              "name": "measure",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "An observation carries a number, count, duration or other quantity.",
+              "title": "Qualify a measurement",
+              "triggers": "case fact measured_observation; gap rule observation.validity_context_missing"
+            },
+            {
+              "name": "baseline",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A change, regression or difference is claimed between two states.",
+              "title": "Compare against a baseline",
+              "triggers": "record kind comparison; gap rule comparison.stale_dependency_revision"
+            },
+            {
+              "name": "negative-result",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "The finding is that something was not found or had no effect.",
+              "title": "Bound an absence",
+              "triggers": "gap rule run.outcome_incomplete_or_unknown"
+            }
+          ],
+          "stage": "observe"
+        },
+        {
+          "cards": [
+            {
+              "name": "discriminate",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Two or more explanations are open and the planned evidence would fit all of them.",
+              "title": "Choose a discriminating test",
+              "triggers": "case fact competing_hypotheses; gap rule hypothesis.no_assessment"
+            },
+            {
+              "name": "delta-debug",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A failure reproduces and many factors changed between a working and a failing state.",
+              "title": "Reduce to a minimal difference",
+              "triggers": "record kind run"
+            },
+            {
+              "name": "intervene",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A suspected cause rests only on logs, traces or correlation.",
+              "title": "Test a cause by intervention",
+              "triggers": "gap rule conclusion.causal_claim_without_rival_account; record kind hypothesis"
+            }
+          ],
+          "stage": "collect"
+        },
+        {
+          "cards": [
+            {
+              "name": "alternatives",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "One account or option looks certain before it has been tested against rivals.",
+              "title": "Keep alternatives open",
+              "triggers": "case fact single_open_hypothesis; gap rule conclusion.causal_claim_without_rival_account"
+            },
+            {
+              "name": "causal-structure",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A causal claim is made, or the data was filtered on the outcome.",
+              "title": "Check causal structure",
+              "triggers": "gap rule conclusion.causal_claim_without_rival_account; record kind conclusion"
+            }
+          ],
+          "stage": "explain"
+        },
+        {
+          "cards": [
+            {
+              "name": "independence",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Several items seem to agree and they may share an origin.",
+              "title": "Check that corroboration is independent",
+              "triggers": "case fact multiple_sources; record kind conclusion"
+            },
+            {
+              "name": "assumptions",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A conclusion or choice rests on premises that have not been examined.",
+              "title": "Surface the linchpin assumptions",
+              "triggers": "record kind assumption; gap rule conclusion.disputed"
+            }
+          ],
+          "stage": "assess"
+        },
+        {
+          "cards": [
+            {
+              "name": "criteria",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Several options are open and the standards for choosing among them are unstated.",
+              "title": "Make the criteria explicit",
+              "triggers": "case fact multiple_options; gap rule decision.option_criterion_cell_missing"
+            },
+            {
+              "name": "compare",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Options are being compared and some option and criterion pairs have no stated evidence.",
+              "title": "Compare options cell by cell",
+              "triggers": "gap rule decision.option_criterion_cell_missing; gap rule decision.hard_criterion_cell_missing; record kind comparison"
+            },
+            {
+              "name": "sensitivity",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "The leading option is close to another or rests on an uncertain input.",
+              "title": "Find what could reverse the choice",
+              "triggers": "gap rule decision.hard_criterion_cell_unknown; record kind decision"
+            }
+          ],
+          "stage": "evaluate"
+        },
+        {
+          "cards": [
+            {
+              "name": "premortem",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A consequential decision is about to be proposed or accepted.",
+              "title": "Imagine the choice failed",
+              "triggers": "record kind decision; gap rule decision.accepted_with_unresolved_hard_cell"
+            }
+          ],
+          "stage": "decide"
+        },
+        {
+          "cards": [
+            {
+              "name": "review",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A consequential conclusion or decision is going to be relied on.",
+              "title": "Seek the strongest objection",
+              "triggers": "record kind conclusion; gap rule review.stale_read_set"
+            },
+            {
+              "name": "blindspot",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "A conclusion or decision is about to be promoted, or repeated work has told you nothing new.",
+              "title": "Look for what is missing",
+              "triggers": "case fact stalled; record kind conclusion; record kind decision"
+            }
+          ],
+          "stage": "review"
+        },
+        {
+          "cards": [
+            {
+              "name": "handoff",
+              "on_request_only": true,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Another agent, person or later session will continue and has none of the working context.",
+              "title": "Hand the case on",
+              "triggers": "on request only"
+            }
+          ],
+          "stage": "record"
+        },
+        {
+          "cards": [
+            {
+              "name": "retrospective",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "Substantial work is about to close, or an expensive approach has failed.",
+              "title": "Learn from how the work went",
+              "triggers": "gap rule case.ready_to_close_without_retrospective; gap rule run.outcome_incomplete_or_unknown; record kind retrospective"
+            },
+            {
+              "name": "close",
+              "on_request_only": false,
+              "origin": "built_in",
+              "pack_id": "general",
+              "pack_version": "0.1.0",
+              "summary": "The objective is met, or work is stopping for good.",
+              "title": "Close with a bounded outcome",
+              "triggers": "gap rule case.ready_to_close_without_retrospective"
+            }
+          ],
+          "stage": "close"
+        }
+      ],
+      "unavailable_packs": []
+    },
+    "viewer_on_ambient_path": true
+  },
+  "first_use": {
+    "family": "kiln-thermocouple-offset",
+    "calls": [
+      {
+        "argv": [
+          "investigation",
+          "--help"
+        ],
+        "exit": 0,
+        "seconds": 0.02
+      },
+      {
+        "argv": [
+          "investigation",
+          "init",
+          "./casework",
+          "--no-vault",
+          "--import-root",
+          ".",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.02
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--actor",
+          "agent:investigator",
+          "start",
+          "Does the kiln controller read low?",
+          "--attach",
+          "./source.txt",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "receipt",
+          "tx_01a20f3d-af22-7381-90c1-c86ff67d2904",
+          "--actor",
+          "agent:investigator",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "<scratch>/out/first-use/casework",
+          "--actor",
+          "agent:investigator",
+          "--case",
+          "case_01a20f3d-af22-7381-90c1-c89bbc87c0c5",
+          "observe",
+          "The cones show the controller read about 18 C low or more in firing 112.",
+          "--source",
+          "src_01a20f3d-af22-7381-90c1-c8a25da2c391",
+          "--quote",
+          "the controller read about 18 C low or more",
+          "--limitations",
+          "[\"Only firing 112 had witness cones. One firing.\"]",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.06
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "brief",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--case",
+          "case_01a20f3d-af22-7381-90c1-c89bbc87c0c5",
+          "show",
+          "obs_01a20f3d-af7d-7ec3-aee3-d7822928215c",
+          "--depth",
+          "full",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--case",
+          "case_01a20f3d-af22-7381-90c1-c89bbc87c0c5",
+          "evidence",
+          "read",
+          "art_01a20f3d-af22-7381-90c1-c8cc1930d381",
+          "--selector-file",
+          "-",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      }
+    ],
+    "receipt": {
+      "case": "case_01a20f3d-af22-7381-90c1-c89bbc87c0c5",
+      "source": "src_01a20f3d-af22-7381-90c1-c8a25da2c391",
+      "artifact": "art_01a20f3d-af22-7381-90c1-c8bb912b8429",
+      "digest": "sha256:6ea03e5095f34168dcb07480a6d6b553a24249a2a82bf42b796bec5b7e547bd0",
+      "command_id": "tx_01a20f3d-af22-7381-90c1-c86ff67d2904",
+      "receipt_call": 3,
+      "within_three_calls_of_first_contact": true,
+      "receipt_lookup_matches": true
+    },
+    "successor_recovery": {
+      "observation": "obs_01a20f3d-af7d-7ec3-aee3-d7822928215c",
+      "artifact": "art_01a20f3d-af22-7381-90c1-c8cc1930d381",
+      "selector": {
+        "type": "whole"
+      },
+      "text_quote": {
+        "exact": "the controller read about 18 C low or more",
+        "prefix": null,
+        "state": "verified",
+        "suffix": null
+      },
+      "retained_text_equals_source": true,
+      "content_trust": "untrusted_evidence",
+      "cited_lines": [
+        12
+      ],
+      "decisive_line": true,
+      "limitation": [
+        "Only firing 112 had witness cones. One firing."
+      ],
+      "limitation_matches_key": true
+    },
+    "seconds": {
+      "investigator": 0.17,
+      "successor": 0.1,
+      "total": 0.27
+    },
+    "first_use_test": {
+      "target": "investigation-cli/first_use",
+      "tests": [
+        "a_missing_relative_attachment_names_the_resolved_path_and_import_roots",
+        "an_existing_workspace_gains_an_import_root_through_the_repair",
+        "onboarding_reaches_a_source_and_case_receipt_in_two_further_calls",
+        "paths_outside_import_roots_explain_the_repair"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "name": "export clean copy",
+      "ok": true,
+      "seconds": 0.1
+    },
+    {
+      "name": "build test executables",
+      "ok": true,
+      "seconds": 34.7
+    },
+    {
+      "name": "neutrality guards (W00.10)",
+      "ok": true,
+      "seconds": 33.36
+    },
+    {
+      "name": "install BIN",
+      "ok": true,
+      "seconds": 0.21
+    },
+    {
+      "name": "test suite",
+      "ok": true,
+      "seconds": 40.84
+    },
+    {
+      "name": "scenario A",
+      "ok": true,
+      "seconds": 2.14
+    },
+    {
+      "name": "scenario B",
+      "ok": true,
+      "seconds": 9.61
+    },
+    {
+      "name": "scenario C",
+      "ok": true,
+      "seconds": 3.06
+    },
+    {
+      "name": "scenario D",
+      "ok": true,
+      "seconds": 0.0
+    },
+    {
+      "name": "final audits",
+      "ok": true,
+      "seconds": 0.79
+    },
+    {
+      "name": "conformance",
+      "ok": true,
+      "seconds": 6.92
+    },
+    {
+      "name": "four producer kinds",
+      "ok": true,
+      "seconds": 0.0
+    },
+    {
+      "name": "vault",
+      "ok": true,
+      "seconds": 1.31
+    },
+    {
+      "name": "drills",
+      "ok": true,
+      "seconds": 0.0
+    },
+    {
+      "name": "neutrality",
+      "ok": true,
+      "seconds": 3.54
+    },
+    {
+      "name": "first use",
+      "ok": true,
+      "seconds": 0.27
+    }
+  ],
+  "ok": true,
+  "wall_seconds": 137.0
+}

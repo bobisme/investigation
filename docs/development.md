@@ -8,7 +8,11 @@ the tested configurations are listed in the
 [support matrix](support-matrix.md#versions).
 
 Run `just check` for formatting, linting, tests, crate direction, domain
-neutrality, and the RustSec, license, and dependency source checks. The audit
+neutrality, and the RustSec, license, and dependency source checks. Domain
+neutrality is two checks: `scripts/check-boundaries.py` (the reviewed
+deny-list) and `scripts/check-neutrality.py`, the Milestone B proof's
+neutrality scan run alone, which adds named tools and security terms and
+reports each allowed match with the plan text that allows it. The audit
 fetches the current RustSec database. For a cached check, run
 `CARGO_NET_OFFLINE=true just check-offline` after fetching dependencies and
 running the audit once.

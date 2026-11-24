@@ -12,7 +12,8 @@ renderer and the CLI. This check fails when any of them:
 4. carries a reference project named in the neutrality deny-list in the built executable.
 
 The named tools are the reviewed deny-list (scripts/neutrality-denylist.txt, first
-section) plus the named-tool list of the Milestone B proof. A generic producer is
+section) plus the named-tool list of the neutrality scan (scripts/check-neutrality.py,
+the Milestone B proof's neutrality step). A generic producer is
 shown to work by the conformance suite (scripts/run-conformance.py), not here.
 
     python3 scripts/check-producer-imports.py target/debug/investigation [--json]
@@ -36,7 +37,7 @@ PROCESS_OR_NETWORK = re.compile(
 
 def named_tools():
     sys.dont_write_bytecode = True
-    spec = importlib.util.spec_from_file_location("prove_b", ROOT / "scripts" / "prove_milestone_b.py")
+    spec = importlib.util.spec_from_file_location("neutrality", ROOT / "scripts" / "check-neutrality.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     reviewed = []

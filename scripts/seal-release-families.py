@@ -584,7 +584,11 @@ def key_path(argument):
 
 
 def openssl(mode, key, data):
-    result = subprocess.run([*OPENSSL, mode, "-pass", f"file:{key}"], input=data, capture_output=True)
+    try:
+        result = subprocess.run([*OPENSSL, mode, "-pass", f"file:{key}"], input=data, capture_output=True)
+    except FileNotFoundError:
+        raise SystemExit("openssl is not on PATH: sealed bundles are `openssl enc -aes-256-cbc -pbkdf2` "
+                         "ciphertext, so sealing and opening need it") from None
     if result.returncode != 0:
         raise SystemExit(f"openssl {mode} failed: {result.stderr.decode(errors='replace').strip()}")
     return result.stdout
