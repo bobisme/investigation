@@ -177,6 +177,40 @@ fn golden_vaults_match_their_checked_in_workspaces() {
     }
 }
 
+/// An Overview's `## Sources` names each Source and Artifact once, at the
+/// latest revision the answer read, even when the answer also reads an
+/// earlier revision through an Artifact acquired before it (bn-bn1m). The
+/// Scenario D answer reads four Sources at two revisions each.
+#[test]
+fn an_overview_lists_each_source_and_artifact_once() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut collapsed = 0;
+    for scenario in SCENARIOS {
+        let workspace = fixtures::workspace(scenario, &directory.path().join(scenario), false);
+        let (_, plan) = fixtures::plan(&workspace);
+        for (path, bytes) in fixtures::files(&plan) {
+            if !path.ends_with("/Overview.md") {
+                continue;
+            }
+            let note = String::from_utf8(bytes).unwrap();
+            let Some(section) = note.split("\n## Sources\n").nth(1) else {
+                continue;
+            };
+            let section = section.split("\n## ").next().unwrap();
+            let mut seen = BTreeSet::new();
+            for line in section.lines().filter(|line| line.starts_with("- [[")) {
+                let target = line["- [[".len()..].split('|').next().unwrap().to_owned();
+                assert!(seen.insert(target), "{scenario}/{path} lists twice: {line}");
+                collapsed += usize::from(line.contains(", also revision"));
+            }
+        }
+    }
+    assert!(
+        collapsed >= 4,
+        "only {collapsed} entries name an earlier revision"
+    );
+}
+
 /// Every stored record in the scenario workspaces is readable, so no golden
 /// note shows a renderer fallback for an unreadable body ("The stored body
 /// cannot be read as an Observation") in place of the record. A record kind

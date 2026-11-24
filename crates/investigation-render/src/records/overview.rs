@@ -1070,16 +1070,8 @@ impl<'a> Overview<'_, 'a> {
                 .map(Record::reference)
                 .collect(),
         };
-        let sources: Vec<RevisionRef> = read
-            .iter()
-            .copied()
-            .filter(|reference| reference.id.kind() == Kind::Source)
-            .collect();
-        let artifacts: Vec<RevisionRef> = read
-            .iter()
-            .copied()
-            .filter(|reference| reference.id.kind() == Kind::Artifact)
-            .collect();
+        let sources = one_entry_per_record(&read, Kind::Source);
+        let artifacts = one_entry_per_record(&read, Kind::Artifact);
         if sources.is_empty() && artifacts.is_empty() {
             out.push_str(if self.standing.is_some() {
                 "The answer rests on no recorded Source or Artifact.\n"
@@ -1096,15 +1088,24 @@ impl<'a> Overview<'_, 'a> {
         });
         if !sources.is_empty() {
             out.push_str("\n### Sources\n\n");
-            for reference in sources.iter().take(MAX_LISTED) {
-                let _ = writeln!(out, "- {}", revision_link(self.notes, *reference)?);
+            for (reference, earlier) in sources.iter().take(MAX_LISTED) {
+                let _ = writeln!(
+                    out,
+                    "- {}{}",
+                    revision_link(self.notes, *reference)?,
+                    also_read(earlier)
+                );
             }
             more(out, sources.len());
         }
         if !artifacts.is_empty() {
             out.push_str("\n### Artifacts\n\n");
-            for reference in artifacts.iter().take(MAX_LISTED) {
-                let mut line = format!("- {}", revision_link(self.notes, *reference)?);
+            for (reference, earlier) in artifacts.iter().take(MAX_LISTED) {
+                let mut line = format!(
+                    "- {}{}",
+                    revision_link(self.notes, *reference)?,
+                    also_read(earlier)
+                );
                 if let Some(artifact) = self.state.revision(*reference)
                     && self.notes.may_show(artifact, Field::Metadata)
                 {
@@ -1616,6 +1617,47 @@ impl<'a> Overview<'_, 'a> {
 
 /// A read set with the Artifact each Observation in it was read from and
 /// that Artifact's Source, in read-set order, each once.
+/// The records of `kind` in `read`, one entry each in first-read order: the
+/// latest revision read, and the earlier revisions also read, ascending. An
+/// answer can read a Source directly at one revision and, through an
+/// Artifact acquired before a later revision, at an earlier one.
+fn one_entry_per_record(read: &[RevisionRef], kind: Kind) -> Vec<(RevisionRef, Vec<u64>)> {
+    let mut entries: Vec<(RevisionRef, Vec<u64>)> = Vec::new();
+    for reference in read.iter().filter(|reference| reference.id.kind() == kind) {
+        match entries
+            .iter_mut()
+            .find(|(latest, _)| latest.id == reference.id)
+        {
+            None => entries.push((*reference, Vec::new())),
+            Some((latest, earlier)) => {
+                let revision = if reference.revision > latest.revision {
+                    std::mem::replace(&mut latest.revision, reference.revision)
+                } else {
+                    reference.revision
+                };
+                if revision != latest.revision && !earlier.contains(&revision) {
+                    earlier.push(revision);
+                    earlier.sort_unstable();
+                }
+            }
+        }
+    }
+    entries
+}
+
+/// `, also revision 1` or `, also revisions 1 and 2` for the earlier
+/// revisions of one entry; empty when there are none.
+fn also_read(earlier: &[u64]) -> String {
+    match earlier {
+        [] => String::new(),
+        [only] => format!(", also revision {only}"),
+        [rest @ .., last] => {
+            let rest: Vec<String> = rest.iter().map(u64::to_string).collect();
+            format!(", also revisions {} and {last}", rest.join(", "))
+        }
+    }
+}
+
 fn with_origins(state: &State, read: &[RevisionRef]) -> Vec<RevisionRef> {
     let mut found: Vec<RevisionRef> = Vec::new();
     let add = |reference: RevisionRef, found: &mut Vec<RevisionRef>| {

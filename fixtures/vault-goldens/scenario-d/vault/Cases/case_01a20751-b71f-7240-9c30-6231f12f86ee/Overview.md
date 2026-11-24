@@ -64,14 +64,10 @@ The exact revisions the answer rests on. Selectors and quotes are on each Observ
 
 ### Sources
 
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2|primary-specification.txt / primary-specification.txt]] revision 3
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8|trade-article.txt / trade-article.txt]] revision 2
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0|blog-post.txt / blog-post.txt]] revision 2
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5|first-party-erratum.txt / first-party-erratum.txt]] revision 2
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2|primary-specification.txt / primary-specification.txt]] revision 1 (current revision 3)
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8|trade-article.txt / trade-article.txt]] revision 1 (current revision 2)
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0|blog-post.txt / blog-post.txt]] revision 1 (current revision 2)
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5|first-party-erratum.txt / first-party-erratum.txt]] revision 1 (current revision 2)
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b71f-7240-9c30-6245533b72a2|primary-specification.txt / primary-specification.txt]] revision 3, also revision 1
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b73e-7610-82a1-e665d4ef8fc8|trade-article.txt / trade-article.txt]] revision 2, also revision 1
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b75b-76b1-af70-74cd9d21f2e0|blog-post.txt / blog-post.txt]] revision 2, also revision 1
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Sources/src_01a20751-b779-7ff2-a13f-13b7242bd9b5|first-party-erratum.txt / first-party-erratum.txt]] revision 2, also revision 1
 
 ### Artifacts
 

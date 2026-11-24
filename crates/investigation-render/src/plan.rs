@@ -87,7 +87,11 @@ use crate::{
 /// whether the live file was unchanged, changed, missing or refused when the
 /// note was rendered, as `vault note-snapshots` reports. Review exports do
 /// not show it (bn-e6uw).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v26";
+/// v27: the Overview's `## Sources` lists each Source and Artifact once, at
+/// the latest revision the answer read, adding `, also revision N` for an
+/// earlier revision it also read, instead of one entry per revision
+/// (bn-bn1m).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v27";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;
