@@ -189,6 +189,9 @@ mod tests {
         method_pack::{GENERAL_PACK_SOURCE, load},
     };
 
+    // The documents as this binary was built with them (see build.rs).
+    include!(concat!(env!("OUT_DIR"), "/documents.rs"));
+
     /// Each page version, with the digest of the page text it names. Changed
     /// text needs a new version: add a row, never edit an existing one.
     const RELEASED: &[(&str, &str, &str)] = &[
@@ -532,50 +535,25 @@ mod tests {
     /// operation named in a document must exist in this binary. Schematic
     /// text is allowed only as [`check`] describes it, or by an explicit
     /// [`ALLOWED`] entry with its reason.
+    ///
+    /// The documents are the ones this binary was built with
+    /// ([`DOCUMENTS`]), not the files on disk when the test runs: a worktree
+    /// synced while the suite ran once paired a document naming a new
+    /// subcommand with a binary built before it (bn-3dy5).
     #[test]
     fn every_document_names_only_what_the_binary_has() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut files: Vec<_> = [
-            "README.md",
-            "AGENTS.md",
-            "obsidian/README.md",
-            "schemas/README.md",
-            "scripts/README.md",
-            "examples/python-producer/README.md",
-            "examples/rust-producer/README.md",
-        ]
-        .iter()
-        .map(|file| root.join(file))
-        .collect();
-        let mut pending = vec![root.join("docs"), root.join("methods")];
-        while let Some(directory) = pending.pop() {
-            for entry in std::fs::read_dir(&directory).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
-                    pending.push(path);
-                } else if path
-                    .extension()
-                    .is_some_and(|extension| extension == "md" || extension == "toml")
-                {
-                    files.push(path);
-                }
-            }
-        }
-        files.sort();
         let mut failures = Vec::new();
         let mut used = vec![false; ALLOWED.len()];
         let mut total = 0;
-        for path in &files {
-            let text = std::fs::read_to_string(path).unwrap();
-            let relative = path.strip_prefix(&root).unwrap().display().to_string();
-            let (problems, commands) = check(&text, true);
+        for (relative, text) in DOCUMENTS {
+            let (problems, commands) = check(text, true);
             total += commands;
             failures.extend(
                 problems
                     .into_iter()
                     .filter(|problem| {
                         let allowed = ALLOWED.iter().position(|(file, text, _)| {
-                            *file == relative && problem.contains(text)
+                            *file == *relative && problem.contains(text)
                         });
                         if let Some(index) = allowed {
                             used[index] = true;
@@ -588,7 +566,7 @@ mod tests {
         assert!(
             total > 200,
             "only {total} commands found in {} files",
-            files.len()
+            DOCUMENTS.len()
         );
         for ((file, text, _), used) in ALLOWED.iter().zip(used) {
             assert!(

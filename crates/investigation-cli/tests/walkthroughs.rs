@@ -21,6 +21,11 @@ use std::fs;
 #[path = "support/tutorial.rs"]
 mod tutorial;
 
+// The documents as this test binary was built with them (see build.rs), so a
+// worktree synced while the suite runs cannot pair a walkthrough re-quoted
+// for a newer binary with this one (bn-3dy5).
+include!(concat!(env!("OUT_DIR"), "/documents.rs"));
+
 /// Each walkthrough and the `demo` scenario it must start from.
 const WALKTHROUGHS: [(&str, &str); 4] = [
     ("a-request-timeout.md", "debug"),
@@ -32,7 +37,13 @@ const WALKTHROUGHS: [(&str, &str); 4] = [
 fn walk(name: &str) {
     let (_, scenario) = WALKTHROUGHS.iter().find(|(file, _)| *file == name).unwrap();
     let document = format!("docs/walkthroughs/{name}");
-    let markdown = fs::read_to_string(tutorial::repository().join(&document)).unwrap();
+    // Bless mode rewrites the file on disk, so it starts from that file.
+    let markdown = if tutorial::blessing() {
+        fs::read_to_string(tutorial::repository().join(&document)).unwrap()
+    } else {
+        let built = DOCUMENTS.iter().find(|(path, _)| *path == document);
+        built.expect("a built document").1.to_owned()
+    };
     let steps = tutorial::parse(&markdown, &document, "investigation");
     assert_eq!(
         steps[0].argv(),

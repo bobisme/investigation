@@ -1317,13 +1317,27 @@ fn export(
         args.extend(["--snapshot".into(), sequence.to_string()]);
     }
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let (code, receipt) = invoke(&planted.workspace, &args, None);
-    if code != 0 {
+    // The matrix exports on several threads at once, and an export waits a
+    // bounded time for the commit lock. Under heavy load that wait can run
+    // out (WORKSPACE_BUSY, nothing committed); the receipt says to retry the
+    // identical request, so the test does (bn-3dy5).
+    for _ in 0..BUSY_RETRIES {
+        let (code, receipt) = invoke(&planted.workspace, &args, None);
+        if code == 0 {
+            return Ok(Exported::new(read_tree(&out), receipt));
+        }
         assert!(!out.exists(), "a refused export wrote {out:?}");
-        return Err(receipt);
+        let busy = receipt["error"]["code"] == "WORKSPACE_BUSY"
+            && receipt["commit_status"] == "not_committed";
+        if !busy {
+            return Err(receipt);
+        }
     }
-    Ok(Exported::new(read_tree(&out), receipt))
+    panic!("{name}: the workspace stayed busy for {BUSY_RETRIES} attempts")
 }
+
+/// How many times [`export`] repeats a request refused as WORKSPACE_BUSY.
+const BUSY_RETRIES: usize = 20;
 
 // ------------------------------------------------------------ Ground truth
 

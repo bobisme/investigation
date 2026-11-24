@@ -35,8 +35,7 @@ fn json(cwd: &Path, args: &[&str]) -> (i32, Value) {
 }
 
 fn page_file(name: &str) -> String {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/agent");
-    fs::read_to_string(root.join(name)).unwrap()
+    document(&format!("docs/agent/{name}")).to_owned()
 }
 
 #[test]
@@ -420,42 +419,26 @@ const EXAMPLES: &[(&str, usize, Example)] = &[
     ),
 ];
 
-/// The documents the docs-versus-binary checks read (REL.02).
-fn documents() -> Vec<(String, String)> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let mut files: Vec<_> = [
-        "README.md",
-        "AGENTS.md",
-        "obsidian/README.md",
-        "schemas/README.md",
-        "scripts/README.md",
-        "examples/README.md",
-        "examples/python-producer/README.md",
-        "examples/rust-producer/README.md",
-    ]
-    .iter()
-    .map(|file| root.join(file))
-    .collect();
-    let mut pending = vec![root.join("docs"), root.join("methods")];
-    while let Some(directory) = pending.pop() {
-        for entry in fs::read_dir(&directory).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                pending.push(path);
-            } else if path.extension().is_some_and(|extension| extension == "md") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    files
-        .into_iter()
-        .map(|path| {
-            let text = fs::read_to_string(&path).unwrap();
-            let relative = path.strip_prefix(&root).unwrap().display().to_string();
-            (relative, text)
-        })
-        .collect()
+// The documents the docs-versus-binary checks read (REL.02), as this test
+// binary was built with them (see build.rs): a worktree synced while the
+// suite runs cannot pair new documents with an older binary (bn-3dy5).
+include!(concat!(env!("OUT_DIR"), "/documents.rs"));
+
+/// The text of the document at `relative`, as built.
+fn document(relative: &str) -> &'static str {
+    DOCUMENTS
+        .iter()
+        .find(|(path, _)| *path == relative)
+        .unwrap_or_else(|| panic!("{relative} is not a built document"))
+        .1
+}
+
+/// The Markdown documents of the REL.02 checks.
+fn documents() -> impl Iterator<Item = (&'static str, &'static str)> {
+    DOCUMENTS
+        .iter()
+        .copied()
+        .filter(|(path, _)| path.ends_with(".md"))
 }
 
 /// The bodies of the ```json blocks in `markdown`, in order.
@@ -483,9 +466,9 @@ fn every_json_example_in_the_documents_validates_against_its_schema() {
     let mut seen = Vec::new();
     let mut failures = Vec::new();
     for (file, text) in documents() {
-        for (index, block) in json_blocks(&text).iter().enumerate() {
+        for (index, block) in json_blocks(text).iter().enumerate() {
             let position = index + 1;
-            seen.push((file.clone(), position));
+            seen.push((file, position));
             let Some((_, _, example)) = EXAMPLES
                 .iter()
                 .find(|(name, at, _)| *name == file && *at == position)
@@ -536,7 +519,7 @@ fn every_json_example_in_the_documents_validates_against_its_schema() {
         }
     }
     for (file, position, _) in EXAMPLES {
-        if !seen.contains(&((*file).to_owned(), *position)) {
+        if !seen.contains(&(*file, *position)) {
             failures.push(format!(
                 "EXAMPLES names {file} block {position}, which does not exist"
             ));
@@ -591,8 +574,8 @@ fn contract_versions(text: &str) -> std::collections::BTreeSet<String> {
 fn the_documented_versions_are_this_builds() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
-    let matrix = read("docs/support-matrix.md");
-    let versions = section(&matrix, "Versions");
+    let matrix = document("docs/support-matrix.md");
+    let versions = section(matrix, "Versions");
     let workflow = read(".github/workflows/check.yml");
     let directory = tempfile::tempdir().unwrap();
     let cwd = directory.path();
