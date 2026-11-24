@@ -429,6 +429,44 @@ impl ExportInput<'_> {
         }
     }
 
+    /// The entries of a Retrospective's `field` (`effective_steps`,
+    /// `invalid_or_misleading_steps` or `lessons`) that may appear, with
+    /// their index. A step or lesson is authored text that may restate what
+    /// it cites, and a caveat cannot vouch for that text, so an entry citing
+    /// any record withheld from the audience, or one the snapshot does not
+    /// hold, is left out for every audience and reported as an omission
+    /// (W11.06, bn-91gz). Every kind that shows such entries asks this.
+    pub fn retrospective_entries<'r>(
+        &self,
+        retrospective: &'r Record,
+        field: &str,
+    ) -> Vec<(usize, &'r Value)> {
+        let content = if field == "lessons" {
+            Omitted::Lesson
+        } else {
+            Omitted::Step
+        };
+        retrospective.body[field]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+            .filter(|(index, entry)| {
+                let cited = entry
+                    .get("support_refs")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|id| id.as_str()?.parse::<Id>().ok());
+                self.admits(cited, |reason| {
+                    Omission::new(content, reason)
+                        .of(retrospective.header.id)
+                        .at(format!("{field}[{index}]"))
+                })
+            })
+            .collect()
+    }
+
     /// What made the export incomplete so far, for a kind that prints its
     /// own completeness: report every omission before asking.
     pub fn shortfall(&self) -> Shortfall {

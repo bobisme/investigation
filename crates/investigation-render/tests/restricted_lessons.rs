@@ -413,8 +413,18 @@ fn a_public_vault_does_not_reveal_that_a_restricted_lesson_exists() {
         .map(|(_, text)| text.as_str())
         .unwrap_or_default();
     assert!(!view.contains("withheld"), "{view}");
-    // Not vacuous: the public lesson is there.
-    assert!(view.contains(&format!("{PUBLIC} guidance")), "{view}");
+    // Not vacuous: the public account is there.
+    assert!(view.contains(&format!("{PUBLIC} method")), "{view}");
+    // Its steps and lesson cite the run, which is not cleared for the
+    // public, so they are left out (bn-91gz).
+    for (_, text) in &files {
+        assert!(!text.contains(&format!("{PUBLIC} guidance")), "{text}");
+        assert!(
+            !text.contains(&format!("{PUBLIC} effective step")),
+            "{text}"
+        );
+    }
+    assert!(view.contains("none shown to this audience"), "{view}");
 }
 
 /// The reading case consulted the lesson before it was raised, so its

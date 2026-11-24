@@ -79,7 +79,9 @@ use crate::{
 };
 
 /// Output format of this kind.
-pub const VERSION: &str = "inv.export.handoff.v1";
+/// v2 (bn-91gz): a proposed lesson citing a record not shown is left out
+/// and reported.
+pub const VERSION: &str = "inv.export.handoff.v2";
 
 /// The compact agent brief.
 pub const BRIEF_FILE: &str = "handoff-brief.md";
@@ -1264,8 +1266,20 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
         ));
         self.caveats(retrospective, "  ");
         let body = &retrospective.body;
-        let lessons = body["lessons"].as_array().cloned().unwrap_or_default();
-        if lessons.is_empty() {
+        // A lesson citing a record not shown here is left out (bn-91gz).
+        let lessons: Vec<&Value> = story
+            .input
+            .retrospective_entries(retrospective, "lessons")
+            .into_iter()
+            .map(|(_, lesson)| lesson)
+            .collect();
+        if lessons.is_empty()
+            && body["lessons"]
+                .as_array()
+                .is_some_and(|all| !all.is_empty())
+        {
+            self.line("Proposed lessons: none shown to this audience");
+        } else if lessons.is_empty() {
             self.line("Proposed lessons: none recorded");
         } else {
             self.line(&format!("Proposed lessons ({}):", lessons.len()));

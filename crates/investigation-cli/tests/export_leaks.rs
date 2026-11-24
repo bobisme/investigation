@@ -13,8 +13,11 @@
 //! reach ([`Channel`]): titles, statements, rationale, selectors, quotes,
 //! file names, attachment bytes, source names, links, namespaced metadata,
 //! annotations, lessons, human-note snapshots (W11.14: path and bytes),
-//! producer runs (file names, bytes, metadata) and derived titles (bn-31an:
-//! a public decision whose option is withheld). It also leaves a dirty
+//! producer runs (file names, bytes, metadata), derived titles (bn-31an:
+//! a public decision whose option is withheld) and the steps and lessons of
+//! a public Retrospective that cite a restricted record (bn-91gz: authored
+//! text may restate what it cites, so it is held at the level of the
+//! highest record it cites). It also leaves a dirty
 //! working vault: a conflict copy and a stale note holding [`DIRTY`], which
 //! no export may ever contain.
 //!
@@ -76,6 +79,9 @@ const PUBLIC: &str = "ZPVISIBLE";
 /// Prefix of every token planted in the working vault's generated area: a
 /// conflict copy and a stale note. No export may ever hold it.
 const DIRTY: &str = "ZDCANARY";
+/// Token in the public fields of a Retrospective whose steps and lessons
+/// cite a restricted record (bn-91gz).
+const CITED_ACCOUNT: &str = "ZPVISIBLEcitedaccount";
 
 // ------------------------------------------------------------ Contracts
 
@@ -107,6 +113,10 @@ enum Channel {
     Annotation,
     /// A retrospective's lesson.
     Lesson,
+    /// A step or lesson of a public Retrospective that cites a restricted
+    /// record (bn-91gz). The record is shown below `restricted`; these
+    /// entries never are.
+    Cited,
     /// A human note snapshot's vault path (W11.14).
     NotePath,
     /// A human note snapshot's captured bytes (W11.14).
@@ -120,7 +130,7 @@ enum Channel {
 }
 
 impl Channel {
-    const ALL: [Self; 17] = [
+    const ALL: [Self; 18] = [
         Self::Derived,
         Self::Statement,
         Self::Rationale,
@@ -133,6 +143,7 @@ impl Channel {
         Self::Link,
         Self::Annotation,
         Self::Lesson,
+        Self::Cited,
         Self::NotePath,
         Self::NoteBytes,
         Self::RunFile,
@@ -154,6 +165,7 @@ impl Channel {
             Self::Link => "link",
             Self::Annotation => "annotation",
             Self::Lesson => "lesson",
+            Self::Cited => "cited",
             Self::NotePath => "notepath",
             Self::NoteBytes => "notebytes",
             Self::RunFile => "runfile",
@@ -203,6 +215,7 @@ const CONTRACTS: &[Contract] = &[
             Channel::Statement,
             Channel::Quote,
             Channel::Lesson,
+            Channel::Cited,
             Channel::NotePath,
             Channel::NoteBytes,
             Channel::RunMeta,
@@ -242,6 +255,7 @@ const CONTRACTS: &[Contract] = &[
             Channel::Link,
             Channel::Annotation,
             Channel::Lesson,
+            Channel::Cited,
             Channel::NotePath,
             Channel::RunFile,
             Channel::RunMeta,
@@ -348,6 +362,8 @@ struct Planted {
     derived: Vec<String>,
     /// The digest of the internal note whose bytes quote a record ID.
     id_note_digest: String,
+    /// The restricted observation (bn-91gz).
+    withheld_observation: String,
     label: String,
     /// Exports made so far, numbering their folders.
     exports: std::sync::atomic::AtomicUsize,
@@ -590,6 +606,29 @@ impl Layer<'_> {
             "residual_unknowns": [text("unknown")],
             "lessons": [{"guidance": text("guidance"), "applies_when": text("applies when"),
                 "support_refs": [run], "transfer_limits": text("transfer limits")}],
+        });
+        self.create("retrospective.record", payload)
+    }
+
+    /// A Retrospective whose own fields are public and whose every step and
+    /// lesson cites every record in `support` (bn-91gz).
+    fn cited_retrospective(&mut self, support: &[&str]) -> String {
+        let (_, snapshot) = self.state();
+        let case_ref = self.current(&self.case.clone());
+        let public = |what: &str| (self.wrap)(&format!("{CITED_ACCOUNT} {what}"));
+        let cited = |what: &str| self.text(RESTRICTED, Channel::Cited, what);
+        let payload = json!({
+            "case_ref": case_ref, "snapshot": snapshot,
+            "methods_attempted": [{"name": public("method"), "inquiry_ref": null}],
+            "effective_steps": [{"description": cited("effective step"),
+                "support_refs": support}],
+            "invalid_or_misleading_steps": [{"description": cited("misleading step"),
+                "support_refs": support}],
+            "none_observed_reason": null,
+            "costs_or_constraints": public("costs"),
+            "residual_unknowns": [public("unknown")],
+            "lessons": [{"guidance": cited("guidance"), "applies_when": cited("applies when"),
+                "support_refs": support, "transfer_limits": cited("transfer limits")}],
         });
         self.create("retrospective.record", payload)
     }
@@ -992,8 +1031,10 @@ fn planted(fixture: &str) -> Planted {
         l.producer_run(level, &format!("leak-{level}"));
     }
 
-    // Retrospectives: a public one, an internal one, and one raised to
-    // restricted after it was recorded.
+    // Retrospectives: a public one, an internal one, a public one whose
+    // steps and lessons cite the restricted observation (bn-91gz), and one
+    // raised to restricted after it was recorded. The cited one is the
+    // latest an `internal` or `public` audience may see.
     let run = l.create(
         "run.record",
         json!({"intent": {"kind": "exploration", "intent": "Trace one burst."},
@@ -1005,6 +1046,8 @@ fn planted(fixture: &str) -> Planted {
     let public_retrospective = l.retrospective(PUBLIC, &run);
     l.clear(&public_retrospective);
     l.retrospective(INTERNAL, &run);
+    let cited = l.cited_retrospective(&[&run, &restricted_observation]);
+    l.clear(&cited);
     let secret = l.retrospective(RESTRICTED, &run);
     l.raise(&secret);
 
@@ -1040,6 +1083,7 @@ fn planted(fixture: &str) -> Planted {
         before_raise,
         derived,
         id_note_digest: id_note_digest.as_str().to_owned(),
+        withheld_observation: restricted_observation,
         label: fixture.to_owned(),
         exports: std::sync::atomic::AtomicUsize::new(0),
     }
@@ -1839,6 +1883,104 @@ fn a_withheld_option_title_never_reaches_any_kind_through_a_derived_decision_tit
     }
     assert!(problems.is_empty(), "{}", problems.join("\n"));
     assert!(shown_neutral > 0, "no kind shows the decision at all");
+}
+
+/// bn-91gz: case-report highlights, the handoff and the review vault showed a
+/// Retrospective's steps and lessons even when they cite a record the
+/// audience may not see, though that text may restate it. Here the latest
+/// Retrospective, the one a kind showing a single account picks, is public
+/// and every step and lesson of it cites the restricted observation. Below
+/// `restricted` every kind that shows those entries to `restricted` still
+/// shows the account, but none of its entries, and the publisher receipt
+/// reports each one left out.
+#[test]
+fn a_step_or_lesson_citing_a_withheld_record_never_reaches_a_lower_audience_through_any_kind() {
+    let planted = planted("hostile");
+    let unwrapped = |text: &str| text.to_owned();
+    let mut layer = Layer {
+        workspace: &planted.workspace,
+        inputs: planted.root.join("inputs"),
+        below_root: "",
+        case: planted.case.clone(),
+        wrap: &unwrapped,
+        // Past every key the fixture used.
+        keys: 1_000_000,
+        revisions: std::cell::RefCell::default(),
+    };
+    let latest = layer.cited_retrospective(&[&planted.withheld_observation]);
+    layer.clear(&latest);
+    drop(layer);
+    let latest: Id = latest.parse().unwrap();
+    let retained = retained_digests(&planted.workspace);
+    let records = truth(&planted, Audience::Restricted, None).records;
+    let entries = Channel::Cited.token(RESTRICTED);
+    let mut problems = Vec::new();
+    let mut reached = BTreeSet::new();
+    for name in case_kinds() {
+        let full = export(&planted, name, Audience::Restricted, false, None).unwrap();
+        if full.find(&entries).is_empty() {
+            continue;
+        }
+        let full_standings = standings(&full, &records);
+        for (audience, remap) in [
+            (Audience::Internal, false),
+            (Audience::Internal, true),
+            (Audience::Public, false),
+        ] {
+            let truth = truth(&planted, audience, None);
+            let label = format!("bn-91gz {name} {} remap={remap}", audience.as_str());
+            let exported = export(&planted, name, audience, remap, None).unwrap();
+            // No restricted token, the entries' included, at any byte.
+            assert_review_export(
+                &planted,
+                &label,
+                audience,
+                &exported,
+                &truth,
+                &full_standings,
+                &mut problems,
+            );
+            assert_copies_are_exact(&label, &exported, &retained);
+            if exported.find(CITED_ACCOUNT).is_empty() {
+                continue;
+            }
+            reached.insert(name);
+            let omissions = &exported.receipt["publisher_receipt"]["omissions"];
+            for (content, part, text) in [
+                ("step", "effective_steps[0]", "effective step"),
+                ("step", "invalid_or_misleading_steps[0]", "misleading step"),
+                ("lesson", "lessons[0]", "guidance"),
+            ] {
+                // Only an entry this kind shows `restricted` is left out.
+                if full.find(&format!("{entries} {text}")).is_empty() {
+                    continue;
+                }
+                let reported = omissions.as_array().into_iter().flatten().any(|omission| {
+                    omission["content"] == content
+                        && omission["reason"] == "rests_on_withheld"
+                        && omission["record"] == latest.to_string()
+                        && omission["part"] == part
+                });
+                if !reported {
+                    problems.push(format!("{label}: {part} left out unreported"));
+                }
+            }
+        }
+    }
+    assert!(problems.is_empty(), "{}", problems.join("\n"));
+    // Not vacuous: each kind that shows a single account, and each that
+    // lists them, shows this one below `restricted`.
+    for name in [
+        "case-report",
+        "handoff",
+        "method-retrospective",
+        "review-vault",
+    ] {
+        assert!(
+            reached.contains(name),
+            "{name} never shows the account: {reached:?}"
+        );
+    }
 }
 
 /// W11.14: a remapped export rewrites every identifier in every file, so it

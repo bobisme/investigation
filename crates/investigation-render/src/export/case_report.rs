@@ -51,8 +51,9 @@ use crate::{
 /// excerpts, alternatives, the §15.3 conclusion elements, decisions, open
 /// issues and retrospective highlights; in-place annotation of stale and
 /// withdrawn inputs. A remapped report shows no journal sequence or head of
-/// a retrospective either.
-pub const VERSION: &str = "inv.export.case-report.v5";
+/// a retrospective either. v6 (bn-91gz): retrospective highlights leave
+/// out, and report, a step or lesson citing a record not shown.
+pub const VERSION: &str = "inv.export.case-report.v6";
 
 /// The report's file name.
 pub const FILE: &str = "case-report.md";

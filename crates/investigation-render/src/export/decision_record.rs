@@ -71,7 +71,10 @@ use crate::{
 /// (W11.13).
 /// v3: the human files records rely on, as captured, with their bytes under
 /// `human/sha256/` (W11.14).
-pub const VERSION: &str = "inv.export.decision-record.v3";
+/// v4 (bn-91gz): every capped list says how many shown items it leaves out
+/// (hard conditions, criteria, hard failures, Pareto entries, reversal
+/// conditions, open objections, stale comparisons and option notes).
+pub const VERSION: &str = "inv.export.decision-record.v4";
 
 /// The record's file name.
 pub const FILE: &str = "decision-record.md";
@@ -375,6 +378,7 @@ fn decision_section(
             prose(text_at(condition, "reason").unwrap_or_default())
         );
     }
+    more(out, "", conditions.len(), "hard conditions");
 
     match (question, earlier) {
         (Some(question), None) => matrix(out, input, question.header.id),
@@ -508,6 +512,7 @@ fn criteria(out: &mut String, input: &ExportInput<'_>, question: Id) {
         );
         caveats(out, input, criterion, "  ");
     }
+    more(out, "", hard.len(), "hard criteria");
     out.push_str("\n### Criteria\n\n");
     if soft.is_empty() {
         out.push_str("- No soft criterion is recorded or included.\n");
@@ -533,6 +538,7 @@ fn criteria(out: &mut String, input: &ExportInput<'_>, question: Id) {
         }
         caveats(out, input, criterion, "  ");
     }
+    more(out, "", soft.len(), "criteria");
 }
 
 /// `: lifecycle, threshold` for a criterion line.
@@ -699,7 +705,11 @@ fn matrix(out: &mut String, input: &ExportInput<'_>, question: Id) {
             && !failed.is_empty()
         {
             any = true;
+            let total = failed.len();
             failed.truncate(MAX_LISTED);
+            if total > MAX_LISTED {
+                failed.push(format!("and {} more", total - MAX_LISTED));
+            }
             let _ = writeln!(
                 out,
                 "- {} fails the hard criterion: {}",
@@ -733,6 +743,11 @@ fn matrix(out: &mut String, input: &ExportInput<'_>, question: Id) {
                     pareto_words(entry.status)
                 );
             }
+        }
+        // Listed only when every option is shown, so the count names
+        // nothing withheld.
+        if statuses.len() > MAX_ROWS {
+            let _ = writeln!(out, "- and {} more options", statuses.len() - MAX_ROWS);
         }
     }
 }
@@ -851,6 +866,7 @@ fn reversals(out: &mut String, input: &ExportInput<'_>, body: &Value) {
             }
         );
     }
+    more(out, "  ", reversals.len(), "reversal conditions");
 }
 
 /// A bulleted list of shown records cited at `value`.
@@ -912,20 +928,20 @@ fn accepted_over(out: &mut String, input: &ExportInput<'_>, body: &Value) {
         "Recorded at acceptance under the {} acknowledgment policy; never recomputed.\n",
         inline_code(text_at(challenges, "policy").unwrap_or("unknown"))
     );
-    let objections: Vec<&Value> = challenges["open_objections"]
+    // Only shown objections are listed or counted.
+    let objections: Vec<(&Value, &Record)> = challenges["open_objections"]
         .as_array()
         .into_iter()
         .flatten()
+        .filter_map(|objection| {
+            refs(objection.get("objection_ref"))
+                .first()
+                .and_then(|reference| shown_ref(input, *reference))
+                .map(|record| (objection, record))
+        })
         .collect();
-    let mut listed = 0;
-    for objection in objections.iter().take(MAX_LISTED) {
-        let Some(record) = refs(objection.get("objection_ref"))
-            .first()
-            .and_then(|reference| shown_ref(input, *reference))
-        else {
-            continue;
-        };
-        listed += 1;
+    for (objection, record) in objections.iter().take(MAX_LISTED) {
+        let (objection, record) = (*objection, *record);
         let mut line = format!(
             "- Open {} objection {}",
             inline_code(text_at(objection, "severity").unwrap_or("unknown")),
@@ -945,9 +961,10 @@ fn accepted_over(out: &mut String, input: &ExportInput<'_>, body: &Value) {
         let _ = writeln!(out, "{line}");
         caveats(out, input, record, "  ");
     }
-    if listed == 0 {
+    if objections.is_empty() {
         out.push_str("- Open objections shown: none\n");
     }
+    more(out, "", objections.len(), "open objections");
     ref_list(
         out,
         input,
@@ -1011,16 +1028,17 @@ fn warnings(out: &mut String, input: &ExportInput<'_>, decision: &Record, questi
         }
         stale.sort();
         stale.dedup();
-        for id in stale.iter().take(MAX_LISTED) {
-            if let Some(record) = shown(input, *id) {
-                any = true;
-                let _ = writeln!(
-                    out,
-                    "- Stale comparison: {} is out of date",
-                    label(input, record)
-                );
-            }
+        // Only shown comparisons are listed or counted.
+        let stale: Vec<&Record> = stale.iter().filter_map(|id| shown(input, *id)).collect();
+        for record in stale.iter().take(MAX_LISTED) {
+            any = true;
+            let _ = writeln!(
+                out,
+                "- Stale comparison: {} is out of date",
+                label(input, record)
+            );
         }
+        more(out, "", stale.len(), "stale comparisons");
     }
     // Open gaps naming this decision or its question, computed only from
     // records this audience may see.
@@ -1177,6 +1195,21 @@ fn text_list_indented(out: &mut String, name: &str, value: Option<&Value>) {
     let _ = writeln!(out, "  - {name}:");
     for item in items.iter().take(MAX_LISTED) {
         let _ = writeln!(out, "    - {}", prose(item));
+    }
+    more(out, "    ", items.len(), "");
+}
+
+/// `- and N more <what>` under a list capped at [`MAX_LISTED`], so a
+/// reader never takes a capped list for the whole one. Callers count only
+/// what the audience may see.
+fn more(out: &mut String, indent: &str, total: usize, what: &str) {
+    if total > MAX_LISTED {
+        let what = if what.is_empty() {
+            String::new()
+        } else {
+            format!(" {what}")
+        };
+        let _ = writeln!(out, "{indent}- and {} more{what}", total - MAX_LISTED);
     }
 }
 

@@ -407,6 +407,61 @@ fn every_audience_gets_the_adr_sections_in_order_and_the_same_bytes_twice() {
     }
 }
 
+/// bn-91gz: a list capped at the listing limit says how many items it
+/// leaves out, so a reader never takes it for the whole list.
+#[test]
+fn every_capped_list_says_how_many_it_leaves_out() {
+    let mut fixture = fixture(Hold::default());
+    let over = 20;
+    let s = &mut fixture.store;
+    let case = fixture.case;
+    let question_ref = current(s, case, fixture.question);
+    let notes: Vec<String> = (0..over).map(|n| format!("{PUBLIC} note {n}")).collect();
+    let option = create(
+        s,
+        "noted-option",
+        case,
+        "option.create",
+        json!({"question_ref":question_ref, "description":format!("{PUBLIC} noted option"),
+            "dependencies":[], "tradeoff_notes":notes}),
+    );
+    clear(s, "clear-noted-option", case, option);
+    let option_ref = current(s, case, fixture.option_a);
+    let question_ref = current(s, case, fixture.question);
+    let hard_ref = current(s, case, fixture.hard);
+    let reversals: Vec<Value> = (0..over)
+        .map(|n| {
+            json!({"assumption_ref":null, "criterion_ref":hard_ref, "comparison_ref":null,
+                "option_ref":option_ref, "condition":format!("{PUBLIC} reverse {n}")})
+        })
+        .collect();
+    let decision = create(
+        s,
+        "capped-decision",
+        case,
+        "decision.propose",
+        json!({
+            "question_ref":question_ref,
+            "choice":{"kind":"select", "option_ref":option_ref},
+            "compared_alternatives":[option_ref],
+            "comparison_refs":[], "hard_conditions":[], "evidence_refs":[],
+            "assumption_refs":[], "tradeoffs":[format!("{PUBLIC} tradeoff")],
+            "consequences":[format!("{PUBLIC} consequence")],
+            "reopen_trigger":format!("{PUBLIC} reopen trigger"), "reversal_conditions":reversals
+        }),
+    );
+    clear(s, "clear-capped-decision", case, decision);
+    let left = over - 16;
+    let text = record(&plan(&mut fixture, Audience::Internal));
+    for line in [
+        format!("    - and {left} more\n"),
+        format!("  - and {left} more reversal conditions\n"),
+    ] {
+        assert!(text.contains(&line), "{line:?} missing\n{text}");
+    }
+    assert!(!text.contains(&format!("{PUBLIC} reverse 16")), "{text}");
+}
+
 #[test]
 fn a_withheld_option_has_no_row_for_the_public_and_no_pareto_status() {
     let mut fixture = fixture(Hold {

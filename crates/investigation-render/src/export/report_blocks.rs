@@ -1718,18 +1718,16 @@ impl<'i, 'a> Report<'i, 'a> {
                 );
             }
             self.item("", retrospective, &detail);
-            let substantive = [
-                "effective_steps",
-                "invalid_or_misleading_steps",
-                "residual_unknowns",
-                "lessons",
-            ]
-            .iter()
-            .any(|key| body[*key].as_array().is_some_and(|items| !items.is_empty()));
+            // Judged on what may be shown, so an account whose every entry
+            // cites withheld material reads like one that records none.
+            let substantive = !strings(body.get("residual_unknowns")).is_empty()
+                || ["effective_steps", "invalid_or_misleading_steps", "lessons"]
+                    .iter()
+                    .any(|key| !self.cited_entries(retrospective, key).is_empty());
             if !substantive {
                 self.line(
-                    "  - No highlight: the account records no effective or misleading step, \
-                     residual unknown or lesson.",
+                    "  - No highlight: no effective or misleading step, residual unknown or \
+                     lesson is listed.",
                 );
                 continue;
             }
@@ -1738,7 +1736,17 @@ impl<'i, 'a> Report<'i, 'a> {
         more(&mut self.out, "", retrospectives.len(), MAX_LISTED);
     }
 
-    fn highlights(&mut self, retrospective: &Record) {
+    /// The entries at `key` that may appear: see
+    /// [`ExportInput::retrospective_entries`].
+    fn cited_entries(&self, retrospective: &'a Record, key: &str) -> Vec<&'a Value> {
+        self.input
+            .retrospective_entries(retrospective, key)
+            .into_iter()
+            .map(|(_, entry)| entry)
+            .collect()
+    }
+
+    fn highlights(&mut self, retrospective: &'a Record) {
         let body = &retrospective.body;
         let methods: Vec<&str> = body["methods_attempted"]
             .as_array()
@@ -1754,7 +1762,7 @@ impl<'i, 'a> Report<'i, 'a> {
             ("Effective step", "effective_steps"),
             ("Invalid or misleading step", "invalid_or_misleading_steps"),
         ] {
-            let steps: Vec<&Value> = body[key].as_array().into_iter().flatten().collect();
+            let steps = self.cited_entries(retrospective, key);
             for step in steps.iter().take(MAX_HIGHLIGHTS) {
                 let _ = writeln!(
                     self.out,
@@ -1770,13 +1778,22 @@ impl<'i, 'a> Report<'i, 'a> {
             let _ = writeln!(self.out, "  - Residual unknown: {}", prose(unknown));
         }
         more(&mut self.out, "  ", unknowns.len(), MAX_HIGHLIGHTS);
-        let lessons: Vec<&Value> = body["lessons"].as_array().into_iter().flatten().collect();
+        let lessons = self.cited_entries(retrospective, "lessons");
+        let recorded = body["lessons"]
+            .as_array()
+            .is_some_and(|all| !all.is_empty());
         if lessons.is_empty() {
-            let _ = writeln!(
-                self.out,
-                "  - No reusable lesson: {}",
-                or_not_recorded(text_at(body, "no_reusable_lesson_reason"))
-            );
+            if recorded {
+                // As in `method-retrospective`: every lesson cites a record
+                // not shown here.
+                self.line("  - No lesson is shown to this audience.");
+            } else {
+                let _ = writeln!(
+                    self.out,
+                    "  - No reusable lesson: {}",
+                    or_not_recorded(text_at(body, "no_reusable_lesson_reason"))
+                );
+            }
         }
         for lesson in lessons.iter().take(MAX_HIGHLIGHTS) {
             let _ = writeln!(

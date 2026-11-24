@@ -552,6 +552,47 @@ impl<'a> NoteContext<'a> {
         }
     }
 
+    /// The entries of a Retrospective's `field` (`effective_steps`,
+    /// `invalid_or_misleading_steps` or `lessons`) this plan may show. A
+    /// step or lesson is authored text that may restate what it cites, so a
+    /// review export leaves out, and reports, every entry citing a record it
+    /// does not show, as every export kind does (bn-91gz); the working vault
+    /// shows every entry.
+    pub(crate) fn retrospective_entries<'r>(
+        &self,
+        record: &'r Record,
+        field: &str,
+    ) -> Vec<&'r serde_json::Value> {
+        let content = if field == "lessons" {
+            crate::export::Omitted::Lesson
+        } else {
+            crate::export::Omitted::Step
+        };
+        let entries = record.body[field].as_array().into_iter().flatten();
+        if !self.reviewing() {
+            return entries.collect();
+        }
+        entries
+            .enumerate()
+            .filter(|(index, entry)| {
+                let cited: Vec<Id> = entry
+                    .get("support_refs")
+                    .and_then(serde_json::Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|id| id.as_str()?.parse().ok())
+                    .collect();
+                if cited.iter().all(|id| self.shown(*id)) {
+                    return true;
+                }
+                let part = format!("{field}[{index}]");
+                self.left_out(content, Some(record.header.id), Some(&part), &cited);
+                false
+            })
+            .map(|(_, entry)| entry)
+            .collect()
+    }
+
     /// Whether a review export leaves any record of its case out.
     pub(crate) fn withholds_any(&self) -> bool {
         self.review.is_some_and(|review| {

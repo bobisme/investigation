@@ -1327,17 +1327,36 @@ impl<'n, 'a> Views<'n, 'a> {
             ],
             |record| {
                 let body = &record.body;
+                let methods: Vec<&str> = body["methods_attempted"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|item| item["name"].as_str())
+                    .collect();
+                // A review export leaves out every step or lesson citing a
+                // record it does not show (bn-91gz).
                 let field = |list: &str, key: &str| -> Vec<&str> {
-                    body[list]
-                        .as_array()
+                    self.notes
+                        .retrospective_entries(record, list)
                         .into_iter()
-                        .flatten()
                         .filter_map(|item| item[key].as_str())
                         .collect()
                 };
-                let lessons: Vec<&Value> =
-                    body["lessons"].as_array().into_iter().flatten().collect();
+                // Recorded entries none of which is shown are not "none
+                // recorded".
+                let none = |list: &str| {
+                    if body[list].as_array().is_some_and(|all| !all.is_empty()) {
+                        "none shown to this audience"
+                    } else {
+                        "none recorded"
+                    }
+                };
+                let lessons = self.notes.retrospective_entries(record, "lessons");
+                let recorded = body["lessons"]
+                    .as_array()
+                    .is_some_and(|all| !all.is_empty());
                 let lesson = match lessons.as_slice() {
+                    [] if recorded => "none shown to this audience".to_owned(),
                     [] => match text_at(body, "no_reusable_lesson_reason") {
                         Some(reason) => {
                             format!("no reusable lesson: {}", inline_text(reason, CELL_CHARS))
@@ -1362,11 +1381,14 @@ impl<'n, 'a> Views<'n, 'a> {
                         word_at(record, "status"),
                         table_code(super::reviews::freshness_word(self.notes, record))
                     ),
-                    first_of(&field("methods_attempted", "name"), "none recorded"),
-                    first_of(&field("effective_steps", "description"), "none recorded"),
+                    first_of(&methods, "none recorded"),
+                    first_of(
+                        &field("effective_steps", "description"),
+                        none("effective_steps"),
+                    ),
                     first_of(
                         &field("invalid_or_misleading_steps", "description"),
-                        "none recorded",
+                        none("invalid_or_misleading_steps"),
                     ),
                     lesson,
                 ])

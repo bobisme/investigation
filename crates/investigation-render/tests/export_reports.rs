@@ -201,7 +201,7 @@ fn assert_shape(plan: &ExportPlan, label: &str) {
     assert_eq!(
         plan.manifest().versions.renderer,
         match plan.kind().name {
-            "case-report" => "inv.export.case-report.v5",
+            "case-report" => "inv.export.case-report.v6",
             _ => "inv.export.analysis-report.v1",
         }
     );

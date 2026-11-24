@@ -44,8 +44,20 @@ fn support(f: &Facts<'_, '_, '_>, item: &Value) -> Result<String, RenderError> {
 }
 
 fn steps(f: &mut Facts<'_, '_, '_>, path: &str, none: &str) -> Result<(), RenderError> {
-    let items: Vec<Value> = f.record.body[path].as_array().cloned().unwrap_or_default();
-    if items.is_empty() {
+    let items: Vec<Value> = f
+        .notes
+        .retrospective_entries(f.record, path)
+        .into_iter()
+        .cloned()
+        .collect();
+    if items.is_empty()
+        && f.record.body[path]
+            .as_array()
+            .is_some_and(|all| !all.is_empty())
+    {
+        // Every step cites a record this export does not show.
+        f.out.push_str("None is shown to this audience.\n");
+    } else if items.is_empty() {
         let _ = writeln!(f.out, "{none}");
     }
     for item in items.iter().take(MAX_LISTED) {
@@ -123,8 +135,20 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         "Lessons are bounded proposals with stated transfer limits. Recording one never changes \
          doctrine or another case.",
     );
-    let lessons: Vec<Value> = body["lessons"].as_array().cloned().unwrap_or_default();
-    if lessons.is_empty() {
+    let lessons: Vec<Value> = f
+        .notes
+        .retrospective_entries(f.record, "lessons")
+        .into_iter()
+        .cloned()
+        .collect();
+    if lessons.is_empty()
+        && body["lessons"]
+            .as_array()
+            .is_some_and(|all| !all.is_empty())
+    {
+        // Every lesson cites a record this export does not show.
+        f.out.push_str("No lesson is shown to this audience.\n");
+    } else if lessons.is_empty() {
         let _ = writeln!(
             f.out,
             "No reusable lesson: {}",

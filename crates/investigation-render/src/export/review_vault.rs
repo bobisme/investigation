@@ -93,7 +93,9 @@ use crate::{
 /// backlinks show their standing too.
 /// v3 (bn-1vg8): completeness counts gaps, Pareto status and attachments
 /// left out, with the framework's completeness statement.
-pub const VERSION: &str = "inv.export.review-vault.v3";
+/// v4 (bn-91gz): a Retrospective step or lesson citing a record not shown
+/// is left out of its note and the Views, and reported.
+pub const VERSION: &str = "inv.export.review-vault.v4";
 
 /// The vault renderer version whose templates this kind plans.
 pub const TEMPLATES: &str = crate::plan::RENDERER_VERSION;
