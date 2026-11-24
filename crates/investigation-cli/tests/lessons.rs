@@ -962,6 +962,16 @@ fn a_consultation_verifies_the_lesson_case_and_no_other() {
     std::fs::write(first_event(&source), original).unwrap();
 
     // A case the consultation does not read is not verified by it; check is.
+    // The edit is below the bystander's head: an edited head file is a
+    // changed head, which any command verifies (PERF.09).
+    record(
+        root,
+        "bystander-question",
+        AUTHOR,
+        &bystander,
+        json!([{"op":"question.create","payload":{"wording":"Which queue?","importance":"normal"}}]),
+        0,
+    );
     tamper(&bystander);
     let receipt = consult("consult", 0);
     assert_eq!(receipt["created"][0]["id"].as_str().unwrap()[..4], *"ann_");

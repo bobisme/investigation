@@ -405,8 +405,15 @@ impl Store {
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: submission.case_id,
-                // The acquisition and the attempt may be recorded in any case.
-                reads: Reads::Workspace,
+                // The acquisition and the attempt may be recorded in any
+                // case: load each case that claims either (PERF.09).
+                reads: Reads::Claims(vec![
+                    request.claim(),
+                    capture::attempt_claim(AttemptIdentity {
+                        producer: &run.producer.name,
+                        external_run_id: &run.external_run_id,
+                    }),
+                ]),
                 event: EventInput {
                     actor: &event_actor,
                     command_id: &command_id,

@@ -21,16 +21,23 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, pa
 use crate::store::ingest::acquisition::AcquisitionCursor;
 
 // Version 2 added acquisitions; version 3 added the record dependency index;
-// version 4 added full-text search over labelled record text; version 5 adds
-// the transaction IDs that case-scoped commits check (ADR 0011). Older
-// indexes are rebuilt.
-pub const INDEX_USER_VERSION: u32 = 5;
+// version 4 added full-text search over labelled record text; version 5 added
+// the transaction IDs that case-scoped commits check (ADR 0011); version 6
+// adds the cases that claim each acquisition and producer attempt, so keyed
+// ingest, capture begin and producer runs are case-scoped too (PERF.09).
+// Older indexes are rebuilt.
+pub const INDEX_USER_VERSION: u32 = 6;
 /// Rows read from the full-text index for one query, before canonical checks.
 pub const MAX_SEARCH_CANDIDATES: usize = 5_000;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Copy)]
 pub struct IndexEvent<'a> {
+    /// The identity of the published event file (`FileIdentity::key`), kept
+    /// with the head so a later freshness test can tell a different file at
+    /// the same sequence (PERF.09). `None` leaves the head unconfirmed: a
+    /// case-scoped commit then verifies that case.
+    pub head_file: Option<&'a str>,
     pub previous_hash: &'a Digest,
     pub actor: &'a Actor,
     pub accepted: &'a AcceptedTransaction,
@@ -40,6 +47,61 @@ pub struct IndexEvent<'a> {
 
 pub struct Projection {
     database: Connection,
+}
+
+/// A workspace-wide identity that a recording claims, which one case may
+/// hold: an ingest acquisition attempt or a producer attempt. The index lists
+/// every case whose applied events recorded a revision that claims it; that
+/// list may name a case that no longer does, never omit one that does.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Claim {
+    /// A Source's `acquisition_key`: producer namespace and external ID.
+    Acquisition {
+        namespace: String,
+        external_id: String,
+    },
+    /// A Run's producer name and external run ID, by either recording path.
+    Attempt {
+        producer: String,
+        external_run_id: String,
+    },
+}
+
+impl Claim {
+    fn columns(&self) -> (&'static str, &str, &str) {
+        match self {
+            Self::Acquisition {
+                namespace,
+                external_id,
+            } => ("acquisition", namespace, external_id),
+            Self::Attempt {
+                producer,
+                external_run_id,
+            } => ("attempt", producer, external_run_id),
+        }
+    }
+
+    /// What a recorded revision claims, if anything.
+    fn of(record: &investigation_core::state::Record) -> Option<Self> {
+        match record.header.id.kind() {
+            Kind::Source => {
+                let key: AcquisitionKey =
+                    serde_json::from_value(record.body.get("acquisition_key")?.clone()).ok()?;
+                Some(Self::Acquisition {
+                    namespace: key.namespace,
+                    external_id: key.external_id,
+                })
+            }
+            Kind::Run => {
+                let (identity, _) = investigation_core::attempt::recorded_attempt(&record.body)?;
+                Some(Self::Attempt {
+                    producer: identity.producer.to_owned(),
+                    external_run_id: identity.external_run_id.to_owned(),
+                })
+            }
+            _ => None,
+        }
+    }
 }
 
 /// One indexed field whose text contains every query term. A pointer for the
@@ -91,12 +153,30 @@ impl Projection {
         Ok(Self { database })
     }
 
+    /// Open the index for writing, creating it when absent. The caller holds
+    /// the store's commit lock, as every index writer does (ADR 0015).
     pub fn open(path: &Path, workspace: Id) -> Result<Self, Failure> {
+        if !path.exists() {
+            // A WAL or journal left beside a deleted database belongs to that
+            // database; SQLite pairs them by name and would read it into the
+            // new one (ADR 0015).
+            remove_companions(path)?;
+        }
+        Self::open_with(path, workspace, Durability::Live)
+    }
+
+    fn open_with(path: &Path, workspace: Id, durability: Durability) -> Result<Self, Failure> {
         let database = Connection::open(path).map_err(db_error)?;
         database.busy_timeout(BUSY_TIMEOUT).map_err(db_error)?;
         database
             .execute_batch("PRAGMA foreign_keys=ON; PRAGMA trusted_schema=OFF;")
             .map_err(db_error)?;
+        if let Durability::Unpublished = durability {
+            // A temporary nobody reads until it is synced and renamed.
+            database
+                .execute_batch("PRAGMA journal_mode=MEMORY; PRAGMA synchronous=OFF;")
+                .map_err(db_error)?;
+        }
         let version: u32 = database
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .map_err(db_error)?;
@@ -110,7 +190,8 @@ impl Projection {
                      workspace_id TEXT NOT NULL
                  );
                  CREATE TABLE IF NOT EXISTS heads (
-                     case_id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, head_hash TEXT NOT NULL
+                     case_id TEXT PRIMARY KEY, sequence INTEGER NOT NULL, head_hash TEXT NOT NULL,
+                     head_file TEXT
                  );
                  CREATE TABLE IF NOT EXISTS receipts (
                      actor TEXT NOT NULL, command_id TEXT NOT NULL, case_id TEXT NOT NULL,
@@ -137,6 +218,11 @@ impl Projection {
                      source_revision INTEGER NOT NULL, description_digest TEXT,
                      acceptance_sequence INTEGER NOT NULL,
                      PRIMARY KEY (namespace, external_id, item)
+                 );
+                 CREATE TABLE IF NOT EXISTS claims (
+                     kind TEXT NOT NULL, name TEXT NOT NULL, external_id TEXT NOT NULL,
+                     case_id TEXT NOT NULL,
+                     PRIMARY KEY (kind, name, external_id, case_id)
                  );
                  CREATE TABLE IF NOT EXISTS dependencies (
                      case_id TEXT NOT NULL,
@@ -240,6 +326,68 @@ impl Projection {
             .map_err(db_error)?;
         rows.map(|row| parse_case_id(&row.map_err(db_error)?))
             .collect()
+    }
+
+    /// The cases whose applied events recorded a revision that makes
+    /// `claim`. A pointer for the caller to verify against canonical state.
+    pub fn claim_cases(&self, claim: &Claim) -> Result<Vec<Id>, Failure> {
+        let (kind, name, external_id) = claim.columns();
+        let mut query = self
+            .database
+            .prepare(
+                "SELECT case_id FROM claims
+                 WHERE kind = ?1 AND name = ?2 AND external_id = ?3 ORDER BY case_id",
+            )
+            .map_err(db_error)?;
+        let rows = query
+            .query_map(params![kind, name, external_id], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(db_error)?;
+        rows.map(|row| parse_case_id(&row.map_err(db_error)?))
+            .collect()
+    }
+
+    /// Each indexed head with the identity of the event file it was applied
+    /// from, when one was recorded.
+    pub fn head_files(&self) -> Result<Vec<(Id, Snapshot, Option<String>)>, Failure> {
+        let files: std::collections::BTreeMap<String, Option<String>> = {
+            let mut query = self
+                .database
+                .prepare("SELECT case_id, head_file FROM heads")
+                .map_err(db_error)?;
+            let rows = query
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(db_error)?;
+            rows.collect::<Result<_, _>>().map_err(db_error)?
+        };
+        self.heads()?
+            .into_iter()
+            .map(|(case_id, snapshot)| {
+                let file = files.get(&case_id.to_string()).cloned().flatten();
+                Ok((case_id, snapshot, file))
+            })
+            .collect()
+    }
+
+    /// Record the event file identity of heads that did not move, such as
+    /// after the workspace was copied: one transaction for all of them.
+    pub fn confirm_head_files(&mut self, files: &[(Id, String)]) -> Result<(), Failure> {
+        if files.is_empty() {
+            return Ok(());
+        }
+        let tx = self
+            .database
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(db_error)?;
+        for (case_id, file) in files {
+            tx.execute(
+                "UPDATE heads SET head_file = ?2 WHERE case_id = ?1",
+                params![case_id.to_string(), file],
+            )
+            .map_err(db_error)?;
+        }
+        tx.commit().map_err(db_error)
     }
 
     /// Inspect projections without taking them as proof of canonical state.
@@ -386,6 +534,15 @@ impl Projection {
             )
             .map_err(db_error)?;
         }
+        for claim in accepted.records.iter().filter_map(Claim::of) {
+            let (kind, name, external_id) = claim.columns();
+            tx.execute(
+                "INSERT OR IGNORE INTO claims (kind, name, external_id, case_id)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![kind, name, external_id, case_id],
+            )
+            .map_err(db_error)?;
+        }
         for edge in event.relations {
             let kind = serde_json::to_value(edge.kind).map_err(codec_error)?;
             tx.execute(
@@ -423,9 +580,15 @@ impl Projection {
         )
         .map_err(db_error)?;
         tx.execute(
-            "INSERT INTO heads (case_id, sequence, head_hash) VALUES (?1, ?2, ?3)
-             ON CONFLICT (case_id) DO UPDATE SET sequence=excluded.sequence, head_hash=excluded.head_hash",
-            params![case_id, sequence, snapshot.head_hash.as_str()],
+            "INSERT INTO heads (case_id, sequence, head_hash, head_file) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (case_id) DO UPDATE SET sequence=excluded.sequence,
+                 head_hash=excluded.head_hash, head_file=excluded.head_file",
+            params![
+                case_id,
+                sequence,
+                snapshot.head_hash.as_str(),
+                event.head_file
+            ],
         )
         .map_err(db_error)?;
         tx.commit().map_err(db_error)
@@ -619,16 +782,70 @@ impl Projection {
             .prefix(".index-")
             .tempfile_in(parent)
             .map_err(|_| index_failure("Could not create a temporary index."))?;
-        let mut fresh = Self::open(temporary.path(), workspace)?;
+        // Built without syncs: nothing reads it before the one sync below.
+        let mut fresh = Self::open_with(temporary.path(), workspace, Durability::Unpublished)?;
         for event in events {
             fresh.apply(event)?;
         }
-        drop(fresh);
+        fresh
+            .database
+            .close()
+            .map_err(|(_, error)| db_error(error))?;
+        temporary
+            .as_file()
+            .sync_all()
+            .map_err(|_| index_failure("Could not sync the rebuilt index."))?;
+        // A journal left by a crashed writer belongs to the old database, and
+        // SQLite pairs files by name: it would roll old pages into the new
+        // one. Remove the old database first, then its journal, so that no
+        // crash leaves either a torn old database without its journal or the
+        // new one with the old journal (ADR 0015).
+        let sync_parent = || {
+            std::fs::File::open(parent)
+                .and_then(|directory| directory.sync_all())
+                .map_err(|_| index_failure("Could not sync the index directory."))
+        };
+        match std::fs::remove_file(path) {
+            Ok(()) => sync_parent()?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(index_failure("Could not replace the disposable index.")),
+        }
+        remove_companions(path)?;
         temporary
             .persist(path)
             .map_err(|_| index_failure("Could not replace the disposable index."))?;
+        sync_parent()?;
         Self::open(path, workspace)
     }
+}
+
+/// How an index connection trades durability for syncs (ADR 0015).
+#[derive(Clone, Copy)]
+enum Durability {
+    /// `cache/index.sqlite`: rollback journal, full sync.
+    Live,
+    /// A rebuild's temporary file, synced once before it is published.
+    Unpublished,
+}
+
+/// The files SQLite pairs with database `path` by name.
+pub fn companions(path: &Path) -> [std::path::PathBuf; 3] {
+    ["-wal", "-shm", "-journal"].map(|suffix| {
+        let mut name = path.as_os_str().to_owned();
+        name.push(suffix);
+        std::path::PathBuf::from(name)
+    })
+}
+
+fn remove_companions(path: &Path) -> Result<(), Failure> {
+    for companion in companions(path) {
+        match std::fs::remove_file(&companion) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(index_failure("Could not remove a stale index log.")),
+        }
+    }
+    Ok(())
 }
 
 /// Keep only the newest revision's text for a record. The index is a
@@ -755,6 +972,7 @@ mod tests {
         wire::{CommitResult, Projection as ReceiptProjection, ProjectionStatus, ResponseVersion},
     };
     use serde_json::{Value, json};
+    use std::fs;
 
     fn digest(character: char) -> Digest {
         format!("sha256:{}", character.to_string().repeat(64))
@@ -841,6 +1059,7 @@ mod tests {
         let second_receipt = receipt(&questions, "second", digest('3'));
         let actor = "agent:test".parse().unwrap();
         let first = IndexEvent {
+            head_file: None,
             previous_hash: &genesis_hash,
             actor: &actor,
             accepted: &genesis,
@@ -848,6 +1067,7 @@ mod tests {
             relations: &[],
         };
         let second = IndexEvent {
+            head_file: None,
             previous_hash: &first_receipt.snapshot.head_hash,
             actor: &actor,
             accepted: &questions,
@@ -913,6 +1133,167 @@ mod tests {
         assert_eq!(questions, 2);
     }
 
+    /// Two events of one case and their receipts, for the durability tests.
+    fn two_events() -> (State, [AcceptedTransaction; 2], [Receipt; 2], Digest) {
+        let mut state = State::default();
+        let genesis = append(
+            &mut state,
+            None,
+            json!([{"op":"case.create", "payload":{"title":"Durability", "mode":"record"}}]),
+        );
+        let question = append(
+            &mut state,
+            Some(genesis.case_id),
+            json!([{"op":"question.create", "payload":{"wording":"Which pages?", "importance":"normal"}}]),
+        );
+        let receipts = [
+            receipt(&genesis, "first", digest('2')),
+            receipt(&question, "second", digest('3')),
+        ];
+        (state, [genesis, question], receipts, digest('1'))
+    }
+
+    fn integrity(index: &Projection) -> String {
+        index
+            .database
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    /// ADR 0015: commits trust the index for cross-case idempotency, so each
+    /// index transaction must be atomic across power loss. The live index
+    /// keeps SQLite's rollback journal with full sync; a weaker setting
+    /// (`synchronous` NORMAL with a rollback journal, or OFF) fails here.
+    #[test]
+    fn the_live_index_keeps_a_fully_synced_rollback_journal() {
+        let (_state, accepted, receipts, genesis_hash) = two_events();
+        let actor = "agent:test".parse().unwrap();
+        let events = [0, 1].map(|at| IndexEvent {
+            head_file: None,
+            previous_hash: if at == 0 {
+                &genesis_hash
+            } else {
+                &receipts[0].snapshot.head_hash
+            },
+            actor: &actor,
+            accepted: &accepted[at],
+            receipt: &receipts[at],
+            relations: &[],
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.sqlite");
+        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000099".parse().unwrap();
+        let settings = |index: &Projection| -> (String, i64) {
+            let mode = index
+                .database
+                .pragma_query_value(None, "journal_mode", |row| row.get(0))
+                .unwrap();
+            let sync = index
+                .database
+                .pragma_query_value(None, "synchronous", |row| row.get(0))
+                .unwrap();
+            (mode, sync)
+        };
+        let live = Projection::open(&path, workspace_id).unwrap();
+        assert_eq!(settings(&live), ("delete".to_owned(), 2));
+        drop(live);
+        // A rebuild builds its unpublished file without syncs, but what it
+        // publishes is opened like any live index.
+        let rebuilt = Projection::rebuild(&path, workspace_id, events).unwrap();
+        assert_eq!(settings(&rebuilt), ("delete".to_owned(), 2));
+        assert_eq!(integrity(&rebuilt), "ok");
+        let mut left: Vec<_> = fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        left.sort();
+        assert_eq!(left, vec!["index.sqlite"], "no temporary or log is left");
+    }
+
+    /// ADR 0015: SQLite pairs a database with `-journal` by name. A writer
+    /// that crashed mid-transaction leaves a hot journal of the old index; a
+    /// rebuild must not let it roll old pages into the new file, and an
+    /// index deleted beside it starts clean.
+    #[test]
+    fn a_crashed_writers_journal_never_reaches_a_rebuilt_index() {
+        let (_state, accepted, receipts, genesis_hash) = two_events();
+        let actor = "agent:test".parse().unwrap();
+        let events = [0, 1].map(|at| IndexEvent {
+            head_file: None,
+            previous_hash: if at == 0 {
+                &genesis_hash
+            } else {
+                &receipts[0].snapshot.head_hash
+            },
+            actor: &actor,
+            accepted: &accepted[at],
+            receipt: &receipts[at],
+            relations: &[],
+        });
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("index.sqlite");
+        let journal = directory.path().join("index.sqlite-journal");
+        let crashed = directory.path().join("crashed");
+        fs::create_dir(&crashed).unwrap();
+        let workspace_id = "ws_018d87fc-5234-7000-8000-000000000099".parse().unwrap();
+        let mut index = Projection::open(&path, workspace_id).unwrap();
+        index.apply(events[0]).unwrap();
+        drop(index);
+        // A writer changes the receipts and heads, then spills a large
+        // transaction to the database file, so the synced journal holds
+        // their original pages; copy both as a crash leaves them.
+        let writer = Connection::open(&path).unwrap();
+        writer
+            .execute_batch(
+                "PRAGMA cache_size=2; BEGIN;
+                 DELETE FROM receipts; DELETE FROM heads;
+                 CREATE TABLE filler(bytes BLOB);
+                 WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<200)
+                 INSERT INTO filler SELECT randomblob(3000) FROM n;",
+            )
+            .unwrap();
+        assert!(journal.exists(), "the writer spilled to its journal");
+        fs::copy(&path, crashed.join("index.sqlite")).unwrap();
+        fs::copy(&journal, crashed.join("index.sqlite-journal")).unwrap();
+        writer.execute_batch("ROLLBACK").unwrap();
+        drop(writer);
+        let crash = || {
+            fs::copy(crashed.join("index.sqlite"), &path).unwrap();
+            fs::copy(crashed.join("index.sqlite-journal"), &journal).unwrap();
+        };
+
+        crash();
+        let rebuilt = Projection::rebuild(&path, workspace_id, events).unwrap();
+        assert_eq!(integrity(&rebuilt), "ok");
+        assert_eq!(
+            rebuilt.heads().unwrap(),
+            vec![(accepted[0].case_id, receipts[1].snapshot.clone())]
+        );
+        drop(rebuilt);
+        // Rolled into the new file, the old journal would leave the new head
+        // over the old receipts: the torn state that hides a key.
+        let reopened = Projection::open(&path, workspace_id).unwrap();
+        assert_eq!(integrity(&reopened), "ok");
+        assert_eq!(
+            reopened.heads().unwrap(),
+            vec![(accepted[0].case_id, receipts[1].snapshot.clone())]
+        );
+        let held: i64 = reopened
+            .database
+            .query_row("SELECT COUNT(*) FROM receipts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(held, 2, "every receipt under the head is there");
+        assert!(!journal.exists());
+        drop(reopened);
+
+        // A crash between removing the old index and its journal.
+        crash();
+        fs::remove_file(&path).unwrap();
+        let fresh = Projection::open(&path, workspace_id).unwrap();
+        assert_eq!(integrity(&fresh), "ok");
+        assert_eq!(fresh.heads().unwrap(), Vec::new());
+    }
+
     #[test]
     fn dependency_index_is_rebuilt_from_journal_events() {
         let mut state = State::default();
@@ -946,6 +1327,7 @@ mod tests {
         let accepted = [&genesis, &question, &options];
         let events: Vec<_> = (0..3)
             .map(|i| IndexEvent {
+                head_file: None,
                 previous_hash: if i == 0 {
                     &genesis_hash
                 } else {
@@ -1032,6 +1414,7 @@ mod tests {
         let actor = "agent:test".parse().unwrap();
         let events: Vec<_> = (0..accepted.len())
             .map(|i| IndexEvent {
+                head_file: None,
                 previous_hash: if i == 0 {
                     &genesis_hash
                 } else {

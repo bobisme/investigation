@@ -223,8 +223,12 @@ impl<F: DurableFs> Store<F> {
             .commit_plan(
                 CommitPlan {
                     case_id: existing,
-                    // A prior declaration of the same attempt may be in any case.
-                    reads: Reads::Workspace,
+                    // A prior declaration of the same attempt may be in any
+                    // case: load each case that claims it (PERF.09).
+                    reads: Reads::Claims(vec![attempt_claim(AttemptIdentity {
+                        producer: &declaration.producer,
+                        external_run_id: &declaration.external_run_id,
+                    })]),
                     event: EventInput {
                         actor: &declaration.actor,
                         command_id: &declaration.command_id,
@@ -500,6 +504,14 @@ fn declaration_path(mut failure: Failure, new_case: bool) -> Failure {
     failure
 }
 
+/// The workspace-wide claim of one producer attempt, as the index lists it.
+pub(super) fn attempt_claim(identity: AttemptIdentity<'_>) -> Claim {
+    Claim::Attempt {
+        producer: identity.producer.to_owned(),
+        external_run_id: identity.external_run_id.to_owned(),
+    }
+}
+
 /// Every Run in the visible cases that records `identity`, by either path.
 ///
 /// One attempt has one Run. Workspaces written before the paths shared an
@@ -511,7 +523,7 @@ pub(super) fn recorded_attempts<'v>(
     Ok(visible
         .target
         .into_iter()
-        .chain(visible.others.all()?.values())
+        .chain(visible.others.holding(&attempt_claim(identity))?.values())
         .flat_map(|case| case.state.records().map(move |record| (case, record)))
         .filter(|(_, record)| record.header.id.kind() == Kind::Run)
         .filter_map(|(case, record)| {

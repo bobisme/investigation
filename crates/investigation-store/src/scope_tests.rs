@@ -286,18 +286,22 @@ fn an_id_recorded_in_an_unloaded_case_is_refused() {
     }
     assert!(!fixture.store.already_recorded(&scope, [fresh]).unwrap());
     drop(scope);
-    // A workspace-wide preparation cannot run on a case-scoped load.
+    // A preparation cannot search for a claim the load did not locate.
+    let claim = Claim::Attempt {
+        producer: "example-producer".into(),
+        external_run_id: "run-1".into(),
+    };
     let _lock = fixture.store.coordinate().unwrap();
     let scoped = fixture
         .store
         .load_scope(Some(fixture.target), Reads::Target)
         .unwrap();
-    assert!(scoped.replay.all().is_err());
-    let full = fixture
+    assert!(scoped.replay.holding(&claim).is_err());
+    let located = fixture
         .store
-        .load_scope(Some(fixture.target), Reads::Workspace)
+        .load_scope(Some(fixture.target), Reads::Claims(vec![claim.clone()]))
         .unwrap();
-    assert_eq!(full.replay.all().unwrap().len(), 2);
+    assert_eq!(located.replay.holding(&claim).unwrap().len(), 1);
 }
 
 #[test]
@@ -314,5 +318,282 @@ fn a_selected_case_is_listed_without_verifying_any_case() {
     assert_eq!(
         fixture.store.case_ids().unwrap_err().error.code,
         ErrorCode::IntegrityFailure
+    );
+}
+
+// ---- PERF.09: keyed ingest, capture begin and producer runs are
+// case-scoped through the claims the index lists.
+
+use crate::store::{
+    capture::{CaptureDeclaration, DeclarationTarget},
+    ingest::producer_run::ProducerRunSubmission,
+};
+
+/// The three recordings whose key may live in any case.
+#[derive(Clone, Copy, Debug)]
+enum Claimant {
+    KeyedIngest,
+    CaptureBegin,
+    ProducerRun,
+}
+
+const CLAIMANTS: [Claimant; 3] = [
+    Claimant::KeyedIngest,
+    Claimant::CaptureBegin,
+    Claimant::ProducerRun,
+];
+
+impl Fixture {
+    /// A directory beneath the workspace's only import root.
+    fn imports(&self) -> PathBuf {
+        let imports = self.root.join("imports");
+        if !imports.exists() {
+            fs::create_dir(&imports).unwrap();
+            let config = self.root.join("investigation.toml");
+            let contents = fs::read_to_string(&config).unwrap();
+            fs::write(
+                &config,
+                contents.replace(
+                    "import_roots = []",
+                    &format!("import_roots = [{:?}]", imports.display().to_string()),
+                ),
+            )
+            .unwrap();
+        }
+        imports
+    }
+
+    fn reopen(&mut self) {
+        self.store = Store::open(Workspace::open(&self.root).unwrap());
+    }
+
+    /// Record `external` through `claimant` into `case` with command `key`.
+    /// The refusal or the case that now holds it.
+    fn claim(
+        &mut self,
+        claimant: Claimant,
+        key: &str,
+        case: Id,
+        external: &str,
+    ) -> Result<Id, Failure> {
+        let imports = self.imports();
+        self.reopen();
+        match claimant {
+            Claimant::KeyedIngest => {
+                let path = imports.join(format!("{key}.json"));
+                fs::write(&path, format!("{{\"reading\":\"{key}\"}}\n")).unwrap();
+                let manifest = json!({
+                    "schema_version":"inv.ingest.v1","command_id":key,"actor":ACTOR,
+                    "case_id":case,
+                    "source":{"title":"Benchmark output","format":"application/json",
+                        "acquisition_key":{"namespace":"example-bench","external_id":external}},
+                    "paths":[path],"extract_text":false,
+                });
+                self.store
+                    .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+                    .map(|_| case)
+            }
+            Claimant::CaptureBegin => {
+                let declared = self.store.declare_capture(&CaptureDeclaration {
+                    command_id: key.into(),
+                    actor: ACTOR.parse().unwrap(),
+                    target: DeclarationTarget::Existing(case),
+                    run: json!({
+                        "intent": {"kind": "exploration", "intent": "synthetic run"},
+                        "producer": ACTOR, "tool": "example-producer",
+                        "external_ref": external, "evidence_kind": "observational",
+                    }),
+                    producer: "example-producer".into(),
+                    external_run_id: external.into(),
+                    external_plan_digest: None,
+                    metadata: BTreeMap::new(),
+                    classification: investigation_core::header::ClassificationLevel::Internal,
+                    request: json!({"opaque": key, "external_run_id": external}),
+                })?;
+                Ok(declared.case_id)
+            }
+            Claimant::ProducerRun => {
+                fs::write(imports.join("bench.json"), b"{\"p99\":18.7}\n").unwrap();
+                let envelope = json!({
+                    "schema_version": "inv.producer-run.v1",
+                    "producer": {"name": "example-bench", "version": "0.1.0"},
+                    "external_run_id": external, "intent": {"label": "synthetic"},
+                    "execution": {"state": "completed", "exit_code": 0},
+                    "artifacts": [{"role": "original-output", "path": "./bench.json",
+                        "media_type": "application/json"}]
+                });
+                let mut submission = ProducerRunSubmission::new(ACTOR.parse().unwrap());
+                submission.case_id = Some(case);
+                submission.command_id = Some(key.into());
+                self.store
+                    .ingest_producer_run(&serde_json::to_vec(&envelope).unwrap(), &submission)
+                    .map(|_| case)
+            }
+        }
+    }
+
+    fn the_claim(claimant: Claimant, external: &str) -> Claim {
+        match claimant {
+            // An envelope's acquisition is its producer and external run ID.
+            Claimant::KeyedIngest | Claimant::ProducerRun => Claim::Acquisition {
+                namespace: "example-bench".into(),
+                external_id: external.into(),
+            },
+            Claimant::CaptureBegin => Claim::Attempt {
+                producer: "example-producer".into(),
+                external_run_id: external.into(),
+            },
+        }
+    }
+}
+
+/// The refusal of a second recording of one claim in another case.
+fn refused_elsewhere(claimant: Claimant, failure: &Failure) {
+    let expected = match claimant {
+        Claimant::CaptureBegin => ErrorCode::IdempotencyKeyReused,
+        Claimant::KeyedIngest | Claimant::ProducerRun => ErrorCode::InvalidInput,
+    };
+    assert_eq!(failure.error.code, expected, "{claimant:?}: {failure:?}");
+}
+
+#[test]
+fn a_claim_held_by_another_case_is_found_through_the_index_and_only_that_case_is_loaded() {
+    for claimant in CLAIMANTS {
+        let mut fixture = fixture();
+        let holder = fixture.untouched;
+        fixture
+            .claim(claimant, "first", holder, "attempt-1")
+            .unwrap_or_else(|failure| panic!("{claimant:?}: {failure:?}"));
+        // A third case the claim never touched is not loaded: a tamper there
+        // stops nothing.
+        let third = fixture
+            .store
+            .record(&command("third", None, "third"))
+            .unwrap()
+            .created[0]
+            .id;
+        fixture.record("third-q", third).unwrap();
+        fixture.record("third-q2", third).unwrap();
+        // Below its head: an edited head file would make the case stale.
+        fixture.tamper(third, 2);
+
+        let claim = Fixture::the_claim(claimant, "attempt-1");
+        {
+            let _lock = fixture.store.coordinate().unwrap();
+            let scope = fixture
+                .store
+                .load_scope(Some(fixture.target), Reads::Claims(vec![claim.clone()]))
+                .unwrap();
+            let loaded: BTreeSet<Id> = scope.replay.cases.keys().copied().collect();
+            assert_eq!(
+                loaded,
+                BTreeSet::from([fixture.target, holder]),
+                "{claimant:?}"
+            );
+            assert!(!scope.replay.complete);
+            assert_eq!(scope.replay.holding(&claim).unwrap().len(), 2);
+        }
+        // The same claim from another case is refused, as with a full load.
+        let refused = fixture
+            .claim(claimant, "second", fixture.target, "attempt-1")
+            .unwrap_err();
+        refused_elsewhere(claimant, &refused);
+        // A fresh claim commits without loading the tampered case.
+        fixture
+            .claim(claimant, "fresh", fixture.target, "attempt-2")
+            .unwrap_or_else(|failure| panic!("{claimant:?}: {failure:?}"));
+        // The identical retry answers with the original receipt.
+        fixture
+            .claim(claimant, "fresh", fixture.target, "attempt-2")
+            .unwrap_or_else(|failure| panic!("{claimant:?}: {failure:?}"));
+        // The holder of a claim is verified before it answers.
+        fixture.tamper(holder, 2);
+        let blocked = fixture
+            .claim(claimant, "blocked", fixture.target, "attempt-1")
+            .unwrap_err();
+        assert_eq!(
+            blocked.error.code,
+            ErrorCode::IntegrityFailure,
+            "{claimant:?}"
+        );
+    }
+}
+
+#[test]
+fn a_claim_behind_a_stale_or_deleted_index_is_still_found() {
+    for claimant in CLAIMANTS {
+        for damage in ["stale", "deleted"] {
+            let mut fixture = fixture();
+            let holder = fixture.untouched;
+            fixture.imports();
+            fixture.reopen();
+            // The index from before the holder recorded the claim.
+            fixture.record("settle", fixture.target).unwrap();
+            let older = fs::read(fixture.index()).unwrap();
+            fixture
+                .claim(claimant, "first", holder, "attempt-1")
+                .unwrap_or_else(|failure| panic!("{claimant:?}: {failure:?}"));
+            fs::remove_file(fixture.index()).unwrap();
+            if damage == "stale" {
+                fs::write(fixture.index(), &older).unwrap();
+            }
+            let refused = fixture
+                .claim(claimant, "second", fixture.target, "attempt-1")
+                .unwrap_err();
+            refused_elsewhere(claimant, &refused);
+            // The retry in the holder still answers with its receipt.
+            fixture
+                .claim(claimant, "first", holder, "attempt-1")
+                .unwrap_or_else(|failure| panic!("{claimant:?} {damage}: {failure:?}"));
+            assert!(
+                fixture.store.check().unwrap().integrity_ok(),
+                "{claimant:?} {damage}"
+            );
+        }
+    }
+}
+
+/// The ADR 0011 gap: a crash loses an event the index applied, and another
+/// event is published later at the same sequence. The indexed head's
+/// sequence is the canonical one, but its file is not (PERF.09).
+#[test]
+fn a_different_event_at_the_indexed_sequence_is_not_taken_as_current() {
+    let mut fixture = fixture();
+    let lost = fixture.event(fixture.untouched, 4);
+    fixture.record("lost", fixture.untouched).unwrap();
+    let indexed = fs::read(fixture.index()).unwrap();
+    // The event the index applied is gone, and another takes its sequence.
+    fs::remove_file(&lost).unwrap();
+    fixture.reopen();
+    let republished = fixture.record("republished", fixture.untouched).unwrap();
+    assert_eq!(republished.snapshot.sequence, 4);
+    // The index is back to the state that applied the lost event: its head
+    // sequence is canonical, so only the file tells them apart.
+    fs::remove_file(fixture.index()).unwrap();
+    fs::write(fixture.index(), &indexed).unwrap();
+    {
+        let _lock = fixture.store.coordinate().unwrap();
+        let scope = fixture
+            .store
+            .load_scope(Some(fixture.target), Reads::Target)
+            .unwrap();
+        assert!(
+            scope.replay.cases.contains_key(&fixture.untouched),
+            "the case whose head file changed is verified"
+        );
+    }
+    // So the republished key is found, not recorded a second time.
+    let reused = fixture.record("republished", fixture.target).unwrap_err();
+    assert_eq!(reused.error.code, ErrorCode::IdempotencyKeyReused);
+    // The commit that loaded the case recorded its head file again.
+    fixture.record("after", fixture.target).unwrap();
+    let _lock = fixture.store.coordinate().unwrap();
+    let scope = fixture
+        .store
+        .load_scope(Some(fixture.target), Reads::Target)
+        .unwrap();
+    assert_eq!(
+        scope.replay.cases.keys().copied().collect::<Vec<_>>(),
+        vec![fixture.target]
     );
 }

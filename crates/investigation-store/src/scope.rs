@@ -19,18 +19,25 @@
 //! published, or cannot answer, gives way to a verified load of every case. A
 //! key the index places in a case is answered from that case's verified
 //! events, never from the index alone.
+//!
+//! An acquisition key or a producer attempt can also be recorded in any case
+//! (PERF.09). The index lists the cases whose applied events claimed each
+//! one, and a commit that searches for a claim verifies those cases as well,
+//! so its preparation searches exactly the cases that can hold the claim.
 
 use super::*;
 
 /// What a commit's preparation reads beyond its target case.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum Reads {
     /// The target case, and the cases the commit names: lesson sources, and
     /// the case that already holds the command.
     Target,
-    /// Every case: the preparation searches the workspace, for an acquisition
-    /// key or a producer attempt.
-    Workspace,
+    /// As [`Reads::Target`], and every case that may hold one of these
+    /// claims: an acquisition key or a producer attempt, which can be
+    /// recorded in any case (PERF.09). The index names the cases that claim
+    /// each one; a case it is not current for is verified anyway.
+    Claims(Vec<Claim>),
 }
 
 /// The verified cases a commit started from, and the index that answers for
@@ -140,9 +147,10 @@ impl<F: DurableFs> Store<F> {
     /// Verify the cases a commit to `target` reads before its preparation
     /// runs. The caller holds the coordination lock.
     pub(super) fn load_scope(&self, target: Option<Id>, reads: Reads) -> Result<Scope, Failure> {
-        if reads == Reads::Workspace {
-            return self.full_scope();
-        }
+        let claims = match reads {
+            Reads::Target => Vec::new(),
+            Reads::Claims(claims) => claims,
+        };
         let published = self.published_cases()?;
         let mut replay = WorkspaceReplay::default();
         if let Some(target) = target {
@@ -151,27 +159,48 @@ impl<F: DurableFs> Store<F> {
         let Ok(index) = Projection::open_read_only(&self.index_path(), self.workspace.id()) else {
             return self.full_scope();
         };
-        let Ok(heads) = index.heads() else {
+        let Ok(heads) = index.head_files() else {
             return self.full_scope();
         };
         if heads
             .iter()
-            .any(|(case_id, _)| published.binary_search(case_id).is_err())
+            .any(|(case_id, _, _)| published.binary_search(case_id).is_err())
         {
             return self.full_scope();
         }
-        let heads: BTreeMap<Id, Snapshot> = heads.into_iter().collect();
+        let heads: BTreeMap<Id, (Snapshot, Option<String>)> = heads
+            .into_iter()
+            .map(|(case_id, head, file)| (case_id, (head, file)))
+            .collect();
         for case_id in &published {
             if replay.cases.contains_key(case_id)
-                || heads
-                    .get(case_id)
-                    .is_some_and(|head| self.is_canonical_head(*case_id, head.sequence))
+                || heads.get(case_id).is_some_and(|(head, file)| {
+                    self.is_canonical_head(*case_id, head.sequence, file.as_deref())
+                })
             {
                 continue;
             }
             // Extended, shortened or never applied: verify it here.
             self.load_case_into(&mut replay, *case_id, true)?;
         }
+        // Every case that may hold a claim the preparation searches for. The
+        // index lists each case whose applied events claimed it; every case
+        // not loaded by now is current in the index, so a case it does not
+        // list holds no such claim.
+        for claim in &claims {
+            let Ok(cases) = index.claim_cases(claim) else {
+                return self.full_scope();
+            };
+            for case_id in cases {
+                if published.binary_search(&case_id).is_err() {
+                    return self.full_scope();
+                }
+                if !replay.cases.contains_key(&case_id) {
+                    self.load_case_into(&mut replay, case_id, true)?;
+                }
+            }
+        }
+        replay.located.extend(claims);
         let loaded: BTreeSet<Id> = replay.cases.keys().copied().collect();
         if loaded.len() == published.len() {
             replay.complete = true;
@@ -192,15 +221,22 @@ impl<F: DurableFs> Store<F> {
         })
     }
 
-    /// Whether event `sequence` is the last published event of `case_id`.
-    fn is_canonical_head(&self, case_id: Id, sequence: u64) -> bool {
+    /// Whether event `sequence` is the last published event of `case_id`,
+    /// and its file is the one the index applied: the same identity
+    /// (device, inode, size, modification and status-change times). A file
+    /// published again at that sequence, after a crash lost the one the
+    /// index applied, has another identity (PERF.09).
+    fn is_canonical_head(&self, case_id: Id, sequence: u64, indexed: Option<&str>) -> bool {
         let events = case_directory(case_id).join("events");
         let file = |sequence: u64| event_filename(sequence).map(|name| events.join(name));
         let (Ok(head), Ok(next)) = (file(sequence), file(sequence.saturating_add(1))) else {
             return false;
         };
-        self.fs.identity(&head).is_ok()
-            && matches!(self.fs.identity(&next), Err(error) if error.kind() == io::ErrorKind::NotFound)
+        indexed.is_some_and(|indexed| {
+            self.fs
+                .identity(&head)
+                .is_ok_and(|identity| identity.key() == indexed)
+        }) && matches!(self.fs.identity(&next), Err(error) if error.kind() == io::ErrorKind::NotFound)
     }
 
     /// The verified event that recorded `(actor, command_id)` in any case, as

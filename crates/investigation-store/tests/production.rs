@@ -277,6 +277,17 @@ fn replay_reports_duplicate_sequences_and_unknown_versions_in_place() {
     assert_eq!(store.check().unwrap().issues[0].code, "CORRUPT_EVENT");
     assert_eq!(fs::read(&second_path).unwrap(), b"{");
     replace_second(&second);
+    // The head file was replaced, so the index no longer vouches for this
+    // case (PERF.09); a commit to it records the new head and its file.
+    let settle = command(
+        "settle",
+        Some(id),
+        json!({
+            "op":"question.create",
+            "payload":{"wording":"Which head is current?","importance":"normal"}
+        }),
+    );
+    submit(&mut store, &settle).unwrap();
 
     // This is a private test workspace. Replace its test event with a future
     // format to confirm readers refuse it without editing or migrating bytes.

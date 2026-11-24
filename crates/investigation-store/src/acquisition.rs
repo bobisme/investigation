@@ -58,6 +58,14 @@ impl AcquisitionKeyRequest {
         }
     }
 
+    /// The workspace-wide claim this attempt makes, as the index lists it.
+    pub(crate) fn claim(&self) -> crate::projection::Claim {
+        crate::projection::Claim::Acquisition {
+            namespace: self.namespace.clone(),
+            external_id: self.external_id.clone(),
+        }
+    }
+
     pub(super) fn validate(&self) -> Result<(), Failure> {
         if !investigation_core::attempt::is_producer_name(&self.namespace) {
             return Err(invalid(
@@ -440,7 +448,9 @@ pub struct AcquisitionCursor {
 impl Store {
     /// Recorded acquisition items in one producer namespace, so a resumable
     /// importer can skip attempts it already delivered. Reads the index after
-    /// bringing it up to the verified journal; ingest itself never trusts it.
+    /// bringing it up to the verified journal. Keyed ingest finds the case
+    /// that holds a key through the index too, but only where the index is
+    /// current, and verifies that case's events (PERF.09, ADR 0011).
     pub fn acquisition_cursors(
         &mut self,
         namespace: &str,

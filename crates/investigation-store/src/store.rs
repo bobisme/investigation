@@ -35,7 +35,7 @@ use crate::{
         CaseGenesis, CaseReplay, Event, EventInput, VerifiedEvent, event_filename, hash_bytes,
         replay_case_from,
     },
-    projection::{IndexEvent, Projection},
+    projection::{Claim, IndexEvent, Projection},
     workspace::Workspace,
 };
 
@@ -755,10 +755,17 @@ impl<F: DurableFs> Store<F> {
             return self.rebuild_index(&FreeLater::new(self.load_verified()?));
         }
         let receipts = workspace.receipts();
+        let files: BTreeMap<Id, String> = workspace
+            .cases
+            .iter()
+            .filter_map(|(case_id, case)| {
+                Some((*case_id, self.event_file(*case_id, case.snapshot.sequence)?))
+            })
+            .collect();
         Projection::rebuild(
             &self.index_path(),
             self.workspace.id(),
-            workspace.frames(&receipts),
+            workspace.frames(&receipts, &files),
         )?;
         Ok(())
     }
@@ -768,8 +775,11 @@ impl<F: DurableFs> Store<F> {
             Ok(index) => index,
             Err(_) => return self.rebuild_index(workspace),
         };
-        let heads: BTreeMap<_, _> = match index.heads() {
-            Ok(heads) => heads.into_iter().collect(),
+        let (heads, files): (BTreeMap<_, _>, BTreeMap<_, _>) = match index.head_files() {
+            Ok(heads) => heads
+                .into_iter()
+                .map(|(case_id, head, file)| ((case_id, head), (case_id, file)))
+                .unzip(),
             Err(_) => {
                 drop(index);
                 return self.rebuild_index(workspace);
@@ -793,12 +803,26 @@ impl<F: DurableFs> Store<F> {
             return self.rebuild_index(workspace);
         }
         // Build receipts only for the events the index has not applied.
+        let mut unconfirmed = Vec::new();
         for (case_id, case) in &workspace.cases {
             let applied = heads.get(case_id).map_or(0, |head| head.sequence);
             let skip = usize::try_from(applied).unwrap_or(usize::MAX);
+            if skip >= case.events.len() {
+                // The head did not move: record its file if the index has
+                // another, as after the workspace was copied or restored.
+                let current = self.event_file(*case_id, case.snapshot.sequence);
+                if let Some(current) = current
+                    && files.get(case_id).and_then(Option::as_deref) != Some(current.as_str())
+                {
+                    unconfirmed.push((*case_id, current));
+                }
+                continue;
+            }
             for verified in case.events.iter().skip(skip) {
                 let event = &verified.event;
+                let file = self.event_file(*case_id, event.accepted.sequence);
                 index.apply(IndexEvent {
+                    head_file: file.as_deref(),
                     previous_hash: &event.previous_hash,
                     actor: &event.actor,
                     accepted: &event.accepted,
@@ -807,7 +831,15 @@ impl<F: DurableFs> Store<F> {
                 })?;
             }
         }
-        Ok(())
+        index.confirm_head_files(&unconfirmed)
+    }
+
+    /// The identity of the published event file at `sequence` of `case_id`
+    /// (`FileIdentity::key`), which the index keeps with that head.
+    pub(super) fn event_file(&self, case_id: Id, sequence: u64) -> Option<String> {
+        let name = event_filename(sequence).ok()?;
+        let path = case_directory(case_id).join("events").join(name);
+        self.fs.identity(&path).ok().map(|identity| identity.key())
     }
 
     fn apply_projection_health(&self, replay: &WorkspaceReplay, receipt: &mut Receipt) {
@@ -877,8 +909,9 @@ impl<T: Send + 'static> Drop for FreeLater<T> {
 struct Visible<'a> {
     /// The target case, when it already exists.
     target: Option<&'a CaseReplay>,
-    /// The other cases: every one when the plan reads [`Reads::Workspace`],
-    /// otherwise only those loaded so far. See [`WorkspaceReplay::all`].
+    /// The other cases loaded so far: for a plan that reads
+    /// [`Reads::Claims`], every case that may hold those claims. See
+    /// [`WorkspaceReplay::holding`].
     others: &'a WorkspaceReplay,
     /// Retained method pack bytes, read under the commit lock for policy gates.
     packs: &'a dyn investigation_core::pack_policy::PackSource,
@@ -914,17 +947,21 @@ struct WorkspaceReplay {
     records: BTreeSet<Id>,
     /// Verified case heads that differ from the kept ones (`journal_heads`).
     unkept: Vec<(Id, Snapshot)>,
+    /// Claims for which `cases` holds every case that may record them
+    /// (PERF.09); every claim when `complete`.
+    located: BTreeSet<Claim>,
 }
 
 impl WorkspaceReplay {
-    /// Every verified case, for a preparation that searches the workspace.
-    /// A case-scoped load has not verified every case, so it refuses.
-    fn all(&self) -> Result<&BTreeMap<Id, CaseReplay>, Failure> {
-        if self.complete {
+    /// The verified cases among which a preparation searches for `claim`:
+    /// every case that may record it. A case-scoped load that did not locate
+    /// the claim has not verified every such case, so it refuses.
+    fn holding(&self, claim: &Claim) -> Result<&BTreeMap<Id, CaseReplay>, Failure> {
+        if self.complete || self.located.contains(claim) {
             Ok(&self.cases)
         } else {
             Err(integrity(
-                "A preparation searched other cases without loading the workspace.",
+                "A preparation searched other cases for a claim it did not load.",
             ))
         }
     }
@@ -951,14 +988,26 @@ impl WorkspaceReplay {
             .collect()
     }
 
-    fn frames<'a>(&'a self, receipts: &'a [Receipt]) -> impl Iterator<Item = IndexEvent<'a>> + 'a {
+    /// Every event as the index applies it; the head event of each case
+    /// carries its file identity from `files`.
+    fn frames<'a>(
+        &'a self,
+        receipts: &'a [Receipt],
+        files: &'a BTreeMap<Id, String>,
+    ) -> impl Iterator<Item = IndexEvent<'a>> + 'a {
         self.cases
-            .values()
-            .flat_map(|case| case.events.iter())
+            .iter()
+            .flat_map(move |(case_id, case)| {
+                case.events.iter().map(move |verified| {
+                    let head = verified.event.accepted.sequence == case.snapshot.sequence;
+                    (verified, head.then(|| files.get(case_id)).flatten())
+                })
+            })
             .zip(receipts)
-            .map(|(verified, receipt)| {
+            .map(|((verified, file), receipt)| {
                 let event = &verified.event;
                 IndexEvent {
+                    head_file: file.map(String::as_str),
                     previous_hash: &event.previous_hash,
                     actor: &event.actor,
                     accepted: &event.accepted,

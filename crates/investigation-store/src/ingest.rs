@@ -523,11 +523,11 @@ impl<F: DurableFs> Store<F> {
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: manifest.case_id,
-                // A keyed acquisition may be recorded in any case.
-                reads: if manifest.source.acquisition_key.is_some() {
-                    Reads::Workspace
-                } else {
-                    Reads::Target
+                // A keyed acquisition may be recorded in any case: load each
+                // case that claims it (PERF.09).
+                reads: match &manifest.source.acquisition_key {
+                    Some(request) => Reads::Claims(vec![request.claim()]),
+                    None => Reads::Target,
                 },
                 event: EventInput {
                     actor: &manifest.actor,
@@ -862,7 +862,7 @@ fn home_of<'v>(
     let target = case_id.zip(visible.target);
     let homes: Vec<(Id, &CaseReplay, Id)> = visible
         .others
-        .all()?
+        .holding(&request.claim())?
         .iter()
         .map(|(case_id, case)| (*case_id, case))
         .chain(target)
