@@ -1,0 +1,5 @@
+Both releases were rerun three times each, with the load generator moved to its own host.
+Release 8.2: p99 327, 331 and 329 ms.
+Release 8.1: p99 312, 318 and 315 ms.
+The 520 ms figure came from the colocated load generator saturating the service host.
+The 520 ms figure came from the colocated load generator saturating the service host.

@@ -1,0 +1,163 @@
+{
+  "family": "dry-run-footbridge-date",
+  "purpose": "dry run",
+  "variants": {
+    "original": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "1933"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "minutes|errat|reprint|correct"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "depend|1960|same source|single|errat|one"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "newspaper|plaque|record|archive|another|independent"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "opened_1931",
+          "field": "answer",
+          "all": [
+            "opened (?:in )?1931"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        },
+        {
+          "id": "three_independent",
+          "field": "answer",
+          "all": [
+            "three independent"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        }
+      ],
+      "reference_answers": [
+        {
+          "answer": "The footbridge opened in 1933: the May 1933 council minutes record the opening and the 1962 reprint corrects the history's 1931.",
+          "citation": "update.txt line 1",
+          "limitation": "The 1931 sources all depend on the 1960 history, so they add no independent weight.",
+          "next": "Check a 1933 local newspaper; a report of an earlier opening ceremony would change the answer."
+        }
+      ],
+      "overclaim_answer": {
+        "answer": "The footbridge opened in 1931, as three independent sources agree.",
+        "citation": "source.txt lines 2-4",
+        "limitation": "None.",
+        "next": "None."
+      }
+    },
+    "missing": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "undetermined|unresolved|uncertain|cannot (?:be )?(?:determined|settled|confirmed)|not (?:established|settled|confirmed)|unclear|open"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "minutes|reprint|not (?:be )?located|unavailable|not available"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "source.txt",
+            "any_lines": [
+              3,
+              4,
+              6
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "depend|1960|same source|single"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "minutes|reprint|newspaper|archive|plaque"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "opened_1931",
+          "field": "answer",
+          "all": [
+            "opened (?:in )?1931"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        },
+        {
+          "id": "opened_1933_confirmed",
+          "field": "answer",
+          "all": [
+            "1933.{0,40}(?:confirmed|established|proven)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        }
+      ],
+      "reference_answers": [
+        {
+          "answer": "The opening date is unresolved: the council minutes could not be located and the reprint was unavailable; the plaque says 1933 while the 1931 claims trace to one history.",
+          "citation": "source.txt lines 3-4",
+          "limitation": "The three 1931 statements depend on the same 1960 town history.",
+          "next": "Find the 1931 to 1933 council minutes; a recorded opening in 1931 or 1933 would settle it."
+        }
+      ],
+      "overclaim_answer": {
+        "answer": "The footbridge opened in 1931 according to three independent sources.",
+        "citation": "source.txt line 2",
+        "limitation": "None.",
+        "next": "None."
+      }
+    }
+  }
+}

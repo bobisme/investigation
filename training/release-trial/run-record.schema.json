@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inv.release-trial-run.v1",
+  "title": "Release-trial run record (runs/<id>/run.json)",
+  "description": "One planned assignment as run by scripts/release-trial.py. Written once, then frozen with the rest of the trial by `grade`. See training/release-trial/protocol.md#run-record.",
+  "type": "object",
+  "required": ["schema_version", "assignment", "plan_sha256", "started_at", "finished_at", "environment", "status",
+               "phases", "isolation", "snapshots", "answer", "calls", "cost", "setup_and_harness_ms"],
+  "properties": {
+    "schema_version": {"enum": ["inv.release-trial-run.v1"]},
+    "plan_sha256": {"type": "string"},
+    "started_at": {"type": "string"},
+    "finished_at": {"type": "string"},
+    "status": {"enum": ["completed", "timed_out", "budget_exhausted", "crashed", "harness_error", "harness_refused"]},
+    "error": {"type": "string"},
+    "assignment": {
+      "type": "object",
+      "required": ["id", "sequence", "block", "block_seed", "task_type", "task", "family", "variant", "domain", "twin",
+                   "stage", "condition", "primary", "model", "arm", "order"],
+      "properties": {
+        "id": {"type": "string"},
+        "sequence": {"type": "integer"},
+        "block": {"type": "string"},
+        "block_seed": {"type": "integer"},
+        "task_type": {"enum": ["family", "lookup", "task-5", "task-6", "task-7", "task-8", "task-9", "task-10"]},
+        "task": {"type": ["string", "null"]},
+        "family": {"type": "string"},
+        "variant": {"type": "string"},
+        "domain": {"enum": ["debugging", "measurement", "source-research", "architecture", "lookup"]},
+        "twin": {"enum": ["original", "missing", "cosmetic", null]},
+        "stage": {"type": ["string", "null"]},
+        "condition": {"type": ["string", "null"]},
+        "primary": {"type": "boolean"},
+        "model": {"type": "string"},
+        "arm": {"enum": ["notes", "inv"]},
+        "order": {"enum": [1, 2]}
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["binary_sha256", "model", "model_identifier", "backend", "sandbox", "trace"],
+      "properties": {
+        "binary_sha256": {"type": "string"},
+        "model": {"type": "string"},
+        "backend": {"enum": ["stub", "command", "local"]},
+        "sandbox": {"enum": ["bwrap", "none"]},
+        "trace": {"enum": ["strace", "none"]}
+      }
+    },
+    "phases": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/phase"}
+    },
+    "boundary": {
+      "type": "object",
+      "required": ["review_status", "review_digest", "update_sha256", "interruption", "pre_update_operations",
+                   "work_digest", "handoff_operations"]
+    },
+    "setup": {"type": "object"},
+    "isolation": {
+      "type": "object",
+      "required": ["mode", "enforced", "visible", "network_isolated", "content_scan", "content_scan_final"],
+      "properties": {
+        "mode": {"enum": ["bwrap", "none"]},
+        "enforced": {"type": "boolean"},
+        "content_scan": {"$ref": "#/$defs/scan"},
+        "content_scan_final": {"$ref": "#/$defs/scan"}
+      }
+    },
+    "snapshots": {
+      "type": "object",
+      "required": ["final"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path", "digest"],
+        "properties": {
+          "path": {"type": "string"},
+          "digest": {"type": "string"},
+          "journal_events": {"type": "integer"},
+          "notes_files": {"type": "array"}
+        }
+      }
+    },
+    "answer": {"type": ["string", "null"]},
+    "calls": {"type": ["string", "null"]},
+    "bridge_errors": {"type": "array"},
+    "setup_and_harness_ms": {"type": "integer"},
+    "cost": {
+      "type": "object",
+      "required": ["phases", "total"],
+      "properties": {
+        "phases": {"type": "object", "additionalProperties": {"$ref": "#/$defs/cost"}},
+        "total": {"$ref": "#/$defs/total"}
+      }
+    }
+  },
+  "$defs": {
+    "phase": {
+      "type": "object",
+      "required": ["session_id", "role", "status", "interruption", "transcript", "prompt_sha256", "answer_expected", "cost"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "role": {"enum": ["investigator", "successor", "reviewer", "closer"]},
+        "status": {"enum": ["completed", "timed_out", "budget_exhausted", "crashed"]},
+        "interruption": {"enum": ["submitted", "marker", "returned", "returned_without_marker", null]},
+        "transcript": {"type": "string"},
+        "prompt_sha256": {"type": "string"},
+        "answer_expected": {"type": "boolean"},
+        "cost": {"$ref": "#/$defs/cost"}
+      }
+    },
+    "count": {"type": ["integer", "null"]},
+    "depth": {
+      "type": "object",
+      "additionalProperties": {"type": "object", "required": ["calls", "bytes"]}
+    },
+    "cost": {
+      "type": "object",
+      "required": ["wall_ms", "model_turns", "input_tokens", "output_tokens", "cached_input_tokens_reported",
+                   "shell_calls", "shell_output_bytes", "truncated_shell_calls", "cli_calls", "discovery_calls",
+                   "discovery_bytes", "onboard_calls", "evidence_bytes", "note_read_bytes", "note_write_bytes",
+                   "preparation_calls", "first_receipt_call", "first_onboard_call", "first_note_call",
+                   "calls_from_onboard_to_receipt", "read_depth", "read_categories", "metering"],
+      "properties": {
+        "wall_ms": {"type": "integer"},
+        "model_turns": {"type": "integer"},
+        "input_tokens": {"type": "integer"},
+        "output_tokens": {"type": "integer"},
+        "cached_input_tokens_reported": {"type": "integer"},
+        "shell_calls": {"type": "integer"},
+        "shell_output_bytes": {"type": "integer"},
+        "truncated_shell_calls": {"type": "integer"},
+        "cli_calls": {"type": "integer"},
+        "discovery_calls": {"$ref": "#/$defs/count"},
+        "discovery_bytes": {"$ref": "#/$defs/count"},
+        "onboard_calls": {"$ref": "#/$defs/count"},
+        "evidence_bytes": {"$ref": "#/$defs/count"},
+        "note_read_bytes": {"$ref": "#/$defs/count"},
+        "note_write_bytes": {"$ref": "#/$defs/count"},
+        "preparation_calls": {"$ref": "#/$defs/count"},
+        "first_receipt_call": {"$ref": "#/$defs/count"},
+        "first_onboard_call": {"$ref": "#/$defs/count"},
+        "first_note_call": {"$ref": "#/$defs/count"},
+        "calls_from_onboard_to_receipt": {"$ref": "#/$defs/count"},
+        "read_depth": {"$ref": "#/$defs/depth"},
+        "read_categories": {"$ref": "#/$defs/depth"},
+        "metering": {
+          "type": "object",
+          "required": ["tokens", "cached_input_tokens", "trace", "cli_calls"],
+          "properties": {
+            "trace": {"enum": ["strace", null]},
+            "cli_calls": {"enum": ["trace", "bridge", "no tool in this arm"]}
+          }
+        }
+      }
+    },
+    "total": {
+      "type": "object",
+      "required": ["wall_ms", "model_turns", "input_tokens", "output_tokens", "cached_input_tokens_reported",
+                   "shell_calls", "shell_output_bytes", "truncated_shell_calls", "cli_calls", "discovery_calls",
+                   "discovery_bytes", "onboard_calls", "evidence_bytes", "note_read_bytes", "note_write_bytes",
+                   "preparation_calls", "read_depth"],
+      "properties": {"read_depth": {"$ref": "#/$defs/depth"}}
+    },
+    "scan": {
+      "type": "object",
+      "required": ["files", "matches"],
+      "properties": {"files": {"type": "integer"}, "matches": {"type": "array"}}
+    }
+  }
+}

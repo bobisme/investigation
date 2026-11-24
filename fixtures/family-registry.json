@@ -860,6 +860,25 @@
     ]},
     {"id": "release-lookup-24", "split": "sealed", "domain": "lookup", "key": "sealed/release-lookup-24.json", "variants": [
         {"id": "lookup", "split": "sealed", "directory": "sealed/release-lookup-24/lookup", "objective_sha256": "83dcf64c8d6a2c0964e2418399840469340d327806ea3c567caceb8e495a1154", "initial": {"file": "source.txt", "sha256": "33d86903ad456dc0b900967e1da1a66c7893bf738fafaf249ea6103869045b25"}}
+    ]},
+    {"id": "dry-run-label-printer", "split": "development", "domain": "debugging", "variants": [
+        {"id": "original", "split": "development", "directory": "development/release-dry-run/dry-run-label-printer/original", "objective": "Determine what explains the LP-4 label printer jams after roll changes, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "99fad8c92679ea4868036b7d87caf091606d25025e68854250066dcae36a5f13"}, "update": {"file": "update.txt", "sha256": "16b7103d316d25f84229d86664eb27acea707e4a32198756097cd023e856cd17"}},
+        {"id": "missing", "split": "development", "directory": "development/release-dry-run/dry-run-label-printer/missing", "objective": "Determine what explains the LP-4 label printer jams after roll changes, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "99fad8c92679ea4868036b7d87caf091606d25025e68854250066dcae36a5f13"}, "update": {"file": "update.txt", "sha256": "f90f68734f1168b9d6dd242dc125d4d45b7728160e6d95dec1d5bbf2a0627342"}}
+    ]},
+    {"id": "dry-run-kiosk-latency", "split": "development", "domain": "measurement", "variants": [
+        {"id": "original", "split": "development", "directory": "development/release-dry-run/dry-run-kiosk-latency/original", "objective": "Determine whether release 8.2 regressed checkout p99 latency, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "810c15e80a7a0db09769b1502460f4996cef559f902a77a0418e143c40467860"}, "update": {"file": "update.txt", "sha256": "395f46936e6937e0da8b40ac7a1be793ec99f2c11ac09d3f17be260d97d501b7"}},
+        {"id": "cosmetic", "split": "development", "directory": "development/release-dry-run/dry-run-kiosk-latency/cosmetic", "objective": "Determine whether release 8.2 regressed checkout p99 latency, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "810c15e80a7a0db09769b1502460f4996cef559f902a77a0418e143c40467860"}, "update": {"file": "update.txt", "sha256": "7b00bd1b8fcf889fb978e8803cb854d002a4948ea397193c014a57ca95a9d5d5"}}
+    ]},
+    {"id": "dry-run-footbridge-date", "split": "development", "domain": "source-research", "variants": [
+        {"id": "original", "split": "development", "directory": "development/release-dry-run/dry-run-footbridge-date/original", "objective": "Determine when the Mill Lane footbridge opened, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "baaadf1cb8621c5cd6a64356cf355aeb9ebc1aba9ccc823dcf4fefd647258d86"}, "update": {"file": "update.txt", "sha256": "77cceec077393c660b85d72d16f9cb0a988f717281b20dd01dc41eed6d5f36e0"}},
+        {"id": "missing", "split": "development", "directory": "development/release-dry-run/dry-run-footbridge-date/missing", "objective": "Determine when the Mill Lane footbridge opened, and state what result would change the answer.", "initial": {"file": "source.txt", "sha256": "baaadf1cb8621c5cd6a64356cf355aeb9ebc1aba9ccc823dcf4fefd647258d86"}, "update": {"file": "update.txt", "sha256": "8ddbbaf495d0051a91b3ae6bb98f8e154c8616424c9660ccecff3d005e9419e9"}}
+    ]},
+    {"id": "dry-run-archive-storage", "split": "development", "domain": "architecture", "variants": [
+        {"id": "original", "split": "development", "directory": "development/release-dry-run/dry-run-archive-storage/original", "objective": "Choose where to keep the records archive under the stated constraints, and state what result would change the choice.", "initial": {"file": "source.txt", "sha256": "a07f451692cd1ddffca89985187e0bb4282da33adc3bf54fc6b86da7b19e3227"}, "update": {"file": "update.txt", "sha256": "951fa07cfd945fa76525a412a72195a08381622e8786e0f3713ae7a8f472fa0e"}},
+        {"id": "cosmetic", "split": "development", "directory": "development/release-dry-run/dry-run-archive-storage/cosmetic", "objective": "Choose where to keep the records archive under the stated constraints, and state what result would change the choice.", "initial": {"file": "source.txt", "sha256": "a07f451692cd1ddffca89985187e0bb4282da33adc3bf54fc6b86da7b19e3227"}, "update": {"file": "update.txt", "sha256": "94c5450820557bb4772de48fa5b906c488283295c9a5b3d1107dd98231f095de"}}
+    ]},
+    {"id": "dry-run-ferry-lookup", "split": "development", "domain": "lookup", "variants": [
+        {"id": "lookup", "split": "development", "directory": "development/release-dry-run/dry-run-ferry-lookup/lookup", "objective": "When does the first Sunday ferry sailing leave in the winter timetable?", "initial": {"file": "source.txt", "sha256": "d422ad8b3ee1b8adbf29b05a1137b6d21e6b37eb99ac801f1c5429bdbad2f6af"}}
     ]}
 ]
 }

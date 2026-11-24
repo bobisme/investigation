@@ -1,0 +1,2 @@
+The release-firmware repeat of trace T-7 planned for 9 March was cancelled.
+No new trace was captured, and the debug build is still the only firmware with a recorded jam.

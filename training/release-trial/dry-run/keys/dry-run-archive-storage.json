@@ -1,0 +1,164 @@
+{
+  "family": "dry-run-archive-storage",
+  "purpose": "dry run",
+  "variants": {
+    "original": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "object storage|option b"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "regulator|hard constraint|one hour|1 hour|restore"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "budget|cost|5,?200|price|ceiling"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "budget|price|cost|restore time|test restore|quote"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "tape_still_chosen",
+          "field": "answer",
+          "all": [
+            "(?:tape|option a).{0,40}(?:remains|is) (?:the )?(?:choice|chosen|best)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        },
+        {
+          "id": "invented_independent_verification",
+          "field": "answer",
+          "all": [
+            "independent(?:ly)? (?:verified|confirmed|corroborat)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        }
+      ],
+      "reference_answers": [
+        {
+          "answer": "Choose object storage: the regulator made restores within one hour a hard constraint, which the tape option misses, and object storage stays within budget.",
+          "citation": "update.txt line 1",
+          "limitation": "Object storage at 5,200 per year leaves little room under the 6,000 budget ceiling.",
+          "next": "Get a firm price quote; a price above 6,000 per year would change the choice."
+        }
+      ],
+      "overclaim_answer": {
+        "answer": "Tape remains the choice because it is cheapest.",
+        "citation": "source.txt line 2",
+        "limitation": "None.",
+        "next": "None."
+      }
+    },
+    "cosmetic": {
+      "warranted": [
+        {
+          "id": "current_disposition",
+          "field": "answer",
+          "all": [
+            "object storage|option b"
+          ]
+        },
+        {
+          "id": "change_since_review",
+          "field": "answer",
+          "all": [
+            "regulator|hard constraint|one hour|1 hour|restore"
+          ]
+        },
+        {
+          "id": "decisive_citation",
+          "citation": {
+            "document": "update.txt",
+            "any_lines": [
+              1,
+              2,
+              3
+            ]
+          }
+        },
+        {
+          "id": "material_limitation",
+          "field": "limitation",
+          "all": [
+            "budget|cost|5,?200|price|ceiling"
+          ]
+        },
+        {
+          "id": "discriminating_followup",
+          "field": "next",
+          "all": [
+            "budget|price|cost|restore time|test restore|quote"
+          ]
+        }
+      ],
+      "false_promotions": [
+        {
+          "id": "tape_still_chosen",
+          "field": "answer",
+          "all": [
+            "(?:tape|option a).{0,40}(?:remains|is) (?:the )?(?:choice|chosen|best)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        },
+        {
+          "id": "invented_independent_verification",
+          "field": "answer",
+          "all": [
+            "independent(?:ly)? (?:verified|confirmed|corroborat)"
+          ],
+          "unless": [
+            "\\b(?:provisional|conditional|inconclusive|hypothetical|unsupported|unwarranted|unverified|insufficient|unknown|pending|before|prior|previous|earlier|would|could|might|if|not|never|cannot|no longer|was|at review)\\b"
+          ]
+        }
+      ],
+      "reference_answers": [
+        {
+          "answer": "Choose object storage: the regulator made restores within one hour a hard constraint, which the tape option misses, and object storage stays within budget.",
+          "citation": "update.txt line 1",
+          "limitation": "Object storage at 5,200 per year leaves little room under the 6,000 budget ceiling.",
+          "next": "Get a firm price quote; a price above 6,000 per year would change the choice."
+        }
+      ],
+      "overclaim_answer": {
+        "answer": "Tape remains the choice because it is cheapest.",
+        "citation": "source.txt line 2",
+        "limitation": "None.",
+        "next": "None."
+      }
+    }
+  }
+}

@@ -1,0 +1,4 @@
+Repeat of trace T-7 on the release firmware, 9 March.
+Door open for five minutes before each roll change: jams on 2 of 2 changes.
+Door closed before each roll change: jams on 0 of 2 changes.
+Feed motor speed matched the release specification throughout.

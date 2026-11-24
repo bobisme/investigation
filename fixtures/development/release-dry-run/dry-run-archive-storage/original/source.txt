@@ -1,0 +1,6 @@
+Choice: where to keep the seven-year records archive.
+Option A, tape library: 4,000 per year; a restore takes about four hours.
+Option B, object storage: 5,200 per year; a restore takes about ten minutes.
+Hard constraint: the archive budget is at most 6,000 per year.
+Soft preference: restores within one hour.
+Reviewed provisional choice: tape library, the cheaper option that meets the hard constraint.

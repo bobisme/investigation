@@ -1,0 +1,5 @@
+Ticket kiosk checkout latency, releases 8.1 and 8.2.
+Release 8.1 run: p99 310 ms over 20,000 checkouts, load generator on a separate host.
+Release 8.2 run: p99 520 ms over 20,000 checkouts, load generator on the kiosk service host.
+CPU on the kiosk service host reached 97% during the 8.2 run and 41% during the 8.1 run.
+Review note: treat 8.2 as a 210 ms p99 regression until the runs are comparable.

@@ -1,0 +1,112 @@
+{
+  "study": "Release-trial harness dry-run set (W14.05)",
+  "split": "development",
+  "purpose": "Plumbing only: exercises staging, sessions, grading and freezing on development families. Results on it support no claim.",
+  "families": [
+    {
+      "id": "dry-run-label-printer",
+      "domain": "debugging",
+      "key": "dry-run-label-printer.json",
+      "key_sha256": "a7f876fc27602ebddd3f3ea5afb8383985aa171dbf399317fa99c720bb6db8a1",
+      "variants": {
+        "original": {
+          "source_sha256": "99fad8c92679ea4868036b7d87caf091606d25025e68854250066dcae36a5f13",
+          "update_sha256": "16b7103d316d25f84229d86664eb27acea707e4a32198756097cd023e856cd17"
+        },
+        "missing": {
+          "source_sha256": "99fad8c92679ea4868036b7d87caf091606d25025e68854250066dcae36a5f13",
+          "update_sha256": "f90f68734f1168b9d6dd242dc125d4d45b7728160e6d95dec1d5bbf2a0627342"
+        }
+      },
+      "twin": "missing"
+    },
+    {
+      "id": "dry-run-kiosk-latency",
+      "domain": "measurement",
+      "key": "dry-run-kiosk-latency.json",
+      "key_sha256": "88608964d56903c435087e6e1f14bc8402f3275ed6af9ab409ba84ac06499029",
+      "variants": {
+        "original": {
+          "source_sha256": "810c15e80a7a0db09769b1502460f4996cef559f902a77a0418e143c40467860",
+          "update_sha256": "395f46936e6937e0da8b40ac7a1be793ec99f2c11ac09d3f17be260d97d501b7"
+        },
+        "cosmetic": {
+          "source_sha256": "810c15e80a7a0db09769b1502460f4996cef559f902a77a0418e143c40467860",
+          "update_sha256": "7b00bd1b8fcf889fb978e8803cb854d002a4948ea397193c014a57ca95a9d5d5"
+        }
+      },
+      "twin": "cosmetic"
+    },
+    {
+      "id": "dry-run-footbridge-date",
+      "domain": "source-research",
+      "key": "dry-run-footbridge-date.json",
+      "key_sha256": "f39d220e479bd4edb4b82dfa5c3047de711caa2e6fc77dcc94ab3ed0ba7a4af0",
+      "variants": {
+        "original": {
+          "source_sha256": "baaadf1cb8621c5cd6a64356cf355aeb9ebc1aba9ccc823dcf4fefd647258d86",
+          "update_sha256": "77cceec077393c660b85d72d16f9cb0a988f717281b20dd01dc41eed6d5f36e0"
+        },
+        "missing": {
+          "source_sha256": "baaadf1cb8621c5cd6a64356cf355aeb9ebc1aba9ccc823dcf4fefd647258d86",
+          "update_sha256": "8ddbbaf495d0051a91b3ae6bb98f8e154c8616424c9660ccecff3d005e9419e9"
+        }
+      },
+      "twin": "missing"
+    },
+    {
+      "id": "dry-run-archive-storage",
+      "domain": "architecture",
+      "key": "dry-run-archive-storage.json",
+      "key_sha256": "1a4b65a465c1c71fbc337bc744c1c0957b07f4ef55c58865eaf74ecc7907ce84",
+      "variants": {
+        "original": {
+          "source_sha256": "a07f451692cd1ddffca89985187e0bb4282da33adc3bf54fc6b86da7b19e3227",
+          "update_sha256": "951fa07cfd945fa76525a412a72195a08381622e8786e0f3713ae7a8f472fa0e"
+        },
+        "cosmetic": {
+          "source_sha256": "a07f451692cd1ddffca89985187e0bb4282da33adc3bf54fc6b86da7b19e3227",
+          "update_sha256": "94c5450820557bb4772de48fa5b906c488283295c9a5b3d1107dd98231f095de"
+        }
+      },
+      "twin": "cosmetic"
+    }
+  ],
+  "lookup_tasks": {
+    "tasks": [
+      {
+        "id": "dry-run-ferry-lookup",
+        "domain": "lookup",
+        "key": "dry-run-ferry-lookup.json",
+        "key_sha256": "91a08a0d2d46a02eaf1482e0bf155a4be84a76e2017f455d5bcee8f88c7e270c",
+        "variants": {
+          "lookup": {
+            "source_sha256": "d422ad8b3ee1b8adbf29b05a1137b6d21e6b37eb99ac801f1c5429bdbad2f6af"
+          }
+        },
+        "kind": "fact",
+        "theme": "architecture"
+      }
+    ]
+  },
+  "trial_tasks": {
+    "5": [
+      "training/trial-tasks/tasks/task-5-stale-resume.json"
+    ],
+    "6": [
+      "training/trial-tasks/tasks/task-6-lost-response-conflict.json"
+    ],
+    "7": [
+      "training/trial-tasks/tasks/task-7-two-stage-injection.json"
+    ],
+    "8": [
+      "training/trial-tasks/tasks-8-10/development/task-8-export-stalls.json"
+    ],
+    "9": [
+      "training/trial-tasks/tasks-8-10/development/task-9-timeout-clock.json"
+    ],
+    "10": [
+      "training/trial-tasks/tasks-8-10/development/task-10-batching-bench.json"
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+Label printer LP-4, packing line 2: jam notes collected by the line lead.
+Jams happen on about one shift in three, each within ten minutes of a roll change.
+Control run, 4 March: roll changed with the humidity door closed; 60 minutes of printing, no jam.
+Trace T-7, 6 March: jam at 14:02 after a roll change with the door open.
+Trace T-7 was captured on the debug firmware build, which slows the feed motor by about a third.
+Working explanation: rolls left by the open door absorb moisture and stick at the peel plate.
+Open point: the debug build alone could explain the T-7 jam.

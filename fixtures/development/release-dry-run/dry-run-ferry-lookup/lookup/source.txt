@@ -1,0 +1,4 @@
+Harbour ferry timetable, winter.
+Weekdays: first sailing 06:50, then every 40 minutes until 21:30.
+Sundays: first sailing 08:40, then hourly until 19:40.
+Saturday sailings follow the weekday timetable.
