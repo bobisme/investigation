@@ -11,6 +11,7 @@ use std::{
     process::{Command, Stdio},
 };
 
+use investigation_core::header::Actor;
 use investigation_store::{Store, Workspace, store::ReceiptLookup};
 use serde_json::{Value, json};
 
@@ -117,40 +118,33 @@ pub fn marker(workspace: &Path) -> Value {
 }
 
 /// The verified state of every case and the receipt of every command,
-/// read through the store. Receipts leave out the index status, which is
-/// disposable and differs between a fixture and a rebuilt index.
+/// read through the store; the receipts come from one bulk lookup, so the
+/// journal is verified once more, not once per command. Receipts leave out
+/// the index status, which is disposable and differs between a fixture and
+/// a rebuilt index.
 pub fn replayed(workspace: &Path) -> Vec<(String, Value, Vec<Value>)> {
-    replayed_with(workspace, |_, _| true)
-}
-
-/// [`replayed`] with the receipts of only the commands `wanted(position,
-/// events)` accepts, by position in the case's journal. Each receipt lookup
-/// verifies the whole journal again.
-pub fn replayed_with(
-    workspace: &Path,
-    wanted: impl Fn(usize, usize) -> bool,
-) -> Vec<(String, Value, Vec<Value>)> {
     let mut store = Store::open(Workspace::open(workspace).unwrap());
     let cases = store.cases().unwrap();
+    let commands: Vec<(&Actor, &str)> = cases
+        .values()
+        .flat_map(|replay| &replay.events)
+        .map(|verified| (&verified.event.actor, verified.event.command_id.as_str()))
+        .collect();
+    let mut receipts = store.receipts(&commands).unwrap().into_iter();
     cases
-        .into_iter()
+        .iter()
         .map(|(case_id, replay)| {
             let records: Vec<Value> = replay
                 .state
                 .records()
                 .map(|record| serde_json::to_value(record).unwrap())
                 .collect();
-            let count = replay.events.len();
             let receipts = replay
                 .events
                 .iter()
-                .enumerate()
-                .filter(|(position, _)| wanted(*position, count))
-                .map(|(_, verified)| {
+                .map(|verified| {
                     let event = &verified.event;
-                    let ReceiptLookup::Found { receipt } =
-                        store.receipt(&event.actor, &event.command_id).unwrap()
-                    else {
+                    let Some(ReceiptLookup::Found { receipt }) = receipts.next() else {
                         panic!("no receipt for {}", event.command_id);
                     };
                     let mut receipt = serde_json::to_value(*receipt).unwrap();

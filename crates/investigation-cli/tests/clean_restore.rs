@@ -21,12 +21,14 @@
 //! digests, effective dispositions and rendered owned vault bytes.
 //!
 //! `INVESTIGATION_CLEAN_ROOT=bwrap` makes the bubblewrap mode mandatory and
-//! `INVESTIGATION_CLEAN_ROOT=env` forces the fallback; the mode that ran is
-//! printed on stderr.
+//! `INVESTIGATION_CLEAN_ROOT=env` forces the fallback. The mode that ran is
+//! written straight to the process's standard error (see [`report`]), so a
+//! CI log shows it although the test passes and its output is captured.
 
 use std::{
     collections::BTreeMap,
     fs,
+    io::Write,
     os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
@@ -48,7 +50,7 @@ mod replay;
 mod restore;
 
 use fixtures::SCENARIOS;
-use restore::{archive, json_output, replayed_with, run, run_with};
+use restore::{archive, json_output, replayed, run, run_with};
 
 const ACTOR: &str = "agent:restore-drill";
 /// The command word, kept apart so no line reads as a version-control call.
@@ -352,18 +354,22 @@ struct Facts {
 
 fn facts(workspace: &Path) -> Facts {
     Facts {
-        // The first and last command of each case: each receipt lookup
-        // verifies the whole journal, and the journal bytes are compared
-        // in full besides.
-        replayed: replayed_with(workspace, |position, events| {
-            position == 0 || position + 1 == events
-        }),
+        replayed: replayed(workspace),
         journal: restore::files(&workspace.join("state/cases"), &[]),
         blobs: blobs(workspace),
         dispositions: dispositions(workspace),
         vault: fixtures::owned(&workspace.join("vault")),
         marker: restore::marker(workspace),
     }
+}
+
+/// Write one line to the process's standard error itself. `cargo test`
+/// captures only what the print macros write, so this line reaches the log
+/// even for a passing test; under nextest, `.config/nextest.toml` shows this
+/// test's output on success.
+fn report(line: &str) {
+    let mut stderr = std::io::stderr().lock();
+    let _ = writeln!(stderr, "{line}");
 }
 
 /// How the clean root is isolated.
@@ -467,7 +473,7 @@ impl CleanRoot {
         } else {
             Isolation::ClearedEnvironment
         };
-        eprintln!("clean root isolation: {isolation:?}");
+        report(&format!("clean root isolation: {isolation:?}"));
         Self { isolation, host }
     }
 
@@ -763,9 +769,9 @@ fn a_full_archive_restored_in_a_clean_root_has_the_same_state_digests_and_vault(
         assert!(after.vault[path] == *bytes, "vault {path} differs");
     }
     drop(hidden);
-    eprintln!(
+    report(&format!(
         "clean restore: {cases} cases, {} blobs, source built in {built:?}, total {:?}",
         source.blobs.len(),
         started.elapsed()
-    );
+    ));
 }

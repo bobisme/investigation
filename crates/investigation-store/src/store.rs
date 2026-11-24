@@ -209,32 +209,49 @@ impl<F: DurableFs> Store<F> {
     }
 
     pub fn receipt(&mut self, actor: &Actor, command_id: &str) -> Result<ReceiptLookup, Failure> {
+        let mut found = self.receipts(&[(actor, command_id)])?;
+        Ok(found.pop().expect("one answer per command"))
+    }
+
+    /// The answer [`Store::receipt`] gives for each `(actor, command_id)`,
+    /// in order, from one verified replay of the journal instead of one per
+    /// command. A journal that fails verification refuses the whole lookup.
+    pub fn receipts(&mut self, commands: &[(&Actor, &str)]) -> Result<Vec<ReceiptLookup>, Failure> {
         let _lock = self.coordinate()?;
         let workspace = self.load_verified()?;
-        Ok(match workspace.find(actor, command_id) {
-            Some(event) => {
-                let mut receipt = receipt_for(event);
-                let expected: Vec<_> = workspace
-                    .heads()
-                    .into_iter()
-                    .map(|head| (head.case_id, head.snapshot))
-                    .collect();
-                receipt.projection.index =
-                    if Projection::inspect(&self.index_path(), self.workspace.id()).as_ref()
-                        == Ok(&expected)
-                    {
-                        ProjectionStatus::Current
-                    } else {
-                        ProjectionStatus::Degraded
-                    };
-                ReceiptLookup::Found {
-                    receipt: Box::new(receipt),
-                }
-            }
-            None => ReceiptLookup::NotFoundAtSnapshot {
-                cases: workspace.heads(),
-            },
-        })
+        // The index status is the same for every receipt of one replay;
+        // it is inspected only once a command is found.
+        let mut index = None;
+        Ok(commands
+            .iter()
+            .map(
+                |(actor, command_id)| match workspace.find(actor, command_id) {
+                    Some(event) => {
+                        let mut receipt = receipt_for(event);
+                        receipt.projection.index = *index.get_or_insert_with(|| {
+                            let expected: Vec<_> = workspace
+                                .heads()
+                                .into_iter()
+                                .map(|head| (head.case_id, head.snapshot))
+                                .collect();
+                            if Projection::inspect(&self.index_path(), self.workspace.id()).as_ref()
+                                == Ok(&expected)
+                            {
+                                ProjectionStatus::Current
+                            } else {
+                                ProjectionStatus::Degraded
+                            }
+                        });
+                        ReceiptLookup::Found {
+                            receipt: Box::new(receipt),
+                        }
+                    }
+                    None => ReceiptLookup::NotFoundAtSnapshot {
+                        cases: workspace.heads(),
+                    },
+                },
+            )
+            .collect())
     }
 
     pub fn repair_index(&mut self) -> Result<Vec<CaseHead>, Failure> {

@@ -1,0 +1,5 @@
+# The clean-machine restore test reports which isolation ran (bubblewrap or
+# a cleared environment) and how long it took; show that when it passes.
+[[profile.default.overrides]]
+filter = 'binary(clean_restore)'
+success-output = "immediate"
