@@ -51,3 +51,17 @@ bench *options:
 load-test dir *options:
     cargo build --release --locked -p investigation-cli -p investigation-bench
     target/release/investigation-bench --load --fixtures {{dir}} {{options}}
+
+# Release candidate package for Linux x86_64 (REL.04): builds the committed
+# tree twice at different paths (locked, offline, SOURCE_DATE_EPOCH, host
+# paths remapped), fails unless both are byte-identical, and writes the
+# archive, SHA256SUMS and package-report.json to target/package/. Slow: two
+# release builds from scratch. Not part of `check`; see docs/packaging.md.
+package *options:
+    python3 scripts/package-release.py {{options}}
+
+# Installs that package into isolated prefixes (keeping an unrelated `inv` on
+# PATH) and smoke-tests it in a bubblewrap clean root without network or
+# checkout paths; writes target/package/smoke-report.json and the transcript.
+smoke-package *options:
+    python3 scripts/smoke-release.py {{options}}

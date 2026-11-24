@@ -144,6 +144,8 @@ sample counts, warmup, trial order and nearest-rank percentiles with their
 n. `just check` runs only a smoke run on tiny fixtures; timings on a shared
 or loaded machine are noisy, so compare runs at similar load.
 
+`just package` builds the Linux x86_64 release candidate twice, from the committed tree at two paths, and checks that the bytes match. `just smoke-package` installs it into isolated prefixes and smoke-tests it in a bubblewrap clean root. Both are manual release steps; see [packaging](packaging.md).
+
 `just acceptance` runs the deterministic acceptance measures of plan §20.5
 (`scripts/acceptance-measures.py`): correct case targeting, lost and duplicate
 writes, false promotion in invalid-control and stale-basis fixtures,

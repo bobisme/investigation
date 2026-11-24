@@ -1,0 +1,230 @@
+[
+  {
+    "argv": [
+      "investigation",
+      "version",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"ok\":true,\"program\":\"investigation\",\"result\":\"version\",\"schema_version\":\"inv.response.v1\",\"version\":\"0.1.0\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "init",
+      "casework",
+      "--no-vault",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"added_import_roots\":[],\"genesis_sequence\":0,\"import_roots\":[],\"layout\":{\"canonical\":\"state/\",\"disposable\":\"cache/\",\"machine_local\":\"local/\",\"projection\":null},\"next\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"--actor\",\"agent:investigator\",\"start\",\"QUESTION\",\"--attach\",\"FILE\",\"--format\",\"json\"],\"effect\":\"Opens an exploratory case and retains FILE as its first source in one transaction. The receipt names both.\",\"kind\":\"start_case_with_source\",\"unresolved_fields\":[\"QUESTION\",\"FILE\"]}],\"ok\":true,\"result\":\"initialized\",\"schema_version\":\"inv.response.v1\",\"workspace\":\"/work/casework\",\"workspace_id\":\"ws_01a20f03-78dc-7801-a9d4-3e5197019f8f\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--actor",
+      "agent:release-smoke",
+      "start",
+      "What held the connection?",
+      "--attach",
+      "-",
+      "--command-id",
+      "first-source",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": "eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042",
+    "stdout": "{\"artifacts\":[{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},\"digest\":\"sha256:eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042\",\"size_bytes\":61},{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},\"digest\":\"sha256:eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042\",\"size_bytes\":61},{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1},\"digest\":\"sha256:6067b546fe483b16f5fbd763386584a57a1d432fb6e2dadbcf3cc42f6b9ac61d\",\"size_bytes\":313}],\"command_id\":\"first-source\",\"created\":[{\"client_ref\":\"case\",\"id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"revision\":1},{\"client_ref\":\"source:0\",\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"revision\":1},{\"client_ref\":\"artifact:0\",\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},{\"client_ref\":\"text:0\",\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},{\"client_ref\":\"manifest\",\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1}],\"items\":[{\"artifact_id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"derivative_id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"digest\":\"sha256:eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042\",\"outcome\":\"imported\",\"size_bytes\":61,\"source_id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"text_status\":\"decoded\"}],\"manifest_artifact_id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"next\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"show\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--format\",\"json\"],\"kind\":\"local_read\"}],\"next_write\":{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"--actor\",\"agent:release-smoke\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"observe\",\"STATEMENT\",\"--source\",\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"--quote\",\"EXACT TEXT\",\"--limitations\",\"[\\\"LIMITATION\\\"]\",\"--format\",\"json\"],\"effect\":\"Records what the source shows. EXACT TEXT must be copied from the source; LIMITATION says what the source cannot show.\",\"kind\":\"record_observation\",\"unresolved_fields\":[\"STATEMENT\",\"EXACT TEXT\",\"LIMITATION\"]},\"ok\":true,\"projection\":{\"index\":\"current\",\"vault\":\"disabled\"},\"result\":\"committed\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:763db146a3abbe41414d3b627aa33471c284c4ad71ca1d761ee2f08df95c68ed\",\"sequence\":1},\"transaction_id\":\"tx_01a20f03-78ec-75c0-b397-03133332fa84\",\"updated\":[],\"warnings\":[]}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "schema",
+      "question.create",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"available\":true,\"effects\":\"Create one question record.\",\"example\":{\"importance\":\"normal\",\"wording\":\"Which phase accounts for variable request latency?\"},\"idempotency\":\"Retry the identical command with its original actor and command ID.\",\"lifecycle\":\"Existing case.\",\"name\":\"question.create\",\"ok\":true,\"payload_schema\":{\"$defs\":{\"ClientRef\":{\"additionalProperties\":false,\"description\":\"An alias of a record created by an earlier operation in this transaction.\",\"properties\":{\"client_ref\":{\"maxLength\":128,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"client_ref\"],\"type\":\"object\"},\"Id\":{\"pattern\":\"^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$\",\"type\":\"string\"},\"Knowledge\":{\"description\":\"Explicit unknown is distinct from a known zero, empty string, or empty list.\",\"oneOf\":[{\"additionalProperties\":false,\"properties\":{\"state\":{\"const\":\"unknown\",\"type\":\"string\"}},\"required\":[\"state\"],\"type\":\"object\"},{\"additionalProperties\":false,\"properties\":{\"state\":{\"const\":\"known\",\"type\":\"string\"},\"value\":{\"type\":\"string\"}},\"required\":[\"state\",\"value\"],\"type\":\"object\"}]},\"QuestionImportance\":{\"enum\":[\"low\",\"normal\",\"high\"],\"type\":\"string\"},\"Reference\":{\"anyOf\":[{\"$ref\":\"#/$defs/RevisionRef\"},{\"$ref\":\"#/$defs/ClientRef\"}]},\"RevisionRef\":{\"additionalProperties\":false,\"description\":\"An exact revision already issued by the store.\",\"properties\":{\"id\":{\"$ref\":\"#/$defs/Id\"},\"revision\":{\"format\":\"uint64\",\"minimum\":1,\"type\":\"integer\"}},\"required\":[\"id\",\"revision\"],\"type\":\"object\"}},\"$schema\":\"https://json-schema.org/draft/2020-12/schema\",\"additionalProperties\":false,\"description\":\"Payload for `question.create`. A parent may refer to an earlier operation in\\nthe same command; resolve `ClientRef` to an exact revision before persisting.\",\"properties\":{\"context\":{\"type\":[\"string\",\"null\"]},\"importance\":{\"$ref\":\"#/$defs/QuestionImportance\"},\"parent\":{\"anyOf\":[{\"$ref\":\"#/$defs/Reference\"},{\"type\":\"null\"}]},\"scope\":{\"anyOf\":[{\"$ref\":\"#/$defs/Knowledge\"},{\"type\":\"null\"}]},\"wording\":{\"maxLength\":2048,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"wording\",\"importance\"],\"title\":\"QuestionCreate\",\"type\":\"object\"},\"related\":[\"question.resolve\"],\"repair\":\"Provide answerable wording and either omit the parent or name an exact question revision in this case.\",\"result\":\"schema\",\"returns\":\"Question ID and revision 1.\",\"revision_rule\":\"If supplied, the parent identifies an exact question revision.\",\"schema_version\":\"inv.response.v1\",\"stage\":\"frame\",\"status\":\"active\",\"summary\":\"Add a question with an answer that matters to the case.\",\"transaction_example\":{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"record\",\"--input\",\"transaction.json\",\"--format\",\"json\"],\"guidance\":\"Choose a unique command_id for your write. Reuse that ID only with identical input and attribution.\",\"input\":{\"actor\":null,\"case_id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"command_id\":\"example-question-create\",\"operations\":[{\"op\":\"question.create\",\"payload\":{\"importance\":\"normal\",\"wording\":\"Which phase accounts for variable request latency?\"}}],\"preconditions\":[],\"schema_version\":\"inv.command.v1\"},\"status\":\"incomplete_form\",\"unresolved_fields\":[\"/actor\"],\"workspace_required\":false},\"when_to_use\":\"Record a question that should guide evidence collection.\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--actor",
+      "agent:release-smoke",
+      "record",
+      "--input",
+      "-",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": "a89570ac29d7acc00a9333b7ca4cc1090d7b8976b48629afd2feb1489c912f8e",
+    "stdout": "{\"command_id\":\"smoke-question\",\"created\":[{\"id\":\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"revision\":1}],\"next\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"show\",\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--format\",\"json\"],\"kind\":\"local_read\"}],\"ok\":true,\"projection\":{\"index\":\"current\",\"vault\":\"disabled\"},\"result\":\"committed\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"transaction_id\":\"tx_01a20f03-7915-7d43-9a04-4cb8d868e4c5\",\"updated\":[],\"warnings\":[]}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--actor",
+      "agent:release-smoke",
+      "receipt",
+      "first-source",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"artifacts\":[{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},\"digest\":\"sha256:eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042\",\"size_bytes\":61},{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},\"digest\":\"sha256:eefc9b913b21464626de73d09e2d736540ba6303b43daa85d10d4e6ae7274042\",\"size_bytes\":61},{\"artifact\":{\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1},\"digest\":\"sha256:6067b546fe483b16f5fbd763386584a57a1d432fb6e2dadbcf3cc42f6b9ac61d\",\"size_bytes\":313}],\"command_id\":\"first-source\",\"created\":[{\"client_ref\":\"case\",\"id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"revision\":1},{\"client_ref\":\"source:0\",\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"revision\":1},{\"client_ref\":\"artifact:0\",\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},{\"client_ref\":\"text:0\",\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},{\"client_ref\":\"manifest\",\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1}],\"next\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"show\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--format\",\"json\"],\"kind\":\"local_read\"}],\"ok\":true,\"projection\":{\"index\":\"current\",\"vault\":\"disabled\"},\"result\":\"committed\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:763db146a3abbe41414d3b627aa33471c284c4ad71ca1d761ee2f08df95c68ed\",\"sequence\":1},\"transaction_id\":\"tx_01a20f03-78ec-75c0-b397-03133332fa84\",\"updated\":[],\"warnings\":[]}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--actor",
+      "agent:release-smoke",
+      "receipt",
+      "smoke-question",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"command_id\":\"smoke-question\",\"created\":[{\"id\":\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"revision\":1}],\"next\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"show\",\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--format\",\"json\"],\"kind\":\"local_read\"}],\"ok\":true,\"projection\":{\"index\":\"current\",\"vault\":\"disabled\"},\"result\":\"committed\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"transaction_id\":\"tx_01a20f03-7915-7d43-9a04-4cb8d868e4c5\",\"updated\":[],\"warnings\":[]}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "brief",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"case\":{\"basis_revision\":1,\"closure_outcome\":null,\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":\"active\",\"state\":\"active\"},\"evidence_reference_ids\":[],\"id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"material_caveat\":{\"state\":\"unknown\"},\"mode\":\"explore\",\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"scope\":null,\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"What held the connection?\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"What held the connection?\",\"type\":\"case\"},\"citations\":[],\"contradiction\":{\"state\":\"unknown\"},\"deeper_read_commands\":[{\"argv\":[\"investigation\",\"--workspace\",\"/work/casework\",\"--case\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"show\",\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"--depth\",\"full\",\"--snapshot\",\"2\",\"--head-hash\",\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"--format\",\"json\"],\"kind\":\"local_read\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2}}],\"effective_status\":{\"recorded\":\"active\",\"state\":\"active\"},\"evidence\":[],\"freshness\":{\"effective\":\"current\",\"label\":\"active / current\",\"overview\":{\"affected\":[],\"case_id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"current\":6,\"disputed\":0,\"freshness\":\"current\",\"needs_review\":0,\"rules_version\":7,\"sequence\":2},\"reasons\":[],\"state\":\"current\"},\"full_outcomes\":[],\"gaps\":[{\"counts\":{\"blocked_by_quality\":0,\"deferred\":0,\"ready_to_analyze\":0,\"requires_external_action\":0,\"requires_source\":0,\"resolved\":0,\"stale_due_to_revision\":0},\"limits\":[\"A detected structural gap is not proof that an unrecorded explanation exists.\",\"Zero detected gaps means no gap was emitted by this rule version; it does not mean the investigation is complete.\",\"Rules inspect committed typed fields only and never emit tests, scores, shell commands, or external execution.\"],\"recommendations\":[],\"remaining_recommendations\":0,\"rule_version\":\"slice-next.v2\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2}}],\"historical\":false,\"inquiries\":[],\"level\":\"standard\",\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"omissions\":[],\"omitted\":[],\"omitted_items\":{\"citations\":0,\"deeper_read_commands\":0,\"evidence\":0,\"full_outcomes\":0,\"inquiries\":0,\"outcomes\":0,\"unresolved_questions\":0},\"outcomes\":[],\"result\":\"brief\",\"schema_version\":\"inv.brief.v0-alpha\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"unresolved_questions\":[{\"basis_revision\":1,\"id\":\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"title\":\"Which phase accounts for variable request latency?\",\"type\":\"q\"}]}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"closure_outcome\":null,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":\"active\",\"state\":\"active\"},\"evidence_reference_ids\":[],\"freshness\":{\"effective\":\"current\",\"label\":\"active / current\",\"overview\":{\"affected\":[],\"case_id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"current\":6,\"disputed\":0,\"freshness\":\"current\",\"needs_review\":0,\"rules_version\":7,\"sequence\":2},\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"case_01a20f03-78ec-75c0-b397-02c529c0fa9e\",\"inherited_trust\":{\"declared_inputs\":0,\"level\":\"unknown\",\"limits\":\"Only inputs that records declare and evidence reads made through investigation by the same actor under the session its command declared are known. Investigation cannot see what else that session read. The session is a self-reported claim. This level is a label for weighing authored text; it does not detect or prevent prompt injection.\",\"lowest_inputs\":[],\"revisions_without_session\":1,\"session_reads\":0},\"material_caveat\":{\"state\":\"unknown\"},\"mode\":\"explore\",\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"scope\":null,\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"What held the connection?\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"What held the connection?\",\"type\":\"case\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "src_01a20f03-78ec-75c0-b397-02da83755874",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":null,\"state\":\"recorded\"},\"evidence_reference_ids\":[],\"evidentiary_use\":{\"availability\":null,\"erasure\":false,\"state\":\"in_use\",\"withdrawals\":[]},\"freshness\":{\"effective\":\"current\",\"label\":\"recorded / current\",\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"source_standing\":{\"dimensions\":[{\"concern\":false,\"current\":[],\"dimension\":\"authenticity\",\"disagreement\":false},{\"concern\":false,\"current\":[],\"dimension\":\"reliability\",\"disagreement\":false},{\"concern\":false,\"current\":[],\"dimension\":\"origin\",\"disagreement\":false},{\"concern\":false,\"current\":[],\"dimension\":\"currency\",\"disagreement\":false}],\"judgments_kept\":0},\"summary\":\"Initial attachment / Initial attachment\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"Initial attachment / Initial attachment\",\"type\":\"src\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "art_01a20f03-78ec-75c0-b397-02ea0f771cd1",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":null,\"state\":\"recorded\"},\"evidence_reference_ids\":[\"src_01a20f03-78ec-75c0-b397-02da83755874\"],\"evidentiary_use\":{\"availability\":\"retained\",\"erasure\":false,\"state\":\"in_use\",\"withdrawals\":[]},\"freshness\":{\"effective\":\"current\",\"label\":\"recorded / current\",\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"lineage\":{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},\"depth\":0,\"inspectability\":{\"state\":\"inspectable\"},\"omitted_sharing_origin\":0,\"omitted_steps\":0,\"origins\":[{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},\"role\":\"original\",\"source_ref\":{\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"revision\":1}}],\"role\":\"original\",\"sharing_origin\":[{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1}],\"steps\":[],\"truncated\":false,\"unresolved_inputs\":[]},\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"retained verified\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"art art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"type\":\"art\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "art_01a20f03-78ec-75c0-b397-02fa7619e40c",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":null,\"state\":\"recorded\"},\"evidence_reference_ids\":[\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\"],\"evidentiary_use\":{\"availability\":\"retained\",\"erasure\":false,\"state\":\"in_use\",\"withdrawals\":[]},\"freshness\":{\"effective\":\"current\",\"label\":\"recorded / current\",\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"lineage\":{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},\"depth\":1,\"inspectability\":{\"state\":\"inspectable\"},\"omitted_sharing_origin\":0,\"omitted_steps\":0,\"origins\":[{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},\"role\":\"original\",\"source_ref\":{\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"revision\":1}}],\"role\":\"derivative\",\"sharing_origin\":[{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1}],\"steps\":[{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1},\"inputs\":[{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1}],\"transformation\":\"decode_utf8\",\"version\":\"inv.text.utf8.v1\"}],\"truncated\":false,\"unresolved_inputs\":[]},\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"text/plain; charset=utf-8 retained verified\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"text/plain; charset=utf-8\",\"type\":\"art\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "art_01a20f03-78ec-75c0-b397-03016238826a",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":null,\"state\":\"recorded\"},\"evidence_reference_ids\":[\"src_01a20f03-78ec-75c0-b397-02da83755874\"],\"evidentiary_use\":{\"availability\":\"retained\",\"erasure\":false,\"state\":\"in_use\",\"withdrawals\":[]},\"freshness\":{\"effective\":\"current\",\"label\":\"recorded / current\",\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"lineage\":{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1},\"depth\":0,\"inspectability\":{\"state\":\"inspectable\"},\"omitted_sharing_origin\":0,\"omitted_steps\":0,\"origins\":[{\"artifact_ref\":{\"id\":\"art_01a20f03-78ec-75c0-b397-03016238826a\",\"revision\":1},\"role\":\"manifest\",\"source_ref\":{\"id\":\"src_01a20f03-78ec-75c0-b397-02da83755874\",\"revision\":1}}],\"role\":\"manifest\",\"sharing_origin\":[{\"id\":\"art_01a20f03-78ec-75c0-b397-02ea0f771cd1\",\"revision\":1},{\"id\":\"art_01a20f03-78ec-75c0-b397-02fa7619e40c\",\"revision\":1}],\"steps\":[],\"truncated\":false,\"unresolved_inputs\":[]},\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"application/json retained verified\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"application/json\",\"type\":\"art\"}\n"
+  },
+  {
+    "argv": [
+      "investigation",
+      "--workspace",
+      "casework",
+      "--case",
+      "case_01a20f03-78ec-75c0-b397-02c529c0fa9e",
+      "show",
+      "q_01a20f03-7915-7d43-9a04-4ca1efecb63b",
+      "--depth",
+      "summary",
+      "--format",
+      "json"
+    ],
+    "exit": 0,
+    "stdin_sha256": null,
+    "stdout": "{\"basis_revision\":1,\"content_trust\":{\"summary\":\"authored_data\",\"title\":\"authored_data\"},\"contradiction\":{\"state\":\"unknown\"},\"depth\":\"summary\",\"effective_status\":{\"recorded\":\"open\",\"state\":\"open\"},\"evidence_reference_ids\":[],\"freshness\":{\"effective\":\"current\",\"label\":\"open / current\",\"reasons\":[],\"state\":\"current\"},\"gaps\":[],\"historical\":false,\"id\":\"q_01a20f03-7915-7d43-9a04-4ca1efecb63b\",\"inherited_trust\":{\"declared_inputs\":0,\"level\":\"unknown\",\"limits\":\"Only inputs that records declare and evidence reads made through investigation by the same actor under the session its command declared are known. Investigation cannot see what else that session read. The session is a self-reported claim. This level is a label for weighing authored text; it does not detect or prevent prompt injection.\",\"lowest_inputs\":[],\"revisions_without_session\":1,\"session_reads\":0},\"material_caveat\":{\"state\":\"unknown\"},\"ok\":true,\"recorded_caveats\":[],\"recorded_contradiction_refs\":[],\"result\":\"record_shown\",\"schema_version\":\"inv.response.v1\",\"snapshot\":{\"head_hash\":\"sha256:08270e7097c9ef29dc37d9483c7ded8d0f60ccc33a0ca8b9fd2447e153d06e6b\",\"sequence\":2},\"summary\":\"Which phase accounts for variable request latency?\",\"summary_available\":true,\"summary_basis\":{\"kind\":\"typed_fields\",\"revision\":1},\"title\":\"Which phase accounts for variable request latency?\",\"type\":\"q\"}\n"
+  }
+]
