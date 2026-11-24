@@ -262,7 +262,8 @@ pub struct DependentLoss {
 /// time, from the verified `state`. Each withdrawal is checked by the
 /// operation itself against a copy of the state, so a refusal here is the
 /// commit's refusal and the dependents are those the freshness index then
-/// reports. Nothing is written. Unknown IDs are the caller's to report.
+/// reports. The index is built once, for `state`, and updated for each
+/// withdrawal. Nothing is written. Unknown IDs are the caller's to report.
 pub fn preview(state: &State, case: Id, artifacts: &[Id]) -> Vec<ReferenceLoss> {
     let before = FreshnessIndex::build(state, case);
     artifacts
@@ -299,7 +300,13 @@ fn loss(state: &State, before: &FreshnessIndex, case: Id, record: &Record) -> Re
     }
     match simulate(state, case, record.reference()) {
         Ok(after) => {
-            let index = FreshnessIndex::build(&after, case);
+            // The index of `state`, brought forward to the one withdrawal:
+            // only records it can affect are reassessed, and the result
+            // equals a full build of `after` (bn-5h3z).
+            let mut index = before.clone();
+            if index.update(&after).is_err() {
+                index = FreshnessIndex::build(&after, case);
+            }
             let mut dependents: Vec<DependentLoss> = index
                 .records()
                 .filter(|result| {

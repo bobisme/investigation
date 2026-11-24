@@ -87,6 +87,15 @@ fn expiring_a_reference_keeps_its_record_and_marks_exactly_the_previewed_depende
 
     // Exactly the previewed records now need review for the lost availability.
     assert_eq!(marked(&case, f.artifact.id), previewed);
+    // The preview updates one index instead of building a second (bn-5h3z);
+    // what it predicts is what a full build of the committed state gives.
+    let built = FreshnessIndex::build(&case.state, case.case);
+    for dependent in &loss.dependents {
+        assert_eq!(
+            built.get(dependent.record.id).unwrap().freshness,
+            dependent.freshness_after
+        );
+    }
     for id in &previewed {
         assert_eq!(
             case.index.get(*id).unwrap().freshness,

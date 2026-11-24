@@ -94,7 +94,8 @@ An Observation's quote is checked when it is accepted, in the decoded text of
 its selection. For an original Artifact that text comes from its recorded text
 derivative, under `whole` and `byte_range` as under `text_lines` and
 `text_quote`, with the same retention and withdrawal checks. A `byte_range`
-that cuts a character is narrowed to the characters it holds entirely. A quote
+that cuts a character, over an original or over a text derivative, is narrowed
+to the characters it holds entirely. A quote
 the text does not hold is refused with `OBSERVATION_TEXT_QUOTE_NOT_FOUND` and
 the nearest source line. A quote over bytes with no usable text derivative is
 recorded as `unavailable`. A recorded state never changes: replay does not

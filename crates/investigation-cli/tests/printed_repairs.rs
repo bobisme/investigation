@@ -164,6 +164,40 @@ impl Fixture {
         selector: Value,
         quote: &str,
     ) -> Value {
+        self.observation_under(cwd, key, (&self.original, &self.digest), selector, quote)
+    }
+
+    /// An `observation.add` envelope whose basis cites the text derivative
+    /// with `selector` and `quote`.
+    fn observation_of_derivative_under(
+        &self,
+        cwd: &Path,
+        key: &str,
+        selector: Value,
+        quote: &str,
+    ) -> Value {
+        let (code, shown) = json(cwd, &["show", &self.derivative, "--depth", "full"], None);
+        assert_eq!(code, 0, "{shown}");
+        let mut digests = Vec::new();
+        find_all(&shown, "digest", &mut digests);
+        let digest = digests
+            .iter()
+            .find_map(|digest| digest.as_str())
+            .unwrap_or_else(|| panic!("no derivative digest: {shown}"))
+            .to_owned();
+        self.observation_under(cwd, key, (&self.derivative, &digest), selector, quote)
+    }
+
+    /// An `observation.add` envelope whose basis cites `artifact` (its ID
+    /// and digest) with `selector` and `quote`.
+    fn observation_under(
+        &self,
+        cwd: &Path,
+        key: &str,
+        artifact: (&str, &str),
+        selector: Value,
+        quote: &str,
+    ) -> Value {
         let (code, mut envelope) = json(
             cwd,
             &[
@@ -185,10 +219,10 @@ impl Fixture {
         envelope["command_id"] = json!(key);
         envelope["operations"][0]["payload"]["basis"] = json!({
             "kind": "source",
-            "artifact_ref": {"id": self.original, "revision": 1},
+            "artifact_ref": {"id": artifact.0, "revision": 1},
             "selector": {
                 "schema_version": "inv.selector.v1",
-                "artifact_digest": self.digest,
+                "artifact_digest": artifact.1,
                 "selector": selector,
             },
             "text_quote": {"exact": quote, "prefix": null, "suffix": null},
@@ -475,12 +509,9 @@ fn a_quote_outside_an_original_byte_range_is_refused_and_located() {
     );
 }
 
-/// A byte range over an original may cut a character of its decoded text:
-/// the quote is looked for among the characters the range holds entirely.
-#[test]
-fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
-    let temporary = tempfile::tempdir().unwrap();
-    let cwd = temporary.path();
+/// A workspace whose one source is a short German line, so byte ranges can
+/// cut its two-byte characters.
+fn umlaut_fixture(cwd: &Path) -> Fixture {
     let source = "Größe des Pegels: 41 cm über Null\n";
     std::fs::write(cwd.join("pegel.txt"), source).unwrap();
     let init = invoke(
@@ -503,14 +534,43 @@ fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
     );
     assert_eq!(code, 0, "{started}");
     let item = &started["items"][0];
-    let f = Fixture {
+    Fixture {
         source: source.to_owned(),
         case: started["created"][0]["id"].as_str().unwrap().to_owned(),
         source_id: item["source_id"].as_str().unwrap().to_owned(),
         original: item["artifact_id"].as_str().unwrap().to_owned(),
         derivative: item["derivative_id"].as_str().unwrap().to_owned(),
         digest: item["digest"].as_str().unwrap().to_owned(),
-    };
+    }
+}
+
+/// A byte range over an original may cut a character of its decoded text:
+/// the quote is looked for among the characters the range holds entirely.
+#[test]
+fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = umlaut_fixture(cwd);
+    cut_character_quotes(cwd, &f, Fixture::observation_of_original_under);
+}
+
+/// The same over the text derivative itself (bn-5h3z): a byte range that
+/// cuts a character no longer fails as invalid input.
+#[test]
+fn a_byte_range_over_a_derivative_that_cuts_a_character_verifies_the_characters_it_holds() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = umlaut_fixture(cwd);
+    cut_character_quotes(cwd, &f, Fixture::observation_of_derivative_under);
+}
+
+type Observe = fn(&Fixture, &Path, &str, Value, &str) -> Value;
+
+/// Quotes under a byte range that starts inside "ö" and ends inside "ü":
+/// one held entirely by the range is verified; one that needs a cut
+/// character is not found.
+fn cut_character_quotes(cwd: &Path, f: &Fixture, observe: Observe) {
+    let source = f.source.as_str();
     // Bytes 3..: the second byte of "ö" onwards; the range ends inside "ü".
     let cut = source.find("über").unwrap() + 1;
     assert!(!source.is_char_boundary(3) && !source.is_char_boundary(cut));
@@ -520,7 +580,7 @@ fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
         ("cut-first", "öße", false),
         ("cut-last", "cm ü", false),
     ] {
-        let envelope = f.observation_of_original_under(cwd, key, range.clone(), quote);
+        let envelope = observe(f, cwd, key, range.clone(), quote);
         let (code, receipt) = record(cwd, &envelope);
         if verified {
             assert_eq!(code, 0, "{key}: {receipt}");
@@ -536,4 +596,38 @@ fn a_byte_range_that_cuts_a_character_verifies_the_characters_it_holds() {
             );
         }
     }
+}
+
+/// The originals' byte-range cases over the text derivative itself: a quote
+/// the range holds is verified, one outside it is refused and located, and
+/// a near miss names its line.
+#[test]
+fn a_quote_under_a_byte_range_over_a_derivative_is_verified_or_located() {
+    let temporary = tempfile::tempdir().unwrap();
+    let cwd = temporary.path();
+    let f = fixture(cwd);
+    let (start, end) = (f.lines(1, 4).len(), f.lines(1, 6).len());
+    let range = json!({"type": "byte_range", "start": start, "end": end});
+    let line = |number: usize| f.lines(number, number).trim_end().to_owned();
+    let envelope = f.observation_of_derivative_under(cwd, "range-found", range.clone(), &line(6));
+    let (code, receipt) = record(cwd, &envelope);
+    assert_eq!(code, 0, "{receipt}");
+    assert_eq!(recorded_quote_state(cwd, &receipt), "verified");
+
+    let envelope = f.observation_of_derivative_under(cwd, "range-outside", range.clone(), &line(9));
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains("The quote is in the source from line 9, outside the selected lines 5-6."),
+        "{refused}"
+    );
+    let near = line(6).replace("weir", "wier");
+    let envelope = f.observation_of_derivative_under(cwd, "range-near", range, &near);
+    let (code, refused) = record(cwd, &envelope);
+    assert_ne!(code, 0, "{refused}");
+    assert_eq!(
+        refused["error"]["expected"]["nearest_source_line"], 6,
+        "{refused}"
+    );
 }

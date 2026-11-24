@@ -141,6 +141,19 @@ impl Drill {
         stdin: Option<&Value>,
         exit: i32,
     ) -> (Value, usize) {
+        let (code, value, bytes, stderr) = self.run_in(cwd, args, stdin);
+        assert_eq!(code, Some(exit), "{args:?}\n{value}\n{stderr}");
+        (value, bytes)
+    }
+
+    /// Run `args` with JSON output: the exit code, the JSON, its exact byte
+    /// count and stderr.
+    fn run_in(
+        &self,
+        cwd: &Path,
+        args: &[&str],
+        stdin: Option<&Value>,
+    ) -> (Option<i32>, Value, usize, String) {
         let mut args = args.to_vec();
         args.extend(["--format", "json"]);
         let mut command = self.command(cwd, &args);
@@ -156,15 +169,10 @@ impl Drill {
         }
         let output = process.wait_with_output().unwrap();
         let stdout = String::from_utf8(output.stdout).unwrap();
-        assert_eq!(
-            output.status.code(),
-            Some(exit),
-            "{args:?}\n{stdout}\n{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let value =
-            serde_json::from_str(&stdout).unwrap_or_else(|error| panic!("{error}: {stdout}"));
-        (value, stdout.len())
+        let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+        let value = serde_json::from_str(&stdout)
+            .unwrap_or_else(|error| panic!("{args:?} {error}: {stdout}\n{stderr}"));
+        (output.status.code(), value, stdout.len(), stderr)
     }
 
     /// Run a read or shortcut in the workspace; the JSON and its exact byte count.
@@ -1049,6 +1057,78 @@ fn synopsis_omission(brief: &Value) -> (Value, Value) {
 }
 
 /// Drill 2 on a built fixture.
+/// The default byte budget of `brief` (`brief --max-bytes`).
+const DEFAULT_BRIEF_BUDGET: usize = 16_384;
+/// The workspace path length the margin is measured with: that of a
+/// default temporary workspace, `/tmp/.tmpXXXXXX/casework`. The brief prints
+/// the workspace path in its commands, so what it needs depends on where the
+/// test runs; measured with this length, the margin is the same everywhere.
+const REFERENCE_ROOT_BYTES: usize = 24;
+/// Bytes of the default budget drill 2's brief must leave beyond what it
+/// needs to keep the outcomes the drill reads.
+const BRIEF_MARGIN_BYTES: usize = 64;
+
+/// Drill 2's default brief nearly fills its budget with the outcomes it
+/// keeps, and the next item the budget cuts is an outcome. A brief always
+/// fills its budget with whatever fits, so its size says little; what
+/// matters is the smallest budget that still keeps the same outcomes. Fail
+/// with the numbers while there is still room, so whatever adds bytes before
+/// the outcomes is weighed on purpose (bn-5h3z).
+fn brief_margin(drill: &Drill, brief: &Value, read: &[&str], variant: &str) {
+    let holds = |brief: &Value| {
+        read.iter().all(|id| {
+            brief["outcomes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|outcome| outcome["id"] == *id)
+        })
+    };
+    let root = drill.root.to_str().unwrap();
+    assert!(
+        holds(brief),
+        "drill 2 {variant}: the default {DEFAULT_BRIEF_BUDGET}-byte brief already cut an \
+         outcome the drill reads ({read:?}). The brief prints the {}-byte workspace path {root} \
+         in its commands; with a path this long, run the tests with a shorter TMPDIR.",
+        root.len()
+    );
+    let keeps = |budget: usize| -> Option<Value> {
+        let budget = budget.to_string();
+        let (code, output, _, _) =
+            drill.run_in(&drill.root, &["brief", "--max-bytes", &budget], None);
+        (code == Some(0) && holds(&output)).then_some(output)
+    };
+    // The smallest budget whose brief still holds the outcomes the drill reads.
+    let (mut low, mut high) = (0, DEFAULT_BRIEF_BUDGET);
+    let mut needed = keeps(high).expect("the default budget keeps its own outcomes");
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        match keeps(middle) {
+            Some(output) => {
+                high = middle;
+                needed = output;
+            }
+            None => low = middle,
+        }
+    }
+    let paths = needed.to_string().matches(root).count();
+    let required = high + paths * REFERENCE_ROOT_BYTES - paths * root.len();
+    let left = DEFAULT_BRIEF_BUDGET.saturating_sub(required);
+    println!(
+        "drill 2 {variant}: keeping the outcomes it reads needs {required} of {DEFAULT_BRIEF_BUDGET} B with a {REFERENCE_ROOT_BYTES}-byte workspace path, {left} B left"
+    );
+    assert!(
+        left >= BRIEF_MARGIN_BYTES,
+        "drill 2 {variant}: the default brief needs {required} B of its \
+         {DEFAULT_BRIEF_BUDGET}-byte budget (the `brief --max-bytes` default) to keep the \
+         outcomes the drill reads ({read:?}), measured with a {REFERENCE_ROOT_BYTES}-byte workspace path. That leaves \
+         {left} B, under the {BRIEF_MARGIN_BYTES}-byte margin this drill keeps; a little more \
+         and the budget cuts an outcome. Decide on purpose: shorten what was added, change \
+         the default budget, or lower BRIEF_MARGIN_BYTES after checking that the outcomes \
+         the drill asserts still fit."
+    );
+}
+
 fn stale_synopsis(mut built: Built, variant: &str, change: Change) {
     let pinned = built.expected["stale_synopsis"].clone();
     let (synopses, checkpoint) = built.write_synopses();
@@ -1135,6 +1215,7 @@ fn stale_synopsis(mut built: Built, variant: &str, change: Change) {
     // ---- the default brief, and every level, never carries it
     let (brief, bytes) = drill.brief(&[]);
     println!("drill 2 {variant}: default brief after the change {bytes} B");
+    brief_margin(drill, &brief, &[&subject, &untouched], variant);
     absent("brief", &brief.to_string());
     let lead = &brief["outcomes"][0];
     assert_eq!(lead["id"], subject.as_str(), "{variant}");

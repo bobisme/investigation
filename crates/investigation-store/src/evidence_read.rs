@@ -651,10 +651,12 @@ impl<F: DurableFs> Store<F> {
                 SelectorKind::TableCell { .. } | SelectorKind::CodeSpan { .. }
             );
         if let (Some(quote), true, Selection::Bytes { start, end }) = (quote, textual, selection) {
-            // A byte range may cut a character of the decoded text. A quote
-            // is whole characters, so it can only be found among the
-            // characters the range holds entirely.
-            let (start, end) = if decoded {
+            // A byte range may cut a character of the decoded text, of an
+            // original or of a text derivative itself (bn-5h3z). A quote is
+            // whole characters, so it can only be found among the characters
+            // the range holds entirely. Line and quote selections already end
+            // on character boundaries.
+            let (start, end) = if decoded || text.is_some() {
                 characters_within(&bytes, start, end)
             } else {
                 (start, end)
