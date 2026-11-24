@@ -17,3 +17,4 @@
 | [0013](0013-archive-restore-and-fork.md) | Archive restore and fork: verified staging, marker-last publication, and fork identity |
 | [0014](0014-migration-framework.md) | Workspace format in the marker, ordered migrations with a verified backup, and historical fixtures |
 | [0015](0015-index-durability.md) | Index durability: the fully synced rollback journal stays, a rebuild syncs once and never inherits an old journal |
+| [0016](0016-byte-canonical-journal-files.md) | Journal files are the exact bytes this program writes, and `repair journal` restores witnessed bytes |

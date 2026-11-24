@@ -61,6 +61,9 @@ pub enum JournalErrorKind {
     DuplicateCommand,
     InvalidPrecondition,
     InvalidAfterImage,
+    /// The file parses, but its bytes are not the serialization this program
+    /// writes for that content (ADR 0016).
+    NonCanonical,
 }
 
 impl JournalErrorKind {
@@ -85,6 +88,7 @@ impl JournalErrorKind {
             Self::DuplicateCommand => "DUPLICATE_COMMAND_ID",
             Self::InvalidPrecondition => "INVALID_EVENT_PRECONDITION",
             Self::InvalidAfterImage => "INVALID_EVENT_AFTER_IMAGE",
+            Self::NonCanonical => "NON_CANONICAL_JOURNAL_FILE",
         }
     }
 }
@@ -417,15 +421,85 @@ pub fn event_filename(sequence: u64) -> Result<String, JournalError> {
     Ok(format!("{sequence:012}.json"))
 }
 
-/// Decode an event without rewriting it. The hash covers the exact input bytes.
+/// Decode one event file on its own, without rewriting it. The hash covers
+/// the exact input bytes. Nothing records the hash of a file decoded alone,
+/// so its bytes must be the bytes this program writes for its content
+/// (ADR 0016), unless the event is of the legacy version.
 pub fn decode_event(
     path: &Path,
     sequence: u64,
     bytes: &[u8],
 ) -> Result<VerifiedEvent, JournalError> {
+    let (verified, canonical) = decode_event_layout(path, sequence, bytes)?;
+    if !canonical {
+        return Err(non_canonical(path));
+    }
+    Ok(verified)
+}
+
+/// Decode an event with every check but its layout, and say whether its
+/// bytes are the bytes this program writes for its content. A legacy event
+/// was written in a layout this program cannot reproduce and counts as
+/// canonical. A replay accepts other bytes only where the next event records
+/// their hash (ADR 0016).
+fn decode_event_layout(
+    path: &Path,
+    sequence: u64,
+    bytes: &[u8],
+) -> Result<(VerifiedEvent, bool), JournalError> {
+    let (event, written_by_this_format) = decode_event_content(path, sequence, bytes)?;
+    let canonical = !written_by_this_format || is_canonical(&event, bytes);
+    Ok((
+        VerifiedEvent {
+            event,
+            hash: hash_bytes(bytes),
+        },
+        canonical,
+    ))
+}
+
+/// The bytes this program writes for the content of the event file at
+/// `path`, when its bytes are not they; `None` when they are, or when the
+/// event is of the legacy version. Every other check of [`decode_event`]
+/// applies.
+pub fn canonical_event(
+    path: &Path,
+    sequence: u64,
+    bytes: &[u8],
+) -> Result<Option<Vec<u8>>, JournalError> {
+    let (event, written_by_this_format) = decode_event_content(path, sequence, bytes)?;
+    Ok(written_by_this_format
+        .then(|| canonical_form(&event, bytes))
+        .flatten())
+}
+
+/// The bytes this program writes for the content of the genesis file at
+/// `path`, when its bytes are not they.
+pub fn canonical_genesis(
+    path: &Path,
+    bytes: &[u8],
+    workspace_id: Id,
+    case_id: Id,
+) -> Result<Option<Vec<u8>>, JournalError> {
+    let genesis = decode_genesis(path, bytes)?;
+    genesis.validate(path, workspace_id, case_id)?;
+    Ok(canonical_form(&genesis, bytes))
+}
+
+/// An event's content and whether it is of the current version, with every
+/// check but the canonical bytes.
+fn decode_event_content(
+    path: &Path,
+    sequence: u64,
+    bytes: &[u8],
+) -> Result<(Event, bool), JournalError> {
     let value = parse(bytes, path, MAX_EVENT_BYTES, JournalErrorKind::CorruptEvent)?;
+    let mut written_by_this_format = false;
     let event: Event = match version(&value) {
-        Some(EVENT_VERSION) => decode(&value, path, JournalErrorKind::CorruptEvent)?,
+        Some(EVENT_VERSION) => {
+            written_by_this_format = true;
+            decode(&value, path, JournalErrorKind::CorruptEvent)?
+        }
         Some(LEGACY_EVENT_VERSION) => {
             if value.get("manifest_digest").is_some() {
                 return Err(JournalError::new(
@@ -464,10 +538,51 @@ pub fn decode_event(
         ));
     }
     event.validate_metadata(path)?;
-    Ok(VerifiedEvent {
-        event,
-        hash: hash_bytes(bytes),
-    })
+    Ok((event, written_by_this_format))
+}
+
+/// The bytes this program writes for `value`, when `bytes` are not they:
+/// `None` for canonical bytes.
+fn canonical_form<T: Serialize>(value: &T, bytes: &[u8]) -> Option<Vec<u8>> {
+    (!is_canonical(value, bytes)).then(|| serde_json::to_vec(value).expect("JSON serializes"))
+}
+
+/// Whether `bytes` are exactly the serialization of `value` this program
+/// writes (compact `serde_json`, no trailing newline). The serialization is
+/// compared as it is produced, so no copy is made and the first differing
+/// byte stops it.
+fn is_canonical<T: Serialize>(value: &T, bytes: &[u8]) -> bool {
+    struct Compare<'a> {
+        rest: &'a [u8],
+    }
+    impl io::Write for Compare<'_> {
+        fn write(&mut self, written: &[u8]) -> io::Result<usize> {
+            match self.rest.strip_prefix(written) {
+                Some(rest) => {
+                    self.rest = rest;
+                    Ok(written.len())
+                }
+                None => Err(io::Error::other("differs")),
+            }
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut compare = Compare { rest: bytes };
+    serde_json::to_writer(&mut compare, value).is_ok() && compare.rest.is_empty()
+}
+
+fn non_canonical(path: &Path) -> JournalError {
+    JournalError::new(
+        JournalErrorKind::NonCanonical,
+        path,
+        "Another program rewrote this file: its bytes are not the bytes this program writes for \
+         its content (whitespace, key order, escapes or a line ending differ), and no later \
+         journal file records them. Run investigation repair journal: it restores the written \
+         bytes when the next journal file, or the index for a case head, records their hash, \
+         which shows the content is unchanged. Otherwise restore the workspace from an archive.",
+    )
 }
 
 /// Decode event bytes that are expected to be byte-identical to bytes
@@ -687,30 +802,14 @@ fn replay(
         JournalErrorKind::MissingGenesis,
         JournalErrorKind::CorruptGenesis,
     )?;
-    let value = parse(
-        &genesis_bytes,
-        &genesis_path,
-        MAX_GENESIS_BYTES,
-        JournalErrorKind::CorruptGenesis,
-    )?;
-    let genesis: CaseGenesis = match version(&value) {
-        Some(GENESIS_VERSION) => decode(&value, &genesis_path, JournalErrorKind::CorruptGenesis)?,
-        Some(other) => {
-            return Err(unsupported(
-                JournalErrorKind::UnsupportedGenesisVersion,
-                &genesis_path,
-                other,
-            ));
-        }
-        None => {
-            return Err(JournalError::new(
-                JournalErrorKind::CorruptGenesis,
-                &genesis_path,
-                "Case genesis has no string schema_version.",
-            ));
-        }
-    };
+    let genesis = decode_genesis(&genesis_path, &genesis_bytes)?;
     genesis.validate(&genesis_path, writers.at(0), case_id)?;
+    // A journal file whose bytes are not the bytes this program writes for
+    // its content is accepted only once the next event records their hash:
+    // a program before ADR 0016 accepted such a file and chained onto it.
+    // A reformatted file that nothing records, at the head or anywhere else,
+    // is refused at that file.
+    let mut unrecorded = (!is_canonical(&genesis, &genesis_bytes)).then(|| genesis_path.clone());
 
     let mut result = CaseReplay {
         state: State::default(),
@@ -776,9 +875,24 @@ fn replay(
                     format!("Found event {sequence} before expected event {expected}."),
                 ));
             }
-            let verified = verified?;
-            apply_event(&mut result, &mut seen, verified, path, (writers, case_id))?;
+            let (verified, images, canonical) = verified?;
+            if let Some(reformatted) = &unrecorded
+                && verified.event.previous_hash != result.snapshot.head_hash
+            {
+                return Err(non_canonical(reformatted));
+            }
+            apply_event(
+                &mut result,
+                &mut seen,
+                (verified, images),
+                path,
+                (writers, case_id),
+            )?;
+            unrecorded = (!canonical).then(|| path.clone());
         }
+    }
+    if let Some(reformatted) = unrecorded {
+        return Err(non_canonical(&reformatted));
     }
     if known.is_some_and(|known| known.sequence > result.snapshot.sequence) {
         return Err(JournalError::new(
@@ -802,6 +916,34 @@ fn replay(
     Ok(result)
 }
 
+/// Decode a case genesis file, without the identity and canonical checks.
+fn decode_genesis(path: &Path, bytes: &[u8]) -> Result<CaseGenesis, JournalError> {
+    let value = parse(
+        bytes,
+        path,
+        MAX_GENESIS_BYTES,
+        JournalErrorKind::CorruptGenesis,
+    )?;
+    let genesis: CaseGenesis = match version(&value) {
+        Some(GENESIS_VERSION) => decode(&value, path, JournalErrorKind::CorruptGenesis)?,
+        Some(other) => {
+            return Err(unsupported(
+                JournalErrorKind::UnsupportedGenesisVersion,
+                path,
+                other,
+            ));
+        }
+        None => {
+            return Err(JournalError::new(
+                JournalErrorKind::CorruptGenesis,
+                path,
+                "Case genesis has no string schema_version.",
+            ));
+        }
+    };
+    Ok(genesis)
+}
+
 /// Bytes read ahead of decoding at most, beyond one event.
 const DECODE_WINDOW_BYTES: usize = 64 << 20;
 /// Threads that decode one window at most.
@@ -814,7 +956,7 @@ fn decode_one(
     sequence: u64,
     bytes: &[u8],
     known: Option<&KnownHead>,
-) -> Result<VerifiedEvent, JournalError> {
+) -> Result<(VerifiedEvent, bool), JournalError> {
     match known {
         Some(known) if sequence <= known.sequence => {
             let verified = decode_known(path, sequence, bytes)?;
@@ -825,9 +967,11 @@ fn decode_one(
                     "The journal differs from the verified head.",
                 ));
             }
-            Ok(verified)
+            // The prefix ends at a head this build verified in full, so its
+            // layout was accepted then.
+            Ok((verified, true))
         }
-        _ => decode_event(path, sequence, bytes),
+        _ => decode_event_layout(path, sequence, bytes),
     }
 }
 
@@ -839,13 +983,13 @@ fn decode_window(
     window: &[(u64, PathBuf)],
     reads: &[Result<Vec<u8>, JournalError>],
     known: Option<&KnownHead>,
-) -> Vec<Result<(VerifiedEvent, SharedImages), JournalError>> {
-    let decode = |index: usize| -> Result<(VerifiedEvent, SharedImages), JournalError> {
+) -> Vec<Result<(VerifiedEvent, SharedImages, bool), JournalError>> {
+    let decode = |index: usize| -> Result<(VerifiedEvent, SharedImages, bool), JournalError> {
         let (sequence, path) = &window[index];
         let bytes = reads[index].as_ref().map_err(Clone::clone)?;
-        let verified = decode_one(path, *sequence, bytes, known)?;
+        let (verified, canonical) = decode_one(path, *sequence, bytes, known)?;
         let images = SharedImages::of(&verified.event.accepted);
-        Ok((verified, images))
+        Ok((verified, images, canonical))
     };
     let threads = std::thread::available_parallelism()
         .map_or(1, std::num::NonZero::get)

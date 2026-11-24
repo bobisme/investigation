@@ -87,6 +87,9 @@ pub mod pins;
 #[path = "retention.rs"]
 pub mod retention;
 
+#[path = "journal_repair.rs"]
+pub mod journal_repair;
+
 #[path = "format_gate.rs"]
 mod format_gate;
 pub use format_gate::format_failure;

@@ -27,6 +27,7 @@ mod help_teach;
 mod inherited_trust;
 mod init_existing;
 mod integration;
+mod journal_repair;
 mod lessons;
 mod lineage;
 mod logging;
@@ -393,6 +394,9 @@ enum RepairCommand {
         #[arg(long, value_name = "HANDLE")]
         handle: Option<String>,
     },
+    /// Restore the written bytes of journal files another program reformatted.
+    #[command(after_help = journal_repair::AFTER_HELP)]
+    Journal(journal_repair::Args),
 }
 
 pub(crate) struct Output {
@@ -548,6 +552,9 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Migrate(args) => migrate::run(&mut store, &args),
                 Commands::Repair(RepairCommand::Staging { handle }) => {
                     capture::retire(&mut store, handle.as_deref())
+                }
+                Commands::Repair(RepairCommand::Journal(args)) => {
+                    journal_repair::run(&mut store, &args)
                 }
                 Commands::Repair(RepairCommand::Index) => {
                     let cases = store.repair_index()?;

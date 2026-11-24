@@ -361,6 +361,10 @@ const NOT_CASE_TARGETED: &[(&str, &str)] = &[
         "retires finalized capture staging and records nothing",
     ),
     (
+        "repair journal",
+        "restores the witnessed bytes of reformatted journal files across every case and records nothing; it takes no case and changes no content (canonical_journal.rs)",
+    ),
+    (
         "archive pins release",
         "removes stale archive pin records below local/pins, machine-local bookkeeping; it records nothing and names no case",
     ),

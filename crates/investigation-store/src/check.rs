@@ -81,19 +81,32 @@ impl<F: DurableFs> Store<F> {
         let verified = match self.load_fully_verified() {
             Ok(replay) => replay,
             Err(error) => {
+                let code = error
+                    .error
+                    .actual
+                    .as_ref()
+                    .and_then(|actual| actual.get("diagnostic_code"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("JOURNAL_UNVERIFIED")
+                    .to_owned();
+                // Bytes another program rewrote keep their content; the
+                // repair restores the written bytes where a witness allows.
+                let repair =
+                    (code == crate::journal::JournalErrorKind::NonCanonical.code()).then(|| {
+                        vec![
+                            PROGRAM_NAME.into(),
+                            "repair".into(),
+                            "journal".into(),
+                            "--format".into(),
+                            "json".into(),
+                        ]
+                    });
                 report.issues.push(CheckIssue {
                     severity: Severity::Error,
-                    code: error
-                        .error
-                        .actual
-                        .as_ref()
-                        .and_then(|actual| actual.get("diagnostic_code"))
-                        .and_then(Value::as_str)
-                        .unwrap_or("JOURNAL_UNVERIFIED")
-                        .to_owned(),
+                    code,
                     objects: Vec::new(),
                     reason: error.error.message.clone(),
-                    repair: None,
+                    repair,
                 });
                 return Ok(report);
             }

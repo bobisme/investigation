@@ -418,24 +418,39 @@ fn verify_finds_missing_extra_unsafe_and_corrupted_members_and_a_forged_journal(
         "{found:?}"
     );
 
-    // Re-digesting the last event leaves the chain whole but moves the head.
-    let found = tamper_case(root, "rehashed-head", &original, |copy| {
-        let path = copy.join(&event);
-        let text = fs::read_to_string(&path).unwrap();
-        let edited = text.replacen("\"sequence\"", "\"sequence\" ", 1);
-        fs::write(&path, &edited).unwrap();
-        let mut manifest = manifest(copy);
-        let entry = manifest
-            .files
-            .iter_mut()
-            .find(|file| file.path == event)
-            .unwrap();
-        entry.sha256 = hash_bytes(edited.as_bytes());
-        entry.bytes = edited.len() as u64;
-        manifest.export_id = expected_export_id(&manifest);
-        write_manifest(copy, &manifest);
-    });
-    assert_eq!(found, ["HEAD_MISMATCH"]);
+    // A last event reformatted without a content change, then re-digested:
+    // no later file names its hash, so before ADR 0016 only archive.json's
+    // head caught it. Now the restored copy's check refuses its bytes, as
+    // `check`, every load and `repair journal` do (see canonical_journal.rs).
+    for (name, reformat) in [
+        (
+            "respaced-head",
+            (|text: &str| text.replacen("\"sequence\"", "\"sequence\" ", 1)) as fn(&str) -> String,
+        ),
+        ("newline-head", |text: &str| format!("{text}\n")),
+        ("escaped-head", |text: &str| {
+            text.replacen("\"schema_version\":\"i", "\"schema_version\":\"\\u0069", 1)
+        }),
+    ] {
+        let found = tamper_case(root, name, &original, |copy| {
+            let path = copy.join(&event);
+            let text = fs::read_to_string(&path).unwrap();
+            let edited = reformat(&text);
+            assert_ne!(text, edited, "{name}");
+            fs::write(&path, &edited).unwrap();
+            let mut manifest = manifest(copy);
+            let entry = manifest
+                .files
+                .iter_mut()
+                .find(|file| file.path == event)
+                .unwrap();
+            entry.sha256 = hash_bytes(edited.as_bytes());
+            entry.bytes = edited.len() as u64;
+            manifest.export_id = expected_export_id(&manifest);
+            write_manifest(copy, &manifest);
+        });
+        assert_eq!(found, ["CHECK_NON_CANONICAL_JOURNAL_FILE"], "{name}");
+    }
 
     // A journal cut short with a consistent manifest restores to an earlier
     // head than archive.json names.

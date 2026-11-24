@@ -74,7 +74,15 @@ impl Fixture {
         let mut event: Value =
             serde_json::from_slice(&fs::read(self.event(sequence)).unwrap()).unwrap();
         change(&mut event);
-        self.replace(sequence, &serde_json::to_vec(&event).unwrap());
+        // Written in this program's layout when the edit still decodes, so
+        // the chain, not the layout (ADR 0016), is what a load refuses.
+        let bytes = serde_json::from_value::<Event>(event.clone())
+            .map_or_else(
+                |_| serde_json::to_vec(&event),
+                |event| serde_json::to_vec(&event),
+            )
+            .unwrap();
+        self.replace(sequence, &bytes);
     }
 
     fn head(&self) -> Snapshot {

@@ -86,6 +86,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // (or --backup), the marker's format section and derived state.
     ("migrate", Effect::ReadUnlessFlag(&["apply"])),
     ("repair staging", Effect::Write),
+    // Restores the written bytes of reformatted journal files; --dry-run
+    // reports them and writes nothing.
+    ("repair journal", Effect::WriteUnlessFlag(&["dry_run"])),
     (
         "observe",
         Effect::WriteUnlessFlag(&["print_envelope", "dry_run"]),
