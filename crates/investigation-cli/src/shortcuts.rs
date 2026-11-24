@@ -633,7 +633,8 @@ fn run_operation(
             let quote = envelope
                 .pointer("/operations/0/payload/basis/text_quote/exact")
                 .and_then(Value::as_str);
-            crate::first_use::explain_quote_failure(failure, quote)
+            let failure = crate::first_use::explain_quote_failure(failure, quote);
+            crate::quote_hint::point_at_nearest_passage(store, &envelope, quote, failure)
         })?;
     Ok(receipt_output(store.workspace(), receipt))
 }

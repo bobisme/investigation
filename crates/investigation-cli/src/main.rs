@@ -31,6 +31,7 @@ mod logging;
 mod next;
 mod obsidian_setup;
 mod onboard;
+mod quote_hint;
 mod read_only;
 mod retrospective;
 mod review_packet;

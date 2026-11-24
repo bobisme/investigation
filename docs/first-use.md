@@ -169,6 +169,7 @@ Before run 2 (for run 1's causes):
 After run 2 (not measured):
 
 - TEXT values of the shortcuts (`observe TEXT`, `--quote`, `note TEXT`) may start with a hyphen.
+- A refused quote names the nearest source line and its exact text (bn-2mkk): the line where the longest start of the quote begins, when that start covers half the quote or runs to a line break, or else the closest line within a bounded edit distance. Its repair argv repeats the call with that line as `--quote` when the source holds the line once. A quote with no near line is called reworded. What is accepted does not change.
 - A missing attachment names, and repairs to, a file of the same name in an import root (`../source.txt` from the root).
 - The root help's `Next:` line is the `init` command, not `onboard`.
 
