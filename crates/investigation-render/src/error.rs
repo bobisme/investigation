@@ -40,6 +40,9 @@ pub enum RenderError {
     /// does not own, or the manifest records a projection somewhere else.
     /// Nothing in the vault changed.
     Projection { reason: String },
+    /// A review export planned a file naming a record its audience policy
+    /// withheld. Nothing is written; the planner must leave the record out.
+    Withheld { path: String },
 }
 
 impl RenderError {
@@ -72,6 +75,7 @@ impl RenderError {
                 Failure::new(ErrorCode::InvalidInput, self.to_string()).at("/paths")
             }
             Self::Projection { .. } => Failure::new(ErrorCode::InvalidInput, self.to_string()),
+            Self::Withheld { .. } => Failure::new(ErrorCode::GateFailed, self.to_string()),
         }
     }
 }
@@ -120,6 +124,11 @@ impl fmt::Display for RenderError {
             Self::Projection { reason } => write!(
                 formatter,
                 "Existing-vault projection refused: {reason}. Nothing in the vault changed."
+            ),
+            Self::Withheld { path } => write!(
+                formatter,
+                "The review export was refused: {path} would name a record the audience policy \
+                 withheld. Nothing was written."
             ),
         }
     }

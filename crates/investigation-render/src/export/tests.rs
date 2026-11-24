@@ -24,6 +24,7 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
         ("export/retained.rs", include_str!("retained.rs")),
         ("export/human_files.rs", include_str!("human_files.rs")),
         ("export/handoff.rs", include_str!("handoff.rs")),
+        ("export/review_vault.rs", include_str!("review_vault.rs")),
     ];
     let forbidden = [
         ["std", "::fs"].concat(),
@@ -69,6 +70,7 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
         ("export/verify.rs", include_str!("verify.rs")),
         ("export/human_files.rs", include_str!("human_files.rs")),
         ("human_files.rs", include_str!("../human_files.rs")),
+        ("export/review_vault.rs", include_str!("review_vault.rs")),
     ];
     let forbidden = [
         ["std", "::net"].concat(),
@@ -109,6 +111,7 @@ fn the_registry_lists_every_section_15_4_kind_once() {
             "case-report",
             "decision-record",
             "method-retrospective",
+            "review-vault",
             "workspace-archive"
         ]
     );

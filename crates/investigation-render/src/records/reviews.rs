@@ -48,7 +48,7 @@ pub(crate) fn freshness_word(notes: &NoteContext<'_>, record: &Record) -> &'stat
         return "superseded";
     }
     if record.header.id.kind() == Kind::Review {
-        let state = notes.case().state();
+        let state = notes.standing_state();
         match review_ops::effective_disposition_with(state, notes.freshness(), record) {
             EffectiveDisposition::Disputed => return "disputed",
             EffectiveDisposition::NeedsReview => return "stale",

@@ -540,6 +540,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
             "case-report",
             "decision-record",
             "method-retrospective",
+            "review-vault",
             "workspace-archive"
         ])
     );

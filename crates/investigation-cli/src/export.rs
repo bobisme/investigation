@@ -20,9 +20,9 @@ use investigation_render::{
     Audience,
     export::{
         self, ExportError, ExportPlan, ExportSnapshot, IdentifierMode, KINDS, KindSpec,
-        MANIFEST_FILE, Pin, Scope,
+        MANIFEST_FILE, Pin, Product, Scope,
         archive::{ARCHIVE_AUDIENCE, plan_archive},
-        plan_export_remap,
+        plan_export_remap, review_vault,
         source::{read_archive_source, read_retained},
         write_export,
     },
@@ -65,7 +65,7 @@ pub(crate) struct Args {
     /// Who the export is for; records classified above it are withheld.
     #[arg(long, value_enum, value_name = "AUDIENCE")]
     audience: AudienceArg,
-    /// New or empty directory to write; default exports/<kind>-<case>-<sequence>-<id> in the workspace.
+    /// New or empty directory to write (a new one for review-vault); default exports/<kind>-<case>-<sequence>-<id> in the workspace.
     #[arg(long, value_name = "DIR")]
     out: Option<PathBuf>,
     /// Fail with the exact exclusions instead of writing an incomplete export.
@@ -101,6 +101,12 @@ export only, and its manifest names the bundle (sequence 0, a bundle digest)
 instead of the case snapshot. The mapping back is listed only in this
 command's output. A remapped export cannot restore canonical state.
 
+--kind review-vault writes a browsable copy of the case for the audience:
+the vault's notes and plain Markdown table views planned from the records
+the audience may see, never copied from vault/, with Start Here.md, Omitted
+Data.md and reviewed derivative previews under Attachments/. It is written
+only into a directory that does not exist yet, and cannot resume the case.
+
 --kind workspace-archive copies the canonical state of every case instead:
 each journal to its verified head, the blobs they require, the workspace
 identity, investigation.toml, the vault's human folders and the v1 schemas.
@@ -131,6 +137,7 @@ Examples:
   investigation export --kind case-report --audience internal --case <ID> --format json
   investigation export --kind case-report --audience public --case <ID> --snapshot 12 --out ./report-12 --format json
   investigation export --kind case-report --audience internal --remap-ids --case <ID> --format json
+  investigation export --kind review-vault --audience internal --case <ID> --out ./review --format json
   investigation export --kind workspace-archive --audience restricted --out ./backup --format json
 
 Read DIR/export-manifest.json for completeness, versions and file digests, then
@@ -176,9 +183,16 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     };
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
-    // The captured bytes of the human files records rely on; the planner
-    // copies only those the audience may see (W11.14).
-    let retained = read_retained(store, &snapshot_digests(&snapshot))?;
+    // The captured bytes of the human files records rely on (W11.14) and,
+    // for a review copy, the reviewed derivatives it may attach: read exactly
+    // those bytes, checked against their digests, before planning. The
+    // planner copies only those the audience may see.
+    let mut digests = snapshot_digests(&snapshot);
+    if spec.product == Product::Review {
+        digests.extend(review_vault::attachment_digests(&snapshot, audience));
+    }
+    let retained =
+        read_retained(store, &digests).map_err(|failure| failure.with_argv(retry.clone()))?;
     let plan = plan_export_remap(spec, &snapshot, audience, &retained, args.remap_ids).map_err(
         |error| {
             let failure = error.to_failure();
@@ -301,7 +315,9 @@ fn write(
     write_export(plan, out).map_err(|error| {
         let failure = error.to_failure().at("--out");
         match error {
-            ExportError::DestinationNotEmpty | ExportError::DestinationUnsafe(_) => {
+            ExportError::DestinationNotEmpty
+            | ExportError::DestinationExists
+            | ExportError::DestinationUnsafe(_) => {
                 let mut failure = failure;
                 failure.error.actual = Some(json!({"destination": shown}));
                 failure

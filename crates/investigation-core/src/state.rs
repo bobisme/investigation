@@ -173,6 +173,24 @@ impl State {
         }
     }
 
+    /// A view holding only the records `keep` admits, each with its whole
+    /// history, at the same sequence. It is not a replay, so it carries no
+    /// verified snapshot: an export plans what an audience may see from it
+    /// and never writes it back.
+    pub fn retain(&self, keep: impl Fn(Id) -> bool) -> State {
+        State {
+            sequence: self.sequence,
+            history: self
+                .history
+                .iter()
+                .filter(|(id, _)| keep(**id))
+                .map(|(id, records)| (*id, records.clone()))
+                .collect(),
+            verified_snapshots: BTreeMap::new(),
+            derived: Derived::default(),
+        }
+    }
+
     pub fn history(&self, id: Id) -> impl Iterator<Item = &Record> {
         self.history.get(&id).into_iter().flatten().map(Arc::as_ref)
     }

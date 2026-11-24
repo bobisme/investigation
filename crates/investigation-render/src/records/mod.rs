@@ -281,7 +281,9 @@ pub(crate) fn effective_word(notes: &NoteContext<'_>, record: &Record) -> Option
     ) {
         return None;
     }
-    let state = notes.case().state();
+    // Judged on the full pinned case: a review export that leaves out an
+    // objection still shows its subject `disputed`.
+    let state = notes.standing_state();
     let index = notes.freshness();
     let disposition = review_ops::effective_disposition_with(state, index, record);
     Some(match (kind, disposition) {

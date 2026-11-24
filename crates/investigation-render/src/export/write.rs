@@ -2,6 +2,9 @@
 //!
 //! The destination is a directory that does not exist yet (it is created) or
 //! an existing empty one; anything else is refused before a byte is written.
+//! A review product ([`super::Product::Review`]) is written only into a
+//! directory this call creates: an existing one, even empty, is refused, so
+//! a review copy never lands beside or inside anything else.
 //! An existing destination that is a symbolic link is refused. Every
 //! directory below it is created with `mkdirat` and opened without following
 //! links, and every file is written to a private temporary name, synced and
@@ -22,7 +25,7 @@ use rustix::{
     io::Errno,
 };
 
-use super::{ExportError, ExportPlan, MANIFEST_FILE};
+use super::{ExportError, ExportPlan, MANIFEST_FILE, Product};
 use crate::{RenderError, publish::write_bytes_atomically};
 
 const DIRECTORY: OFlags = OFlags::DIRECTORY
@@ -99,7 +102,8 @@ pub fn write_export(plan: &ExportPlan, out: &Path) -> Result<Written, ExportErro
         error => destination("destination parent", error),
     })?;
     let label = name.to_string_lossy().into_owned();
-    let (root, created_directory) = open_destination(&parent_fd, name, &label)?;
+    let fresh_only = plan.kind().product == Product::Review;
+    let (root, created_directory) = open_destination(&parent_fd, name, &label, fresh_only)?;
     let mut created = Created::default();
     if created_directory {
         let parent_copy = parent_fd
@@ -137,9 +141,11 @@ fn open_destination(
     parent: &OwnedFd,
     name: &OsStr,
     label: &str,
+    fresh_only: bool,
 ) -> Result<(OwnedFd, bool), ExportError> {
     let created = match mkdirat(parent, name, Mode::from_raw_mode(0o700)) {
         Ok(()) => true,
+        Err(Errno::EXIST) if fresh_only => return Err(ExportError::DestinationExists),
         Err(Errno::EXIST) => false,
         Err(error) => return Err(destination(label, error)),
     };

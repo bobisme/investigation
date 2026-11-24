@@ -270,6 +270,11 @@ fn standing(
             .push_str("- No shown option has a recorded hard failure.\n");
     }
 
+    // Dominance among the shown options alone could make one read stronger
+    // than it is, so a review export that leaves anything out lists none.
+    if notes.withholds_any() {
+        return Ok(());
+    }
     f.out.push_str(
         "\nPareto status (advisory and weight-free; unknown, stale, subjective or missing cells \
          never prove dominance):\n\n",

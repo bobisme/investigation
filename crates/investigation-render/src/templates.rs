@@ -20,8 +20,8 @@ use crate::{
     start_here::EntryHealth,
 };
 
-fn heading(out: &mut String, title: &str) {
-    let _ = write!(out, "# {title}\n\n{BANNER}\n");
+fn heading(out: &mut String, title: &str, banner: &str) {
+    let _ = write!(out, "# {title}\n\n{banner}\n");
 }
 
 /// One record's note: the shared skeleton with every fixed section, and the
@@ -50,7 +50,7 @@ pub(crate) fn case_overview(
             crate::records::overview::sections(notes, &mut out, record)?;
             crate::records::pack_fields_section(notes, &mut out, record);
         }
-        None => heading(&mut out, &case_id.to_string()),
+        None => heading(&mut out, &case_id.to_string(), notes.banner()),
     }
     if !views.is_empty() {
         out.push_str(

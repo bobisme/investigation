@@ -28,7 +28,7 @@ use investigation_core::{
     PROGRAM_NAME,
     classification::Field,
     evaluate::{ComparisonOutcome, CriterionKind},
-    gap_rules::{GAP_RULE_VERSION, GapStatus, PrerequisiteState, enumerate_gaps},
+    gap_rules::{GAP_RULE_VERSION, GapStatus, PrerequisiteState},
     header::{Knowledge, SourceTime},
     identity::{Id, Kind},
     measurement_flags,
@@ -42,7 +42,7 @@ use serde_json::Value;
 use super::{Facts, citing, effective_word, lifecycle, naming, refs, scalar_word, token, wire};
 use crate::{
     PlanPath, RenderError, bases, layout, marker,
-    note::{BANNER, NoteContext, VAULT_SCHEMA, level_word, text_at, value_at, wire_word},
+    note::{NoteContext, VAULT_SCHEMA, level_word, text_at, value_at, wire_word},
     text::{inline_code, inline_text, table_code},
     yaml::Frontmatter,
 };
@@ -50,6 +50,10 @@ use crate::{
 /// Most rows in one table.
 pub(crate) const MAX_ROWS: usize = 50;
 /// Most per-question matrices in the comparison matrix view.
+/// A cell a review export with remapped identifiers leaves empty: journal
+/// sequences and record times would tell how the case journal grew.
+const NOT_SHOWN_CELL: &str = "not shown in this export";
+
 const MAX_MATRICES: usize = 12;
 /// Authored text in a cell, in characters.
 const CELL_CHARS: usize = 80;
@@ -248,7 +252,7 @@ impl<'n, 'a> Views<'n, 'a> {
             .text("inv_schema", VAULT_SCHEMA)
             .list("tags", &["investigation/view"]);
         let mut out = front.finish();
-        let _ = write!(out, "# {name}\n\n{BANNER}\n");
+        let _ = write!(out, "# {name}\n\n{}\n", self.notes.banner());
         let _ = writeln!(
             out,
             "Case: {}. Snapshot: sequence {}, head {}.",
@@ -1390,7 +1394,7 @@ impl<'n, 'a> Views<'n, 'a> {
             inline_code(GAP_RULE_VERSION),
             command("next")
         );
-        let Ok(inventory) = enumerate_gaps(case.state(), case.head(), case.case_id()) else {
+        let Ok(inventory) = self.notes.gap_inventory() else {
             text.push_str("The gap inventory is unavailable at this snapshot.\n");
             return Ok(Body { rows: 0, text });
         };
@@ -1563,8 +1567,13 @@ impl<'n, 'a> Views<'n, 'a> {
         for (previous, revision) in revisions.iter().skip(skip) {
             let id = revision.header.id;
             let current = state.current(id).unwrap_or(*revision);
+            let positions = self.notes.shows_positions();
             let mut cells = vec![
-                revision.header.acceptance_sequence.to_string(),
+                if positions {
+                    revision.header.acceptance_sequence.to_string()
+                } else {
+                    NOT_SHOWN_CELL.to_owned()
+                },
                 format!(
                     "{}, {} revision {}",
                     self.notes.table_link(id)?,
@@ -1579,7 +1588,11 @@ impl<'n, 'a> Views<'n, 'a> {
                 cells.extend([
                     self.change(*previous, revision, content)?,
                     claimed_time(revision),
-                    table_code(&revision.header.recorded_at.to_string()),
+                    if positions {
+                        table_code(&revision.header.recorded_at.to_string())
+                    } else {
+                        NOT_SHOWN_CELL.to_owned()
+                    },
                     table_code(&revision.header.recorded_by.to_string()),
                 ]);
             } else {
@@ -1604,7 +1617,9 @@ impl<'n, 'a> Views<'n, 'a> {
             |_| true,
             &["Record", "Kind", "Revision", "Recorded"],
             |record| {
-                let recorded = if self.notes.visible(record) {
+                let recorded = if !self.notes.shows_positions() {
+                    NOT_SHOWN_CELL.to_owned()
+                } else if self.notes.visible(record) {
                     table_code(&record.header.recorded_at.to_string())
                 } else {
                     "withheld".to_owned()

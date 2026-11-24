@@ -75,6 +75,15 @@ impl VerifiedSnapshot {
         }
     }
 
+    /// A snapshot holding one case view, such as one filtered for an export
+    /// audience ([`CaseSnapshot::filtered`]).
+    pub(crate) fn of_case(workspace_id: Id, case: CaseSnapshot) -> Self {
+        Self {
+            workspace_id,
+            cases: BTreeMap::from([(case.case_id, case)]),
+        }
+    }
+
     pub const fn workspace_id(&self) -> Id {
         self.workspace_id
     }
@@ -106,6 +115,19 @@ impl CaseSnapshot {
 
     pub const fn case_id(&self) -> Id {
         self.case_id
+    }
+
+    /// This case with only the records `keep` admits, named by `head`: the
+    /// planner input of a review export, which never sees anything else.
+    /// It keeps no journal chain, so it cannot be mistaken for a replay.
+    pub(crate) fn filtered(&self, keep: impl Fn(Id) -> bool, head: Snapshot) -> Self {
+        Self {
+            case_id: self.case_id,
+            head,
+            state: self.state.retain(keep),
+            sessions: self.sessions.clone(),
+            chain: Vec::new(),
+        }
     }
 
     /// The verified journal head this state was replayed to.

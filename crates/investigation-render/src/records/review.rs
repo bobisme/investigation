@@ -21,6 +21,9 @@ use crate::{
 /// a blindspot review, or for a validation review the latest acceptance among
 /// the exact revisions it read (subject and read set).
 fn basis_sequence(notes: &NoteContext<'_>, record: &Record) -> Option<u64> {
+    if !notes.shows_positions() {
+        return None;
+    }
     let body = &record.body;
     if let Some(sequence) = body["audited_snapshot"]["sequence"].as_u64() {
         return Some(sequence);
@@ -150,7 +153,9 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
 
 fn blindspot(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     let body = &f.record.body;
-    if let Some(snapshot) = body.get("audited_snapshot").filter(|s| !s.is_null()) {
+    if let Some(snapshot) = body.get("audited_snapshot").filter(|s| !s.is_null())
+        && f.notes.shows_positions()
+    {
         let _ = writeln!(
             f.out,
             "- Audited snapshot: sequence {}, head {}",

@@ -381,36 +381,7 @@ impl CaseRenderer for VaultRenderer {
             .map(|case| NoteContext::new(case, policy, &generation))
             .collect();
         for notes in &contexts {
-            let case = notes.case();
-            for record in case.state().records() {
-                let id = record.header.id;
-                if id.kind() == Kind::Case {
-                    continue;
-                }
-                let Some(path) = layout::record_note(case.case_id(), id)? else {
-                    continue;
-                };
-                let content = templates::record_note(notes, record)?;
-                plan.add(Phase::Records, path, content, Some(id))?;
-            }
-            let views = crate::records::views::plan(notes)?;
-            let map = crate::map::plan(notes, &views)?;
-            let content = templates::case_overview(notes, &views, map.as_ref())?;
-            for view in views {
-                plan.add(Phase::Views, view.path, view.content, None)?;
-                if let Some((path, content)) = view.base {
-                    plan.add(Phase::Views, path, content, None)?;
-                }
-            }
-            for (path, content) in map.into_iter().flat_map(|map| map.files) {
-                plan.add(Phase::Views, path, content, None)?;
-            }
-            plan.add(
-                Phase::Views,
-                layout::case_overview(case.case_id())?,
-                content,
-                Some(case.case_id()),
-            )?;
+            plan_case(notes, &mut plan)?;
         }
         let content = templates::start_here(
             snapshot,
@@ -471,6 +442,45 @@ impl CaseRenderer for VaultRenderer {
         // note's generation marker.
         marker::stamp_plan(builder.finish(), snapshot)
     }
+}
+
+/// Add one case's files to `plan`: a note per record of the case `notes`
+/// plans from, its static views (and Bases or map when the policy allows
+/// them) and its Overview. The working vault and the review export share it.
+pub(crate) fn plan_case(
+    notes: &NoteContext<'_>,
+    plan: &mut PlanBuilder,
+) -> Result<(), RenderError> {
+    let case = notes.case();
+    for record in case.state().records() {
+        let id = record.header.id;
+        if id.kind() == Kind::Case {
+            continue;
+        }
+        let Some(path) = layout::record_note(case.case_id(), id)? else {
+            continue;
+        };
+        let content = templates::record_note(notes, record)?;
+        plan.add(Phase::Records, path, content, Some(id))?;
+    }
+    let views = crate::records::views::plan(notes)?;
+    let map = crate::map::plan(notes, &views)?;
+    let content = templates::case_overview(notes, &views, map.as_ref())?;
+    for view in views {
+        plan.add(Phase::Views, view.path, view.content, None)?;
+        if let Some((path, content)) = view.base {
+            plan.add(Phase::Views, path, content, None)?;
+        }
+    }
+    for (path, content) in map.into_iter().flat_map(|map| map.files) {
+        plan.add(Phase::Views, path, content, None)?;
+    }
+    plan.add(
+        Phase::Views,
+        layout::case_overview(case.case_id())?,
+        content,
+        Some(case.case_id()),
+    )
 }
 
 /// Plan the working vault for `snapshot` under `policy`.

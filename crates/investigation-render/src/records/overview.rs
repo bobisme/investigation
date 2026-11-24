@@ -25,7 +25,6 @@ use investigation_core::{
     classification::Field,
     command::RevisionRef,
     freshness::{Freshness, dependency_edges},
-    gap_rules::enumerate_gaps,
     identity::{Id, Kind},
     next_rank::{NextResponse, rank_next},
     objection_policy::{self, OpenObjection},
@@ -144,7 +143,7 @@ pub(crate) fn primary_outcome(state: &State) -> Option<&Record> {
 /// The case's freshness word as `brief` reports it: `stale` when the case
 /// record or any record still in evidentiary use needs review.
 pub(crate) fn case_freshness(notes: &NoteContext<'_>, case: &Record) -> &'static str {
-    let state = notes.case().state();
+    let state = notes.standing_state();
     let index = notes.freshness();
     if index.assess(state, case).needs_review() || index.overview().needs_review > 0 {
         "stale"
@@ -454,7 +453,8 @@ pub(crate) fn sections(
         out.push_str("\n## Opening summary\n\nWithheld.\n");
         return resume(notes, out);
     }
-    let next = enumerate_gaps(state, notes.case().head(), notes.case().case_id())
+    let next = notes
+        .gap_inventory()
         .ok()
         .map(|inventory| rank_next(state, &inventory, 3));
     let overview = Overview {
@@ -1330,10 +1330,14 @@ impl<'a> Overview<'_, 'a> {
         let runs = self.of_kind(Kind::Run);
         self.list(out, &inquiries, "No inquiry is recorded yet.", |inquiry| {
             let id = inquiry.header.id.to_string();
-            let mut text = format!(
-                ", accepted at sequence {}",
-                inquiry.header.acceptance_sequence
-            );
+            let mut text = if self.notes.shows_positions() {
+                format!(
+                    ", accepted at sequence {}",
+                    inquiry.header.acceptance_sequence
+                )
+            } else {
+                String::new()
+            };
             let mine: Vec<&&Record> = runs
                 .iter()
                 .filter(|run| text_at(&run.body, "intent.plan_ref.id") == Some(id.as_str()))

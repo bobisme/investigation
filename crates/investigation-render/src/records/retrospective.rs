@@ -18,7 +18,9 @@ use crate::{
 };
 
 pub(super) fn properties(notes: &NoteContext<'_>, record: &Record, front: &mut Frontmatter) {
-    if let Some(sequence) = record.body["snapshot"]["sequence"].as_u64() {
+    if let Some(sequence) = record.body["snapshot"]["sequence"].as_u64()
+        && notes.shows_positions()
+    {
         front.integer("inv_basis_sequence", sequence);
     }
     front.text(
@@ -60,12 +62,14 @@ fn steps(f: &mut Facts<'_, '_, '_>, path: &str, none: &str) -> Result<(), Render
 pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
     super::review::stale_callout(f, "retrospective")?;
     let body = &f.record.body;
-    let _ = writeln!(
-        f.out,
-        "- Describes the case at sequence {}, head {}",
-        body["snapshot"]["sequence"].as_u64().unwrap_or_default(),
-        inline_code(body["snapshot"]["head_hash"].as_str().unwrap_or("unknown"))
-    );
+    if f.notes.shows_positions() {
+        let _ = writeln!(
+            f.out,
+            "- Describes the case at sequence {}, head {}",
+            body["snapshot"]["sequence"].as_u64().unwrap_or_default(),
+            inline_code(body["snapshot"]["head_hash"].as_str().unwrap_or("unknown"))
+        );
+    }
     f.reference("Case", "case_ref")?;
     f.word("Status", "status");
     f.reference_present("Superseded by", "successor_ref")?;

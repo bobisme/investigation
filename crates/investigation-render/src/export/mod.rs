@@ -102,6 +102,7 @@ mod inclusion;
 mod manifest;
 mod method_retrospective;
 mod retained;
+pub mod review_vault;
 mod snapshot;
 pub mod source;
 pub mod verify;
@@ -291,7 +292,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Review,
         purpose: "Share an approved, browsable casebook.",
         contains: "Curated notes, views, explicitly allowed attachments and an omitted-data manifest.",
-        renderer: None,
+        renderer: Some(&review_vault::ReviewVault),
     },
     KindSpec {
         name: "workspace-archive",
@@ -449,6 +450,9 @@ pub enum ExportError {
     Render(RenderError),
     /// The destination exists and is not an empty directory.
     DestinationNotEmpty,
+    /// The destination exists, and this kind is written only into a
+    /// directory the export creates (a review copy).
+    DestinationExists,
     /// The destination is a link, not a directory, or not a single new name.
     DestinationUnsafe(&'static str),
     /// A destination file operation failed.
@@ -484,6 +488,7 @@ impl ExportError {
             Self::KindNotAvailable { .. }
             | Self::DestinationUnsafe(_)
             | Self::DestinationNotEmpty
+            | Self::DestinationExists
             | Self::AllCases { .. }
             | Self::ArchiveAudience { .. }
             | Self::RemapResumable { .. } => ErrorCode::InvalidInput,
@@ -511,6 +516,11 @@ impl fmt::Display for ExportError {
             Self::DestinationNotEmpty => formatter.write_str(
                 "The destination already exists and is not empty. An export never \
                  overwrites or merges; name a new directory with --out.",
+            ),
+            Self::DestinationExists => formatter.write_str(
+                "The destination already exists. A review copy is written only into a new \
+                 directory, so it never lands beside or inside other files; name a directory \
+                 that does not exist with --out.",
             ),
             Self::DestinationUnsafe(reason) => {
                 write!(formatter, "The destination is refused: {reason}.")
