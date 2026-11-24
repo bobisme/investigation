@@ -48,14 +48,17 @@ pub struct CaseSnapshot {
 impl VerifiedSnapshot {
     /// Verify the journal and keep the replayed state. The store's commit lock
     /// is held only for the duration of this call.
-    pub fn read<F: DurableFs>(store: &mut Store<F>) -> Result<Self, RenderError> {
+    pub fn read<F: DurableFs + Sync>(store: &mut Store<F>) -> Result<Self, RenderError> {
         let workspace_id = store.workspace().id();
-        let cases = store
-            .cases()
-            .map_err(RenderError::Snapshot)?
-            .into_iter()
-            .map(|(case_id, replay)| (case_id, CaseSnapshot::from_replay(case_id, replay)))
-            .collect();
+        // Each case keeps its state, not its events: a case's events are
+        // dropped as soon as it is verified, so the read never holds every
+        // case's events at once.
+        let mut cases = BTreeMap::new();
+        store
+            .visit_cases(|case_id, replay| {
+                cases.insert(case_id, CaseSnapshot::from_replay(case_id, replay));
+            })
+            .map_err(RenderError::Snapshot)?;
         Ok(Self {
             workspace_id,
             cases,

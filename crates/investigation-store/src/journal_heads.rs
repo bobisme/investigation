@@ -91,11 +91,22 @@ fn parse(bytes: &[u8], verifier: &str, workspace_id: Id, case_id: Id) -> Option<
     })
 }
 
+/// The head of `case_id` this program verified earlier, if one is kept.
+/// It reads the filesystem alone, so a replay can run apart from its store.
+pub(super) fn known_head_in(
+    fs: &impl DurableFs,
+    workspace_id: Id,
+    case_id: Id,
+) -> Option<KnownHead> {
+    let bytes = fs.read_cache(&entry_path(case_id))?;
+    parse(&bytes, verifier()?, workspace_id, case_id)
+}
+
 impl<F: DurableFs> Store<F> {
-    /// The head of `case_id` this program verified earlier, if one is kept.
+    /// [`known_head_in`] for this store's workspace.
+    #[cfg(test)]
     pub(super) fn known_head(&self, case_id: Id) -> Option<KnownHead> {
-        let bytes = self.fs.read_cache(&entry_path(case_id))?;
-        parse(&bytes, verifier()?, self.workspace.id(), case_id)
+        known_head_in(&self.fs, self.workspace.id(), case_id)
     }
 
     /// Keep the head of `case_id` that a load just verified.

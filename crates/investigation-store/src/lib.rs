@@ -14,6 +14,7 @@ pub mod limits;
 pub mod migration;
 pub mod opaque;
 pub mod owned_file;
+pub mod parallel;
 pub mod pinned;
 pub mod projection;
 pub mod selectors;

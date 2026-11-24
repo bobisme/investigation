@@ -812,3 +812,159 @@ fn a_render_killed_mid_batch_leaves_only_temporaries_the_next_render_sweeps() {
     );
     assert_complete(&mut store, &report);
 }
+
+/// What a power loss may leave of a killed batched publication (ADR 0012),
+/// as this test models it.
+#[derive(Clone, Copy, Debug)]
+enum PowerLoss {
+    /// Every change the killed render made survived.
+    Kept,
+    /// Every change after the batch barrier was lost: the renames into
+    /// place and the removal of the retired file. Each temporary the
+    /// barrier made durable is still there, whole.
+    RenamesLost,
+    /// Only some of those changes were lost.
+    SomeRenamesLost,
+    /// The power went before the barrier: no rename or removal survived,
+    /// and every temporary holds a torn prefix of its bytes.
+    TornTemporaries,
+}
+
+/// A power loss after each publish step, in each way [`PowerLoss`] models,
+/// leaves a state from which the next render completes: no path holds
+/// bytes that are neither its earlier nor its planned ones, the manifest
+/// claims nothing a lost change undid, no hand edit is reported, the
+/// leftover temporaries are swept and the human-owned folders are
+/// untouched.
+///
+/// This is a model, not a filesystem fault injector: the lost changes are
+/// undone on disk by the test after a kill, as ADR 0012's ordering allows
+/// (a barrier makes everything before it durable; anything after it may be
+/// lost, and data written before it was not yet durable may be torn). It
+/// qualifies recovery from those states. It does not show that `syncfs`
+/// gives that ordering on a given filesystem and device; that needs a
+/// fault-injecting filesystem such as LazyFS, or a device mapper target.
+#[test]
+fn a_power_loss_at_each_publish_step_leaves_a_state_the_next_render_completes() {
+    for loss in [
+        PowerLoss::Kept,
+        PowerLoss::RenamesLost,
+        PowerLoss::SomeRenamesLost,
+        PowerLoss::TornTemporaries,
+    ] {
+        let mut at = 0;
+        loop {
+            let directory = tempfile::tempdir().unwrap();
+            let (mut store, case_id) = workspace(directory.path());
+            human::seed(&vault(&store));
+            let seen = human::fingerprint(&vault(&store));
+            render(&mut store, true).unwrap();
+            let earlier = owned_files(&vault(&store));
+            question(&mut store, "q3", case_id);
+            let plan = current_plan(&mut store);
+            // Temporaries carry a tag from the generation they were written for.
+            let tag = plan.generation().id()["gen_".len()..][..12].to_owned();
+            if !render_killed_after(&mut store, at) {
+                assert!(at >= 6, "three notes, overview, Start Here, one retired");
+                break;
+            }
+            let root = vault(&store);
+            let killed = owned_files(&root);
+            // The changes after the barrier: paths whose bytes differ from
+            // the earlier render's, and paths it held that are gone.
+            let mut changed: Vec<&PathBuf> = killed
+                .iter()
+                .filter(|(path, bytes)| earlier.get(*path) != Some(*bytes))
+                .map(|(path, _)| path)
+                .chain(earlier.keys().filter(|path| !killed.contains_key(*path)))
+                .collect();
+            changed.sort();
+            changed.dedup();
+            let undo: Vec<&PathBuf> = match loss {
+                PowerLoss::Kept => Vec::new(),
+                PowerLoss::RenamesLost | PowerLoss::TornTemporaries => changed.clone(),
+                PowerLoss::SomeRenamesLost => changed.iter().copied().step_by(2).collect(),
+            };
+            for path in &undo {
+                let target = root.join(path);
+                // A lost rename leaves the planned bytes in a temporary.
+                if let Some(entry) = plan.entry(path.to_str().unwrap()) {
+                    let name = target.file_name().unwrap().to_str().unwrap();
+                    let temporary = target.with_file_name(format!(".{name}.{tag}-0.inv-tmp"));
+                    fs::write(&temporary, entry.content()).unwrap();
+                }
+                match earlier.get(*path) {
+                    Some(bytes) => fs::write(&target, bytes).unwrap(),
+                    None => fs::remove_file(&target).unwrap(),
+                }
+            }
+            // A removal moved the retired file aside first; when the removal
+            // is lost, so is the move.
+            for path in &undo {
+                if killed.contains_key(*path) {
+                    continue;
+                }
+                let target = root.join(path);
+                let name = target.file_name().unwrap().to_str().unwrap().to_owned();
+                for entry in fs::read_dir(target.parent().unwrap()).unwrap() {
+                    let aside = entry.unwrap().path();
+                    let file = aside.file_name().unwrap().to_string_lossy().into_owned();
+                    if file.starts_with(&format!(".{name}.")) && file.ends_with(".inv-del") {
+                        fs::remove_file(aside).unwrap();
+                    }
+                }
+            }
+            if matches!(loss, PowerLoss::TornTemporaries) {
+                for path in files(&root) {
+                    if !in_human_area(&path) && path.to_string_lossy().ends_with(".inv-tmp") {
+                        let bytes = fs::read(root.join(&path)).unwrap();
+                        fs::write(root.join(&path), &bytes[..bytes.len() / 2]).unwrap();
+                    }
+                }
+            }
+            for (path, bytes) in owned_files(&root) {
+                let planned = plan
+                    .entry(path.to_str().unwrap())
+                    .map(|entry| entry.content());
+                assert!(
+                    Some(bytes.as_slice()) == planned || earlier.get(&path) == Some(&bytes),
+                    "{loss:?} after {at}: {} holds neither its earlier nor its planned bytes",
+                    path.display()
+                );
+            }
+
+            let report = render(&mut store, false).unwrap();
+            assert_complete(&mut store, &report);
+            assert!(
+                report.drift.is_empty(),
+                "{loss:?} after {at}: {:?}",
+                report.drift
+            );
+            assert!(report.adopted.is_empty(), "{loss:?} after {at}");
+            assert_eq!(
+                human::fingerprint(&vault(&store)),
+                seen,
+                "{loss:?} after {at}"
+            );
+            at += 1;
+        }
+    }
+}
+
+/// The generated files under `root` (not in the human-owned folders, not
+/// hidden leftovers), by vault-relative path.
+fn owned_files(root: &Path) -> std::collections::BTreeMap<PathBuf, Vec<u8>> {
+    files(root)
+        .into_iter()
+        .filter(|path| !in_human_area(path))
+        .filter(|path| {
+            !path
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with('.'))
+        })
+        .map(|path| {
+            let bytes = fs::read(root.join(&path)).unwrap();
+            (path, bytes)
+        })
+        .collect()
+}

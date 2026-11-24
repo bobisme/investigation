@@ -549,6 +549,52 @@ mod tests {
         String::from_utf8(plan.entry("Start Here.md").unwrap().content().to_vec()).unwrap()
     }
 
+    /// Cases are planned on several threads; the plan is byte for byte the
+    /// one a sequential pass in case order gives, links under a managed
+    /// prefix included.
+    #[test]
+    fn cases_planned_in_parallel_give_the_sequential_plan() {
+        use crate::{
+            layout,
+            note::NoteContext,
+            plan::{Generation, Phase, PlanBuilder, RENDERER_VERSION, plan_case},
+        };
+        let snapshot = snapshot(
+            (1..=MAX_CASES as u64 + 12)
+                .map(|n| case(n, "internal", n % 4))
+                .collect(),
+        );
+        for prefix in [None, Some("Research/Inv".to_owned())] {
+            let policy = ViewPolicy {
+                vault_prefix: prefix.clone(),
+                ..ViewPolicy::default()
+            };
+            let parallel = VaultRenderer.render(&snapshot, &policy).unwrap();
+            let _links = layout::LinkRoot::enter(prefix.as_deref());
+            let generation = Generation::new(RENDERER_VERSION, &snapshot, &policy);
+            let mut plan = PlanBuilder::new(generation.clone());
+            let contexts: Vec<NoteContext<'_>> = snapshot
+                .cases()
+                .map(|case| NoteContext::new(case, &policy, &generation))
+                .collect();
+            for notes in &contexts {
+                plan_case(notes, &mut plan).unwrap();
+            }
+            let content = note(
+                &snapshot,
+                &contexts,
+                &policy,
+                &generation,
+                &EntryHealth::default(),
+            )
+            .unwrap();
+            plan.add(Phase::Entry, layout::start_here().unwrap(), content, None)
+                .unwrap();
+            let sequential = crate::marker::stamp_plan(plan.finish(), &snapshot).unwrap();
+            assert_eq!(parallel, sequential, "prefix {prefix:?}");
+        }
+    }
+
     #[test]
     fn many_cases_are_capped_with_a_count_and_lists_are_bounded() {
         let cases = (1..=MAX_CASES as u64 + 3)

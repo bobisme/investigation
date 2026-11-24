@@ -48,6 +48,11 @@ const ALLOWED: &[(&str, &str, &str)] = &[
         "Starts a thread in this process that frees a verified replay; it starts no process.",
     ),
     (
+        "investigation-store/src/parallel.rs",
+        "scope.spawn(|| {",
+        "Starts scoped threads in this process for independent replays and case plans; it starts no process.",
+    ),
+    (
         "investigation-store/src/workspace.rs",
         "std::process::id()",
         "Reads this process's own ID to name a private temporary file.",

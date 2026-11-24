@@ -51,6 +51,8 @@ A sync tool can leave a conflict copy beside a generated note. A render never re
 
 A render is not atomic to a reader of the folder. Let a render finish, and `investigation vault status` report state `complete`, before you rely on a copy.
 
+While a render writes, it stages up to 2,048 notes at a time as hidden files beside their targets, named `.NAME.TAG-N.inv-tmp`, and moves a retired note aside as `.NAME.TAG-N.inv-del` before removing it. Each is renamed into place or removed within the same render; a render that was killed or lost power leaves some behind, and the next render removes them. A sync client or file watcher can see them come and go. If your client takes exclusion patterns, exclude `*.inv-tmp` and `*.inv-del`. Never edit or rename them.
+
 ## Before you export or share
 
 Choose what is shared before you render or export sensitive evidence. Removing a file from a later export or render does not retract copies already made: a sync client, a backup, a phone and a recipient each keep what they had. After `classification.raise`, a render replaces the note with a restricted stub, and the earlier copies stay as they were. `investigation exposure --text-file FILE` finds where text lives; `docs/agent/exposure.md` has the steps and the limits. No command here uploads, publishes or pushes anything, and initialization never starts a sync.

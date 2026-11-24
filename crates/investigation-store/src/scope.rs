@@ -26,6 +26,7 @@
 //! so its preparation searches exactly the cases that can hold the claim.
 
 use super::*;
+use crate::journal::KnownHead;
 
 /// What a commit's preparation reads beyond its target case.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -83,28 +84,37 @@ impl<F: DurableFs> Store<F> {
         case_id: Id,
         reuse_heads: bool,
     ) -> Result<bool, Failure> {
-        let directory = case_directory(case_id);
-        if case_id.kind() != Kind::Case {
+        let Some((replay, known)) = self.replay_published(case_id, reuse_heads)? else {
             return Ok(false);
-        }
-        match self.fs.list(&directory) {
-            Ok(_) => {}
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
-            Err(error) => return Err(io_failure(error)),
-        }
-        let known = reuse_heads.then(|| self.known_head(case_id)).flatten();
-        let replay = replay_case_from(
-            &self.fs,
-            &directory,
-            self.workspace.writers(case_id),
-            case_id,
-            known.as_ref(),
-        )?;
-        if replay.events.is_empty() {
-            return Err(integrity("A published case has no first transaction."));
-        }
+        };
+        Self::admit(into, case_id, replay, known.as_ref(), reuse_heads)?;
+        Ok(true)
+    }
+
+    /// The first half of [`Store::load_case_into`]: verify one published
+    /// case on its own, with the head kept for it when `reuse_heads`.
+    /// `Ok(None)` when it is not published. It reads only, so cases can be
+    /// replayed in parallel and then admitted in order.
+    pub(super) fn replay_published(
+        &self,
+        case_id: Id,
+        reuse_heads: bool,
+    ) -> Result<Option<(CaseReplay, Option<KnownHead>)>, Failure> {
+        replay_published_in(&self.fs, &self.workspace, case_id, reuse_heads)
+    }
+
+    /// The second half of [`Store::load_case_into`]: the workspace-wide
+    /// checks of one verified case against the cases `into` already holds,
+    /// then the case is added to `into`.
+    pub(super) fn admit(
+        into: &mut WorkspaceReplay,
+        case_id: Id,
+        replay: CaseReplay,
+        known: Option<&KnownHead>,
+        reuse_heads: bool,
+    ) -> Result<(), Failure> {
         if reuse_heads
-            && known.as_ref().is_none_or(|known| {
+            && known.is_none_or(|known| {
                 known.sequence != replay.snapshot.sequence
                     || known.head_hash != replay.snapshot.head_hash
             })
@@ -130,7 +140,7 @@ impl<F: DurableFs> Store<F> {
             }
         }
         into.cases.insert(case_id, replay);
-        Ok(true)
+        Ok(())
     }
 
     /// Verify `case_id` alone, reusing its kept head. `None` when it is not
@@ -323,3 +333,36 @@ impl<F: DurableFs> Store<F> {
 #[cfg(test)]
 #[path = "scope_tests.rs"]
 mod tests;
+
+/// [`Store::replay_published`] from the filesystem and workspace alone, so
+/// cases can be replayed on several threads without sharing the store.
+pub(super) fn replay_published_in<F: DurableFs>(
+    fs: &F,
+    workspace: &Workspace,
+    case_id: Id,
+    reuse_heads: bool,
+) -> Result<Option<(CaseReplay, Option<KnownHead>)>, Failure> {
+    let directory = case_directory(case_id);
+    if case_id.kind() != Kind::Case {
+        return Ok(None);
+    }
+    match fs.list(&directory) {
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(io_failure(error)),
+    }
+    let known = reuse_heads
+        .then(|| super::journal_heads::known_head_in(fs, workspace.id(), case_id))
+        .flatten();
+    let replay = replay_case_from(
+        fs,
+        &directory,
+        workspace.writers(case_id),
+        case_id,
+        known.as_ref(),
+    )?;
+    if replay.events.is_empty() {
+        return Err(integrity("A published case has no first transaction."));
+    }
+    Ok(Some((replay, known)))
+}

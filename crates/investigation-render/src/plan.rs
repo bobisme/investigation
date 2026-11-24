@@ -18,7 +18,7 @@ use investigation_core::{
 use investigation_store::journal::hash_bytes;
 
 use crate::{
-    RenderError, VerifiedSnapshot, ViewPolicy, layout, marker, note::NoteContext,
+    CaseSnapshot, RenderError, VerifiedSnapshot, ViewPolicy, layout, marker, note::NoteContext,
     start_here::EntryHealth, templates,
 };
 
@@ -343,6 +343,18 @@ impl PlanBuilder {
         Ok(())
     }
 
+    /// Add every entry `other` collected, as [`PlanBuilder::add`] would, in
+    /// its canonical order, keeping the digests `other` computed.
+    pub(crate) fn absorb(&mut self, other: Self) -> Result<(), RenderError> {
+        for (key, entry) in other.entries {
+            if !self.folded.insert(entry.path.as_str().to_lowercase()) {
+                return Err(RenderError::DuplicatePath(entry.path.0));
+            }
+            self.entries.insert(key, entry);
+        }
+        Ok(())
+    }
+
     pub fn finish(self) -> RenderPlan {
         RenderPlan {
             generation: self.generation,
@@ -392,13 +404,27 @@ impl CaseRenderer for VaultRenderer {
         let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
         let generation = Generation::new(RENDERER_VERSION, snapshot, policy);
         let mut plan = PlanBuilder::new(generation.clone());
-        let contexts: Vec<NoteContext<'_>> = snapshot
-            .cases()
+        // Each case is planned on its own, so cases are planned in parallel
+        // and their files added in case order: the plan is the one a
+        // sequential pass gives, and so is the first error. A case's context
+        // is dropped once its files are planned.
+        let cases: Vec<&CaseSnapshot> = snapshot.cases().collect();
+        let threads = investigation_store::parallel::threads(PLANNING_THREADS);
+        let planned = investigation_store::parallel::in_parallel(&cases, threads, |case| {
+            let _links = layout::LinkRoot::enter(policy.vault_prefix.as_deref());
+            let notes = NoteContext::new(case, policy, &generation);
+            let mut files = PlanBuilder::new(generation.clone());
+            plan_case(&notes, &mut files).map(|()| files)
+        });
+        for files in planned {
+            plan.absorb(files?)?;
+        }
+        // The entry note describes the first cases only.
+        let contexts: Vec<NoteContext<'_>> = cases
+            .iter()
+            .take(crate::start_here::MAX_CASES)
             .map(|case| NoteContext::new(case, policy, &generation))
             .collect();
-        for notes in &contexts {
-            plan_case(notes, &mut plan)?;
-        }
         let content = templates::start_here(
             snapshot,
             &contexts,
@@ -459,6 +485,9 @@ impl CaseRenderer for VaultRenderer {
         marker::stamp_plan(builder.finish(), snapshot)
     }
 }
+
+/// At most this many threads plan cases at once.
+const PLANNING_THREADS: usize = 8;
 
 /// Add one case's files to `plan`: a note per record of the case `notes`
 /// plans from, its static views (and Bases or map when the policy allows

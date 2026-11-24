@@ -50,6 +50,10 @@ The publisher now makes vault files durable in batches of 2,048, with one filesy
 
 At 650 cases (49,401 notes), on two copies of one generated workspace with alternating order: full render 1,369 s, 1.20 GiB before and 9.4 s, 0.90 GiB after; the first render after it 24.2 s before (the 23.5 s above) and 9.7 s after; later unchanged renders 6.3 to 8.3 s, 1.28 GiB before and 5.2 to 5.3 s, 0.95 GiB after. The vaults are byte-identical. What remains of an unchanged render at this size is mostly planning (3.6 s) and reading the snapshot (0.7 s). After PERF.06 (case-scoped verification) the unchanged render measured 5.6 to 6.2 s before and 5.1 to 5.4 s after at 650 cases, and 1.16 to 1.24 s before and 0.98 to 1.05 s after at 130 cases.
 
+## After PERF.10 (bn-2c2m)
+
+Cases are planned in parallel, and the snapshot read keeps each case's state but drops its events as soon as it is verified ([ADR 0012](adr/0012-batched-vault-durability.md#perf10-planning-in-parallel-a-streamed-snapshot-read-and-what-power-loss-was-tested-against-bn-2c2m-2026-11-24)). At 650 cases (49,406 notes), A/B alternating on one rendered copy at load average 52 to 66: the unchanged render went from 5.15 to 5.75 s and 0.88 to 0.96 GiB to 1.88 to 2.13 s and 0.72 to 0.74 GiB (each side had one outlier under load: 11.4 s before, 5.25 s after), and the full render from 7.0 s and 0.92 GiB to 3.5 s and 0.68 GiB, with byte-identical vaults. `vault_render_unchanged` now carries a budget in the load report: 0.06 ms per planned note (at least 250 ms) and 16 KiB of peak memory per planned note plus 32 MiB.
+
 ## Not measured
 
 The acceptance for this bone also names Obsidian's own behaviour: cold open, a Base query for one case, Canvas open and search. The harness runs headless and does not drive Obsidian. Those figures are not in this page and must not be inferred from it. When someone measures them, record the Obsidian release, the machine, the vault (use `--fixtures` to keep the generated one), and counts, repetitions and order, as the harness does.
@@ -57,7 +61,7 @@ The acceptance for this bone also names Obsidian's own behaviour: cold open, a B
 ## Guidance
 
 - Tested scale: up to 49,401 generated notes in one vault and 650 cases. Below about 5,000 notes every measured command finished within a few seconds on this machine, apart from the first render. Treat 10,000 notes as the point where a full render takes minutes and commits and reads take about a second.
-- A full render takes about 0.2 s per 1,000 notes since PERF.07 (it was about half a minute). It happens once, and again only when the renderer version changes or the vault is deleted. After that, an unchanged render reads only the notes whose stat fingerprint changed, but it still plans the whole vault: planning is most of its time.
+- A full render takes about 0.2 s per 1,000 notes since PERF.07 (it was about half a minute). It happens once, and again only when the renderer version changes or the vault is deleted. After that, an unchanged render reads only the notes whose stat fingerprint changed, but it still plans the whole vault, on up to 8 threads; at 50,000 notes it takes about 2 s.
 - Per-case Bases already filter by exact case ID, so a Base reads only its own case's properties when a case view is opened. Obsidian may still index every note in the vault.
 - Mitigations that change no canonical state: keep one vault per active case or per review (`vault render` renders the whole workspace today; use a separate workspace archive or a review export for a closed case), archive closed cases out of the working vault by moving them to a different workspace, and keep the viewer features off for a very large vault, since they add about 16% more files. Deleting or moving generated notes is drift: it is detected and reported, never written back to the journal.
 - Do not edit generated notes while measuring; edits are drift and are kept as found.

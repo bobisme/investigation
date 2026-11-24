@@ -30,6 +30,22 @@ pub const VIEWER_RELEASE: &str = "1.15.1";
 /// Plan §10.5 targets, applied here as observations at a larger scale.
 const READ_TARGET_MS: f64 = 250.0;
 const MUTATION_TARGET_MS: f64 = 150.0;
+/// PERF.10 budget for a render with nothing changed (ADR 0012): wall time
+/// and peak memory, per planned note, with a floor for small vaults. At
+/// 49,406 notes that is about 2.96 s and 803 MiB; before PERF.10 it took
+/// about 5.1 s and 0.95 GiB.
+const UNCHANGED_RENDER_MS_PER_NOTE: f64 = 0.06;
+const UNCHANGED_RENDER_FLOOR_MS: f64 = 250.0;
+const UNCHANGED_RENDER_KIB_PER_NOTE: u64 = 16;
+const UNCHANGED_RENDER_FLOOR_MIB: u64 = 32;
+
+/// The PERF.10 budget of an unchanged render of `notes` planned notes:
+/// milliseconds and MiB of peak resident memory.
+fn unchanged_render_budget(notes: u64) -> (f64, u64) {
+    let ms = (notes as f64 * UNCHANGED_RENDER_MS_PER_NOTE).max(UNCHANGED_RENDER_FLOOR_MS);
+    let mib = notes * UNCHANGED_RENDER_KIB_PER_NOTE / 1024 + UNCHANGED_RENDER_FLOOR_MIB;
+    (ms, mib)
+}
 /// Generated notes edited and deleted to create drift. Edited paths are the
 /// ones `vault reconcile --dry-run` is asked about (its limit is 100).
 const DRIFT_EDITED: usize = 90;
@@ -334,12 +350,14 @@ fn measure_variant(
     let size = vault_size(&root);
     load(full, json!({"render_counts": counts, "vault": size}));
 
-    // 2. Re-render with nothing changed.
+    // 2. Re-render with nothing changed, against the PERF.10 budget.
+    let notes = counts["planned"].as_u64().unwrap_or(0);
+    let (budget_ms, budget_mib) = unchanged_render_budget(notes);
     let mut unchanged = Series::new(
         "vault_render_unchanged",
         &["vault", "render", "--format", "json"],
-        None,
-        "same snapshot, nothing edited",
+        Some(budget_ms),
+        "same snapshot, nothing edited; target and rss_budget_mib are the PERF.10 budget for this many notes",
     );
     for _ in 0..reps {
         unchanged.push(&run(
@@ -349,7 +367,19 @@ fn measure_variant(
             None,
         )?);
     }
-    load(unchanged, Value::Null);
+    let peak = unchanged.rss.iter().max().map(|kib| kib / 1024);
+    load(
+        unchanged,
+        json!({
+            "planned_notes": notes,
+            "rss_budget_mib": budget_mib,
+            "rss_verdict": match peak {
+                Some(peak) if peak <= budget_mib => "met",
+                Some(_) => "missed",
+                None => "not_measured",
+            },
+        }),
+    );
 
     // 3. Status of a current vault.
     let mut status = Series::new(
@@ -677,7 +707,7 @@ pub fn run_load(config: &LoadConfig) -> Result<Value, String> {
             "order": "baseline variant first, then viewer_1_15_1, each on its own copy of one generated workspace. Within a variant: full render, unchanged renders, status, then repetitions of (record, status, render), warm reads, drift (edit then delete generated notes, status, conflicts, reconcile dry-run, render), index rebuild",
             "first_render": "n=1 by nature: a second full render needs a fresh vault",
             "warmth": "the workspace was just written, so the page cache is warm; cold-cache and Obsidian-side measurements are not made here",
-            "targets": "notes/plan.md §10.5 gives warm read and mutation targets for 10,000 objects; the plan has no render or status target, so those carry none. A verdict at this scale is an observation, not a failure of the plan",
+            "targets": "notes/plan.md §10.5 gives warm read and mutation targets for 10,000 objects; the plan has no render or status target. vault_render_unchanged carries the PERF.10 budget instead: 0.06 ms per planned note (at least 250 ms) and 16 KiB of peak RSS per planned note plus 32 MiB. Other render and status measurements carry none. A verdict at this scale is an observation, not a failure of the plan",
             "noise": "The machine may be shared; load averages are recorded at start and end. Compare runs only at similar load.",
         },
         "variants": variants,
@@ -686,4 +716,17 @@ pub fn run_load(config: &LoadConfig) -> Result<Value, String> {
     // The generated workspaces stay in `directory` for inspection; the caller
     // removes them.
     Ok(report)
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    #[test]
+    fn the_unchanged_render_budget_scales_with_planned_notes_above_a_floor() {
+        assert_eq!(unchanged_render_budget(0), (250.0, 32));
+        let (ms, mib) = unchanged_render_budget(49_406);
+        assert!((ms - 2_964.36).abs() < 1e-6, "{ms}");
+        assert_eq!(mib, 803);
+    }
 }

@@ -68,6 +68,27 @@ The 49,401-file vaults are byte-identical. The W12.08 figure of 23 s for an unch
 
 Measured again after PERF.06 (case-scoped verification, adf6ed3) landed, unchanged renders only, alternating on the same rendered copies (n=4 each, load average 31 to 48): at 650 cases 5.6 to 6.2 s and 1.24 GiB before, 5.1 to 5.4 s and 0.95 GiB after; at 130 cases 1.16 to 1.24 s and 263 MiB before, 0.98 to 1.05 s and 205 MiB after. Full-render cost is `fsync`, which PERF.06 does not change.
 
+## PERF.10: planning in parallel, a streamed snapshot read, and what power loss was tested against (bn-2c2m, 2026-11-24)
+
+**Planning.** A case's notes depend only on that case's snapshot and the policy, so `VaultRenderer::render` plans the cases on up to 8 threads (`investigation_store::parallel`). Each case gets its own context and a plan builder of its own; their files are added to the plan in case order, and the first error in case order is the one returned, so the plan is byte for byte the one a sequential pass gives (test `cases_planned_in_parallel_give_the_sequential_plan`, with and without a managed prefix). A case's context is dropped once its files are planned; the entry note builds contexts for the first 25 cases only, the ones it describes. Content hashing was not skipped: it was about 2% of planning, and it now runs on the planning threads. The plan still holds every note's content, and stat fingerprints still decide which files are read. A streaming per-case plan remains a follow-up.
+
+**Snapshot read.** `Store::visit_cases` hands each case to the caller as soon as it is verified, so a render no longer holds every case's events at once. Cases are replayed on up to 8 threads in windows; the workspace-wide checks (unique transaction IDs, commands and record IDs) then run in case order, so the result and the first failure are those of `Store::cases` (tests `visited_cases_are_the_verified_cases_in_order` and `a_tampered_case_refuses_the_visit_as_it_refuses_a_load`). Verification is unchanged: every case from its genesis with its kept head (ADR 0010, 0011).
+
+**Measured** at 650 cases (49,406 planned notes), release builds, before = main at 5044833, A/B alternating on one rendered copy, n=5 each, load average 52 to 66 on the shared 64-thread machine:
+
+| 650 cases, 49,406 notes | Before | After |
+| --- | --- | --- |
+| Unchanged render | 5.15 to 5.75 s (one outlier 11.4 s), 0.88 to 0.96 GiB | 1.88 to 2.13 s (one outlier 5.25 s), 0.72 to 0.74 GiB |
+| Of which planning (instrumented build) | 3.2 to 3.5 s | 0.58 to 0.67 s |
+| Of which the snapshot read | 0.63 to 0.72 s, 594 MiB resident after it | 0.38 to 0.56 s, 221 to 264 MiB |
+| Full render of an empty vault (n=1) | 7.0 s, 0.92 GiB | 3.5 s, 0.68 GiB |
+
+The two vaults are byte-identical (`diff -r`), and the vault goldens and the incremental-equals-clean property test pass unchanged, so `RENDERER_VERSION` stays. The load harness (`just load-test`) now gives `vault_render_unchanged` a budget: 0.06 ms per planned note (at least 250 ms) and 16 KiB of peak memory per planned note plus 32 MiB, about 2.96 s and 803 MiB at 49,406 notes. Before this change it missed both; after it, it met both in the runs above apart from the one timing outlier. The planning threads cost about 50 MiB of allocator arenas; the rest of the memory is the snapshot (about 250 MiB) and the plan, whose 221 MiB of note content is held until the publication ends.
+
+**Power loss.** LazyFS is not installed on this machine, and a device-mapper fault target needs root, so the batched publication was not qualified on a fault-injecting filesystem. What was tested is a model: `a_power_loss_at_each_publish_step_leaves_a_state_the_next_render_completes` kills a render after each publish step and then, on disk, undoes what Decision 1 allows a power loss to undo. It keeps every change, or loses every rename and removal after the batch barrier (each temporary that barrier made durable stays, whole), or loses every other one, or tears every temporary as a power loss before the barrier would. In each state no path holds bytes that are neither its earlier nor its planned ones, and the next render completes with no drift reported, no adoption, its temporaries swept and the human-owned folders untouched. This qualifies the recovery logic against the ordering Decision 1 relies on. It does not show that `syncfs` gives that ordering on a particular filesystem or device, which needs LazyFS or dm-flakey. The store's own LazyFS qualification (`real_crash_tests.rs`) also did not run.
+
+**Visible temporaries.** During a batch, up to 2,048 hidden `.inv-tmp` files sit beside their targets until they are renamed into place, so a sync client or file watcher can see them. The batch size is unchanged: a smaller one means more filesystem-wide barriers, and each one can wait for other processes' writes. The temporaries are documented for users in [obsidian-sync.md](../obsidian-sync.md#what-may-be-in-the-synced-vault).
+
 ## Rejected alternatives
 
 - *Write without syncing, then sync each directory and `fsync` once before the manifest commit.* After a power loss a rename can be durable while its file's data is not, which leaves an empty or partial file at the path. The next render would see bytes that are neither the earlier nor the planned ones and would report a hand edit that nobody made. Staging the bytes and syncing them before the rename avoids that at the cost of one more barrier per batch.

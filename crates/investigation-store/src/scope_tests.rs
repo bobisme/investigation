@@ -597,3 +597,40 @@ fn a_different_event_at_the_indexed_sequence_is_not_taken_as_current() {
         vec![fixture.target]
     );
 }
+
+/// `visit_cases` replays cases on several threads and admits them in case
+/// order: it visits exactly what `cases` returns, in the same order, across
+/// more cases than one replay window holds.
+#[test]
+fn visited_cases_are_the_verified_cases_in_order() {
+    let mut fixture = fixture();
+    for index in 0..70 {
+        let key = format!("extra-{index}");
+        fixture.store.record(&command(&key, None, &key)).unwrap();
+    }
+    let expected = fixture.store.cases().unwrap();
+    assert_eq!(expected.len(), 72);
+    let mut visited = Vec::new();
+    fixture
+        .store
+        .visit_cases(|case_id, replay| visited.push((case_id, replay)))
+        .unwrap();
+    assert_eq!(visited, expected.into_iter().collect::<Vec<_>>());
+}
+
+/// A case that fails verification refuses the visit with the failure a
+/// sequential load reports, wherever it lies among the cases.
+#[test]
+fn a_tampered_case_refuses_the_visit_as_it_refuses_a_load() {
+    let mut fixture = fixture();
+    for index in 0..40 {
+        let key = format!("extra-{index}");
+        fixture.store.record(&command(&key, None, &key)).unwrap();
+    }
+    fixture.tamper(fixture.untouched, 2);
+    let load = fixture.store.cases().unwrap_err();
+    let visit = fixture.store.visit_cases(|_, _| {}).unwrap_err();
+    assert_eq!(visit.error.code, load.error.code);
+    assert_eq!(diagnostic(&visit), Some("EVENT_REQUEST_HASH_MISMATCH"));
+    assert_eq!(diagnostic(&visit), diagnostic(&load));
+}

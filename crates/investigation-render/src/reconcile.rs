@@ -280,7 +280,7 @@ pub fn owned_path(workspace: &Workspace, path: &str) -> Result<Option<OwnedPath>
 /// Apply `request` and render, as one step under the render lock. See the
 /// module documentation. `propose-change` must already have recorded its
 /// change; this sets the observed bytes aside and regenerates.
-pub fn reconcile_vault<F: DurableFs>(
+pub fn reconcile_vault<F: DurableFs + Sync>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
     policy: &ViewPolicy,

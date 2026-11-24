@@ -325,7 +325,7 @@ pub struct RenderReport {
 ///
 /// Notes whose content did not change keep the basis they name
 /// ([`PublishMode::Incremental`]); [`render_vault_with`] chooses the mode.
-pub fn render_vault<F: DurableFs>(
+pub fn render_vault<F: DurableFs + Sync>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
     policy: &ViewPolicy,
@@ -338,7 +338,7 @@ pub fn render_vault<F: DurableFs>(
 /// [`PublishMode::Incremental`], every case note the manifest proves
 /// unchanged apart from its basis is restamped to the basis it already names
 /// ([`incremental`]); the publisher then finds its bytes in place.
-pub fn render_vault_with<F: DurableFs>(
+pub fn render_vault_with<F: DurableFs + Sync>(
     store: &mut Store<F>,
     renderer: &impl CaseRenderer,
     policy: &ViewPolicy,
@@ -351,7 +351,7 @@ pub fn render_vault_with<F: DurableFs>(
 
 /// [`render_vault_with`] under a render lock the caller already holds, so a
 /// reconcile ([`reconcile`]) and the render that completes it are one step.
-pub(crate) fn render_locked<F: DurableFs>(
+pub(crate) fn render_locked<F: DurableFs + Sync>(
     store: &mut Store<F>,
     lock: &RenderLock,
     renderer: &impl CaseRenderer,

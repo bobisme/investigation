@@ -211,6 +211,48 @@ impl<F: DurableFs> Store<F> {
         Ok(self.load_verified()?.cases)
     }
 
+    /// [`Store::cases`], handing each case to `visit` as soon as it is
+    /// verified, in case ID order, instead of holding every case's events at
+    /// once. The checks are the same: each case from its genesis with its
+    /// kept head, and the workspace-wide uniqueness of transaction IDs,
+    /// commands and record IDs across every case visited before it. On a
+    /// failure, the cases already visited were verified but the workspace
+    /// was not: the caller must discard what it built from them.
+    ///
+    /// Up to [`VISIT_THREADS`] cases are replayed at once, each on its own;
+    /// the workspace-wide checks then run in case order, so the result, and
+    /// the first failure, are those of a sequential load.
+    pub fn visit_cases(&mut self, mut visit: impl FnMut(Id, CaseReplay)) -> Result<(), Failure>
+    where
+        F: Sync,
+    {
+        let _lock = self.coordinate()?;
+        let mut seen = WorkspaceReplay {
+            complete: true,
+            ..WorkspaceReplay::default()
+        };
+        let published = self.published_cases()?;
+        let threads = crate::parallel::threads(VISIT_THREADS);
+        for window in published.chunks(threads * 4) {
+            let (fs, workspace) = (&self.fs, &self.workspace);
+            let replayed = crate::parallel::in_parallel(window, threads, |&case_id| {
+                scope::replay_published_in(fs, workspace, case_id, true)
+            });
+            for (&case_id, replayed) in window.iter().zip(replayed) {
+                let Some((replay, known)) = replayed? else {
+                    return Err(integrity("A published case disappeared during a load."));
+                };
+                Self::admit(&mut seen, case_id, replay, known.as_ref(), true)?;
+                let replay = seen
+                    .cases
+                    .remove(&case_id)
+                    .expect("an admitted case is held until it is visited");
+                visit(case_id, replay);
+            }
+        }
+        Ok(())
+    }
+
     pub fn receipt(&mut self, actor: &Actor, command_id: &str) -> Result<ReceiptLookup, Failure> {
         let mut found = self.receipts(&[(actor, command_id)])?;
         Ok(found.pop().expect("one answer per command"))
@@ -938,6 +980,9 @@ struct CommitPlan<'a> {
     request: SemanticRequest,
     blobs: &'a [StagedBlob],
 }
+
+/// At most this many cases are replayed at once by [`Store::visit_cases`].
+const VISIT_THREADS: usize = 8;
 
 #[derive(Default)]
 struct WorkspaceReplay {
