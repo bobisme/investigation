@@ -7,12 +7,20 @@
 //! `propose-change` is the only one that changes the workspace: it records a
 //! change the caller states with `--field` and `--value`, for the few fields
 //! it supports, through the same `record` path and checks as any other
-//! command, with a fresh revision precondition. A retry under the same
-//! `--command-id` returns the original receipt, as `record` does: it reuses
-//! the precondition the first call recorded, and once the path is already
-//! reconciled it records nothing and changes no file. `--dry-run` checks the
-//! request and prints what would happen, including the envelope a
-//! `propose-change` would submit, and writes nothing.
+//! command. Its precondition is the case revision the edited note was
+//! rendered from, as the manifest records it, never the case's current
+//! revision: a note rendered before the case changed is refused with
+//! `REVISION_CONFLICT` before anything is recorded, so a change stated from
+//! it never replaces a newer one it did not show (bn-3tpv). A note whose
+//! rendered revision the manifest no longer vouches for is refused the same
+//! way. A retry under the same `--command-id` returns the original receipt,
+//! as `record` does: it reuses the precondition the first call recorded, and
+//! once the path is already reconciled it records nothing and changes no
+//! file. `--dry-run` checks the request and prints what would happen,
+//! including the envelope a `propose-change` would submit, and writes
+//! nothing; for `propose-change` it also runs that envelope through the
+//! store's own dry run (the same lock, journal check, idempotency check,
+//! validation and gates), so it refuses exactly what the real run refuses.
 
 use std::fmt::Write as _;
 
@@ -49,8 +57,9 @@ Nothing is inferred from the edited Markdown, and no observed bytes are lost:
                     new name, then regenerate the path
   propose-change    record a change you state with --field and --value (a
                     case's title, objective or scope, on its Overview note)
-                    with a fresh revision precondition, keep the observed bytes
-                    in local/conflicts/proposed/, then regenerate the path
+                    against the case revision the note was rendered from
+                    (refused if the case changed since), keep the observed
+                    bytes in local/conflicts/proposed/, then regenerate the path
   discard           needs --discard-observed; keep the observed bytes in
                     local/conflicts/discarded/ until you remove them, then
                     regenerate the path
@@ -144,9 +153,14 @@ pub(crate) fn run(
         paths: args.paths.clone(),
         discard_observed: args.discard_observed,
     };
+    // A dry run takes every step of the real run with the store in its own
+    // dry-run mode, so a proposal is refused by the same checks and gates.
+    if args.dry_run {
+        store.set_dry_run();
+    }
     // A retry of a propose-change this actor already recorded reuses the
     // recorded precondition, so the store compares the same request.
-    let retry = if proposing && !args.dry_run {
+    let retry = if proposing {
         recorded_preconditions(store, global, &args)?
     } else {
         None
@@ -175,7 +189,7 @@ pub(crate) fn run(
             &args,
             &done,
             Some(proposed_json(&receipt)),
-            Some(Ok(None)),
+            (!args.dry_run).then_some(Ok(None)),
         ));
     }
     let recorded = retry.map(|(_, recorded)| recorded);
@@ -199,15 +213,15 @@ pub(crate) fn run(
         None
     };
     if args.dry_run {
-        return Ok(output(
-            store.workspace(),
-            &args,
-            &checked,
-            envelope
-                .as_ref()
-                .map(|(_, envelope)| json!({"envelope":envelope})),
-            None,
-        ));
+        let proposal = match &envelope {
+            Some((_, envelope)) => {
+                let bytes = serde_json::to_vec(envelope).expect("envelope serializes");
+                let receipt = store.record(&bytes)?;
+                Some(json!({"envelope":envelope,"would_result":receipt.result}))
+            }
+            None => None,
+        };
+        return Ok(output(store.workspace(), &args, &checked, proposal, None));
     }
     let mut proposed = None;
     if let Some((command_id, envelope)) = envelope {
@@ -280,9 +294,11 @@ fn recorded_preconditions(
 }
 
 /// The `case.amend` envelope for the stated change at `path`, which projects
-/// `projects`, with the case's current revision as its precondition, or the
-/// `recorded` one for a retry. Refused unless the path projects a case and
-/// the field is supported; nothing is read from the edited note.
+/// `projects`, with the case revision the note was rendered from as its
+/// precondition ([`rendered_from`]), or the `recorded` one for a retry.
+/// Refused unless the path projects a case, the field is supported and the
+/// case has not changed since the render; nothing is read from the edited
+/// note.
 fn proposal(
     store: &mut Store,
     global: &Global,
@@ -331,7 +347,7 @@ fn proposal(
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
     let preconditions = match recorded {
         Some(recorded) => recorded,
-        None => vec![current(store, case)?],
+        None => vec![rendered_from(store, path, case)?],
     };
     let reason = args.reason.clone().unwrap_or_else(|| {
         format!("Proposed with vault reconcile after an edit of the generated note {path}.")
@@ -366,13 +382,24 @@ fn proposal(
     Ok((command_id, envelope))
 }
 
-/// The case record's current revision, for the precondition.
-fn current(
-    store: &mut Store,
-    case: Id,
-) -> Result<investigation_core::command::RevisionRef, Failure> {
+/// The revision of `case` that the generated note at `path` was rendered
+/// from, when it is still the case's current revision.
+///
+/// The manifest records, for each case note, the case head its last
+/// generated bytes name ([`OwnedPath::basis`]); the edited note is never
+/// read. The case record as of that head is what the person saw. When the
+/// case record changed after it, a change stated from the note would replace
+/// a newer one the note did not show, so it is refused with
+/// `REVISION_CONFLICT`, and so is a note whose basis the manifest no longer
+/// vouches for or the journal does not hold. The same revision is the
+/// envelope's precondition, so a change committed between this check and
+/// the commit is refused by the store too.
+fn rendered_from(store: &mut Store, path: &str, case: Id) -> Result<RevisionRef, Failure> {
+    let basis = owned_path(store.workspace(), path)
+        .map_err(|error| error.to_failure())?
+        .and_then(|owned| owned.basis);
     let replay = store.case(case)?;
-    replay
+    let current = replay
         .state
         .current(case)
         .map(|record| record.reference())
@@ -381,7 +408,44 @@ fn current(
                 ErrorCode::UnknownReference,
                 format!("The case {case} has no current record."),
             )
-        })
+        })?;
+    let rendered = basis.as_ref().and_then(|basis| {
+        replay
+            .events
+            .iter()
+            .find(|verified| verified.event.sequence == basis.sequence)
+            .filter(|verified| verified.hash == basis.head_hash)
+            .and_then(|_| replay.state.record_at(case, basis.sequence))
+            .map(|record| record.reference())
+    });
+    if rendered == Some(current) {
+        return Ok(current);
+    }
+    let show = argv(store.workspace(), &["show", &case.to_string()]);
+    let then = "Nothing was recorded and no file changed. Read the case as it is now \
+                (the repair command), keep the edit with --disposition preserve-as-note, \
+                which renders the path from the current case, and state the change again \
+                from there.";
+    let message = match rendered {
+        Some(rendered) => format!(
+            "{path} was rendered from revision {} of case {case}, and the case is now at \
+             revision {}: it changed after the render, so the edit was made against a \
+             case this note no longer shows. {then}",
+            rendered.revision, current.revision
+        ),
+        None => format!(
+            "The case revision {path} was rendered from is not recorded (the note was \
+             rendered under another renderer version or view policy, or before the \
+             journal it names), so a change stated from it cannot be checked against \
+             what it showed. {then}"
+        ),
+    };
+    let mut failure = Failure::new(ErrorCode::RevisionConflict, message)
+        .at("PATH")
+        .with_argv(show);
+    failure.error.expected = rendered.map(|rendered| json!(rendered));
+    failure.error.actual = Some(json!(current));
+    Err(failure)
 }
 
 fn step_json(step: &PathStep) -> Value {

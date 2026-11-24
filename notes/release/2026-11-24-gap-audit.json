@@ -1592,6 +1592,12 @@
           "status": "demonstrated",
           "evidence": "cli vault_reconcile.rs::a_proposal_from_a_stale_note_is_checked_against_the_fresh_case",
           "note": "A note rendered at case revision 1 is edited, another writer closes the case (revision 2), and the vault is not rendered again. `propose-change` from that note carries precondition revision 2 and only the stated value; nothing is read from the note. It is refused against the closed case (GATE_FAILED), nothing is committed, and no file changes. Finding, not changed here: because the precondition is the fresh revision, a stated title replaces one that another writer changed after the render, and the response does not flag the note as stale; the dry run does not evaluate gates (its preview passed where the real run was refused)."
+        },
+        {
+          "bone": "bn-3tpv",
+          "commit": "84a3349ff5eb2b2ab1ec11e4f87840b27d4fdb6a",
+          "status": "demonstrated",
+          "note": "The finding above is fixed. `propose-change` now takes the case record's revision at the head the manifest records as the note's basis, not the current revision. A note rendered before the case record changed is refused with REVISION_CONFLICT before anything is recorded, whether or not the vault was rendered again, and the newer title stays. A note whose basis is not vouched for is refused the same way. The dry run passes the proposal through the store's dry run, so it refuses what the real run refuses, gates included. Tests: cli vault_reconcile.rs::a_proposal_from_a_note_rendered_before_the_case_changed_conflicts, ::a_change_elsewhere_in_the_case_leaves_the_proposal_valid, ::the_dry_run_refuses_a_gated_proposal_as_the_real_run_does, ::every_disposition_refuses_alike_in_the_dry_run_and_the_real_run. The bn-dla3 test that asserted the closed-case refusal was replaced by these. Status stays demonstrated; the companion's own validation (W15) is still not built."
         }
       ]
     },

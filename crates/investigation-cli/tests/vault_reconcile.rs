@@ -1,8 +1,9 @@
 //! `vault reconcile` through the CLI, with the environment cleared and an
 //! empty folder on `PATH`: no viewer application or other program is
-//! needed. A dry run writes nothing; `propose-change` records only a stated,
-//! supported change with a fresh precondition, and a retry under the same
-//! key returns the original receipt; read-only mode refuses
+//! needed. A dry run writes nothing and refuses what the real run refuses;
+//! `propose-change` records only a stated, supported change, against the
+//! case revision the note was rendered from (a stale note conflicts), and a
+//! retry under the same key returns the original receipt; read-only mode refuses
 //! everything but the dry run; the help teaches the command and its next
 //! step.
 
@@ -194,7 +195,11 @@ fn propose_change_records_the_stated_title_and_clears_the_drift() {
     let envelope = &preview["proposal"]["envelope"];
     assert_eq!(envelope["case_id"], casework.case.as_str());
     assert_eq!(envelope["preconditions"][0]["id"], casework.case.as_str());
-    assert!(envelope["preconditions"][0]["revision"].as_u64().is_some());
+    assert_eq!(envelope["preconditions"][0]["revision"], 1, "{preview}");
+    assert_eq!(
+        preview["proposal"]["would_result"], "committed",
+        "{preview}"
+    );
     assert_eq!(envelope["operations"][0]["op"], "case.amend");
     assert_eq!(
         envelope["operations"][0]["payload"]["title"],
@@ -440,6 +445,30 @@ fn read_only_allows_only_the_dry_run() {
         preview["paths"][0]["observed"][0]["handling"],
         "moved_to_notes"
     );
+    // A proposal's dry run goes through the store's dry run, which writes
+    // nothing either.
+    let proposed = casework.run(
+        &[
+            "--read-only",
+            "--actor",
+            "agent:reconcile-test",
+            "vault",
+            "reconcile",
+            &overview,
+            "--disposition",
+            "propose-change",
+            "--field",
+            "title",
+            "--value",
+            "Why do lookups stall?",
+            "--dry-run",
+        ],
+        0,
+    );
+    assert_eq!(
+        proposed["proposal"]["would_result"], "committed",
+        "{proposed}"
+    );
     assert_eq!(casework.files(), before);
 
     let done = casework.run(
@@ -485,79 +514,380 @@ fn help_teaches_the_dispositions_with_examples_and_the_next_step() {
     }
 }
 
-/// V10 (bn-dla3): a proposal from a note rendered before another writer
-/// changed the case is built and checked against the case as it is now.
-/// The note shows an open case at revision 1; the case was closed at
-/// revision 2 and the vault not rendered since. The proposal carries the
-/// fresh revision and only the stated value, and the store checks it
-/// against the closed case: refused, nothing committed, no file changed.
-#[test]
-fn a_proposal_from_a_stale_note_is_checked_against_the_fresh_case() {
-    let casework = Casework::new();
-    let overview = casework.overview();
-    let title = casework.title();
-    casework.edit(
-        &overview,
-        "\nA better title would be: Why do lookups stall?\n",
-    );
-    let rendered = casework.run(&["show", &casework.case], 0)["basis_revision"].clone();
-    assert_eq!(rendered, 1);
-
-    // Another writer closes the case; nothing renders the vault again.
-    let close = serde_json::json!({"schema_version":"inv.command.v1","command_id":"close",
-        "case_id":casework.case,"actor":"agent:other-writer",
-        "preconditions":[{"id":casework.case,"revision":1}],
-        "operations":[{"op":"case.close","payload":{"outcome":"inconclusive",
-            "reason":"Nothing more to learn.","reopen_condition":"A new timeout.",
-            "retrospective_waived":"No material work occurred.","unresolved_questions":[]}}]});
-    let path = casework.root.join("local/close.json");
-    fs::write(&path, serde_json::to_vec(&close).unwrap()).unwrap();
-    casework.run(&["record", "--input", path.to_str().unwrap()], 0);
-    fs::remove_file(&path).unwrap();
-    let status = casework.run(&["vault", "status"], 0);
-    assert_eq!(status["freshness"], "stale", "{status}");
-    assert_eq!(status["cases"][0]["rendered"]["sequence"], 1, "{status}");
-    assert_eq!(status["cases"][0]["current"]["sequence"], 2, "{status}");
-
-    let args = [
+/// The arguments of a `propose-change` of the case title from `path`.
+fn retitle(path: &str, value: &str, key: &str) -> Vec<String> {
+    [
         "--actor",
         "agent:reconcile-test",
         "vault",
         "reconcile",
-        overview.as_str(),
+        path,
         "--disposition",
         "propose-change",
         "--field",
         "title",
         "--value",
-        "Why do lookups stall?",
+        value,
         "--command-id",
-        "retitle-stale",
-    ];
-    let before = casework.files();
-    let mut dry = args.to_vec();
-    dry.push("--dry-run");
-    let preview = casework.run(&dry, 0);
-    let envelope = &preview["proposal"]["envelope"];
-    assert_eq!(
-        envelope["preconditions"],
-        serde_json::json!([{"id":casework.case,"revision":2}]),
-        "the fresh revision, not the note's: {preview}"
-    );
-    let payload = &envelope["operations"][0]["payload"];
-    assert_eq!(payload["title"], "Why do lookups stall?");
-    assert!(
-        !payload.to_string().contains("A better title"),
-        "nothing is read from the note: {payload}"
-    );
+        key,
+    ]
+    .map(str::to_owned)
+    .to_vec()
+}
 
-    let refused = casework.run(&args, 5);
-    assert_eq!(refused["commit_status"], "not_committed", "{refused}");
-    assert_eq!(refused["error"]["code"], "GATE_FAILED", "{refused}");
-    assert_eq!(casework.title(), title);
-    assert_eq!(
-        casework.files(),
-        before,
-        "a refused proposal changes no file"
+impl Casework {
+    /// Run `args` with `--format json`: the exit code and the response.
+    fn attempt(&self, args: &[String]) -> (i32, Value) {
+        let mut args: Vec<&str> = args.iter().map(String::as_str).collect();
+        args.extend(["--format", "json"]);
+        let output = self.command(&self.root, &args).output().unwrap();
+        let value = serde_json::from_slice(&output.stdout)
+            .unwrap_or_else(|error| panic!("{error}: {args:?}"));
+        (output.status.code().unwrap(), value)
+    }
+
+    /// Run `args` as a dry run and then for real. Both must be refused
+    /// alike, with the same exit code and the same error, and neither may
+    /// change a file. Returns the error.
+    fn refused_alike(&self, args: &[String]) -> Value {
+        let before = self.files();
+        let mut dry = args.to_vec();
+        dry.push("--dry-run".to_owned());
+        let (dry_exit, dry_refusal) = self.attempt(&dry);
+        assert_eq!(self.files(), before, "{dry:?}: the dry run wrote");
+        let (exit, refusal) = self.attempt(args);
+        assert_eq!(self.files(), before, "{args:?}: the refusal wrote");
+        assert_ne!(exit, 0, "{args:?}: {refusal}");
+        assert_eq!(
+            dry_exit, exit,
+            "{args:?}\ndry: {dry_refusal}\nreal: {refusal}"
+        );
+        assert_eq!(
+            dry_refusal["commit_status"], "not_committed",
+            "{dry_refusal}"
+        );
+        assert_eq!(
+            dry_refusal["error"], refusal["error"],
+            "{args:?}: the dry run and the real run refuse differently"
+        );
+        refusal["error"].clone()
+    }
+
+    /// Commit one operation to the case as another writer.
+    fn other_writer(&self, key: &str, op: &str, payload: Value, revision: Option<u64>) {
+        let preconditions = revision.map_or_else(
+            || serde_json::json!([]),
+            |revision| serde_json::json!([{"id":self.case,"revision":revision}]),
+        );
+        let envelope = serde_json::json!({"schema_version":"inv.command.v1","command_id":key,
+            "case_id":self.case,"actor":"agent:other-writer","preconditions":preconditions,
+            "operations":[{"op":op,"payload":payload}]});
+        let path = self.root.join("local/other-writer.json");
+        fs::write(&path, serde_json::to_vec(&envelope).unwrap()).unwrap();
+        self.run(&["record", "--input", path.to_str().unwrap()], 0);
+        fs::remove_file(&path).unwrap();
+    }
+
+    /// The case record's revision now.
+    fn revision(&self) -> u64 {
+        self.run(&["show", &self.case], 0)["basis_revision"]
+            .as_u64()
+            .unwrap()
+    }
+}
+
+/// V10, bn-3tpv: a note edited after a render that another writer's change
+/// then made stale. The proposal's precondition is the revision the note
+/// was rendered from, so the change is refused with `REVISION_CONFLICT`,
+/// in the dry run as in the real run, and the other writer's title stays.
+/// Rendering again does not freshen the edited note: its bytes still show
+/// the older case. The repair works: keep the edit as a note, which renders
+/// the path from the current case, and propose from there.
+#[test]
+fn a_proposal_from_a_note_rendered_before_the_case_changed_conflicts() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.edit(
+        &overview,
+        "\nA better title would be: Why do lookups stall?\n",
     );
+    assert_eq!(casework.revision(), 1);
+    casework.other_writer(
+        "other-title",
+        "case.amend",
+        serde_json::json!({"title":"Why did the cache stall?","reason":"The stall is in the cache."}),
+        Some(1),
+    );
+    assert_eq!(casework.revision(), 2);
+    let args = retitle(&overview, "Why do lookups stall?", "retitle-stale");
+    for render in [false, true] {
+        if render {
+            let rendered = casework.run(&["vault", "render"], 0);
+            assert_eq!(rendered["counts"]["drifted"], 1, "{rendered}");
+        }
+        let error = casework.refused_alike(&args);
+        assert_eq!(error["code"], "REVISION_CONFLICT", "{error}");
+        assert_eq!(error["path"], "PATH", "{error}");
+        assert_eq!(
+            error["expected"],
+            serde_json::json!({"id":casework.case,"revision":1})
+        );
+        assert_eq!(
+            error["actual"],
+            serde_json::json!({"id":casework.case,"revision":2})
+        );
+        let repair: Vec<&str> = error["repair"]["argv"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|part| part.as_str().unwrap())
+            .collect();
+        assert!(
+            repair.ends_with(&["show", casework.case.as_str(), "--format", "json"]),
+            "{repair:?}"
+        );
+        let message = error["message"].as_str().unwrap();
+        assert!(message.contains("rendered from revision 1"), "{message}");
+        assert!(message.contains("preserve-as-note"), "{message}");
+        assert_eq!(casework.title(), "Why did the cache stall?");
+    }
+
+    // The repair: keep the edit, then propose from the current note.
+    casework.run(
+        &[
+            "vault",
+            "reconcile",
+            overview.as_str(),
+            "--disposition",
+            "preserve-as-note",
+        ],
+        0,
+    );
+    casework.edit(&overview, "\nStill: Why do lookups stall?\n");
+    let args = retitle(&overview, "Why do lookups stall?", "retitle-fresh");
+    let mut dry = args.clone();
+    dry.push("--dry-run".to_owned());
+    let (exit, preview) = casework.attempt(&dry);
+    assert_eq!(exit, 0, "{preview}");
+    assert_eq!(
+        preview["proposal"]["envelope"]["preconditions"],
+        serde_json::json!([{"id":casework.case,"revision":2}])
+    );
+    assert_eq!(preview["proposal"]["would_result"], "committed");
+    let (exit, done) = casework.attempt(&args);
+    assert_eq!(exit, 0, "{done}");
+    assert_eq!(done["proposal"]["result"], "committed", "{done}");
+    assert_eq!(casework.title(), "Why do lookups stall?");
+}
+
+/// A change to the case that leaves the case record as the note showed it
+/// does not make the proposal stale: the precondition is the case record's
+/// rendered revision, and it still holds.
+#[test]
+fn a_change_elsewhere_in_the_case_leaves_the_proposal_valid() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.edit(&overview, "\nRetitle this.\n");
+    casework.other_writer(
+        "question",
+        "question.create",
+        serde_json::json!({"importance":"normal","wording":"Which phase stalls?"}),
+        None,
+    );
+    assert_eq!(casework.revision(), 1);
+    let (exit, done) = casework.attempt(&retitle(&overview, "Why do lookups stall?", "retitle"));
+    assert_eq!(exit, 0, "{done}");
+    assert_eq!(done["proposal"]["result"], "committed", "{done}");
+    assert_eq!(casework.title(), "Why do lookups stall?");
+}
+
+/// The dry run runs the store's gates: a proposal from a note rendered after
+/// the case closed (so not stale) is refused by the closed-case gate in the
+/// dry run exactly as in the real run. Before bn-3tpv the preview passed.
+#[test]
+fn the_dry_run_refuses_a_gated_proposal_as_the_real_run_does() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.other_writer(
+        "close",
+        "case.close",
+        serde_json::json!({"outcome":"inconclusive","reason":"Nothing more to learn.",
+            "reopen_condition":"A new timeout.","retrospective_waived":"No material work occurred.",
+            "unresolved_questions":[]}),
+        Some(1),
+    );
+    casework.run(&["vault", "render"], 0);
+    let title = casework.title();
+    casework.edit(&overview, "\nRetitle this.\n");
+    let error = casework.refused_alike(&retitle(&overview, "Why do lookups stall?", "closed"));
+    assert_eq!(error["code"], "GATE_FAILED", "{error}");
+    assert_eq!(casework.title(), title);
+}
+
+/// Every refusal of every disposition is the same in the dry run as in the
+/// real run, and neither changes a file.
+#[test]
+fn every_disposition_refuses_alike_in_the_dry_run_and_the_real_run() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    let sources = casework
+        .vault()
+        .join(format!("Cases/{}/Sources", casework.case));
+    let source = fs::read_dir(sources)
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .file_name();
+    let source = format!(
+        "Cases/{}/Sources/{}",
+        casework.case,
+        source.to_str().unwrap()
+    );
+    casework.edit(&overview, "\nRetitle this.\n");
+    // A command this actor already recorded under the key "taken".
+    let question = serde_json::json!({"schema_version":"inv.command.v1","command_id":"taken",
+        "case_id":casework.case,"actor":"agent:reconcile-test","preconditions":[],
+        "operations":[{"op":"question.create","payload":{"importance":"normal","wording":"Which phase?"}}]});
+    let input = casework.root.join("local/taken.json");
+    fs::write(&input, serde_json::to_vec(&question).unwrap()).unwrap();
+    casework.run(&["record", "--input", input.to_str().unwrap()], 0);
+    fs::remove_file(&input).unwrap();
+
+    let reconcile = |path: &str, disposition: &str, extra: &[&str]| {
+        let mut args: Vec<String> = [
+            "--actor",
+            "agent:reconcile-test",
+            "vault",
+            "reconcile",
+            path,
+            "--disposition",
+            disposition,
+        ]
+        .map(str::to_owned)
+        .to_vec();
+        args.extend(extra.iter().map(|part| (*part).to_owned()));
+        args
+    };
+    let missing = format!("Cases/{}/Nothing.md", casework.case);
+    let cases: Vec<(&str, Vec<String>, &str)> = vec![
+        (
+            "a clean path",
+            reconcile(&source, "preserve-as-note", &[]),
+            "INVALID_INPUT",
+        ),
+        (
+            "an unowned path",
+            reconcile(&missing, "preserve-as-note", &[]),
+            "",
+        ),
+        (
+            "a field without propose-change",
+            reconcile(&overview, "preserve-as-note", &["--field", "title"]),
+            "INVALID_INPUT",
+        ),
+        (
+            "discard without confirmation",
+            reconcile(&overview, "discard", &[]),
+            "",
+        ),
+        (
+            "discard of a clean path",
+            reconcile(&source, "discard", &["--discard-observed"]),
+            "",
+        ),
+        (
+            "confirmation without discard",
+            reconcile(&overview, "release-path", &["--discard-observed"]),
+            "INVALID_INPUT",
+        ),
+        (
+            "release of an unowned path",
+            reconcile(&missing, "release-path", &[]),
+            "",
+        ),
+        (
+            "an unsupported field",
+            reconcile(
+                &overview,
+                "propose-change",
+                &["--field", "status", "--value", "closed"],
+            ),
+            "INVALID_INPUT",
+        ),
+        (
+            "no value",
+            reconcile(&overview, "propose-change", &["--field", "title"]),
+            "INVALID_INPUT",
+        ),
+        (
+            "an empty value",
+            reconcile(
+                &overview,
+                "propose-change",
+                &["--field", "title", "--value", " "],
+            ),
+            "INVALID_INPUT",
+        ),
+        (
+            "a clean path proposed",
+            reconcile(
+                &source,
+                "propose-change",
+                &["--field", "title", "--value", "T"],
+            ),
+            "",
+        ),
+        (
+            "another case named",
+            {
+                let mut args = reconcile(
+                    &overview,
+                    "propose-change",
+                    &["--field", "title", "--value", "T"],
+                );
+                args.splice(
+                    0..0,
+                    [
+                        "--case".to_owned(),
+                        "case_01a20f59-805c-77a0-b8b5-398371a7cb63".to_owned(),
+                    ],
+                );
+                args
+            },
+            "",
+        ),
+        (
+            "two paths proposed",
+            {
+                let mut args = reconcile(
+                    &overview,
+                    "propose-change",
+                    &["--field", "title", "--value", "T"],
+                );
+                args.insert(5, source.clone());
+                args
+            },
+            "",
+        ),
+        (
+            "a key already used for another command",
+            reconcile(
+                &overview,
+                "propose-change",
+                &["--field", "title", "--value", "T", "--command-id", "taken"],
+            ),
+            "IDEMPOTENCY_KEY_REUSED",
+        ),
+    ];
+    let title = casework.title();
+    for (name, args, code) in cases {
+        let error = casework.refused_alike(&args);
+        if !code.is_empty() {
+            assert_eq!(error["code"], code, "{name}: {error}");
+        }
+    }
+    assert_eq!(casework.title(), title);
+    let status = casework.run(&["vault", "status"], 0);
+    assert_eq!(status["drift_count"], 1, "{status}");
 }
