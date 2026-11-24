@@ -12,7 +12,7 @@
 | [0008](0008-method-pack-security.md) | Method pack security and policy inputs at promotion gates |
 | [0009](0009-incremental-vault-render.md) | Incremental vault render and the basis an unchanged note keeps |
 | [0010](0010-verified-head-checkpoints.md) | Verified-head checkpoints for journal verification |
-| [0011](0011-case-scoped-verification.md) | Case-scoped verification: a command verifies the cases it reads |
+| [0011](0011-case-scoped-verification.md) | Case-scoped verification: a command verifies the cases it reads; reads share the coordination lock and writers are preferred (bn-2vek) |
 | [0012](0012-batched-vault-durability.md) | Vault publication in durability batches, and unchanged files known by their status |
 | [0013](0013-archive-restore-and-fork.md) | Archive restore and fork: verified staging, marker-last publication, and fork identity |
 | [0014](0014-migration-framework.md) | Workspace format in the marker, ordered migrations with a verified backup, and historical fixtures |

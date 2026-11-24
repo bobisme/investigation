@@ -465,15 +465,14 @@ impl Workspace {
 
     fn config_lock(&self) -> Result<crate::durable::CommitLock, WorkspaceError> {
         let lock_path = self.root.join(LOCK_FILE);
-        crate::durable::CommitLock::acquire(&lock_path, std::time::Duration::from_secs(2)).map_err(
-            |error| match error {
+        crate::durable::CommitLock::acquire_preferred(&lock_path, std::time::Duration::from_secs(2))
+            .map_err(|error| match error {
                 crate::durable::LockError::Io(error) => io_at(&lock_path, error),
                 crate::durable::LockError::Busy { .. } => io_at(
                     &lock_path,
                     io::Error::new(io::ErrorKind::WouldBlock, "workspace is busy"),
                 ),
-            },
-        )
+            })
     }
 
     /// Replace `investigation.toml` atomically. Only a holder of the commit
@@ -637,15 +636,17 @@ impl Workspace {
         // The persistent lock is created once. Neither init nor open replaces it.
         let lock_path = root.join(LOCK_FILE);
         write_new_file(&lock_path, b"")?;
-        let _init_lock =
-            crate::durable::CommitLock::acquire(&lock_path, std::time::Duration::from_secs(2))
-                .map_err(|error| match error {
-                    crate::durable::LockError::Io(error) => io_at(&lock_path, error),
-                    crate::durable::LockError::Busy { .. } => io_at(
-                        &lock_path,
-                        std::io::Error::new(std::io::ErrorKind::WouldBlock, "workspace is busy"),
-                    ),
-                })?;
+        let _init_lock = crate::durable::CommitLock::acquire_preferred(
+            &lock_path,
+            std::time::Duration::from_secs(2),
+        )
+        .map_err(|error| match error {
+            crate::durable::LockError::Io(error) => io_at(&lock_path, error),
+            crate::durable::LockError::Busy { .. } => io_at(
+                &lock_path,
+                std::io::Error::new(std::io::ErrorKind::WouldBlock, "workspace is busy"),
+            ),
+        })?;
         write_new_file(&root.join(CONFIG_FILE), config_bytes.as_bytes())?;
         write_new_file(&root.join(POINTER_FILE), pointer_text().as_bytes())?;
 

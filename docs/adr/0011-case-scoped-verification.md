@@ -48,3 +48,54 @@ A key that the index places in a case is answered from that case's verified even
   | 650 | 550 ms (W12.08) | 85 ms | 1,010 ms (W12.08) | 15 ms | about 18 rising to 800 (W12.08) / 78 ms for the first 50 cases and 79 ms for the last 50 |
 
   Generating the 650-case workspace took 16 minutes instead of about 70. `next --case` and `show` follow `brief`. Most of what remains of a commit is fsync latency: 6 syncs, 2 canonical and 4 for the index transaction. Before this change there were 10, because every open of the index rewrote its version.
+
+## Reads share the coordination lock
+
+Amended with bn-2vek, 2026-11-24. [Lock](../../crates/investigation-store/src/durable.rs) · [Tests](../../crates/investigation-store/tests/read_lock.rs) · [CLI test](../../crates/investigation-cli/tests/parallel_reads.rs)
+
+**Problem.** Every read took the coordination lock exclusively, for the whole of its verification, and waited a fixed 2 s for it. So parallel reads ran one at a time, and the last read in line could wait past 2 s and refuse with `WORKSPACE_BUSY`. The trial_tasks_8_10 rehearsal runs 4 read-only `show` calls side by side. It failed once in 3 traced full runs (bn-3dy5).
+
+**What the lock protects a read from.** The lock protects a read from writers. A read never needs protection from another read.
+
+- *A publication that is not yet durable.* A commit writes and syncs a temporary file and renames it into place, then syncs the directory. The event is visible after the rename, but it is durable only after the directory sync. The writer releases the lock only after that sync. A read without the lock could report a snapshot, or a `Found` receipt, that a crash then loses, and an agent could cite it.
+- *Writers that do more than append.* `repair journal`, archive restore, retention reclaim and the format migration change canonical files. `repair index` removes the index and then renames the new one into place. A `receipt` that inspected the index between those two steps would report it as degraded.
+- *Not torn files.* Each canonical file is published with a rename. A kept head that does not match the journal falls back to a full replay (ADR 0010).
+- *Not other reads.* The read paths write no canonical file and no kept head, because only a commit keeps heads. The cache entries a read can replace, such as recorded blob verdicts, are written to a unique temporary file and renamed into place.
+
+**Decision.**
+
+- **Reads take a shared lock.** These store reads take the coordination lock shared: `Store::case`, `case_ids`, `list_cases`, `cases`, `visit_cases` and `receipt(s)`. A shared lock is held beside other shared holders and never beside an exclusive one. These reads are the path of `show`, `brief`, `next`, `frontier` and `receipt`, and of every other read that goes through them.
+- **Every other holder takes it exclusively, as before.** That covers commits, `search`, `repair index`, `check`, captures, pins, retention, archive, and configuration and local-actor writes. Both locks are `flock` locks on `state/locks/commit.lock`. So an earlier release, which takes only the exclusive lock, still excludes shared holders, and they exclude it.
+- **Writers get preference.** `flock` gives no preference to writers. With shared reads alone, a stream of overlapping reads left a commit no moment to get in: at 24 and 32 readers, 1 of 4 and 2 of 3 commits refused. So the lock has a gate, which is a `flock` on its own directory, `state/locks`. There is no new file and no change to the workspace layout.
+  - A writer takes the gate exclusively while it waits for the lock. It drops the gate once it holds the lock.
+  - A reader passes through the gate, shared, before it takes the lock.
+  - While a writer waits, the reads already in finish and new reads wait behind it.
+  - The gate is held only while waiting, never together with the lock. The gate and the lock share one deadline.
+  - An earlier release does not use the gate. It is excluded exactly as before, but it gets no preference over current readers.
+- **A lock-free read was rejected.** It would lose the first two guarantees above. Keeping them without the lock would require every writer to publish in an order that is safe for readers, and a writer's directory sync cannot be made visible to a reader.
+
+**The wait stays a fixed 2 s, for reads and for writes.** A read now waits only while a writer holds the lock, or while a writer waits ahead of it. Under load, a commit holds the lock for 100 to 800 ms (table below). The commands that hold it for longer are maintenance commands: `repair index`, `export`, `retention reclaim --all` and `migrate`. For a read that meets one of those, the right answer is the refusal it already prints: `WORKSPACE_BUSY`, exit 7, "Retry the identical request". A longer or configurable wait would only delay that answer. A retry inside the program would repeat what the refusal tells the caller to do, and the caller can choose when.
+
+**Write side unchanged.** A writer excludes every reader and every other writer, waits 2 s and refuses with the same failure, as before. The only addition is the gate step. Writers now meet each other at the gate first and then at the lock.
+
+**Measured.** These numbers use a release build, the `just bench` large fixture and `show --depth title` (except where `receipt` is named). The machine is a shared 64-thread machine at load 13 to 65. Each reader runs its calls back to back. "Commits" means a `record` loop running beside the readers.
+
+| Readers | Commits | Before: refused reads, p50 / max | After: refused reads, p50 / max | Commits refused, before / after |
+| --- | --- | --- | --- | --- |
+| 16 | no | 6 of 48, 879 / 2,155 ms | 0 of 48, 282 / 428 ms | — |
+| 32 | no | 16 of 64, 1,238 / 2,295 ms | 0 of 64, 452 / 631 ms | — |
+| 24 | yes | 52 of 240, 1,263 / 2,869 ms | 0 of 240, 343 / 520 ms | 4 of 13 / 0 of 19 (slowest 338 ms) |
+| 32 | yes | 115 of 320, 1,536 / 2,727 ms | 0 of 320, 619 / 1,231 ms | 3 of 15 / 0 of 13 (slowest 819 ms) |
+| 32, `receipt` | yes | 49 of 96, 2,012 / 2,135 ms | 0 of 96, 417 / 538 ms | 1 of 8 / 0 of 4 |
+
+Load alone did not reproduce the trial's 4-reader refusal on this fixture: there were no refusals in 32 calls at load 44 to 49. The CLI test reproduces it deterministically instead. Another read holds the lock past the wait while 4 workers run `show`, `brief`, `next`, `frontier` and `receipt`. Before this change every one of those calls refused with the trial's message, and now every one answers.
+
+**Tests.**
+
+- `shared_holders_share_the_lock_and_exclude_every_exclusive_holder`
+- `a_waiting_writer_holds_new_readers_back_and_drops_the_gate_once_it_holds_the_lock`
+- `a_read_waits_only_for_writers_never_behind_another_read`, which also covers a commit refused while a read holds the lock, and a read refused while a writer holds it
+- `parallel_reads_beside_a_slow_read_all_answer`
+- `parallel_reads_answer_while_another_read_holds_the_lock_past_the_wait`
+
+Each was checked against a mutation. With reads back on the exclusive lock, 3 tests fail. With the gate wait removed, the writer-preference test fails. With the gate kept after the lock is taken, every test fails.

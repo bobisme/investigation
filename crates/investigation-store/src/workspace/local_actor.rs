@@ -55,15 +55,15 @@ impl Workspace {
     pub fn set_local_actor(&self, actor: &Actor) -> Result<Option<Actor>, WorkspaceError> {
         let lock_path = self.root.join(LOCK_FILE);
         let _lock =
-            CommitLock::acquire(&lock_path, Duration::from_secs(2)).map_err(
-                |error| match error {
+            CommitLock::acquire_preferred(&lock_path, Duration::from_secs(2)).map_err(|error| {
+                match error {
                     LockError::Io(error) => io_at(&lock_path, error),
                     LockError::Busy { .. } => io_at(
                         &lock_path,
                         io::Error::new(io::ErrorKind::WouldBlock, "workspace is busy"),
                     ),
-                },
-            )?;
+                }
+            })?;
         let previous = self.local_actor()?;
         if previous.as_ref() == Some(actor) {
             return Ok(previous);

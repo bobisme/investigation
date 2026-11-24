@@ -75,6 +75,18 @@ pub trait DurableFs {
     /// Remove one empty directory. Never recursive.
     fn remove_dir(&mut self, path: &Path) -> io::Result<()>;
     fn lock(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError>;
+    /// [`Self::lock`] for a lock that readers share ([`Self::lock_shared`]):
+    /// while it waits, no new shared holder gets in, so a stream of readers
+    /// cannot keep it out. Exclusion and timeout are those of `lock`.
+    fn lock_preferred(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError> {
+        self.lock(path, timeout)
+    }
+    /// A lock on `path` that other shared holders share and that excludes
+    /// every exclusive holder. A filesystem without shared locks takes the
+    /// exclusive one, which only serializes its readers.
+    fn lock_shared(&mut self, path: &Path, timeout: Duration) -> Result<Self::Guard, LockError> {
+        self.lock(path, timeout)
+    }
     /// The identity of the file a [`Self::read`] of `path` would open.
     fn identity(&self, path: &Path) -> io::Result<FileIdentity>;
     /// Called after journal verification while the workspace commit lock is held.
@@ -216,6 +228,12 @@ impl DurableFs for LocalFs {
     }
     fn lock(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
         CommitLock::acquire(&self.path(p).map_err(LockError::Io)?, timeout)
+    }
+    fn lock_preferred(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
+        CommitLock::acquire_preferred(&self.path(p).map_err(LockError::Io)?, timeout)
+    }
+    fn lock_shared(&mut self, p: &Path, timeout: Duration) -> Result<CommitLock, LockError> {
+        CommitLock::acquire_shared(&self.path(p).map_err(LockError::Io)?, timeout)
     }
     fn identity(&self, p: &Path) -> io::Result<FileIdentity> {
         use std::os::unix::fs::MetadataExt;
@@ -508,31 +526,90 @@ pub enum LockError {
     Busy { waited: Duration },
     Io(io::Error),
 }
+type TryLock = fn(&File) -> Result<(), std::fs::TryLockError>;
+
 impl CommitLock {
+    /// The exclusive lock: no other holder, shared or exclusive.
     pub fn acquire(path: &Path, timeout: Duration) -> Result<Self, LockError> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)
-            .map_err(LockError::Io)?;
+        let file = open_lock(path)?;
         let start = Instant::now();
-        loop {
-            match file.try_lock() {
-                Ok(()) => {
-                    return Ok(Self {
-                        _file: file,
-                        waited: start.elapsed(),
-                    });
+        wait_for(&file, File::try_lock, start, timeout)?;
+        Ok(Self {
+            _file: file,
+            waited: start.elapsed(),
+        })
+    }
+
+    /// [`Self::acquire`] with writer preference over [`Self::acquire_shared`].
+    /// The gate is a `flock` on the lock file's directory: a preferred
+    /// holder takes it exclusively while it waits for the lock and drops it
+    /// once the lock is held; a shared holder passes through it, shared,
+    /// before it takes the lock. So while a writer waits, readers already
+    /// in finish and new ones wait behind it. The gate is held only while
+    /// waiting, never with the lock, and both waits share one deadline.
+    pub fn acquire_preferred(path: &Path, timeout: Duration) -> Result<Self, LockError> {
+        Self::gated(path, timeout, false)
+    }
+
+    /// A shared lock: held beside other shared holders, never beside an
+    /// exclusive one. Both are `flock` locks on the same file, so a program
+    /// that takes only the exclusive lock still excludes shared holders.
+    pub fn acquire_shared(path: &Path, timeout: Duration) -> Result<Self, LockError> {
+        Self::gated(path, timeout, true)
+    }
+
+    fn gated(path: &Path, timeout: Duration, shared: bool) -> Result<Self, LockError> {
+        let file = open_lock(path)?;
+        let gate = match path.parent() {
+            Some(directory) if !directory.as_os_str().is_empty() => directory,
+            _ => Path::new("."),
+        };
+        let gate = File::open(gate).map_err(LockError::Io)?;
+        // A reader shares the gate and the lock with other readers; a writer
+        // excludes both.
+        let try_lock: TryLock = if shared {
+            File::try_lock_shared
+        } else {
+            File::try_lock
+        };
+        let start = Instant::now();
+        wait_for(&gate, try_lock, start, timeout)?;
+        wait_for(&file, try_lock, start, timeout)?;
+        drop(gate);
+        Ok(Self {
+            _file: file,
+            waited: start.elapsed(),
+        })
+    }
+}
+
+fn open_lock(path: &Path) -> Result<File, LockError> {
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(LockError::Io)
+}
+
+/// Poll `try_lock` on `file` until it succeeds or `timeout` has passed
+/// since `start`.
+fn wait_for(
+    file: &File,
+    try_lock: TryLock,
+    start: Instant,
+    timeout: Duration,
+) -> Result<(), LockError> {
+    loop {
+        match try_lock(file) {
+            Ok(()) => return Ok(()),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                let elapsed = start.elapsed();
+                if elapsed >= timeout {
+                    return Err(LockError::Busy { waited: elapsed });
                 }
-                Err(std::fs::TryLockError::WouldBlock) => {
-                    let elapsed = start.elapsed();
-                    if elapsed >= timeout {
-                        return Err(LockError::Busy { waited: elapsed });
-                    }
-                    std::thread::sleep(Duration::from_millis(5).min(timeout - elapsed));
-                }
-                Err(std::fs::TryLockError::Error(e)) => return Err(LockError::Io(e)),
+                std::thread::sleep(Duration::from_millis(5).min(timeout - elapsed));
             }
+            Err(std::fs::TryLockError::Error(e)) => return Err(LockError::Io(e)),
         }
     }
 }

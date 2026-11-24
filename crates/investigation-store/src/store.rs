@@ -184,7 +184,7 @@ impl<F: DurableFs> Store<F> {
 
     /// The head of every case, from a verified load of the whole workspace.
     pub fn list_cases(&mut self) -> Result<Vec<CaseHead>, Failure> {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         Ok(self.load_verified()?.heads())
     }
 
@@ -192,14 +192,14 @@ impl<F: DurableFs> Store<F> {
     /// verified here: a command verifies the case it reads with
     /// [`Self::case`] (ADR 0011).
     pub fn case_ids(&mut self) -> Result<Vec<Id>, Failure> {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         self.published_cases()
     }
 
     /// Read a snapshot after the publisher has released the commit lock.
     /// Verifies this case alone, reusing its kept head (ADR 0010, 0011).
     pub fn case(&mut self, case_id: Id) -> Result<CaseReplay, Failure> {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         self.load_case_verified(case_id)?
             .ok_or_else(|| missing_case(case_id))
     }
@@ -208,7 +208,7 @@ impl<F: DurableFs> Store<F> {
     /// held only while reading, so projections built from the result never
     /// block later commits.
     pub fn cases(&mut self) -> Result<BTreeMap<Id, CaseReplay>, Failure> {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         Ok(self.load_verified()?.cases)
     }
 
@@ -227,7 +227,7 @@ impl<F: DurableFs> Store<F> {
     where
         F: Sync,
     {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         let mut seen = WorkspaceReplay {
             complete: true,
             ..WorkspaceReplay::default()
@@ -263,7 +263,7 @@ impl<F: DurableFs> Store<F> {
     /// in order, from one verified replay of the journal instead of one per
     /// command. A journal that fails verification refuses the whole lookup.
     pub fn receipts(&mut self, commands: &[(&Actor, &str)]) -> Result<Vec<ReceiptLookup>, Failure> {
-        let _lock = self.coordinate()?;
+        let _lock = self.coordinate_read()?;
         let workspace = self.load_verified()?;
         // The index status is the same for every receipt of one replay;
         // it is inspected only once a command is found.
@@ -755,7 +755,18 @@ impl<F: DurableFs> Store<F> {
     fn coordinate(&mut self) -> Result<F::Guard, Failure> {
         self.gate.check().map_err(durability_failure)?;
         self.fs
-            .lock(Path::new(COORDINATION_LOCK), WAIT_FOR_LOCK)
+            .lock_preferred(Path::new(COORDINATION_LOCK), WAIT_FOR_LOCK)
+            .map_err(lock_failure)
+    }
+
+    /// The coordination lock for a read that writes nothing but disposable
+    /// cache entries: shared with other such reads, exclusive of every
+    /// writer (ADR 0011, "Reads share the coordination lock"). A read waits
+    /// only while a writer holds the lock, never behind another read.
+    fn coordinate_read(&mut self) -> Result<F::Guard, Failure> {
+        self.gate.check().map_err(durability_failure)?;
+        self.fs
+            .lock_shared(Path::new(COORDINATION_LOCK), WAIT_FOR_LOCK)
             .map_err(lock_failure)
     }
 
