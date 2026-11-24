@@ -16,6 +16,10 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
             "export/decision_record.rs",
             include_str!("decision_record.rs"),
         ),
+        (
+            "export/method_retrospective.rs",
+            include_str!("method_retrospective.rs"),
+        ),
         ("export/archive.rs", include_str!("archive.rs")),
         ("export/retained.rs", include_str!("retained.rs")),
     ];
@@ -95,7 +99,12 @@ fn the_registry_lists_every_section_15_4_kind_once() {
     );
     assert_eq!(
         available_kinds(),
-        ["case-report", "decision-record", "workspace-archive"]
+        [
+            "case-report",
+            "decision-record",
+            "method-retrospective",
+            "workspace-archive"
+        ]
     );
     assert_eq!(
         kind("workspace-archive").map(KindSpec::scope),

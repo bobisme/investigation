@@ -524,7 +524,7 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
             &case,
             "export",
             "--kind",
-            "handoff",
+            "producer-bundle",
             "--audience",
             "internal",
             "--out",
@@ -535,7 +535,12 @@ fn a_planned_kind_is_refused_with_the_available_kinds_and_writes_nothing() {
     assert_eq!(value["error"]["path"], "--kind");
     assert_eq!(
         value["error"]["expected"]["available"],
-        json!(["case-report", "decision-record", "workspace-archive"])
+        json!([
+            "case-report",
+            "decision-record",
+            "method-retrospective",
+            "workspace-archive"
+        ])
     );
     assert!(!out.exists());
     let (exit, value) = run(

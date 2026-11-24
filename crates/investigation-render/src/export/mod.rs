@@ -98,6 +98,7 @@ mod decision_record;
 mod identifiers;
 mod inclusion;
 mod manifest;
+mod method_retrospective;
 mod retained;
 mod snapshot;
 pub mod source;
@@ -281,7 +282,7 @@ pub const KINDS: &[KindSpec] = &[
         product: Product::Report,
         purpose: "Learn from a completed or paused inquiry.",
         contains: "Approaches attempted, effective and invalid routes, constraints, limits, proposed lessons and reviewer status.",
-        renderer: None,
+        renderer: Some(&method_retrospective::MethodRetrospective),
     },
     KindSpec {
         name: "review-vault",
