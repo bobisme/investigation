@@ -381,13 +381,48 @@ fn first_sequence(state: &State, record: &Record) -> u64 {
 
 /// Submitted reviews of `subject`, in journal order.
 fn reviews_of(state: &State, subject: Id) -> Vec<(&Record, StoredReview)> {
-    let mut reviews: Vec<_> = state
-        .records()
-        .filter_map(|record| Some((record, stored(record)?)))
-        .filter(|(_, review)| review.subject_ref.id == subject && review.status == "submitted")
-        .collect();
-    reviews.sort_by_key(|(record, _)| (first_sequence(state, record), record.header.id));
-    reviews
+    let index = state.review_index();
+    index
+        .0
+        .get(&subject)
+        .into_iter()
+        .flatten()
+        .filter_map(|id| {
+            let record = state.current(*id)?;
+            Some((record, stored(record)?))
+        })
+        .collect()
+}
+
+/// The submitted Reviews of each subject, in journal order: by the sequence
+/// of each Review's first revision, then by ID. Built once per snapshot by
+/// [`State::review_index`] instead of once per subject.
+pub(crate) struct ReviewIndex(BTreeMap<Id, Vec<Id>>);
+
+impl ReviewIndex {
+    pub(crate) fn index(state: &State) -> Self {
+        let mut index: BTreeMap<Id, Vec<(u64, Id)>> = BTreeMap::new();
+        for record in state.records() {
+            let Some(review) = stored(record) else {
+                continue;
+            };
+            if review.status == "submitted" {
+                index
+                    .entry(review.subject_ref.id)
+                    .or_default()
+                    .push((first_sequence(state, record), record.header.id));
+            }
+        }
+        Self(
+            index
+                .into_iter()
+                .map(|(subject, mut reviews)| {
+                    reviews.sort_unstable();
+                    (subject, reviews.into_iter().map(|(_, id)| id).collect())
+                })
+                .collect(),
+        )
+    }
 }
 
 fn order(earlier: &ReviewEntry, later: &ReviewEntry) -> PairOrder {

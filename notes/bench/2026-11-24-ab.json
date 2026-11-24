@@ -1,0 +1,77 @@
+{
+  "a": "release build of main 0c5d1803",
+  "b": "the same with the bn-9muo read-path changes",
+  "bone": "bn-9muo",
+  "caveat": "Shared 64-thread machine; the load was 7.5 to 12.7 during this run.",
+  "method": "Each command ran 12 times per binary, alternating A and B (ABAB, then BABA), wall clock from spawn to exit, on the fixtures that `just bench` generated for 2026-11-24-main.json. p95 is nearest rank, so with 12 samples it is the 12th, the maximum. identical: the stdout of A and B was byte-identical. load: the 1-minute load average after the command's samples.",
+  "rows": [
+    {
+      "A_p50": 1396,
+      "A_p95": 1535,
+      "B_p50": 483,
+      "B_p95": 515,
+      "cmd": "brief",
+      "exit": 0,
+      "fixture": "large",
+      "identical": true,
+      "load": 7.5
+    },
+    {
+      "A_p50": 240,
+      "A_p95": 250,
+      "B_p50": 241,
+      "B_p95": 285,
+      "cmd": "next",
+      "exit": 0,
+      "fixture": "large",
+      "identical": true,
+      "load": 7.8
+    },
+    {
+      "A_p50": 335,
+      "A_p95": 351,
+      "B_p50": 240,
+      "B_p95": 249,
+      "cmd": "frontier",
+      "exit": 0,
+      "fixture": "large",
+      "identical": true,
+      "load": 7.8
+    },
+    {
+      "A_p50": 436,
+      "A_p95": 502,
+      "B_p50": 351,
+      "B_p95": 400,
+      "cmd": "brief",
+      "exit": 0,
+      "fixture": "sparse",
+      "identical": true,
+      "load": 9.5
+    },
+    {
+      "A_p50": 295,
+      "A_p95": 328,
+      "B_p50": 293,
+      "B_p95": 306,
+      "cmd": "next",
+      "exit": 0,
+      "fixture": "sparse",
+      "identical": true,
+      "load": 9.3
+    },
+    {
+      "A_p50": 377,
+      "A_p95": 504,
+      "B_p50": 269,
+      "B_p95": 299,
+      "cmd": "frontier",
+      "exit": 0,
+      "fixture": "sparse",
+      "identical": true,
+      "load": 12.7
+    }
+  ],
+  "schema_version": "inv.bench-ab.v1",
+  "target_ms_p95": 250
+}

@@ -745,6 +745,9 @@ fn brief(store: &mut Store, global: &Global, args: brief::Args) -> Result<Output
     argv.extend(["--format".into(), "json".into()]);
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case)?;
     let next = rank_next(&replay.state, &inventory, 3);
+    // As in `next` and `frontier`: a sparse choice's inventory holds hundreds
+    // of thousands of gaps, and the brief need not wait on freeing them.
+    investigation_store::store::free_later(inventory);
     let index = FreshnessIndex::build(&replay.state, case);
     let mut effective = replay
         .state

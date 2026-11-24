@@ -206,17 +206,42 @@ pub fn sharing_origin(state: &State, lineage: &Lineage) -> Vec<RevisionRef> {
     if acquisitions.is_empty() {
         return Vec::new();
     }
-    state
-        .records()
-        .filter(|record| {
-            record.header.id.kind() == Kind::Artifact && record.header.id != lineage.artifact_ref.id
-        })
-        .filter_map(|record| self::lineage(state, record.reference()))
-        .filter(|other| {
-            other.role != ArtifactRole::Manifest && !other.acquisitions().is_disjoint(&acquisitions)
-        })
-        .map(|other| other.artifact_ref)
-        .collect()
+    let index = state.sharing_index();
+    let shared: BTreeMap<Id, RevisionRef> = acquisitions
+        .iter()
+        .filter_map(|acquisition| index.0.get(acquisition))
+        .flatten()
+        .filter(|other| other.id != lineage.artifact_ref.id)
+        .map(|other| (other.id, *other))
+        .collect();
+    shared.into_values().collect()
+}
+
+/// For each acquisition (Source ID), the current Artifacts other than
+/// manifests whose lineage reaches it, ordered by ID. Built once per
+/// snapshot by [`State::sharing_index`], so that [`sharing_origin`] does not
+/// trace the lineage of every Artifact for each record it is asked about.
+pub(crate) struct SharingIndex(BTreeMap<Id, Vec<RevisionRef>>);
+
+impl SharingIndex {
+    pub(crate) fn index(state: &State) -> Self {
+        let mut index: BTreeMap<Id, Vec<RevisionRef>> = BTreeMap::new();
+        let artifacts = state
+            .records()
+            .filter(|record| record.header.id.kind() == Kind::Artifact);
+        for other in artifacts.filter_map(|record| lineage(state, record.reference())) {
+            if other.role == ArtifactRole::Manifest {
+                continue;
+            }
+            for acquisition in other.acquisitions() {
+                index
+                    .entry(acquisition)
+                    .or_default()
+                    .push(other.artifact_ref);
+            }
+        }
+        Self(index)
+    }
 }
 
 #[cfg(test)]
@@ -329,6 +354,98 @@ mod tests {
 
     fn reference(id: Id) -> RevisionRef {
         RevisionRef { id, revision: 1 }
+    }
+
+    /// What [`sharing_origin`] answered before its index: a scan that traces
+    /// the lineage of every Artifact.
+    fn sharing_origin_by_scan(state: &State, lineage: &Lineage) -> Vec<RevisionRef> {
+        let acquisitions = lineage.acquisitions();
+        state
+            .records()
+            .filter(|record| {
+                record.header.id.kind() == Kind::Artifact
+                    && record.header.id != lineage.artifact_ref.id
+            })
+            .filter_map(|record| self::lineage(state, record.reference()))
+            .filter(|other| {
+                other.role != ArtifactRole::Manifest
+                    && !other.acquisitions().is_disjoint(&acquisitions)
+            })
+            .map(|other| other.artifact_ref)
+            .collect()
+    }
+
+    fn add(state: &mut State, sequence: u64, artifact_id: Id, body: Value) {
+        let case_id = id(Kind::Case, 0);
+        state
+            .apply(&AcceptedTransaction {
+                case_id,
+                sequence,
+                created: vec![RecordChange {
+                    id: artifact_id,
+                    revision: 1,
+                    client_ref: None,
+                }],
+                updated: Vec::new(),
+                records: vec![Record {
+                    header: header(artifact_id, case_id, sequence),
+                    body,
+                }],
+                warnings: Vec::new(),
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn the_sharing_index_answers_as_the_scan_did_and_follows_every_change() {
+        let (source, other_source) = (id(Kind::Source, 1), id(Kind::Source, 2));
+        let (original, extracted, unrelated) = (
+            id(Kind::Artifact, 1),
+            id(Kind::Artifact, 2),
+            id(Kind::Artifact, 3),
+        );
+        let aggregate = id(Kind::Artifact, 4);
+        let mut state = state(vec![
+            (source, serde_json::json!({})),
+            (other_source, serde_json::json!({})),
+            (original, artifact(source, &[])),
+            (extracted, artifact(source, &[original])),
+            (unrelated, artifact(other_source, &[])),
+            (aggregate, artifact(source, &[extracted, unrelated])),
+        ]);
+        let every = |state: &State| {
+            for record in state.records() {
+                if let Some(lineage) = lineage(state, record.reference()) {
+                    assert_eq!(
+                        sharing_origin(state, &lineage),
+                        sharing_origin_by_scan(state, &lineage),
+                        "{}",
+                        record.header.id
+                    );
+                }
+            }
+        };
+        every(&state);
+        let chain = lineage(&state, reference(original)).unwrap();
+        assert_eq!(
+            sharing_origin(&state, &chain),
+            vec![reference(extracted), reference(aggregate)]
+        );
+
+        // A later transaction drops the index the read above built.
+        let plot = id(Kind::Artifact, 5);
+        add(&mut state, 2, plot, artifact(source, &[original]));
+        every(&state);
+        assert!(sharing_origin(&state, &chain).contains(&reference(plot)));
+
+        // So does a change to a clone that kept it, as a validation's
+        // scratch copy does; the original keeps its own answer.
+        let mut scratch = state.clone();
+        let late = id(Kind::Artifact, 6);
+        add(&mut scratch, 3, late, artifact(source, &[plot]));
+        every(&scratch);
+        assert!(sharing_origin(&scratch, &chain).contains(&reference(late)));
+        assert!(!sharing_origin(&state, &chain).contains(&reference(late)));
     }
 
     #[test]

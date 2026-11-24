@@ -67,6 +67,16 @@ pub struct State {
 #[derive(Clone, Default)]
 struct Derived {
     material_assumptions: OnceLock<BTreeMap<Id, MaterialAssumptions>>,
+    /// Every classification change, by subject: one pass per snapshot
+    /// instead of one per [`crate::classification::Classifier`].
+    classification_changes: OnceLock<Arc<crate::classification::ClassificationChanges>>,
+    /// The current Artifacts that reach each acquisition, for
+    /// [`crate::derivation::sharing_origin`].
+    sharing: OnceLock<Arc<crate::derivation::SharingIndex>>,
+    /// The selector attestations of each Observation.
+    attestations: OnceLock<Arc<crate::selector_attest::AttestationIndex>>,
+    /// The submitted Reviews of each subject.
+    reviews: OnceLock<Arc<crate::review_independence::ReviewIndex>>,
     /// What [`crate::decision_ops::pareto`] reads of each case: its active
     /// criteria and its verified cells, read once per case.
     pareto_inputs: Memo<Id, Arc<Result<ParetoInputs, Failure>>>,
@@ -224,6 +234,44 @@ impl State {
         self.derived
             .material_assumptions
             .get_or_init(|| MaterialAssumptions::index(self))
+    }
+
+    /// The classification changes of this snapshot, indexed on first use.
+    pub(crate) fn classification_changes(
+        &self,
+    ) -> Arc<crate::classification::ClassificationChanges> {
+        Arc::clone(
+            self.derived.classification_changes.get_or_init(|| {
+                Arc::new(crate::classification::ClassificationChanges::index(self))
+            }),
+        )
+    }
+
+    /// The acquisition sharing index of this snapshot, built on first use.
+    pub(crate) fn sharing_index(&self) -> Arc<crate::derivation::SharingIndex> {
+        Arc::clone(
+            self.derived
+                .sharing
+                .get_or_init(|| Arc::new(crate::derivation::SharingIndex::index(self))),
+        )
+    }
+
+    /// The selector attestation index of this snapshot, built on first use.
+    pub(crate) fn attestation_index(&self) -> Arc<crate::selector_attest::AttestationIndex> {
+        Arc::clone(
+            self.derived
+                .attestations
+                .get_or_init(|| Arc::new(crate::selector_attest::AttestationIndex::index(self))),
+        )
+    }
+
+    /// The review index of this snapshot, built on first use.
+    pub(crate) fn review_index(&self) -> Arc<crate::review_independence::ReviewIndex> {
+        Arc::clone(
+            self.derived
+                .reviews
+                .get_or_init(|| Arc::new(crate::review_independence::ReviewIndex::index(self))),
+        )
     }
 
     /// The Pareto inputs of `case` at this snapshot, read on first use.

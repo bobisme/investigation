@@ -109,6 +109,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     let base = Base {
         workspace: workspace_argv(store.workspace()),
         case: case_id.to_string(),
+        catalog: std::cell::OnceCell::new(),
     };
     if let Some(gap_id) = &args.explain {
         let pinned = snapshot::resolve(store.case(case_id)?, &args.snapshot, base.explain(gap_id))?;
@@ -183,6 +184,8 @@ fn pinned_page(
 struct Base {
     workspace: Vec<String>,
     case: String,
+    /// Built on the first schema argv, then shared by every gap on the page.
+    catalog: std::cell::OnceCell<investigation_core::catalog::Catalog>,
 }
 
 impl Base {
@@ -245,7 +248,10 @@ impl Base {
     }
 
     fn schema(&self, operation: &str) -> Option<Vec<String>> {
-        standard_catalog().available_operation(operation).ok()?;
+        self.catalog
+            .get_or_init(standard_catalog)
+            .available_operation(operation)
+            .ok()?;
         let mut argv = self.workspace.clone();
         argv.extend([
             "schema".into(),
@@ -322,6 +328,7 @@ pub(crate) fn snapshot_argv(
     let base = Base {
         workspace: workspace.to_vec(),
         case: case_id.to_string(),
+        catalog: std::cell::OnceCell::new(),
     };
     let cursor = GapCursor::start(
         case_id,

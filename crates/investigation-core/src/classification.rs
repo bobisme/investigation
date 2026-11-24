@@ -329,17 +329,12 @@ struct ChangeEntry {
     change: ClassificationChange,
 }
 
-/// Answers classification queries over one state snapshot. Build it once per
-/// rendering pass; results are memoized per exact revision.
-pub struct Classifier<'a> {
-    state: &'a State,
-    changes: BTreeMap<Id, Vec<ChangeEntry>>,
-    memo: RefCell<BTreeMap<RevisionRef, EffectiveClassification>>,
-    visiting: RefCell<BTreeSet<RevisionRef>>,
-}
+/// The classification changes of one snapshot, by subject, oldest first.
+/// A change counts only when its subject is in the change's own case.
+pub(crate) struct ClassificationChanges(BTreeMap<Id, Vec<ChangeEntry>>);
 
-impl<'a> Classifier<'a> {
-    pub fn new(state: &'a State) -> Self {
+impl ClassificationChanges {
+    pub(crate) fn index(state: &State) -> Self {
         let mut changes: BTreeMap<Id, Vec<ChangeEntry>> = BTreeMap::new();
         for record in state.records() {
             if let Some(change) = ClassificationChange::from_record(record)
@@ -360,9 +355,26 @@ impl<'a> Classifier<'a> {
         for entries in changes.values_mut() {
             entries.sort_by_key(|entry| (entry.sequence, entry.change_ref.id));
         }
+        Self(changes)
+    }
+}
+
+/// Answers classification queries over one state snapshot. Build it once per
+/// rendering pass; results are memoized per exact revision.
+pub struct Classifier<'a> {
+    state: &'a State,
+    changes: std::sync::Arc<ClassificationChanges>,
+    memo: RefCell<BTreeMap<RevisionRef, EffectiveClassification>>,
+    visiting: RefCell<BTreeSet<RevisionRef>>,
+}
+
+impl<'a> Classifier<'a> {
+    /// Cheap: the classification changes of the snapshot are indexed once
+    /// per state ([`State::classification_changes`]) and shared.
+    pub fn new(state: &'a State) -> Self {
         Self {
             state,
-            changes,
+            changes: state.classification_changes(),
             memo: RefCell::default(),
             visiting: RefCell::default(),
         }
@@ -449,6 +461,7 @@ impl<'a> Classifier<'a> {
         let (mut level, mut basis) = self.base(record, recorded);
         let entries = self
             .changes
+            .0
             .get(&record.header.id)
             .map(Vec::as_slice)
             .unwrap_or_default();
@@ -536,6 +549,7 @@ impl<'a> Classifier<'a> {
     /// Classification changes recorded for a record ID, oldest first.
     pub fn changes(&self, id: Id) -> impl Iterator<Item = (RevisionRef, &ClassificationChange)> {
         self.changes
+            .0
             .get(&id)
             .into_iter()
             .flatten()

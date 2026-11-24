@@ -217,7 +217,36 @@ Evidence is the strongest automated witness found for each item, checked against
    | Large | `frontier` first page | 1,296 ms | 250 ms |
    | Large | one-operation `record` | 413 ms | 150 ms |
 
-   W08.19, which merged after the baseline, reduced the large brief to about 2.1 s and the large vault render from 205 s to about 4 s. The vault render has no target. Both are still above the read target, and the baseline has not been re-measured since.
+   W08.19, which merged after the baseline, reduced the large brief to about 2.1 s and the large vault render from 205 s to about 4 s. The vault render has no target.
+
+   **Re-measured with bn-9muo (2026-11-24).** [Main at 0c5d1803](../notes/bench/2026-11-24-main.json) was measured at load 33 to 75. [Main with the bn-9muo changes](../notes/bench/2026-11-24-baseline.json) was measured at load 8 to 13. The two reports ran at different loads, so the fair comparison is the [alternating A/B](../notes/bench/2026-11-24-ab.json) of the two binaries at one load (7.5 to 12.7, 12 samples each). All A/B outputs were byte-identical.
+
+   The bn-9muo changes remove four reads that scanned the whole snapshot once per record, and one catalog build per gap:
+   - Classification changes, the Artifacts that share an acquisition, selector attestations and the submitted Reviews of a subject are now indexed once per snapshot. Each index is dropped when the history changes.
+   - `frontier` and `blindspots` build the operation catalog once.
+   - `brief` frees its gap inventory on another thread, as `next` and `frontier` already did.
+
+   | Fixture | Measurement | Main p95 (A/B) | bn-9muo p95 (A/B) | Bench p95 | Status |
+   | --- | --- | ---: | ---: | ---: | --- |
+   | Large | `brief` | 1,535 ms | 515 ms | 533 ms | Improved, missed |
+   | Large | `next` (top three) | 250 ms | 285 ms (p50 241, unchanged) | 255 ms | At the target, unchanged by bn-9muo |
+   | Large | `frontier` first page | 351 ms | 249 ms | 262 ms | Improved, at the target |
+   | Large | one-operation `record` | — | — | 102 ms | Met |
+   | Sparse choice | `brief` | 502 ms | 400 ms | 370 ms | Improved, missed |
+   | Sparse choice | `next` (top three) | 328 ms | 306 ms | 321 ms | Missed, unchanged by bn-9muo |
+   | Sparse choice | `frontier` first page | 504 ms | 299 ms | 306 ms | Improved, missed |
+   | Sparse choice | group drill-down first page | — | — | 309 ms | Improved, missed |
+   | Sparse choice | one-operation `record` | — | — | 32 ms | Met |
+
+   Where the remaining time goes, from frame-pointer profiles of the main thread:
+   - *Every case read* replays the journal: about 150 ms for a large `show`. Most of that is decoding events and building the per-case `FreshnessIndex` for every record, even when the read shows one record.
+   - *Large `next`* spends about 33% of its main-thread time in replay, 37% enumerating gaps (half of that is `FreshnessIndex::build`) and 19% ranking.
+   - *Sparse `next` and `frontier`* enumerate 199,000 gaps before they rank or page them.
+   - *`brief`* also computes the effective state and projection of every Observation and Comparison. It needs them to report the complete size (`complete_read_argv`), which is part of the brief's contract.
+
+   Closing these gaps needs a lazily computed freshness index or an incremental gap inventory. Either is a design change, not a hot-path fix, and is left to a follow-up.
+
+   The two other leads in bn-9muo are resolved on main. The `pareto` phase of `next` takes 0.5 ms (60 ms in the baseline). A render after one mutation is within 0.2 s of an unchanged render (about 2 s slower in the baseline). Streaming import with bounded memory is covered by the streaming ingest tests, not timed by `just bench`.
 8. **First-use time target missed.** See above and the dispositions below.
 9. **Resolved by bn-6vlm: `start` without `--actor` cost a refused call.** In the first-use re-run, this was the most common extra call before a receipt. `init DIR --actor ACTOR` now records a machine-local actor that a write without any other actor falls back to, and each receipt that uses it says so. The first `init` example in help and `onboard` carries `--actor`. A re-run with the same protocol reached a receipt within three calls in 8/12 assignments, against 2/12 here, with no actor refusals. See [first-use.md](first-use.md#actor-named-once-bn-6vlm).
 10. **Resolved by renderer v27 (bn-bn1m): the Overview listed one source at two revisions.** From renderer v18, the Scenario D Overview Sources section listed some sources twice: at the revision the answer read and at the older one its Artifact was acquired from. Each Source and Artifact is now listed once, at the latest revision read, with `, also revision N` for the earlier one (`vault_fixtures.rs::an_overview_lists_each_source_and_artifact_once`).

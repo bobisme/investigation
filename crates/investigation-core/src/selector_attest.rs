@@ -429,23 +429,43 @@ pub fn is_attestation(record: &Record) -> bool {
 }
 
 /// Every attestation kept for `observation`, in acceptance order.
-fn attestations<'a>(
-    state: &'a State,
-    observation: &'a Record,
-) -> impl Iterator<Item = (RevisionRef, StoredAttestation)> + 'a {
-    let mut found: Vec<_> = state
-        .records()
-        .filter(|record| {
-            is_attestation(record) && record.header.case_id == observation.header.case_id
-        })
-        .filter_map(|record| {
-            let stored: StoredAttestation = input::decode(&record.body[ATTESTATION_KEY]).ok()?;
-            (stored.observation_ref.id == observation.header.id)
-                .then_some((record.reference(), stored))
-        })
-        .collect();
-    found.sort_by_key(|(_, stored)| stored.accepted_at_sequence);
-    found.into_iter()
+fn attestations(
+    state: &State,
+    observation: &Record,
+) -> impl Iterator<Item = (RevisionRef, StoredAttestation)> {
+    let key = (observation.header.case_id, observation.header.id);
+    state
+        .attestation_index()
+        .0
+        .get(&key)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+}
+
+/// Every readable attestation of the snapshot, by (case, Observation), each
+/// list in acceptance order, ties in annotation ID order. Built once per
+/// snapshot by [`State::attestation_index`] instead of once per Observation.
+pub(crate) struct AttestationIndex(BTreeMap<(Id, Id), Vec<(RevisionRef, StoredAttestation)>>);
+
+impl AttestationIndex {
+    pub(crate) fn index(state: &State) -> Self {
+        let mut index: BTreeMap<(Id, Id), Vec<(RevisionRef, StoredAttestation)>> = BTreeMap::new();
+        for record in state.records().filter(|record| is_attestation(record)) {
+            let Ok(stored) = input::decode::<StoredAttestation>(&record.body[ATTESTATION_KEY])
+            else {
+                continue;
+            };
+            index
+                .entry((record.header.case_id, stored.observation_ref.id))
+                .or_default()
+                .push((record.reference(), stored));
+        }
+        for found in index.values_mut() {
+            found.sort_by_key(|(_, stored)| stored.accepted_at_sequence);
+        }
+        Self(index)
+    }
 }
 
 const CORE_MEANING: &str = "The validation the core computed from the retained bytes when the Observation was accepted. `unavailable` means the core could not check this selector; it is not verified.";

@@ -174,7 +174,7 @@ Each of these works within the stated limit and no further.
 - **Performance: plan §10.5 latency targets are missed.**
   - The [2026-11-23 baseline](../bench/2026-11-23-baseline.json) missed 8, for example the large `brief` at 17,617 ms p95 against 250 ms.
   - W08.19 later brought the large brief to about 2.1 s, and PERF.10 brought an unchanged 650-case render to about 2 s.
-  - The targets have not been re-measured as a whole (bn-9muo).
+  - The [2026-11-24 re-measure](../bench/2026-11-24-baseline.json) with bn-9muo meets both mutation targets (large `record` 102 ms p95). Large `next` and `frontier` reads are at about 250 ms. The large `brief` is at 533 ms, and the sparse-choice reads are at 306 to 370 ms. The [alternating A/B](../bench/2026-11-24-ab.json) compares main and bn-9muo at one load. The remaining profile is in [milestone-b.md](../../docs/milestone-b.md) item 7.
 - **Documentation execution [G1]:** most documented commands are parsed against the command tree, not executed. Only the quickstarts, walkthroughs, agent page, help examples and the package smoke run execute.
 - **Measurement [X30]:** only open- versus closed-loop load and intended-send timing are compared. Other load differences show only through workload identity.
 - **Record-mode closure [B7]:** a record case with a failed or invalid Run needs a Retrospective. This is stricter than one reading of plan §17.7, and it is kept pending the owner ([dispositions](../../docs/milestone-b.md#reviewer-dispositions)).

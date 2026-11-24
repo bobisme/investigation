@@ -1,0 +1,1689 @@
+{
+  "caveat": "Re-measure of main 0c5d1803 (bn-9muo step 1) before any bn-9muo change. The shared 64-thread machine was at load 75 when it started and 36 when it ended; the large-fixture reads ran at load about 75, so their p95 is inflated. Compare with 2026-11-24-baseline.json only through the alternating A/B in 2026-11-24-ab.json, which ran both binaries side by side at one load.",
+  "complete": true,
+  "completeness": [
+    {
+      "checks": "inventory = ground truth (in process); next accounting; shown groups and drill-downs; withheld; whole CLI frontier cell by cell",
+      "cli_full_frontier": {
+        "cell_gaps": 22,
+        "gaps": 122,
+        "pages": 1
+      },
+      "complete": true,
+      "expected_missing_cells": 22,
+      "failures": [],
+      "fixture": "exhaustive_small",
+      "groups_checked": [
+        {
+          "criterion": "crit_01a20f59-2b2f-7082-8fb2-3774cb82a271",
+          "drill_down_gaps": 3,
+          "drill_down_pages": 1,
+          "expected": 3,
+          "gap_count": 3,
+          "rule_id": "decision.hard_criterion_cell_missing"
+        },
+        {
+          "criterion": "crit_01a20f59-2b2f-7082-8fb2-37a74cac1548",
+          "drill_down_gaps": 5,
+          "drill_down_pages": 1,
+          "expected": 5,
+          "gap_count": 5,
+          "rule_id": "decision.option_criterion_cell_missing"
+        },
+        {
+          "criterion": "crit_01a20f59-2b2f-7082-8fb2-37b4ebb72f61",
+          "drill_down_gaps": 6,
+          "drill_down_pages": 1,
+          "expected": 6,
+          "gap_count": 6,
+          "rule_id": "decision.option_criterion_cell_missing"
+        }
+      ],
+      "inventory_cell_gaps": 22,
+      "inventory_total": 122,
+      "next_accounting": {
+        "not_ranked": 100,
+        "ranked": 19,
+        "withheld": 3
+      },
+      "possible_cells": 30,
+      "recorded_cells": 8,
+      "withheld_options": 1
+    },
+    {
+      "checks": "inventory = ground truth (in process, every cell); next accounting; shown groups and drill-downs through the CLI; withheld",
+      "cli_full_frontier": null,
+      "complete": true,
+      "expected_missing_cells": 198900,
+      "failures": [],
+      "fixture": "sparse_choice",
+      "groups_checked": [
+        {
+          "criterion": "crit_01a20f59-3017-7601-88de-9b6ef830036d",
+          "drill_down_gaps": 1000,
+          "drill_down_pages": 2,
+          "expected": 1000,
+          "gap_count": 1000,
+          "rule_id": "decision.hard_criterion_cell_missing"
+        },
+        {
+          "criterion": "crit_01a20f59-3017-7601-88de-9b7b88e071ac",
+          "drill_down_gaps": 1000,
+          "drill_down_pages": 2,
+          "expected": 1000,
+          "gap_count": 1000,
+          "rule_id": "decision.hard_criterion_cell_missing"
+        },
+        {
+          "criterion": "crit_01a20f59-3017-7601-88de-9b87a8f12549",
+          "drill_down_gaps": 1000,
+          "drill_down_pages": 2,
+          "expected": 1000,
+          "gap_count": 1000,
+          "rule_id": "decision.hard_criterion_cell_missing"
+        }
+      ],
+      "inventory_cell_gaps": 198900,
+      "inventory_total": 199000,
+      "next_accounting": {
+        "not_ranked": 100,
+        "ranked": 189464,
+        "withheld": 9436
+      },
+      "possible_cells": 200000,
+      "recorded_cells": 1100,
+      "withheld_options": 50
+    }
+  ],
+  "environment": {
+    "arch": "x86_64",
+    "binary": "<repo>/target/release/investigation",
+    "binary_profile": "release",
+    "binary_profile_basis": "name of the binary's target directory (release or debug)",
+    "cpu_model": "AMD Ryzen Threadripper 9970X 32-Cores",
+    "fixture_dir": "<fixture-dir>",
+    "fixture_filesystem": "tmpfs",
+    "git_commit": "0c5d180336852b6be40cf1d616042e937f135b07",
+    "git_dirty": false,
+    "harness_debug_assertions": false,
+    "kernel": "7.2.8-arch1-2",
+    "load_average_1_5_15_at_end": [
+      36.35,
+      45.87,
+      51.24
+    ],
+    "load_average_1_5_15_at_start": [
+      75.23,
+      61.24,
+      57.36
+    ],
+    "logical_cpus": 64,
+    "memory_total": "131229760 kB",
+    "os": "linux",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)"
+  },
+  "fixtures": [
+    {
+      "check": {
+        "index": "current",
+        "issues": 0,
+        "ok": true
+      },
+      "choice": {
+        "criteria": 5,
+        "hard_criteria": 1,
+        "hard_failed_options": 1,
+        "options": 6,
+        "possible_cells": 30,
+        "recorded_comparisons": 8
+      },
+      "generated_by": "public store API (Store::record, Store::ingest), at most 128 operations per transaction",
+      "generation_ms": 75.5,
+      "generator_commands": 8,
+      "index_dependency_edges": 137,
+      "journal_bytes": 219541,
+      "journal_events": 8,
+      "name": "exhaustive_small",
+      "objects": 124,
+      "objects_by_kind": {
+        "art": 2,
+        "case": 1,
+        "cmp": 8,
+        "crit": 5,
+        "obs": 100,
+        "opt": 6,
+        "q": 1,
+        "src": 1
+      },
+      "relations": 137,
+      "relations_definition": "exact record-to-record revision references in current record bodies (case and transaction IDs excluded)"
+    },
+    {
+      "check": {
+        "index": "current",
+        "issues": 0,
+        "ok": true
+      },
+      "choice": {
+        "criteria": 200,
+        "hard_criteria": 10,
+        "hard_failed_options": 50,
+        "options": 1000,
+        "possible_cells": 200000,
+        "recorded_comparisons": 1100
+      },
+      "generated_by": "public store API (Store::record, Store::ingest), at most 128 operations per transaction",
+      "generation_ms": 732.7,
+      "generator_commands": 31,
+      "index_dependency_edges": 4602,
+      "journal_bytes": 4251092,
+      "journal_events": 31,
+      "name": "sparse_choice",
+      "objects": 2405,
+      "objects_by_kind": {
+        "art": 2,
+        "case": 1,
+        "cmp": 1100,
+        "crit": 200,
+        "obs": 100,
+        "opt": 1000,
+        "q": 1,
+        "src": 1
+      },
+      "relations": 4602,
+      "relations_definition": "exact record-to-record revision references in current record bodies (case and transaction IDs excluded)"
+    },
+    {
+      "check": {
+        "index": "current",
+        "issues": 0,
+        "ok": true
+      },
+      "choice": null,
+      "generated_by": "public store API (Store::record, Store::ingest), at most 128 operations per transaction",
+      "generation_ms": 26839.8,
+      "generator_commands": 418,
+      "index_dependency_edges": 48525,
+      "journal_bytes": 22000993,
+      "journal_events": 418,
+      "name": "large",
+      "objects": 10101,
+      "objects_by_kind": {
+        "art": 100,
+        "asm": 1000,
+        "assess": 2500,
+        "case": 1,
+        "cmp": 1150,
+        "crit": 250,
+        "hyp": 2000,
+        "obs": 2000,
+        "opt": 1000,
+        "q": 50,
+        "src": 50
+      },
+      "relations": 60925,
+      "relations_definition": "exact record-to-record revision references in current record bodies (case and transaction IDs excluded)"
+    },
+    {
+      "check": {
+        "index": "current",
+        "issues": 0,
+        "ok": true
+      },
+      "choice": null,
+      "generated_by": "public store API (Store::record, Store::ingest), at most 128 operations per transaction",
+      "generation_ms": 5480.9,
+      "generator_commands": 97,
+      "index_dependency_edges": 9032,
+      "journal_bytes": 16747636,
+      "journal_events": 97,
+      "name": "excerpts",
+      "objects": 10034,
+      "objects_by_kind": {
+        "art": 1032,
+        "case": 1,
+        "obs": 8000,
+        "q": 1,
+        "src": 1000
+      },
+      "relations": 9032,
+      "relations_definition": "exact record-to-record revision references in current record bodies (case and transaction IDs excluded)"
+    }
+  ],
+  "measurements": [
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f59-2eca-7462-8b0a-2cd1cdc99f8c",
+        "brief",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "brief",
+      "profile_hint": "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47).",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 654.731,
+        "mean_ms": 546.988,
+        "min_ms": 435.939,
+        "n": 30,
+        "p50_ms": 550.633,
+        "p90_ms": 591.534,
+        "p95_ms": 636.193,
+        "p99_ms": 654.731,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          435.939,
+          439.226,
+          461.754,
+          503.865,
+          504.077,
+          514.352,
+          518.246,
+          523.466,
+          524.141,
+          534.833,
+          534.932,
+          536.446,
+          547.64,
+          550.033,
+          550.633,
+          550.931,
+          551.288,
+          552.27,
+          558.864,
+          564.804,
+          569.778,
+          572.67,
+          574.211,
+          574.48,
+          583.719,
+          588.648,
+          591.534,
+          605.943,
+          636.193,
+          654.731
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f59-2eca-7462-8b0a-2cd1cdc99f8c",
+        "next",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "next_top_three",
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 481.985,
+        "mean_ms": 387.688,
+        "min_ms": 262.719,
+        "n": 30,
+        "p50_ms": 386.823,
+        "p90_ms": 435.178,
+        "p95_ms": 445.633,
+        "p99_ms": 481.985,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          262.719,
+          300.917,
+          323.958,
+          332.128,
+          332.63,
+          342.985,
+          359.868,
+          367.907,
+          368.114,
+          375.693,
+          377.623,
+          379.909,
+          384.738,
+          385.483,
+          386.823,
+          392.141,
+          397.064,
+          398.432,
+          406.729,
+          409.326,
+          413.791,
+          421.829,
+          422.283,
+          424.85,
+          431.406,
+          432.694,
+          435.178,
+          435.808,
+          445.633,
+          481.985
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f59-2eca-7462-8b0a-2cd1cdc99f8c",
+        "frontier",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "frontier_first_page",
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 521.058,
+        "mean_ms": 454.642,
+        "min_ms": 381.952,
+        "n": 30,
+        "p50_ms": 460.167,
+        "p90_ms": 492.045,
+        "p95_ms": 521.05,
+        "p99_ms": 521.058,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          381.952,
+          397.298,
+          399.799,
+          410.921,
+          411.553,
+          423.724,
+          424.75,
+          427.239,
+          431.444,
+          442.888,
+          454.543,
+          455.671,
+          456.619,
+          458.311,
+          460.167,
+          460.427,
+          460.706,
+          460.994,
+          464.338,
+          464.488,
+          470.246,
+          470.247,
+          470.523,
+          471.511,
+          485.888,
+          490.335,
+          492.045,
+          498.529,
+          521.05,
+          521.058
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f59-2eca-7462-8b0a-2cd1cdc99f8c",
+        "retention",
+        "preview",
+        "art_01a20f59-2ecc-7340-890f-b62cea790bb6",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "retention_preview",
+      "profile_hint": null,
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 76.384,
+        "mean_ms": 60.702,
+        "min_ms": 45.866,
+        "n": 30,
+        "p50_ms": 60.519,
+        "p90_ms": 66.505,
+        "p95_ms": 70.588,
+        "p99_ms": 76.384,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          45.866,
+          50.943,
+          51.492,
+          53.604,
+          55.672,
+          56.155,
+          56.692,
+          57.122,
+          57.592,
+          58.054,
+          58.853,
+          59.966,
+          60.019,
+          60.427,
+          60.519,
+          61.05,
+          61.223,
+          61.886,
+          61.974,
+          62.501,
+          63.317,
+          63.405,
+          63.453,
+          64.326,
+          65.611,
+          66.462,
+          66.505,
+          69.407,
+          70.588,
+          76.384
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "met"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f59-2eca-7462-8b0a-2cd1cdc99f8c",
+        "frontier",
+        "--rule",
+        "decision.option_criterion_cell_missing",
+        "--reads",
+        "crit_01a20f59-3030-73e0-b429-2fdc302abd42",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "group_drill_down_first_page",
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 525.985,
+        "mean_ms": 467.76,
+        "min_ms": 402.308,
+        "n": 30,
+        "p50_ms": 468.212,
+        "p90_ms": 512.749,
+        "p95_ms": 520.373,
+        "p99_ms": 525.985,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          402.308,
+          405.793,
+          416.886,
+          426.324,
+          429.674,
+          434.594,
+          437.648,
+          441.9,
+          447.806,
+          455.231,
+          456.205,
+          458.968,
+          461.417,
+          461.893,
+          468.212,
+          474.829,
+          475.048,
+          477.707,
+          480.248,
+          480.711,
+          480.779,
+          481.433,
+          485.786,
+          499.417,
+          507.125,
+          509.021,
+          512.749,
+          516.725,
+          520.373,
+          525.985
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "record",
+        "--input",
+        "-",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "record_single_operation",
+      "profile_hint": null,
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 41.023,
+        "mean_ms": 33.844,
+        "min_ms": 27.923,
+        "n": 30,
+        "p50_ms": 34.15,
+        "p90_ms": 37.043,
+        "p95_ms": 39.198,
+        "p99_ms": 41.023,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          27.923,
+          28.838,
+          29.549,
+          29.616,
+          29.712,
+          30.495,
+          31.16,
+          31.435,
+          31.455,
+          31.64,
+          32.531,
+          33.831,
+          33.938,
+          34.035,
+          34.15,
+          34.351,
+          34.619,
+          34.639,
+          34.776,
+          35.07,
+          35.415,
+          35.551,
+          35.747,
+          36.123,
+          36.943,
+          37.039,
+          37.043,
+          37.485,
+          39.198,
+          41.023
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 150.0,
+      "verdict": "met"
+    },
+    {
+      "argv": [
+        "investigation",
+        "repair",
+        "index",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        32.86,
+        51.42,
+        54.27
+      ],
+      "measurement": "index_rebuild",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 135.118,
+        "mean_ms": 130.324,
+        "min_ms": 124.656,
+        "n": 5,
+        "p50_ms": 131.165,
+        "p90_ms": 135.118,
+        "p95_ms": 135.118,
+        "p99_ms": 135.118,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          124.656,
+          127.686,
+          131.165,
+          132.993,
+          135.118
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        31.19,
+        50.76,
+        54.04
+      ],
+      "measurement": "vault_render_first",
+      "profile_hint": null,
+      "requested_samples": 1,
+      "stats": {
+        "max_ms": 2999.286,
+        "mean_ms": 2999.286,
+        "min_ms": 2999.286,
+        "n": 1,
+        "p50_ms": 2999.286,
+        "p90_ms": 2999.286,
+        "p95_ms": 2999.286,
+        "p99_ms": 2999.286,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          2999.286
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        30.85,
+        48.73,
+        53.26
+      ],
+      "measurement": "vault_render_unchanged",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 3252.78,
+        "mean_ms": 3169.069,
+        "min_ms": 3087.431,
+        "n": 5,
+        "p50_ms": 3170.098,
+        "p90_ms": 3252.78,
+        "p95_ms": 3252.78,
+        "p99_ms": 3252.78,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          3087.431,
+          3153.48,
+          3170.098,
+          3181.554,
+          3252.78
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "sparse_choice",
+      "load_average_1_5_15": [
+        30.85,
+        48.73,
+        53.26
+      ],
+      "measurement": "vault_render_after_one_mutation",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 3155.425,
+        "mean_ms": 3124.795,
+        "min_ms": 3071.743,
+        "n": 5,
+        "p50_ms": 3127.941,
+        "p90_ms": 3155.425,
+        "p95_ms": 3155.425,
+        "p99_ms": 3155.425,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          3071.743,
+          3120.107,
+          3127.941,
+          3148.759,
+          3155.425
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f5a-f6be-7822-b0ae-a2536e17c72d",
+        "brief",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        74.64,
+        53.14,
+        53.87
+      ],
+      "measurement": "brief",
+      "profile_hint": "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009).",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 5055.601,
+        "mean_ms": 2214.79,
+        "min_ms": 1691.251,
+        "n": 28,
+        "p50_ms": 1919.735,
+        "p90_ms": 3251.264,
+        "p95_ms": 4734.371,
+        "p99_ms": 5055.601,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          1691.251,
+          1693.272,
+          1739.696,
+          1753.416,
+          1789.85,
+          1806.879,
+          1809.87,
+          1836.173,
+          1837.728,
+          1867.46,
+          1878.981,
+          1905.239,
+          1914.412,
+          1919.735,
+          1929.299,
+          1933.004,
+          1933.165,
+          1948.688,
+          1998.229,
+          2013.726,
+          2048.657,
+          2263.371,
+          2397.973,
+          2406.049,
+          2656.768,
+          3251.264,
+          4734.371,
+          5055.601
+        ]
+      },
+      "stopped_by_time_budget": true,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f5a-f6be-7822-b0ae-a2536e17c72d",
+        "next",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        74.64,
+        53.14,
+        53.87
+      ],
+      "measurement": "next_top_three",
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009); profile it first.",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 888.15,
+        "mean_ms": 411.09,
+        "min_ms": 295.046,
+        "n": 30,
+        "p50_ms": 324.074,
+        "p90_ms": 736.107,
+        "p95_ms": 863.456,
+        "p99_ms": 888.15,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          295.046,
+          301.001,
+          303.923,
+          304.47,
+          305.051,
+          305.403,
+          310.807,
+          310.835,
+          311.916,
+          314.335,
+          314.353,
+          314.993,
+          319.31,
+          320.764,
+          324.074,
+          326.673,
+          327.31,
+          335.481,
+          335.788,
+          339.886,
+          354.855,
+          375.783,
+          427.878,
+          487.366,
+          495.297,
+          563.45,
+          736.107,
+          818.949,
+          863.456,
+          888.15
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f5a-f6be-7822-b0ae-a2536e17c72d",
+        "frontier",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        74.64,
+        53.14,
+        53.87
+      ],
+      "measurement": "frontier_first_page",
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009); profile it first.",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 1204.273,
+        "mean_ms": 545.099,
+        "min_ms": 404.175,
+        "n": 30,
+        "p50_ms": 449.764,
+        "p90_ms": 886.21,
+        "p95_ms": 1153.183,
+        "p99_ms": 1204.273,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          404.175,
+          404.809,
+          415.76,
+          417.095,
+          419.597,
+          420.082,
+          423.896,
+          424.737,
+          426.533,
+          426.87,
+          431.789,
+          432.324,
+          437.343,
+          439.41,
+          449.764,
+          450.291,
+          455.284,
+          456.591,
+          458.187,
+          493.134,
+          498.352,
+          506.133,
+          522.708,
+          569.014,
+          584.362,
+          760.243,
+          886.21,
+          980.816,
+          1153.183,
+          1204.273
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "--case",
+        "case_01a20f5a-f6be-7822-b0ae-a2536e17c72d",
+        "retention",
+        "preview",
+        "art_01a20f5a-f6c7-78e0-a161-8dfbdd5c2789",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        74.64,
+        53.14,
+        53.87
+      ],
+      "measurement": "retention_preview",
+      "profile_hint": "retention preview replays the case, runs artifact.expire on a copy and scans holders; holder scan: record_holders p50 1.131, retention_obligations p50 100.425 (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009).",
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 722.599,
+        "mean_ms": 298.206,
+        "min_ms": 213.241,
+        "n": 30,
+        "p50_ms": 251.133,
+        "p90_ms": 456.511,
+        "p95_ms": 672.783,
+        "p99_ms": 722.599,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          213.241,
+          217.095,
+          218.723,
+          221.04,
+          223.515,
+          225.416,
+          225.468,
+          232.592,
+          233.559,
+          236.487,
+          237.605,
+          245.297,
+          245.299,
+          247.462,
+          251.133,
+          257.917,
+          261.393,
+          264.707,
+          265.729,
+          266.533,
+          271.94,
+          280.965,
+          289.66,
+          311.642,
+          316.127,
+          333.461,
+          456.511,
+          500.276,
+          672.783,
+          722.599
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 250.0,
+      "verdict": "missed"
+    },
+    {
+      "argv": [
+        "investigation",
+        "record",
+        "--input",
+        "-",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        71.47,
+        52.84,
+        53.77
+      ],
+      "measurement": "record_single_operation",
+      "profile_hint": null,
+      "requested_samples": 30,
+      "stats": {
+        "max_ms": 151.236,
+        "mean_ms": 101.481,
+        "min_ms": 74.862,
+        "n": 30,
+        "p50_ms": 89.346,
+        "p90_ms": 144.523,
+        "p95_ms": 148.14,
+        "p99_ms": 151.236,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          74.862,
+          76.917,
+          77.263,
+          79.941,
+          83.331,
+          83.738,
+          83.885,
+          84.227,
+          85.659,
+          85.717,
+          86.045,
+          86.966,
+          87.641,
+          88.049,
+          89.346,
+          90.408,
+          94.317,
+          96.038,
+          96.541,
+          97.744,
+          98.013,
+          101.305,
+          125.994,
+          130.048,
+          130.449,
+          138.454,
+          144.523,
+          147.621,
+          148.14,
+          151.236
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": 150.0,
+      "verdict": "met"
+    },
+    {
+      "argv": [
+        "investigation",
+        "repair",
+        "index",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        67.27,
+        52.28,
+        53.58
+      ],
+      "measurement": "index_rebuild",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 658.103,
+        "mean_ms": 635.866,
+        "min_ms": 619.527,
+        "n": 5,
+        "p50_ms": 631.172,
+        "p90_ms": 658.103,
+        "p95_ms": 658.103,
+        "p99_ms": 658.103,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          619.527,
+          629.052,
+          631.172,
+          641.476,
+          658.103
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        63.0,
+        51.64,
+        53.37
+      ],
+      "measurement": "vault_render_first",
+      "profile_hint": null,
+      "requested_samples": 1,
+      "stats": {
+        "max_ms": 3143.823,
+        "mean_ms": 3143.823,
+        "min_ms": 3143.823,
+        "n": 1,
+        "p50_ms": 3143.823,
+        "p90_ms": 3143.823,
+        "p95_ms": 3143.823,
+        "p99_ms": 3143.823,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          3143.823
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        45.66,
+        48.47,
+        52.25
+      ],
+      "measurement": "vault_render_unchanged",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 3359.33,
+        "mean_ms": 3223.606,
+        "min_ms": 3131.537,
+        "n": 5,
+        "p50_ms": 3185.991,
+        "p90_ms": 3359.33,
+        "p95_ms": 3359.33,
+        "p99_ms": 3359.33,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          3131.537,
+          3184.882,
+          3185.991,
+          3256.288,
+          3359.33
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "large",
+      "load_average_1_5_15": [
+        45.66,
+        48.47,
+        52.25
+      ],
+      "measurement": "vault_render_after_one_mutation",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 3460.267,
+        "mean_ms": 3346.457,
+        "min_ms": 3238.541,
+        "n": 5,
+        "p50_ms": 3352.505,
+        "p90_ms": 3460.267,
+        "p95_ms": 3460.267,
+        "p99_ms": 3460.267,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          3238.541,
+          3315.991,
+          3352.505,
+          3364.981,
+          3460.267
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "excerpts",
+      "load_average_1_5_15": [
+        36.35,
+        45.87,
+        51.24
+      ],
+      "measurement": "vault_render_first",
+      "profile_hint": null,
+      "requested_samples": 1,
+      "stats": {
+        "max_ms": 5210.093,
+        "mean_ms": 5210.093,
+        "min_ms": 5210.093,
+        "n": 1,
+        "p50_ms": 5210.093,
+        "p90_ms": 5210.093,
+        "p95_ms": 5210.093,
+        "p99_ms": 5210.093,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          5210.093
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    },
+    {
+      "argv": [
+        "investigation",
+        "vault",
+        "render",
+        "--format",
+        "json"
+      ],
+      "fixture": "excerpts",
+      "load_average_1_5_15": [
+        36.35,
+        45.87,
+        51.24
+      ],
+      "measurement": "vault_render_unchanged",
+      "profile_hint": null,
+      "requested_samples": 5,
+      "stats": {
+        "max_ms": 5290.674,
+        "mean_ms": 4974.311,
+        "min_ms": 4770.594,
+        "n": 5,
+        "p50_ms": 4977.669,
+        "p90_ms": 5290.674,
+        "p95_ms": 5290.674,
+        "p99_ms": 5290.674,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          4770.594,
+          4850.548,
+          4977.669,
+          4982.071,
+          5290.674
+        ]
+      },
+      "stopped_by_time_budget": false,
+      "target_ms": null,
+      "verdict": "no_target"
+    }
+  ],
+  "method": {
+    "early_stop": "sampling of one measurement stops when its timed samples exceed the budget and it has the minimum (1 for rebuilds and renders); stopped_by_time_budget and stats.n say so",
+    "min_samples_per_read_and_mutation": 5,
+    "mutations_change_the_head": "each timed mutation commits a new record, so later samples see a slightly larger journal",
+    "noise": "The machine is shared with other parallel jobs; samples include their interference. Load averages are recorded at start, end and per measurement. Compare runs only at similar load.",
+    "samples_per_mutation": 30,
+    "samples_per_read": 30,
+    "samples_per_rebuild_and_render": 5,
+    "time_budget_seconds_per_measurement": 60.0,
+    "timer": "wall clock from spawning the binary to its exit, stdout and stderr piped; includes process start, journal replay, rule evaluation and JSON output",
+    "trial_order": "per fixture: reads interleaved round-robin (warmup rounds first, then timed rounds in the same command order each round, a command leaving the rotation when it has its samples or has spent its budget); then mutations one after another; then index rebuilds; then vault renders (one first render, then rounds of an unchanged re-render and a render after one untimed mutation). Fixtures run in the order exhaustive (completeness only), sparse, large, excerpts (vault renders only: one first render, then unchanged re-renders).",
+    "warm": "each fixture is generated, its index is current and every command runs `warmup` untimed times first, so the page cache holds the workspace",
+    "warmup_runs_per_command": 3
+  },
+  "misses": [
+    {
+      "fixture": "sparse_choice",
+      "measurement": "brief",
+      "p95_ms": 636.193,
+      "profile_hint": "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47).",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "sparse_choice",
+      "measurement": "next_top_three",
+      "p95_ms": 445.633,
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "sparse_choice",
+      "measurement": "frontier_first_page",
+      "p95_ms": 521.05,
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "sparse_choice",
+      "measurement": "group_drill_down_first_page",
+      "p95_ms": 520.373,
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 7.416, enumerate_gaps_ms p50 133.911, rank_next_ms p50 89.807, pareto_ms p50 0.47); profile it first.",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "large",
+      "measurement": "brief",
+      "p95_ms": 4734.371,
+      "profile_hint": "brief also enumerates and ranks gaps and derives effective state per outcome and evidence record; profile brief assembly beyond these phases (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009).",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "large",
+      "measurement": "next_top_three",
+      "p95_ms": 863.456,
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009); profile it first.",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "large",
+      "measurement": "frontier_first_page",
+      "p95_ms": 1153.183,
+      "profile_hint": "Largest in-process phase: enumerate_gaps_ms (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009); profile it first.",
+      "target_ms": 250.0
+    },
+    {
+      "fixture": "large",
+      "measurement": "retention_preview",
+      "p95_ms": 672.783,
+      "profile_hint": "retention preview replays the case, runs artifact.expire on a copy and scans holders; holder scan: record_holders p50 1.131, retention_obligations p50 100.425 (replay_ms p50 23.98, enumerate_gaps_ms p50 89.754, rank_next_ms p50 39.956, pareto_ms p50 0.009).",
+      "target_ms": 250.0
+    }
+  ],
+  "profiles": [
+    {
+      "enumerate_gaps_ms": {
+        "max_ms": 156.303,
+        "mean_ms": 136.853,
+        "min_ms": 121.509,
+        "n": 10,
+        "p50_ms": 133.911,
+        "p90_ms": 153.739,
+        "p95_ms": 156.303,
+        "p99_ms": 156.303,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          121.509,
+          122.601,
+          131.046,
+          132.791,
+          133.911,
+          135.654,
+          138.426,
+          142.554,
+          153.739,
+          156.303
+        ]
+      },
+      "fixture": "sparse_choice",
+      "gap_inventory": 199000,
+      "pareto_ms": {
+        "max_ms": 0.717,
+        "mean_ms": 0.505,
+        "min_ms": 0.428,
+        "n": 10,
+        "p50_ms": 0.47,
+        "p90_ms": 0.598,
+        "p95_ms": 0.717,
+        "p99_ms": 0.717,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          0.428,
+          0.437,
+          0.454,
+          0.469,
+          0.47,
+          0.477,
+          0.478,
+          0.519,
+          0.598,
+          0.717
+        ]
+      },
+      "pareto_question_options": 1000,
+      "phases": "Store::case (verified replay) -> enumerate_gaps -> rank_next(limit 3); pareto(one question) timed separately and also called inside rank_next",
+      "rank_next_ms": {
+        "max_ms": 107.116,
+        "mean_ms": 92.021,
+        "min_ms": 82.823,
+        "n": 10,
+        "p50_ms": 89.807,
+        "p90_ms": 98.824,
+        "p95_ms": 107.116,
+        "p99_ms": 107.116,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          82.823,
+          85.073,
+          85.257,
+          87.217,
+          89.807,
+          93.361,
+          94.51,
+          96.225,
+          98.824,
+          107.116
+        ]
+      },
+      "replay_ms": {
+        "max_ms": 15.733,
+        "mean_ms": 8.547,
+        "min_ms": 6.238,
+        "n": 10,
+        "p50_ms": 7.416,
+        "p90_ms": 12.127,
+        "p95_ms": 15.733,
+        "p99_ms": 15.733,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          6.238,
+          6.405,
+          6.54,
+          7.387,
+          7.416,
+          7.668,
+          7.717,
+          8.241,
+          12.127,
+          15.733
+        ]
+      }
+    },
+    {
+      "enumerate_gaps_ms": {
+        "max_ms": 99.548,
+        "mean_ms": 90.692,
+        "min_ms": 83.481,
+        "n": 10,
+        "p50_ms": 89.754,
+        "p90_ms": 95.532,
+        "p95_ms": 99.548,
+        "p99_ms": 99.548,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          83.481,
+          86.804,
+          88.615,
+          89.077,
+          89.754,
+          90.161,
+          91.351,
+          92.594,
+          95.532,
+          99.548
+        ]
+      },
+      "fixture": "large",
+      "gap_inventory": 5850,
+      "holder_scan": {
+        "artifacts": 100,
+        "digests": 100,
+        "fixture": "large",
+        "journal_events": 418,
+        "objects": 10101,
+        "phases": "record_holders over the replayed case (pure); Store::retention_obligations for one digest (coordination lock, verified load of every case, live pins, staging, record_holders)",
+        "record_holders_ms": {
+          "max_ms": 2.217,
+          "mean_ms": 1.275,
+          "min_ms": 0.335,
+          "n": 10,
+          "p50_ms": 1.131,
+          "p90_ms": 2.187,
+          "p95_ms": 2.217,
+          "p99_ms": 2.217,
+          "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+          "samples_ms": [
+            0.335,
+            0.356,
+            0.469,
+            0.986,
+            1.131,
+            1.398,
+            1.571,
+            2.103,
+            2.187,
+            2.217
+          ]
+        },
+        "retention_obligations_ms": {
+          "max_ms": 144.432,
+          "mean_ms": 101.64,
+          "min_ms": 49.359,
+          "n": 10,
+          "p50_ms": 100.425,
+          "p90_ms": 134.601,
+          "p95_ms": 144.432,
+          "p99_ms": 144.432,
+          "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+          "samples_ms": [
+            49.359,
+            68.608,
+            75.101,
+            96.035,
+            100.425,
+            110.998,
+            115.136,
+            121.708,
+            134.601,
+            144.432
+          ]
+        }
+      },
+      "pareto_ms": {
+        "max_ms": 0.01,
+        "mean_ms": 0.009,
+        "min_ms": 0.006,
+        "n": 10,
+        "p50_ms": 0.009,
+        "p90_ms": 0.01,
+        "p95_ms": 0.01,
+        "p99_ms": 0.01,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          0.006,
+          0.006,
+          0.008,
+          0.008,
+          0.009,
+          0.009,
+          0.009,
+          0.009,
+          0.01,
+          0.01
+        ]
+      },
+      "pareto_question_options": 20,
+      "phases": "Store::case (verified replay) -> enumerate_gaps -> rank_next(limit 3); pareto(one question) timed separately and also called inside rank_next",
+      "rank_next_ms": {
+        "max_ms": 44.188,
+        "mean_ms": 40.671,
+        "min_ms": 38.718,
+        "n": 10,
+        "p50_ms": 39.956,
+        "p90_ms": 42.876,
+        "p95_ms": 44.188,
+        "p99_ms": 44.188,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          38.718,
+          38.947,
+          39.098,
+          39.311,
+          39.956,
+          40.546,
+          40.693,
+          42.381,
+          42.876,
+          44.188
+        ]
+      },
+      "replay_ms": {
+        "max_ms": 26.209,
+        "mean_ms": 24.231,
+        "min_ms": 22.727,
+        "n": 10,
+        "p50_ms": 23.98,
+        "p90_ms": 25.904,
+        "p95_ms": 26.209,
+        "p99_ms": 26.209,
+        "percentile_method": "nearest rank; with n < 20, p95 is the maximum",
+        "samples_ms": [
+          22.727,
+          22.978,
+          23.612,
+          23.646,
+          23.98,
+          24.09,
+          24.492,
+          24.674,
+          25.904,
+          26.209
+        ]
+      }
+    }
+  ],
+  "scale": "full",
+  "schema_version": "investigation-bench.report.v1",
+  "targets": {
+    "mutation_target_applies_to": "one record command with one operation, excluding file ingestion and render",
+    "no_target": "index rebuild and vault render are reported without a target",
+    "note": "Engineering targets for a documented ordinary workstation, not promises of current performance.",
+    "read_target_applies_to": "brief, next (top three), the first page of the gap frontier and of a group drill-down, and retention preview of one Artifact (the holder scan, W11.19)",
+    "source": "notes/plan.md \u00a710.5",
+    "warm_mutation_p95_ms": 150.0,
+    "warm_read_p95_ms": 250.0
+  }
+}

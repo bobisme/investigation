@@ -6,7 +6,7 @@
 
 use investigation_core::{
     blindspot::{AuditRequest, AuditResponse, audit_disclosed},
-    catalog::standard_catalog,
+    catalog::{Catalog, standard_catalog},
     command::RevisionRef,
     identity::{Id, ResolveError, resolve_prefix},
     wire::{ErrorCode, Failure},
@@ -124,12 +124,14 @@ fn show_argv(prefix: &[String], subject: &RevisionRef) -> Vec<String> {
     json_argv(prefix, &["show", &id, "--at", &revision, "--depth", "full"])
 }
 
-fn schema_argv(prefix: &[String], operation: &str) -> Option<Vec<String>> {
-    standard_catalog().available_operation(operation).ok()?;
+fn schema_argv(catalog: &Catalog, prefix: &[String], operation: &str) -> Option<Vec<String>> {
+    catalog.available_operation(operation).ok()?;
     Some(json_argv(prefix, &["schema", operation]))
 }
 
 fn decorate(prefix: &[String], response: &mut AuditResponse) {
+    // One catalog for every finding: building it is not cheap.
+    let catalog = standard_catalog();
     for finding in &mut response.checks {
         finding.inspect_argvs = finding
             .subject_refs
@@ -139,7 +141,7 @@ fn decorate(prefix: &[String], response: &mut AuditResponse) {
         finding.schema_argv = finding
             .suggested_schema
             .as_deref()
-            .and_then(|operation| schema_argv(prefix, operation));
+            .and_then(|operation| schema_argv(&catalog, prefix, operation));
         finding.guide_argv = finding
             .guide
             .as_deref()
@@ -148,7 +150,7 @@ fn decorate(prefix: &[String], response: &mut AuditResponse) {
     response.follow_up_argvs = vec![json_argv(prefix, &["guide", "blindspot"])];
     response
         .follow_up_argvs
-        .extend(schema_argv(prefix, "review.submit"));
+        .extend(schema_argv(&catalog, prefix, "review.submit"));
 }
 
 fn render(response: &AuditResponse, historical: &str) -> String {
