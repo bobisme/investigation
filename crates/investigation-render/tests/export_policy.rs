@@ -13,6 +13,11 @@
 //! [`INTERNAL`], so a byte scan of every planned file, the manifest and the
 //! file names finds any channel that leaks: names, counts, hashes and the
 //! omission manifest.
+//!
+//! Identifiers (W11.13): a public export, or one with remapping asked for,
+//! shows no canonical ID, journal sequence, head hash or UUIDv7 creation
+//! time, consistently remaps every record it shows, and the publisher's
+//! mapping restores the canonical text.
 
 use investigation_core::{
     identity::Id,
@@ -20,7 +25,10 @@ use investigation_core::{
 };
 use investigation_render::{
     Audience,
-    export::{Caveat, ExportPlan, ExportSnapshot, Pin, kind, plan_export},
+    export::{
+        Caveat, ExportPlan, ExportSnapshot, IdentifierMode, Pin, Retained, kind, plan_export,
+        plan_export_remap,
+    },
 };
 use investigation_store::{Store, Workspace};
 use serde_json::{Value, json};
@@ -353,7 +361,14 @@ fn mentions(plan: &ExportPlan, needle: &str) -> Vec<String> {
     found
 }
 
+/// The report as the publisher reads it: with canonical IDs, also when the
+/// export remapped them.
 fn report(plan: &ExportPlan) -> String {
+    String::from_utf8(plan.identifiers().restore(raw_report(plan).as_bytes())).unwrap()
+}
+
+/// The report's bytes as written.
+fn raw_report(plan: &ExportPlan) -> String {
     String::from_utf8(
         plan.files()
             .entry("case-report.md")
@@ -393,11 +408,22 @@ fn caveats(plan: &ExportPlan, id: Id) -> Vec<Caveat> {
 /// and no text above the audience appears in any byte or file name.
 fn assert_nothing_withheld_leaks(plan: &ExportPlan, case: Id, above: &[&str]) {
     for exclusion in plan.exclusions() {
-        if exclusion.id == case {
+        if exclusion.id == case && plan.identifiers().mode() == IdentifierMode::Canonical {
             continue; // The case ID names the snapshot the export is of.
         }
-        let found = mentions(plan, &exclusion.id.to_string());
+        let canonical = exclusion.id.to_string();
+        let found = mentions(plan, &canonical);
         assert!(found.is_empty(), "withheld {}: {found:#?}", exclusion.id);
+        if exclusion.id != case
+            && let Some(shown) = plan.identifiers().exported(&canonical)
+        {
+            let found = mentions(plan, shown);
+            assert!(
+                found.is_empty(),
+                "withheld {} as {shown}: {found:#?}",
+                exclusion.id
+            );
+        }
     }
     for needle in above {
         let found = mentions(plan, needle);
@@ -584,4 +610,213 @@ fn the_same_inputs_give_the_same_decisions_and_bytes() {
         assert_eq!(first.caveated(), second.caveated());
         assert_eq!(bytes(&first), bytes(&second));
     }
+}
+
+/// Every bounded hyphenated UUIDv7 value in `text`, lowercased.
+fn uuids(text: &str) -> Vec<String> {
+    let bytes = text.as_bytes();
+    let mut found = Vec::new();
+    for start in 0..bytes.len().saturating_sub(35) {
+        let candidate = &bytes[start..start + 36];
+        let shaped = candidate
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| match index {
+                8 | 13 | 18 | 23 => *byte == b'-',
+                14 => *byte == b'7',
+                _ => byte.is_ascii_hexdigit(),
+            });
+        let bounded = (start == 0 || !bytes[start - 1].is_ascii_alphanumeric())
+            && bytes
+                .get(start + 36)
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric());
+        if shaped && bounded {
+            found.push(String::from_utf8_lossy(candidate).to_ascii_lowercase());
+        }
+    }
+    found
+}
+
+/// Every needle that betrays a canonical identity: each record and
+/// workspace ID in its full, bare, upper-case and 32-digit forms and its
+/// millisecond time prefix, and each head hash of the case's verified chain.
+fn canonical_needles(fixture: &mut Fixture) -> Vec<String> {
+    let replay = fixture.store.case(fixture.case).unwrap();
+    let mut ids: Vec<Id> = replay
+        .state
+        .records()
+        .map(|record| record.header.id)
+        .collect();
+    ids.push(fixture.store.workspace().id());
+    let mut needles = Vec::new();
+    for id in ids {
+        let full = id.to_string();
+        let uuid = full.split_once('_').unwrap().1.to_owned();
+        needles.push(uuid[..13].to_owned());
+        needles.push(uuid.replace('-', ""));
+        needles.push(uuid.to_ascii_uppercase());
+        needles.push(uuid);
+        needles.push(full);
+    }
+    for sequence in 0..=replay.snapshot.sequence {
+        let head = replay.state.verified_snapshot(sequence).unwrap();
+        needles.push(head.as_str().trim_start_matches("sha256:").to_owned());
+    }
+    needles
+}
+
+/// A public export, at the head and at an earlier snapshot, names no
+/// canonical ID, time prefix, journal sequence or head hash in any file
+/// name, body or manifest byte; it still shows its public records, under
+/// remapped IDs that the publisher's mapping turns back into case records.
+#[test]
+fn a_public_export_shows_no_canonical_identifier_sequence_or_time() {
+    let mut fixture = fixture();
+    let needles = canonical_needles(&mut fixture);
+    let records: Vec<String> = {
+        let replay = fixture.store.case(fixture.case).unwrap();
+        replay
+            .state
+            .records()
+            .map(|record| record.header.id.to_string())
+            .collect()
+    };
+    let head = fixture.store.case(fixture.case).unwrap().snapshot;
+    for pin in [
+        Pin::default(),
+        Pin {
+            sequence: Some(fixture.before_raise),
+            head_hash: None,
+        },
+    ] {
+        let (_, plan) = export(&mut fixture, Audience::Public, &pin);
+        let identifiers = plan.identifiers();
+        assert_eq!(identifiers.mode(), IdentifierMode::Remapped);
+        assert_eq!(plan.manifest().identifiers, Some(IdentifierMode::Remapped));
+        assert_eq!(plan.manifest().snapshot.sequence, 0);
+        assert_eq!(&plan.manifest().snapshot, identifiers.exported_snapshot());
+        assert_eq!(identifiers.canonical_snapshot().case_id, fixture.case);
+        let pinned = pin.sequence.unwrap_or(head.sequence);
+        assert_eq!(identifiers.canonical_snapshot().sequence, pinned);
+        let identifiers_statement = &plan.manifest().statements.identifiers;
+        assert!(
+            identifiers_statement.contains("remapped"),
+            "{identifiers_statement}"
+        );
+        assert!(!identifiers_statement.contains("embed their creation time"));
+        let mut shown = 0;
+        for (path, text) in bytes(&plan) {
+            for needle in &needles {
+                assert!(!path.contains(needle.as_str()), "{path} names {needle}");
+                assert!(!text.contains(needle.as_str()), "{path} contains {needle}");
+            }
+            for sequence in [pinned, head.sequence] {
+                for form in [
+                    format!("sequence {sequence}"),
+                    format!("\"sequence\": {sequence}"),
+                    format!("--snapshot {sequence}"),
+                ] {
+                    assert!(!text.contains(&form), "{path} contains {form}");
+                }
+            }
+            // Every ID shown is a remapped one whose canonical value is a
+            // record of the case.
+            for uuid in uuids(&text) {
+                let canonical = identifiers
+                    .canonical(&uuid)
+                    .unwrap_or_else(|| panic!("{path}: {uuid} is not in the mapping"));
+                assert!(
+                    records.iter().any(|record| record.ends_with(canonical)),
+                    "{path}: {uuid} maps to {canonical}, not a record"
+                );
+                shown += 1;
+            }
+        }
+        // The clean public conclusion is shown, remapped, and the mapping
+        // finds it again.
+        let clean = fixture.clean.to_string();
+        let remapped = identifiers
+            .exported(&clean)
+            .expect("the clean conclusion is shown");
+        assert_ne!(remapped, clean);
+        assert!(raw_report(&plan).contains(remapped));
+        assert!(listing(&report(&plan), fixture.clean).is_some());
+        assert!(shown >= 3, "{shown}");
+    }
+}
+
+/// Internal and restricted exports keep canonical IDs and say that they
+/// embed their creation time, unless remapping is asked for. A remapped
+/// export restores to the canonical one through the publisher's mapping,
+/// except for the lines that name the snapshot; the mapping is a bijection,
+/// deterministic, and differs between audiences of one snapshot.
+#[test]
+fn internal_keeps_canonical_ids_unless_remapping_is_asked_and_restores_exactly() {
+    let mut fixture = fixture();
+    let spec = kind("case-report").unwrap();
+    let snapshot = ExportSnapshot::read(&mut fixture.store, fixture.case, &Pin::default()).unwrap();
+    for audience in [Audience::Internal, Audience::Restricted] {
+        let canonical = plan_export(spec, &snapshot, audience).unwrap();
+        let manifest = canonical.manifest();
+        assert_eq!(manifest.identifiers, Some(IdentifierMode::Canonical));
+        assert_eq!(manifest.snapshot.case_id, fixture.case);
+        assert_eq!(manifest.snapshot.sequence, snapshot.case().head().sequence);
+        assert_eq!(
+            manifest.statements.identifiers,
+            "Record IDs are UUIDv7 values and embed their creation time to the millisecond."
+        );
+        assert_eq!(canonical.identifiers().len(), 0);
+        let text = raw_report(&canonical);
+        assert!(text.contains(&fixture.clean.to_string()));
+
+        let remapped =
+            plan_export_remap(spec, &snapshot, audience, &Retained::none(), true).unwrap();
+        let again = plan_export_remap(spec, &snapshot, audience, &Retained::none(), true).unwrap();
+        assert_eq!(bytes(&remapped), bytes(&again));
+        assert_eq!(remapped.identifiers(), again.identifiers());
+        assert_eq!(remapped.manifest().snapshot.sequence, 0);
+        assert_eq!(remapped.exclusions(), canonical.exclusions());
+        let pairs: Vec<(&str, &str)> = remapped.identifiers().pairs().collect();
+        for (from, to) in &pairs {
+            assert_ne!(from, to);
+            assert_eq!(remapped.identifiers().canonical(to), Some(*from));
+        }
+        let restored = report(&remapped);
+        let names_snapshot = |line: &&str| {
+            line.starts_with("| Snapshot |")
+                || line.starts_with("| Bundle |")
+                || line.contains("full evidence chain")
+        };
+        let kept: Vec<&str> = restored
+            .lines()
+            .filter(|line| !names_snapshot(line))
+            .collect();
+        let expected: Vec<&str> = text.lines().filter(|line| !names_snapshot(line)).collect();
+        assert_eq!(kept, expected, "{audience:?}");
+        // The manifest's references map back to the canonical manifest's.
+        let restored_manifest = remapped.identifiers().restore(remapped.manifest_bytes());
+        let restored_manifest: serde_json::Value =
+            serde_json::from_slice(&restored_manifest).unwrap();
+        let canonical_manifest: serde_json::Value =
+            serde_json::from_slice(canonical.manifest_bytes()).unwrap();
+        assert_eq!(
+            restored_manifest["snapshot"]["case_id"],
+            canonical_manifest["snapshot"]["case_id"]
+        );
+        assert_eq!(restored_manifest["sources"], canonical_manifest["sources"]);
+        assert_eq!(
+            restored_manifest["supersession"],
+            canonical_manifest["supersession"]
+        );
+    }
+    // One record gets unrelated values in exports for different audiences.
+    let clean = fixture.clean.to_string();
+    let public = plan_export(spec, &snapshot, Audience::Public).unwrap();
+    let internal =
+        plan_export_remap(spec, &snapshot, Audience::Internal, &Retained::none(), true).unwrap();
+    assert_ne!(
+        public.identifiers().exported(&clean),
+        internal.identifiers().exported(&clean)
+    );
+    assert_ne!(public.manifest().snapshot, internal.manifest().snapshot);
 }

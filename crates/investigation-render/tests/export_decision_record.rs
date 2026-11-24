@@ -332,6 +332,17 @@ fn everything(plan: &ExportPlan) -> String {
     out
 }
 
+/// The ID the export shows for `id`: remapped for the public audience
+/// (W11.13), as recorded otherwise. A record the export does not show keeps
+/// its canonical value, which must not appear either.
+fn shown(plan: &ExportPlan, id: Id) -> String {
+    let canonical = id.to_string();
+    plan.identifiers()
+        .exported(&canonical)
+        .unwrap_or(&canonical)
+        .to_owned()
+}
+
 fn matrix_rows(record: &str) -> Vec<&str> {
     let start = record.find("### Comparison matrix").unwrap();
     record[start..]
@@ -406,15 +417,16 @@ fn a_withheld_option_has_no_row_for_the_public_and_no_pareto_status() {
     assert!(!text.contains("Caveat"), "{text}");
     let everything = everything(&plan);
     for withheld in [
-        fixture.option_b.to_string(),
-        fixture.cell(fixture.option_b, fixture.hard).to_string(),
-        fixture.cell(fixture.option_b, fixture.soft).to_string(),
+        shown(&plan, fixture.option_b),
+        shown(&plan, fixture.cell(fixture.option_b, fixture.hard)),
+        shown(&plan, fixture.cell(fixture.option_b, fixture.soft)),
         B_MARK.to_owned(),
         INTERNAL.to_owned(),
     ] {
         assert!(!everything.contains(&withheld), "{withheld} leaked");
     }
-    assert!(text.contains(&fixture.decision.to_string()));
+    assert!(text.contains(&shown(&plan, fixture.decision)));
+    assert!(!everything.contains(&fixture.decision.to_string()));
     assert!(text.contains(&format!("{PUBLIC} option A")));
 }
 
@@ -432,6 +444,8 @@ fn a_withheld_comparison_drops_its_row_for_the_public_and_reads_not_shown_for_in
     assert_eq!(rows.len(), 1, "cascading omission of the row\n{text}");
     assert!(rows[0].contains(B_MARK), "{text}");
     assert!(!everything(&public).contains(&hidden));
+    let hidden_id = fixture.cell(fixture.option_a, fixture.soft);
+    assert!(!everything(&public).contains(&shown(&public, hidden_id)));
     assert!(rows.iter().all(|row| !row.contains("not shown")), "{text}");
     assert!(!text.contains("Pareto status ("));
 
@@ -515,7 +529,7 @@ fn comparisons_resting_on_withheld_evidence_carry_the_caveat_or_vanish() {
     assert!(matrix_rows(&text).is_empty(), "{text}");
     assert!(!text.contains("Caveat"), "{text}");
     for (_, _, comparison) in &fixture.cells {
-        assert!(!everything(&public).contains(&comparison.to_string()));
+        assert!(!everything(&public).contains(&shown(&public, *comparison)));
     }
-    assert!(text.contains(&fixture.decision.to_string()));
+    assert!(text.contains(&shown(&public, fixture.decision)));
 }

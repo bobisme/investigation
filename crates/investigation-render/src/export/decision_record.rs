@@ -59,7 +59,10 @@ use crate::{
 };
 
 /// Output format of this kind.
-pub const VERSION: &str = "inv.export.decision-record.v1";
+/// v2: the basis names the export's snapshot, which is the bundle when IDs
+/// are remapped; a remapped record gives no command to open the case
+/// (W11.13).
+pub const VERSION: &str = "inv.export.decision-record.v2";
 
 /// The record's file name.
 pub const FILE: &str = "decision-record.md";
@@ -88,7 +91,7 @@ fn report(input: &ExportInput<'_>) -> String {
     let title = case_record
         .and_then(|record| input.title(record))
         .unwrap_or_else(|| "Case".to_owned());
-    let head = case.head();
+    let snapshot = input.snapshot();
     let mut out = format!("# Decision record: {title}\n\n");
     out.push_str(
         "> Decision record rendered by Investigation from one verified snapshot, with no model \
@@ -102,14 +105,22 @@ fn report(input: &ExportInput<'_>) -> String {
     let _ = writeln!(
         out,
         "| Case | {} |",
-        inline_code(&case.case_id().to_string())
+        inline_code(&snapshot.case_id.to_string())
     );
-    let _ = writeln!(
-        out,
-        "| Snapshot | sequence {}, head {} |",
-        head.sequence,
-        inline_code(head.head_hash.as_str())
-    );
+    if input.remapped() {
+        let _ = writeln!(
+            out,
+            "| Bundle | {} (IDs remapped; the publisher keeps the case snapshot) |",
+            inline_code(snapshot.head_hash.as_str())
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "| Snapshot | sequence {}, head {} |",
+            snapshot.sequence,
+            inline_code(snapshot.head_hash.as_str())
+        );
+    }
     let _ = writeln!(
         out,
         "| Audience | {} |",
@@ -181,16 +192,21 @@ fn report(input: &ExportInput<'_>) -> String {
         "- Soft criteria and preference cells state preferences, not measurements. A \
          criterion's weight is a stated preference.\n",
     );
-    let _ = writeln!(
-        out,
-        "- To read the full evidence chain, open the case at this snapshot: {}",
-        inline_code(&format!(
-            "investigation --case {} brief --snapshot {} --head-hash {}",
-            case.case_id(),
-            head.sequence,
-            head.head_hash
-        ))
-    );
+    if input.remapped() {
+        out.push_str(
+            "- IDs in this record were remapped for this export only. To read the full evidence \
+             chain, ask the publisher, who can open the case at the snapshot it was rendered from.\n",
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "- To read the full evidence chain, open the case at this snapshot: {}",
+            inline_code(&format!(
+                "investigation --case {} brief --snapshot {} --head-hash {}",
+                snapshot.case_id, snapshot.sequence, snapshot.head_hash
+            ))
+        );
+    }
     out
 }
 

@@ -36,7 +36,10 @@ use crate::{
 /// Output format of this kind.
 /// v2: the caveats of `inv.export-policy.v2` under each caveated record, and
 /// the dependent-record rule in the limits (W11.02).
-pub const VERSION: &str = "inv.export.case-report.v2";
+/// v3: the basis names the export's snapshot, which is the bundle when IDs
+/// are remapped; a remapped report gives no command to open the case
+/// (W11.13).
+pub const VERSION: &str = "inv.export.case-report.v3";
 
 /// The report's file name.
 pub const FILE: &str = "case-report.md";
@@ -66,7 +69,7 @@ fn report(input: &ExportInput<'_>) -> String {
     let title = case_record
         .and_then(|record| input.title(record))
         .unwrap_or_else(|| "Case report".to_owned());
-    let head = case.head();
+    let snapshot = input.snapshot();
     let mut out = format!("# {title}\n\n");
     out.push_str(
         "> Case report rendered by Investigation from one verified snapshot, with no model \
@@ -79,14 +82,22 @@ fn report(input: &ExportInput<'_>) -> String {
     let _ = writeln!(
         out,
         "| Case | {} |",
-        inline_code(&case.case_id().to_string())
+        inline_code(&snapshot.case_id.to_string())
     );
-    let _ = writeln!(
-        out,
-        "| Snapshot | sequence {}, head {} |",
-        head.sequence,
-        inline_code(head.head_hash.as_str())
-    );
+    if input.remapped() {
+        let _ = writeln!(
+            out,
+            "| Bundle | {} (IDs remapped; the publisher keeps the case snapshot) |",
+            inline_code(snapshot.head_hash.as_str())
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "| Snapshot | sequence {}, head {} |",
+            snapshot.sequence,
+            inline_code(snapshot.head_hash.as_str())
+        );
+    }
     let _ = writeln!(
         out,
         "| Audience | {} |",
@@ -174,16 +185,21 @@ fn report(input: &ExportInput<'_>) -> String {
          anything was withheld, so withholding a record does not make another read stronger.\n",
     );
     let _ = writeln!(out, "- {}", dependent_rule(input.audience));
-    let _ = writeln!(
-        out,
-        "- To read the full evidence chain, open the case at this snapshot: {}",
-        inline_code(&format!(
-            "investigation --case {} brief --snapshot {} --head-hash {}",
-            case.case_id(),
-            head.sequence,
-            head.head_hash
-        ))
-    );
+    if input.remapped() {
+        out.push_str(
+            "- IDs in this report were remapped for this export only. To read the full evidence \
+             chain, ask the publisher, who can open the case at the snapshot it was rendered from.\n",
+        );
+    } else {
+        let _ = writeln!(
+            out,
+            "- To read the full evidence chain, open the case at this snapshot: {}",
+            inline_code(&format!(
+                "investigation --case {} brief --snapshot {} --head-hash {}",
+                snapshot.case_id, snapshot.sequence, snapshot.head_hash
+            ))
+        );
+    }
     out
 }
 

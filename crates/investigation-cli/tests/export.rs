@@ -52,6 +52,16 @@ fn run(cwd: &Path, args: &[&str]) -> (i32, Value) {
 }
 
 fn export(cwd: &Path, workspace: &Path, case: &str, extra: &[&str]) -> (i32, Value) {
+    export_kind(cwd, workspace, case, "case-report", extra)
+}
+
+fn export_kind(
+    cwd: &Path,
+    workspace: &Path,
+    case: &str,
+    kind: &str,
+    extra: &[&str],
+) -> (i32, Value) {
     let workspace = workspace.to_str().unwrap();
     let mut args = vec![
         "--workspace",
@@ -60,7 +70,7 @@ fn export(cwd: &Path, workspace: &Path, case: &str, extra: &[&str]) -> (i32, Val
         case,
         "export",
         "--kind",
-        "case-report",
+        kind,
     ];
     args.extend_from_slice(extra);
     run(cwd, &args)
@@ -170,7 +180,13 @@ fn the_same_snapshot_kind_and_policy_give_byte_identical_exports() {
                 let manifest: Value =
                     serde_json::from_slice(&first_files["export-manifest.json"]).unwrap();
                 assert_eq!(manifest["export_id"], first_value["export_id"]);
-                assert_eq!(manifest["snapshot"], first_value["snapshot"]);
+                let identifiers = &first_value["publisher_receipt"]["identifiers"];
+                assert_eq!(manifest["snapshot"], identifiers["exported_snapshot"]);
+                assert_eq!(first_value["snapshot"], identifiers["canonical_snapshot"]);
+                assert_eq!(
+                    first_value["publisher_receipt"],
+                    second_value["publisher_receipt"]
+                );
                 assert_eq!(manifest["policy"]["audience"], audience);
             }
         }
@@ -781,5 +797,339 @@ fn each_audience_gets_its_policy_over_scenarios_a_c_and_d() {
     assert!(
         raised_any >= 3,
         "every scenario has a statement with a basis"
+    );
+}
+
+/// Every bounded hyphenated UUIDv7 value in `bytes`, lowercased.
+fn uuids(bytes: &[u8]) -> Vec<String> {
+    let mut found = Vec::new();
+    for start in 0..bytes.len().saturating_sub(35) {
+        let candidate = &bytes[start..start + 36];
+        let shaped = candidate
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| match index {
+                8 | 13 | 18 | 23 => *byte == b'-',
+                14 => *byte == b'7',
+                _ => byte.is_ascii_hexdigit(),
+            });
+        let bounded = (start == 0 || !bytes[start - 1].is_ascii_alphanumeric())
+            && bytes
+                .get(start + 36)
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric());
+        if shaped && bounded {
+            found.push(String::from_utf8_lossy(candidate).to_ascii_lowercase());
+        }
+    }
+    found
+}
+
+/// Clear every record of `case` for the public audience by a reviewed
+/// downgrade, so a public export has records to show. Returns how many
+/// were cleared.
+fn clear_for_public(workspace: &Path, case: Id) -> usize {
+    let mut store = Store::open(Workspace::open(workspace).unwrap());
+    let mut pending: Vec<Id> = store
+        .case(case)
+        .unwrap()
+        .state
+        .records()
+        .map(|record| record.header.id)
+        .collect();
+    let mut cleared = 0;
+    // A record is cleared once everything it derives from is, so repeat
+    // until a pass clears nothing more.
+    loop {
+        let before = cleared;
+        let mut left = Vec::new();
+        for id in pending {
+            let state = store.case(case).unwrap().state;
+            let record = state.current(id).unwrap();
+            let subject = json!({"id":id, "revision":record.header.revision.0});
+            let digest = investigation_core::derivation::artifact_body(&state, record.reference())
+                .and_then(|body| body.digest);
+            let input = json!({
+                "schema_version":"inv.command.v1", "command_id":format!("clear-{id}-{before}"),
+                "case_id":case, "actor":"human:export-reviewer", "preconditions":[],
+                "operations":[{"op":"classification.downgrade", "payload":{
+                    "subject_ref":subject, "level":"public", "reason":"Reviewed for publication.",
+                    "transformation":{
+                        "inputs":[{"input_ref":subject, "digest":digest}],
+                        "transformation":"manual_review", "version":"1",
+                        "redaction_decisions":[{"scope":"Whole record", "action":"retained",
+                            "rationale":"Nothing in it is sensitive."}],
+                        "output_digest":digest
+                    },
+                    "review":{"method":"Read the whole record.", "coverage":"whole_output",
+                        "examined":[subject]}
+                }}]
+            });
+            match store.record(&serde_json::to_vec(&input).unwrap()) {
+                Ok(receipt) if receipt.result == CommitResult::Committed => cleared += 1,
+                _ => left.push(id),
+            }
+        }
+        pending = left;
+        if cleared == before || pending.is_empty() {
+            return cleared;
+        }
+    }
+}
+
+/// Every needle that betrays canonical identity in `workspace`: each UUIDv7
+/// value anywhere in its state (records, transactions, workspace, journal),
+/// in full, upper-case and 32-digit form with its millisecond time prefix,
+/// and each head hash of the case's verified chain.
+fn canonical_needles(workspace: &Path, case: Id) -> (Vec<String>, Vec<String>) {
+    let mut canonical: Vec<String> = files(&workspace.join("state"))
+        .values()
+        .flat_map(|bytes| uuids(bytes))
+        .collect();
+    canonical.sort();
+    canonical.dedup();
+    let mut needles = Vec::new();
+    for uuid in &canonical {
+        needles.push(uuid[..13].to_owned());
+        needles.push(uuid.replace('-', ""));
+        needles.push(uuid.to_ascii_uppercase());
+        needles.push(uuid.clone());
+    }
+    let mut store = Store::open(Workspace::open(workspace).unwrap());
+    let replay = store.case(case).unwrap();
+    for sequence in 0..=replay.snapshot.sequence {
+        let head = replay.state.verified_snapshot(sequence).unwrap();
+        needles.push(head.as_str().trim_start_matches("sha256:").to_owned());
+    }
+    (canonical, needles)
+}
+
+/// The receipt's ID mapping, exported value to canonical value.
+fn mapping(value: &Value) -> BTreeMap<String, String> {
+    value["publisher_receipt"]["identifiers"]["ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|pair| {
+            (
+                pair["exported"].as_str().unwrap().to_owned(),
+                pair["canonical"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+/// W11.13 over every case of Scenarios A, C and D, with every record
+/// cleared for the public audience so that the public export shows them:
+///
+/// - No byte or file name of a public export holds a canonical ID (full,
+///   bare, upper-case or 32-digit), the millisecond time prefix of any
+///   UUIDv7 value in the workspace, a head hash of the case's chain or the
+///   journal sequence; the manifest names the bundle with sequence 0.
+/// - Every ID it shows is in the receipt's mapping, which maps it to a value
+///   of the workspace; the same export again gives the same bytes and the
+///   same mapping.
+/// - An internal export with `--remap-ids` maps back, through the receipt
+///   alone, to the canonical internal export except for the lines that name
+///   the snapshot, and the canonical manifest carries the UUIDv7 disclosure.
+#[test]
+fn public_and_remapped_exports_disclose_no_canonical_identity_over_scenarios_a_c_and_d() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let mut shown_by_kind: BTreeMap<&str, usize> = BTreeMap::new();
+    for scenario in SCENARIOS {
+        let workspace = fixtures::workspace(scenario, &root.join(scenario), false);
+        for case in cases(&workspace) {
+            let case_id: Id = case.parse().unwrap();
+            assert!(
+                clear_for_public(&workspace, case_id) > 0,
+                "{scenario} {case}"
+            );
+            let (canonical, needles) = canonical_needles(&workspace, case_id);
+            for kind in ["case-report", "decision-record"] {
+                let label = format!("{scenario} {case} {kind}");
+
+                let mut runs = Vec::new();
+                for run in ["first", "second"] {
+                    let out = root.join(format!("{scenario}-{case}-{kind}-public-{run}"));
+                    let (exit, value) = export_kind(
+                        root,
+                        &workspace,
+                        &case,
+                        kind,
+                        &["--audience", "public", "--out", out.to_str().unwrap()],
+                    );
+                    assert_eq!(exit, 0, "{label}: {value}");
+                    runs.push((out, value));
+                }
+                let (out, value) = &runs[0];
+                assert_eq!(files(out), files(&runs[1].0), "{label}: bytes differ");
+                assert_eq!(mapping(value), mapping(&runs[1].1), "{label}");
+                assert_eq!(value["identifiers"], "remapped");
+                let sequence = value["snapshot"]["sequence"].as_u64().unwrap();
+                assert!(sequence > 0);
+                let public_manifest = manifest(out);
+                assert_eq!(public_manifest["identifiers"], "remapped", "{label}");
+                assert_eq!(public_manifest["snapshot"]["sequence"], 0, "{label}");
+                assert_eq!(
+                    public_manifest["snapshot"],
+                    value["publisher_receipt"]["identifiers"]["exported_snapshot"]
+                );
+                let pairs = mapping(value);
+                let mut shown = 0;
+                for (path, bytes) in files(out) {
+                    let text = String::from_utf8(bytes.clone()).unwrap();
+                    for needle in &needles {
+                        assert!(
+                            !path.contains(needle.as_str()),
+                            "{label}: {path} names {needle}"
+                        );
+                        assert!(
+                            !text.contains(needle.as_str()),
+                            "{label}: {path} has {needle}"
+                        );
+                    }
+                    for form in [
+                        format!("sequence {sequence}"),
+                        format!("\"sequence\": {sequence}"),
+                        format!("--snapshot {sequence}"),
+                    ] {
+                        assert!(!text.contains(&form), "{label}: {path} has {form}");
+                    }
+                    for uuid in uuids(&bytes) {
+                        let canonical_value = pairs
+                            .iter()
+                            .find(|(exported, _)| exported.ends_with(&uuid))
+                            .map(|(_, canonical)| canonical.clone())
+                            .unwrap_or_else(|| panic!("{label}: {path}: {uuid} is not mapped"));
+                        assert!(
+                            canonical
+                                .iter()
+                                .any(|value| canonical_value.ends_with(value)),
+                            "{label}: {uuid} maps to {canonical_value}"
+                        );
+                        shown += 1;
+                    }
+                }
+                // The export names the remapped case.
+                let report = fs::read_to_string(out.join(format!("{kind}.md"))).unwrap();
+                let case_shown = public_manifest["snapshot"]["case_id"].as_str().unwrap();
+                assert!(report.contains(case_shown), "{label}");
+                assert_eq!(pairs.get(case_shown), Some(&case), "{label}");
+                *shown_by_kind.entry(kind).or_default() += shown;
+
+                // Internal: canonical by default and disclosed; remapped on
+                // request and restored by the receipt's mapping alone.
+                let plain = root.join(format!("{scenario}-{case}-{kind}-internal"));
+                let (exit, plain_value) = export_kind(
+                    root,
+                    &workspace,
+                    &case,
+                    kind,
+                    &["--audience", "internal", "--out", plain.to_str().unwrap()],
+                );
+                assert_eq!(exit, 0, "{label}: {plain_value}");
+                assert_eq!(plain_value["identifiers"], "canonical");
+                let plain_manifest = manifest(&plain);
+                assert_eq!(plain_manifest["identifiers"], "canonical");
+                assert_eq!(plain_manifest["snapshot"]["case_id"], case.as_str());
+                assert_eq!(plain_manifest["snapshot"]["sequence"], sequence);
+                assert!(
+                    plain_manifest["statements"]["identifiers"]
+                        .as_str()
+                        .unwrap()
+                        .contains("embed their creation time")
+                );
+                let remapped = root.join(format!("{scenario}-{case}-{kind}-internal-remapped"));
+                let (exit, remapped_value) = export_kind(
+                    root,
+                    &workspace,
+                    &case,
+                    kind,
+                    &[
+                        "--audience",
+                        "internal",
+                        "--remap-ids",
+                        "--out",
+                        remapped.to_str().unwrap(),
+                    ],
+                );
+                assert_eq!(exit, 0, "{label}: {remapped_value}");
+                assert_eq!(manifest(&remapped)["identifiers"], "remapped");
+                let mut restored = fs::read_to_string(remapped.join(format!("{kind}.md"))).unwrap();
+                for (exported, canonical_value) in mapping(&remapped_value) {
+                    restored = restored.replace(&exported, &canonical_value);
+                }
+                let names_snapshot = |line: &&str| {
+                    line.starts_with("| Snapshot |")
+                        || line.starts_with("| Bundle |")
+                        || line.contains("full evidence chain")
+                };
+                let expected = fs::read_to_string(plain.join(format!("{kind}.md"))).unwrap();
+                assert_eq!(
+                    restored
+                        .lines()
+                        .filter(|line| !names_snapshot(line))
+                        .collect::<Vec<_>>(),
+                    expected
+                        .lines()
+                        .filter(|line| !names_snapshot(line))
+                        .collect::<Vec<_>>(),
+                    "{label}"
+                );
+                assert_ne!(
+                    mapping(&remapped_value).keys().collect::<Vec<_>>(),
+                    pairs.keys().collect::<Vec<_>>(),
+                    "{label}: audiences share remapped IDs"
+                );
+            }
+        }
+    }
+    // Both kinds show remapped records, so the scan is not vacuous.
+    assert!(shown_by_kind["case-report"] > 50, "{shown_by_kind:?}");
+    assert!(shown_by_kind["decision-record"] > 10, "{shown_by_kind:?}");
+}
+
+/// A workspace archive keeps canonical identity: its manifest says
+/// `identifiers: canonical`, so its sequence 0 (the workspace has no
+/// sequence; the head is the recovery head) is told apart from a remapped
+/// export's undisclosed one by `kind` and `identifiers`. `--remap-ids` is
+/// refused before anything is written.
+#[test]
+fn a_workspace_archive_stays_canonical_and_refuses_remapping() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let workspace = fixtures::workspace("scenario-a", &root.join("ws"), false);
+    let base = [
+        "--workspace",
+        workspace.to_str().unwrap(),
+        "export",
+        "--kind",
+        "workspace-archive",
+        "--audience",
+        "restricted",
+    ];
+    let refused = root.join("refused");
+    let mut args = base.to_vec();
+    args.extend(["--remap-ids", "--out", refused.to_str().unwrap()]);
+    let (exit, value) = run(root, &args);
+    assert_eq!(exit, 2, "{value}");
+    assert_eq!(value["error"]["path"], "--remap-ids");
+    assert!(!refused.exists());
+
+    let archive = root.join("archive");
+    let mut args = base.to_vec();
+    args.extend(["--out", archive.to_str().unwrap()]);
+    let (exit, value) = run(root, &args);
+    assert_eq!(exit, 0, "{value}");
+    assert_eq!(value["identifiers"], "canonical");
+    let archive_manifest = manifest(&archive);
+    assert_eq!(archive_manifest["kind"], "workspace-archive");
+    assert_eq!(archive_manifest["identifiers"], "canonical");
+    assert_eq!(archive_manifest["snapshot"]["sequence"], 0);
+    assert!(
+        archive_manifest["statements"]["identifiers"]
+            .as_str()
+            .unwrap()
+            .contains("embed their creation time")
     );
 }

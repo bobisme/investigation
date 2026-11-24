@@ -9,6 +9,7 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
     let sources = [
         ("export/mod.rs", include_str!("mod.rs")),
         ("export/inclusion.rs", include_str!("inclusion.rs")),
+        ("export/identifiers.rs", include_str!("identifiers.rs")),
         ("export/manifest.rs", include_str!("manifest.rs")),
         ("export/case_report.rs", include_str!("case_report.rs")),
         (
@@ -50,6 +51,7 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
     let sources = [
         ("export/mod.rs", include_str!("mod.rs")),
         ("export/inclusion.rs", include_str!("inclusion.rs")),
+        ("export/identifiers.rs", include_str!("identifiers.rs")),
         ("export/manifest.rs", include_str!("manifest.rs")),
         ("export/case_report.rs", include_str!("case_report.rs")),
         ("export/snapshot.rs", include_str!("snapshot.rs")),

@@ -38,6 +38,21 @@
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
     },
+    "IdentifierMode": {
+      "description": "Whether an export shows canonical identifiers or opaque ones.",
+      "oneOf": [
+        {
+          "const": "canonical",
+          "description": "Record IDs as recorded; they embed their creation time. The snapshot\nis the case journal's.",
+          "type": "string"
+        },
+        {
+          "const": "remapped",
+          "description": "Opaque IDs assigned for this export only, with no creation time; the\nsnapshot names the bundle, and the publisher keeps the mapping.",
+          "type": "string"
+        }
+      ]
+    },
     "ManifestPolicy": {
       "additionalProperties": false,
       "description": "The audience policy the export was built under.",
@@ -64,16 +79,18 @@
     },
     "ManifestSnapshot": {
       "additionalProperties": false,
+      "description": "The snapshot an export names. `sequence` is 0 in two cases, told apart\nby the manifest's `kind` and `identifiers`: a workspace archive (kind\n`workspace-archive`, identifiers `canonical`), which has no\nworkspace-wide sequence; and a remapped export (identifiers\n`remapped`), whose sequence is not disclosed.",
       "properties": {
         "case_id": {
           "$ref": "#/$defs/Id",
-          "description": "The case. For a workspace archive, which covers every case, the\nworkspace ID."
+          "description": "The case. For a workspace archive, which covers every case, the\nworkspace ID. When remapped, the case's remapped ID."
         },
         "head_hash": {
-          "$ref": "#/$defs/Digest"
+          "$ref": "#/$defs/Digest",
+          "description": "The verified head hash; the recovery head for a workspace archive;\nan opaque bundle digest when remapped."
         },
         "sequence": {
-          "description": "The case journal sequence of the verified head. For a workspace\narchive 0: there is no workspace-wide sequence, and `head_hash` is\nthe recovery head over every case head.",
+          "description": "The case journal sequence of the verified head. 0 for a workspace\narchive: there is no workspace-wide sequence, and `head_hash` is the\nrecovery head over every case head. 0 when remapped: the sequence is\nnot disclosed, and `head_hash` is an opaque bundle digest.",
           "format": "uint64",
           "minimum": 0,
           "type": "integer"
@@ -91,7 +108,7 @@
       "description": "The versions that determine the bytes of an export.",
       "properties": {
         "framework": {
-          "description": "The shared export pipeline (`inv.export.v1`).",
+          "description": "The shared export pipeline (`inv.export.v2`).",
           "type": "string"
         },
         "freshness_rules": {
@@ -268,6 +285,17 @@
       "description": "The program that rendered the export.",
       "type": "string"
     },
+    "identifiers": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IdentifierMode"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "`canonical`: record IDs are as recorded and embed their creation\ntime, and `snapshot` is canonical (a case head, or for a workspace\narchive the recovery head). `remapped`: every UUIDv7 value in the\nexport, file names included, is an opaque value assigned for this\nexport only, and `snapshot` names the bundle. Absent from manifests\nwritten before `inv.export.v2`, which were canonical."
+    },
     "kind": {
       "description": "The export kind, as given to `export --kind`.",
       "type": "string"
@@ -288,7 +316,7 @@
     },
     "snapshot": {
       "$ref": "#/$defs/ManifestSnapshot",
-      "description": "The exact verified case snapshot the export was rendered from."
+      "description": "What the export was rendered from: the exact verified case snapshot;\nfor a workspace archive, the workspace and its recovery head; when\n`identifiers` is `remapped`, the opaque identity of this bundle, with\nthe mapping to the case snapshot kept by the publisher."
     },
     "sources": {
       "description": "Digests of the retained artifacts the export includes.",

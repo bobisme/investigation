@@ -42,6 +42,17 @@
 //!   version, completeness, included source digests, supersession links and
 //!   every file with its digest. It holds no time, path or other case, so the
 //!   same snapshot, kind and policy give byte-identical files and manifest.
+//! - [`Identifiers`] decide what the audience sees of record IDs and the
+//!   snapshot. Public exports, and any export with `--remap-ids`, are
+//!   rewritten after the kind plans them: every UUIDv7 value becomes an
+//!   opaque one with no creation time, consistently across file names,
+//!   bodies and the manifest, and the manifest names the bundle (sequence 0,
+//!   a bundle digest) instead of the case journal. The canonical snapshot
+//!   and the ID mapping go only to the publisher. Internal and restricted
+//!   exports keep canonical IDs by default, and their manifest says IDs
+//!   embed their creation time. A workspace archive is always canonical and
+//!   refuses remapping. The table and the rules are in the `identifiers`
+//!   module documentation.
 //! - [`write_export`] writes a plan into a directory that does not exist or
 //!   is empty, creating every file without replacing anything, and the
 //!   manifest last. A failed write removes what it created.
@@ -60,6 +71,13 @@
 //!   (title with a state, summary, table row) appears. Never paraphrase or
 //!   drop it, and never add your own words about withheld material.
 //!
+//! - Identifiers need no code in a kind: write canonical IDs, and the
+//!   framework remaps them when the export is remapped. Take the snapshot
+//!   to show from [`ExportInput::snapshot`] (never `case.head()`): its
+//!   sequence is 0 when remapped, and [`ExportInput::remapped`] says so. Do
+//!   not show other journal sequences, head hashes or record times in a
+//!   remapped export; a leftover head hash or canonical ID refuses the plan.
+//!
 //! Kinds that need more than records (retained bytes for attachments or an
 //! archive, selected human notes) take them as explicit, digest-checked
 //! inputs on [`ExportInput`], never by reading the workspace while planning:
@@ -77,6 +95,7 @@
 pub mod archive;
 mod case_report;
 mod decision_record;
+mod identifiers;
 mod inclusion;
 mod manifest;
 mod retained;
@@ -103,6 +122,7 @@ use crate::{
     note::NoteContext,
 };
 
+pub use identifiers::{ExportIdentity, IdentifierMode, Identifiers, REMAP_VERSION};
 pub use inclusion::{Caveat, Caveated, Exclusion, Inclusion, caveats_approved, dependent_rule};
 pub use manifest::{
     Completeness, ExportManifest, FileDigest, MANIFEST_SCHEMA, ManifestPolicy, ManifestSnapshot,
@@ -115,7 +135,9 @@ pub use write::{Written, write_export};
 /// Version of the shared pipeline: snapshot pinning, manifest and
 /// destination rules. Bump it when any of them changes the bytes written;
 /// the audience policy has its own [`POLICY_VERSION`].
-pub const FRAMEWORK_VERSION: &str = "inv.export.v1";
+/// v2 (W11.13): the manifest states its identifier mode, and public or
+/// `--remap-ids` exports carry remapped IDs and a bundle snapshot.
+pub const FRAMEWORK_VERSION: &str = "inv.export.v2";
 
 /// Version of the export audience policy. v1: strict positive inclusion by
 /// effective classification, judged at the pinned and the current revision,
@@ -318,6 +340,8 @@ pub struct ExportInput<'a> {
     /// before planning; empty unless given to [`plan_export_with`]. Copy
     /// bytes only of records [`Self::includes`] admits.
     pub retained: &'a Retained,
+    /// The snapshot the export names and whether IDs are remapped.
+    pub identity: &'a ExportIdentity,
 }
 
 impl ExportInput<'_> {
@@ -333,6 +357,18 @@ impl ExportInput<'_> {
     /// each [`Caveat::text`] as given.
     pub fn caveats(&self, record: &Record) -> &[Caveat] {
         self.inclusion.caveats(record)
+    }
+
+    /// The snapshot to show: the case snapshot, or the bundle when IDs are
+    /// remapped (sequence 0, a bundle digest). Never show `case.head()`.
+    pub const fn snapshot(&self) -> &ManifestSnapshot {
+        &self.identity.snapshot
+    }
+
+    /// Whether this export's IDs and snapshot are remapped. A remapped export
+    /// must not show journal sequences, head hashes or record times.
+    pub fn remapped(&self) -> bool {
+        self.identity.mode == IdentifierMode::Remapped
     }
 
     /// The record's safe display title when it is included.
@@ -355,6 +391,7 @@ pub struct ExportPlan {
     manifest_bytes: Vec<u8>,
     exclusions: Vec<Exclusion>,
     caveated: Vec<Caveated>,
+    identifiers: Identifiers,
 }
 
 impl ExportPlan {
@@ -390,6 +427,12 @@ impl ExportPlan {
     pub fn complete(&self) -> bool {
         self.exclusions.is_empty()
     }
+
+    /// The canonical snapshot and, when remapped, the ID mapping. Private to
+    /// the publisher: never written into the export.
+    pub const fn identifiers(&self) -> &Identifiers {
+        &self.identifiers
+    }
 }
 
 /// Why an export was not produced. Nothing is written in any of these cases
@@ -419,6 +462,11 @@ pub enum ExportError {
     ArchiveAudience { required: &'static str },
     /// The planner needed retained bytes the caller did not read.
     MissingRetained { digest: Digest },
+    /// IDs cannot be remapped in a kind that restores canonical state.
+    RemapResumable { kind: &'static str },
+    /// A remapped plan still held a canonical identifier, or two
+    /// identifiers would share one remapped value.
+    IdentifierRefused { path: String, reason: &'static str },
 }
 
 impl From<RenderError> for ExportError {
@@ -434,8 +482,11 @@ impl ExportError {
             | Self::DestinationUnsafe(_)
             | Self::DestinationNotEmpty
             | Self::AllCases { .. }
-            | Self::ArchiveAudience { .. } => ErrorCode::InvalidInput,
-            Self::Incomplete { .. } | Self::Caveated { .. } => ErrorCode::GateFailed,
+            | Self::ArchiveAudience { .. }
+            | Self::RemapResumable { .. } => ErrorCode::InvalidInput,
+            Self::Incomplete { .. } | Self::Caveated { .. } | Self::IdentifierRefused { .. } => {
+                ErrorCode::GateFailed
+            }
             Self::MissingRetained { .. } => ErrorCode::IntegrityFailure,
             Self::Render(error) => return error.to_failure(),
             Self::Destination { .. } => ErrorCode::IoFailure,
@@ -494,14 +545,29 @@ impl fmt::Display for ExportError {
                 "The retained bytes of {digest} were not read before planning. Run \
                  investigation check."
             ),
+            Self::RemapResumable { kind } => write!(
+                formatter,
+                "The export kind {kind} restores canonical state, so its IDs cannot be \
+                 remapped; export it without --remap-ids."
+            ),
+            Self::IdentifierRefused { path, reason } => write!(
+                formatter,
+                "The export was refused because {reason}{}. Nothing was written.",
+                if path.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({path})")
+                }
+            ),
         }
     }
 }
 
 impl std::error::Error for ExportError {}
 
-/// Plan `kind` for `snapshot` and `audience`. Pure: the same snapshot, kind
-/// and policy give a byte-identical plan and manifest.
+/// Plan `kind` for `snapshot` and `audience` with the audience's default
+/// identifiers: remapped for public, canonical otherwise. Pure: the same
+/// snapshot, kind and policy give a byte-identical plan and manifest.
 pub fn plan_export(
     kind: &'static KindSpec,
     snapshot: &ExportSnapshot,
@@ -518,6 +584,18 @@ pub fn plan_export_with(
     audience: Audience,
     retained: &Retained,
 ) -> Result<ExportPlan, ExportError> {
+    plan_export_remap(kind, snapshot, audience, retained, false)
+}
+
+/// [`plan_export_with`], with `remap_ids` remapping IDs for any audience
+/// (public always is). A resumable kind refuses remapping.
+pub fn plan_export_remap(
+    kind: &'static KindSpec,
+    snapshot: &ExportSnapshot,
+    audience: Audience,
+    retained: &Retained,
+    remap_ids: bool,
+) -> Result<ExportPlan, ExportError> {
     let renderer = kind
         .renderer
         .ok_or(ExportError::KindNotAvailable { kind: kind.name })?;
@@ -530,6 +608,9 @@ pub fn plan_export_with(
     let generation = Generation::new(renderer.version(), pinned, &policy);
     let notes = NoteContext::new(case, &policy, &generation);
     let inclusion = Inclusion::new(case.state(), snapshot.today(), audience);
+    let mode = IdentifierMode::for_audience(audience, remap_ids);
+    let mut remapper = identifiers::Remapper::new(kind, case, audience, mode)?;
+    let identity = remapper.identity();
     let input = ExportInput {
         kind,
         audience,
@@ -537,10 +618,15 @@ pub fn plan_export_with(
         notes: &notes,
         inclusion: &inclusion,
         retained,
+        identity: &identity,
     };
     let mut files = PlanBuilder::new(generation.clone());
     renderer.plan(&input, &mut files)?;
-    let files = files.finish();
+    let files = remapper.plan(
+        files.finish(),
+        &verified_chain(snapshot),
+        case.state().records().map(|record| record.header.id),
+    )?;
     if files.entry(MANIFEST_FILE).is_some() {
         return Err(RenderError::DuplicatePath(MANIFEST_FILE.to_owned()).into());
     }
@@ -551,12 +637,10 @@ pub fn plan_export_with(
     } else {
         Completeness::Incomplete
     };
-    let snapshot = ManifestSnapshot {
-        case_id: case.case_id(),
-        sequence: case.head().sequence,
-        head_hash: case.head().head_hash.clone(),
-    };
-    Ok(finish_plan(
+    let (sources, supersession) = manifest_parts(case.state(), |record| input.includes(record));
+    let parts = remap_parts(&mut remapper, sources, supersession)?;
+    let snapshot = remapper.exported_snapshot().clone();
+    Ok(finish_plan_identified(
         kind,
         renderer,
         files,
@@ -566,12 +650,65 @@ pub fn plan_export_with(
             audience: audience.as_str().to_owned(),
             placeholders: false,
         },
-        manifest_parts(case.state(), |record| input.includes(record)),
+        parts,
         completeness,
-        Statements::fixed(completeness, audience),
+        Statements::fixed(completeness, audience, mode),
         exclusions,
         caveated,
+        remapper.finish(),
     ))
+}
+
+/// Every head hash the case's verified journal has had: the pinned chain
+/// from genesis, and today's when the pin is an earlier head.
+fn verified_chain(snapshot: &ExportSnapshot) -> Vec<&Digest> {
+    let case = snapshot.case();
+    let pinned = case.state();
+    let mut chain: Vec<_> = (0..=case.head().sequence)
+        .filter_map(|sequence| pinned.verified_snapshot(sequence))
+        .collect();
+    if let Some(today) = snapshot.today() {
+        chain.extend(
+            (case.head().sequence + 1..=snapshot.latest().sequence)
+                .filter_map(|sequence| today.verified_snapshot(sequence)),
+        );
+    }
+    chain.push(&snapshot.latest().head_hash);
+    chain
+}
+
+/// The manifest's references as the export shows them.
+fn remap_parts(
+    remapper: &mut identifiers::Remapper,
+    sources: Vec<SourceDigest>,
+    supersession: Vec<Supersession>,
+) -> Result<(Vec<SourceDigest>, Vec<Supersession>), ExportError> {
+    let sources = sources
+        .into_iter()
+        .map(|source| {
+            Ok(SourceDigest {
+                artifact: remapper.reference(source.artifact)?,
+                sha256: source.sha256,
+            })
+        })
+        .collect::<Result<_, ExportError>>()?;
+    let supersession = supersession
+        .into_iter()
+        .map(|link| {
+            Ok(Supersession {
+                record: remapper.reference(link.record)?,
+                supersedes: link
+                    .supersedes
+                    .map(|reference| remapper.reference(reference))
+                    .transpose()?,
+                superseded_by: link
+                    .superseded_by
+                    .map(|reference| remapper.reference(reference))
+                    .transpose()?,
+            })
+        })
+        .collect::<Result<_, ExportError>>()?;
+    Ok((sources, supersession))
 }
 
 /// The manifest's `sources` and `supersession` entries for the records of
@@ -608,9 +745,41 @@ pub(crate) fn manifest_parts(
     (sources, supersession)
 }
 
-/// Build the manifest over planned `files` and wrap both in a plan.
+/// Build the manifest over planned `files` and wrap both in a plan, with
+/// canonical identifiers (a workspace archive's).
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn finish_plan(
+    kind: &'static KindSpec,
+    renderer: &dyn ExportRenderer,
+    files: RenderPlan,
+    snapshot: ManifestSnapshot,
+    policy: ManifestPolicy,
+    parts: (Vec<SourceDigest>, Vec<Supersession>),
+    completeness: Completeness,
+    statements: Statements,
+    exclusions: Vec<Exclusion>,
+    caveated: Vec<Caveated>,
+) -> ExportPlan {
+    let identifiers = Identifiers::canonical_only(snapshot.clone());
+    finish_plan_identified(
+        kind,
+        renderer,
+        files,
+        snapshot,
+        policy,
+        parts,
+        completeness,
+        statements,
+        exclusions,
+        caveated,
+        identifiers,
+    )
+}
+
+/// [`finish_plan`] with the plan's identifiers; `snapshot`, `parts` and
+/// `files` are as the export shows them.
+#[allow(clippy::too_many_arguments)]
+fn finish_plan_identified(
     kind: &'static KindSpec,
     renderer: &dyn ExportRenderer,
     files: RenderPlan,
@@ -621,6 +790,7 @@ pub(crate) fn finish_plan(
     statements: Statements,
     exclusions: Vec<Exclusion>,
     caveated: Vec<Caveated>,
+    identifiers: Identifiers,
 ) -> ExportPlan {
     let file_digests: Vec<FileDigest> = files
         .entries()
@@ -654,6 +824,7 @@ pub(crate) fn finish_plan(
         generator: PROGRAM_NAME.to_owned(),
         versions,
         snapshot,
+        identifiers: Some(identifiers.mode()),
         policy,
         completeness,
         sources,
@@ -671,6 +842,7 @@ pub(crate) fn finish_plan(
         manifest_bytes,
         exclusions,
         caveated,
+        identifiers,
     }
 }
 

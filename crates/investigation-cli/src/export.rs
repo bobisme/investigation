@@ -5,7 +5,8 @@
 //! the case and the destination and reports the result. The response is the
 //! publisher's receipt: unlike the export's own manifest it names the exact
 //! records the audience policy withheld, the records it shows with caveats,
-//! and the case's current head.
+//! the case's current head and, when IDs are remapped, the canonical
+//! snapshot and every ID pair.
 
 use std::{
     env,
@@ -18,9 +19,10 @@ use investigation_core::wire::{Digest, ErrorCode, Failure};
 use investigation_render::{
     Audience,
     export::{
-        self, ExportError, ExportPlan, ExportSnapshot, KINDS, KindSpec, MANIFEST_FILE, Pin, Scope,
+        self, ExportError, ExportPlan, ExportSnapshot, IdentifierMode, KINDS, KindSpec,
+        MANIFEST_FILE, Pin, Retained, Scope,
         archive::{ARCHIVE_AUDIENCE, plan_archive},
-        plan_export,
+        plan_export_remap,
         source::read_archive_source,
         write_export,
     },
@@ -69,6 +71,9 @@ pub(crate) struct Args {
     /// Fail with the exact exclusions instead of writing an incomplete export.
     #[arg(long)]
     require_complete: bool,
+    /// Replace record IDs and the snapshot with opaque ones for this export; always on for public.
+    #[arg(long)]
+    remap_ids: bool,
     #[command(flatten)]
     snapshot: SnapshotArgs,
 }
@@ -89,12 +94,20 @@ are listed only in this command's output, never in the export.
 --require-complete refuses instead. --snapshot pins an earlier verified head;
 disclosure still follows today's classifications.
 
+Record IDs are UUIDv7 values that embed their creation time, and a journal
+sequence tells how many events a case holds. A public export, and any export
+with --remap-ids, replaces every UUIDv7 value with an opaque one for this
+export only, and its manifest names the bundle (sequence 0, a bundle digest)
+instead of the case snapshot. The mapping back is listed only in this
+command's output. A remapped export cannot restore canonical state.
+
 --kind workspace-archive copies the canonical state of every case instead:
 each journal to its verified head, the blobs they require, the workspace
 identity, investigation.toml, the vault's human folders and the v1 schemas.
 It takes no --case or --snapshot, is made only for --audience restricted
 because it holds every byte, and is refused while capture staging holds
-evidence the journal does not reference. Check it with archive verify.
+evidence the journal does not reference. It keeps canonical IDs and refuses
+--remap-ids. Check it with archive verify.
 
 Kinds:
 ",
@@ -117,6 +130,7 @@ Kinds:
 Examples:
   investigation export --kind case-report --audience internal --case <ID> --format json
   investigation export --kind case-report --audience public --case <ID> --snapshot 12 --out ./report-12 --format json
+  investigation export --kind case-report --audience internal --remap-ids --case <ID> --format json
   investigation export --kind workspace-archive --audience restricted --out ./backup --format json
 
 Read DIR/export-manifest.json for completeness, versions and file digests, then
@@ -162,17 +176,19 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     };
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
-    let plan = plan_export(spec, &snapshot, audience).map_err(|error| {
-        let failure = error.to_failure();
-        match error {
-            ExportError::KindNotAvailable { .. } => {
-                let mut failure = failure.at("--kind");
-                failure.error.expected = Some(json!({"available": export::available_kinds()}));
-                failure
+    let plan = plan_export_remap(spec, &snapshot, audience, &Retained::none(), args.remap_ids)
+        .map_err(|error| {
+            let failure = error.to_failure();
+            match error {
+                ExportError::KindNotAvailable { .. } => {
+                    let mut failure = failure.at("--kind");
+                    failure.error.expected = Some(json!({"available": export::available_kinds()}));
+                    failure
+                }
+                ExportError::RemapResumable { .. } => failure.at("--remap-ids"),
+                _ => failure,
             }
-            _ => failure,
-        }
-    })?;
+        })?;
     if args.require_complete && !plan.complete() {
         let error = ExportError::Incomplete {
             exclusions: plan.exclusions().to_vec(),
@@ -208,21 +224,31 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         "files_written": written.files,
         "bytes_written": written.bytes,
         "completeness": manifest.completeness,
-        "snapshot": manifest.snapshot,
+        "identifiers": plan.identifiers().mode(),
+        "snapshot": plan.identifiers().canonical_snapshot(),
         "historical": snapshot.historical(),
         "latest_snapshot": snapshot.latest(),
-        "publisher_receipt": exclusions_json(&plan),
+        "publisher_receipt": receipt_json(&plan),
         "next": [{"kind": "local_read", "argv": next_argv}],
     });
+    let canonical = plan.identifiers().canonical_snapshot();
     let mut text = format!(
         "exported  {}  {}  {}\n{}  sequence {}  {} file(s)",
         manifest.kind,
         manifest.completeness.as_str(),
         shown,
-        manifest.snapshot.case_id,
-        manifest.snapshot.sequence,
+        canonical.case_id,
+        canonical.sequence,
         written.files
     );
+    if plan.identifiers().mode() == IdentifierMode::Remapped {
+        let _ = write!(
+            text,
+            "\nremapped {} ID(s); the export names bundle {} and the mapping is in --format json output only",
+            plan.identifiers().len(),
+            manifest.snapshot.case_id
+        );
+    }
     if !plan.complete() {
         let _ = write!(
             text,
@@ -303,6 +329,11 @@ fn run_archive(
             "A workspace archive copies every case to its current verified head; omit --snapshot.",
         ));
     }
+    if args.remap_ids {
+        return Err(ExportError::RemapResumable { kind: spec.name }
+            .to_failure()
+            .at("--remap-ids"));
+    }
     let audience = args.audience.audience();
     if audience != ARCHIVE_AUDIENCE {
         let mut failure = ExportError::ArchiveAudience {
@@ -351,6 +382,7 @@ fn run_archive(
         "files_written": written.files,
         "bytes_written": written.bytes,
         "completeness": manifest.completeness,
+        "identifiers": plan.identifiers().mode(),
         "snapshot": manifest.snapshot,
         "recovery_head": manifest.snapshot.head_hash,
         "cases": canonical.heads(),
@@ -403,6 +435,37 @@ fn exclusions_json_of(error: &ExportError) -> Value {
     })
 }
 
+/// Everything the publisher sees that the export does not hold.
+fn receipt_json(plan: &ExportPlan) -> Value {
+    let mut receipt = exclusions_json(plan);
+    receipt["identifiers"] = identifiers_json(plan);
+    receipt
+}
+
+/// The canonical snapshot behind the export and, when remapped, every ID
+/// pair. Not capped: the mapping is needed whole to read the export back.
+fn identifiers_json(plan: &ExportPlan) -> Value {
+    let identifiers = plan.identifiers();
+    let mut value = json!({
+        "mode": identifiers.mode(),
+        "exported_snapshot": identifiers.exported_snapshot(),
+        "canonical_snapshot": identifiers.canonical_snapshot(),
+    });
+    if identifiers.mode() == IdentifierMode::Remapped {
+        value["note"] = json!(
+            "For the publisher only: the export names the bundle and shows these remapped IDs; \
+             this is the only mapping back to the case snapshot and its records."
+        );
+        value["remap"] = json!(export::REMAP_VERSION);
+        value["id_count"] = json!(identifiers.len());
+        value["ids"] = identifiers
+            .pairs()
+            .map(|(canonical, exported)| json!({"canonical": canonical, "exported": exported}))
+            .collect();
+    }
+    value
+}
+
 /// The publisher-only list of withheld and caveated records.
 fn exclusions_json(plan: &ExportPlan) -> Value {
     let exclusions = plan.exclusions();
@@ -418,8 +481,10 @@ fn exclusions_json(plan: &ExportPlan) -> Value {
     })
 }
 
-/// `<kind>-<case>-<sequence>-<12 hex of the export ID>`: equal exports get
-/// equal names, so a repeat finds the first one and is refused.
+/// `<kind>-<case>-<sequence>-<12 hex of the export ID>`, or
+/// `<kind>-<remapped case>-<12 hex>` when remapped, so the name discloses no
+/// more than the export: equal exports get equal names, so a repeat finds
+/// the first one and is refused.
 fn default_name(plan: &ExportPlan) -> String {
     let manifest = plan.manifest();
     let short = manifest
@@ -427,10 +492,15 @@ fn default_name(plan: &ExportPlan) -> String {
         .trim_start_matches("exp_")
         .get(..12)
         .unwrap_or_default();
-    format!(
-        "{}-{}-{}-{short}",
-        manifest.kind, manifest.snapshot.case_id, manifest.snapshot.sequence
-    )
+    match plan.identifiers().mode() {
+        IdentifierMode::Canonical => format!(
+            "{}-{}-{}-{short}",
+            manifest.kind, manifest.snapshot.case_id, manifest.snapshot.sequence
+        ),
+        IdentifierMode::Remapped => {
+            format!("{}-{}-{short}", manifest.kind, manifest.snapshot.case_id)
+        }
+    }
 }
 
 /// An export may go anywhere outside the workspace, or under its
