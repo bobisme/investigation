@@ -394,6 +394,30 @@ fn reviews_of(state: &State, subject: Id) -> Vec<(&Record, StoredReview)> {
         .collect()
 }
 
+/// The IDs of the submitted Reviews of `subject`, from [`reviews_of`] (the
+/// index), for [`crate::derived_check`].
+pub(crate) fn review_ids_of(state: &State, subject: Id) -> Vec<Id> {
+    reviews_of(state, subject)
+        .into_iter()
+        .map(|(record, _)| record.header.id)
+        .collect()
+}
+
+/// [`reviews_of`] as it was before [`ReviewIndex`]: a walk over every record
+/// for each subject. The reference for [`crate::derived_check`].
+pub(crate) fn reviews_of_by_scan(state: &State, subject: Id) -> Vec<Id> {
+    let mut reviews: Vec<_> = state
+        .records()
+        .filter_map(|record| Some((record, stored(record)?)))
+        .filter(|(_, review)| review.subject_ref.id == subject && review.status == "submitted")
+        .collect();
+    reviews.sort_by_key(|(record, _)| (first_sequence(state, record), record.header.id));
+    reviews
+        .into_iter()
+        .map(|(record, _)| record.header.id)
+        .collect()
+}
+
 /// The submitted Reviews of each subject, in journal order: by the sequence
 /// of each Review's first revision, then by ID. Built once per snapshot by
 /// [`State::review_index`] instead of once per subject.

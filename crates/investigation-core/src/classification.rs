@@ -557,6 +557,37 @@ impl<'a> Classifier<'a> {
     }
 }
 
+/// The changes [`Classifier::changes`] answers for `subject`, from a walk over
+/// every record, as `Classifier::new` read them before
+/// [`ClassificationChanges`]. The reference for [`crate::derived_check`].
+pub(crate) fn changes_by_scan(
+    state: &State,
+    subject: Id,
+) -> Vec<(RevisionRef, ClassificationChange)> {
+    let mut found: Vec<_> = state
+        .records()
+        .filter_map(|record| {
+            let change = ClassificationChange::from_record(record)?;
+            (change.subject_ref.id == subject
+                && state
+                    .current(subject)
+                    .is_some_and(|current| current.header.case_id == record.header.case_id))
+            .then(|| {
+                (
+                    record.header.acceptance_sequence,
+                    record.reference(),
+                    change,
+                )
+            })
+        })
+        .collect();
+    found.sort_by_key(|(sequence, change_ref, _)| (*sequence, change_ref.id));
+    found
+        .into_iter()
+        .map(|(_, change_ref, change)| (change_ref, change))
+        .collect()
+}
+
 /// Convenience for one-off queries. Prefer one [`Classifier`] per pass.
 pub fn effective_classification(state: &State, record: &Record) -> EffectiveClassification {
     Classifier::new(state).effective(record)

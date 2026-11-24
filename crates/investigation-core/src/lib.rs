@@ -22,6 +22,8 @@ pub mod coverage;
 mod coverage_ops;
 pub mod decision_ops;
 pub mod derivation;
+#[doc(hidden)]
+pub mod derived_check;
 pub mod evaluate;
 pub mod evaluate_ops;
 pub mod evidence;
