@@ -1,0 +1,54 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {
+    "name": "tidepool-stats",
+    "version": "0.2.0",
+    "instance": "fixture-a"
+  },
+  "external_run_id": "practical-equivalence-interval-crosses-band",
+  "intent": {
+    "label": "externally computed interval for the p99 difference, optimization A minus treatment",
+    "external_plan_digest": null
+  },
+  "execution": {
+    "state": "completed",
+    "exit_code": 0,
+    "started_at": null,
+    "ended_at": null,
+    "clock_quality": "unverified"
+  },
+  "environment": {
+    "revision": "marlin-1.9",
+    "workload": "ledgerd-mixed-requests",
+    "workload_mix": "read90-write10",
+    "warmup_s": "30",
+    "machine": "fixture-host-1"
+  },
+  "artifacts": [
+    {
+      "role": "original-output",
+      "path": "./output.json",
+      "expected_sha256": "cc793e10879f0ee0be16cc3078e43d0e9ab8bfd6d3e7c5a1b51bc513d4fdb979",
+      "media_type": "application/json",
+      "classification": "internal"
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "reported_interval",
+      "name": "latency.p99.difference",
+      "unit": "ms",
+      "value": {
+        "lower": -8,
+        "upper": 3,
+        "contrast": "optimization-a minus treatment"
+      },
+      "validity_claim": "producer_reported"
+    }
+  ],
+  "controls": [],
+  "receipts": [],
+  "limitations": [
+    "Interval computed outside Investigation; method and confidence level not stated by the producer."
+  ]
+}

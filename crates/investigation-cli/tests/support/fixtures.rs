@@ -1,4 +1,4 @@
-//! The checked-in Scenario A, C and D workspaces under
+//! The checked-in Scenario A, B, C and D workspaces under
 //! `fixtures/vault-goldens/` and the golden vaults rendered from them.
 //!
 //! Tests only read the fixtures: they copy a workspace into a temporary
@@ -16,7 +16,7 @@ use std::{
 use investigation_render::{RenderPlan, VerifiedSnapshot, layout, render, working_policy};
 use investigation_store::{Store, Workspace};
 
-pub const SCENARIOS: [&str; 3] = ["scenario-a", "scenario-c", "scenario-d"];
+pub const SCENARIOS: [&str; 4] = ["scenario-a", "scenario-b", "scenario-c", "scenario-d"];
 
 /// Directories a workspace must have; git keeps no empty directory.
 const REQUIRED: [&str; 13] = [

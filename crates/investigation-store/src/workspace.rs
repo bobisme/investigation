@@ -48,6 +48,25 @@ struct WorkspaceGenesis {
     schema_family: RecordSchemaFamily,
     workspace_id: Id,
     genesis_sequence: u64,
+    /// Present only in a tutorial workspace made by `demo`. Optional and
+    /// additive: a workspace without it is an ordinary workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    demo: Option<DemoMarker>,
+}
+
+/// Marks a workspace `demo` generated: which tutorial scenario, replayed from
+/// which checked-in fixture with which ID seed. Written once, in the immutable
+/// workspace marker, so a demo workspace can never pass for real casework.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DemoMarker {
+    /// Tutorial scenario name, such as `choice`.
+    pub scenario: String,
+    /// The fixture the journal was replayed from, such as
+    /// `fixtures/vault-goldens/scenario-c`.
+    pub fixture: String,
+    /// Seed of the replay's deterministic ID sequence.
+    pub seed: u64,
 }
 
 /// Human-editable settings. Unknown top-level keys are errors; opt-in extensions
@@ -328,6 +347,7 @@ pub struct Workspace {
     state_dir: PathBuf,
     config: WorkspaceConfig,
     genesis_sequence: u64,
+    demo: Option<DemoMarker>,
 }
 
 impl Workspace {
@@ -348,7 +368,36 @@ impl Workspace {
         for import_root in import_roots {
             check_import_root(import_root)?;
         }
-        Self::init_inner(root, vault, import_roots, &NativeFilesystemDetector)
+        let mut config = WorkspaceConfig::initial(vault);
+        config.import_roots = import_roots.to_vec();
+        Self::init_inner(root, config, None, &NativeFilesystemDetector)
+    }
+
+    /// Create a tutorial workspace for `demo`: the settings are the fixture's
+    /// own `investigation.toml` text, validated like any config, and the
+    /// immutable marker carries `demo`. Like [`Self::init`], it refuses a
+    /// non-empty `root`. Unlike it, it creates no missing parent directory,
+    /// so nothing is written outside `root`.
+    pub fn init_demo(
+        root: &Path,
+        config_text: &str,
+        demo: DemoMarker,
+    ) -> Result<Self, WorkspaceError> {
+        let config: WorkspaceConfig = toml::from_str(config_text)
+            .map_err(|error| WorkspaceError::InvalidConfig(error.to_string()))?;
+        config.validate()?;
+        let absolute = absolute_lexical(root)?;
+        if let Some(parent) = absolute.parent()
+            && !parent.is_dir()
+        {
+            return Err(WorkspaceError::InvalidRoot(absolute));
+        }
+        Self::init_inner(root, config, Some(demo), &NativeFilesystemDetector)
+    }
+
+    /// The demo marker, when `demo` created this workspace.
+    pub fn demo(&self) -> Option<&DemoMarker> {
+        self.demo.as_ref()
     }
 
     /// Add read-only import roots to this workspace's config and return the
@@ -435,15 +484,16 @@ impl Workspace {
         vault: bool,
         detector: &impl FilesystemDetector,
     ) -> Result<Self, WorkspaceError> {
-        Self::init_inner(root, vault, &[], detector)
+        Self::init_inner(root, WorkspaceConfig::initial(vault), None, detector)
     }
 
     fn init_inner(
         root: &Path,
-        vault: bool,
-        import_roots: &[PathBuf],
+        config: WorkspaceConfig,
+        demo: Option<DemoMarker>,
         detector: &impl FilesystemDetector,
     ) -> Result<Self, WorkspaceError> {
+        let vault = config.vault_policy.enabled;
         let root = absolute_lexical(root)?;
         preflight_target(&root)?;
         let filesystem =
@@ -478,8 +528,6 @@ impl Workspace {
         let id = SystemIdSource
             .next_id(Kind::Workspace)
             .map_err(|error| WorkspaceError::Identity(error.to_string()))?;
-        let mut config = WorkspaceConfig::initial(vault);
-        config.import_roots = import_roots.to_vec();
         let config_bytes = config_text(&config)?;
 
         // The persistent lock is created once. Neither init nor open replaces it.
@@ -505,6 +553,7 @@ impl Workspace {
             schema_family: RECORD_FAMILY,
             workspace_id: id,
             genesis_sequence: 0,
+            demo,
         };
         let marker_bytes = serde_json::to_vec_pretty(&marker)
             .map_err(|error| WorkspaceError::Serialization(error.to_string()))?;
@@ -524,6 +573,7 @@ impl Workspace {
             state_dir,
             config,
             genesis_sequence: marker.genesis_sequence,
+            demo: marker.demo,
         })
     }
 
@@ -608,6 +658,7 @@ impl Workspace {
             id: marker.workspace_id,
             config,
             genesis_sequence: marker.genesis_sequence,
+            demo: marker.demo,
         })
     }
 
@@ -1193,6 +1244,39 @@ mod tests {
         assert_eq!(created.config().import_roots, vec![inputs.clone()]);
         let reopened = Workspace::open(&root).unwrap();
         assert_eq!(reopened.config().import_roots, vec![inputs]);
+    }
+
+    #[test]
+    fn init_demo_marks_the_workspace_and_writes_nothing_outside_it() {
+        let temp = TempDir::new();
+        fs::create_dir(&temp.0).unwrap();
+        let marker = DemoMarker {
+            scenario: "choice".into(),
+            fixture: "fixtures/vault-goldens/scenario-c".into(),
+            seed: 7,
+        };
+        let config = "schema_version = \"inv.workspace-config.v1\"\nimport_roots = [\".\"]\n\n[vault_policy]\nenabled = true\ninclude_approved_derivatives = false\npreserve_human_folders = true\n";
+        let orphan = temp.0.join("missing/demo");
+        assert!(matches!(
+            Workspace::init_demo(&orphan, config, marker.clone()),
+            Err(WorkspaceError::InvalidRoot(_))
+        ));
+        assert!(!temp.0.join("missing").exists());
+        let root = temp.0.join("demo");
+        let created = Workspace::init_demo(&root, config, marker.clone()).unwrap();
+        assert_eq!(created.demo(), Some(&marker));
+        assert_eq!(created.config().import_roots, vec![PathBuf::from(".")]);
+        assert!(created.config().vault_policy.enabled);
+        let reopened = Workspace::open(&root).unwrap();
+        assert_eq!(reopened.demo(), Some(&marker));
+        assert!(matches!(
+            Workspace::init_demo(&root, config, marker),
+            Err(WorkspaceError::WorkspaceAlreadyExists(_))
+        ));
+        let plain = Workspace::init(&temp.0.join("plain"), false).unwrap();
+        assert_eq!(plain.demo(), None);
+        let text = fs::read_to_string(temp.0.join("plain/state/workspace.json")).unwrap();
+        assert!(!text.contains("demo"), "{text}");
     }
 
     #[test]

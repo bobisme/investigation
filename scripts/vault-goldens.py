@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check or regenerate the golden vaults of the Scenario A, C and D fixture workspaces.
+"""Check or regenerate the golden vaults of the Scenario A, B, C and D fixture workspaces.
 
 Each scenario under fixtures/vault-goldens/ holds a checked-in canonical workspace
 (`workspace/`: investigation.toml and state/) and the vault the renderer publishes from
@@ -9,10 +9,13 @@ either; only this script with an explicit flag does:
   python3 scripts/vault-goldens.py BINARY                       # check, write nothing
   python3 scripts/vault-goldens.py BINARY --write               # re-render vault/ from workspace/
   python3 scripts/vault-goldens.py BINARY --rebuild-workspaces  # rerun the scenario proofs, then --write
+  python3 scripts/vault-goldens.py BINARY --rebuild-workspaces --only scenario-b  # one scenario
 
 Re-render after an intended renderer change, together with a RENDERER_VERSION bump.
 Rebuild the workspaces only when a scenario proof gains records worth projecting: every
-ID and timestamp changes, so the whole golden changes.
+ID and timestamp changes, so the whole golden changes. The `demo` command replays these
+workspaces' journals (crates/investigation-cli/src/demo.rs), so a rebuild changes the
+demo workspaces too.
 """
 
 import argparse
@@ -27,7 +30,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 GOLDENS = ROOT / "fixtures/vault-goldens"
-SCENARIOS = ("scenario-a", "scenario-c", "scenario-d")
+SCENARIOS = ("scenario-a", "scenario-b", "scenario-c", "scenario-d")
 # Directories a workspace must have; git keeps no empty directory.
 REQUIRED = (
     "state/cases", "state/events", "state/blobs/sha256", "state/checkpoints", "state/staging",
@@ -95,28 +98,40 @@ def keep_workspace(source, scenario):
             raise SystemExit(f"{source}: could not state the viewer release\n{config}")
     (target / "investigation.toml").write_text(config, encoding="utf-8")
     shutil.copytree(source / "state", target / "state")
+    # The store keeps retained blobs read-only; a checked-in copy must stay
+    # writable, or a later git checkout cannot replace it.
+    for path in (target / "state").rglob("*"):
+        path.chmod(path.stat().st_mode | 0o200)
 
 
-def rebuild_workspaces(binary, scratch):
+def rebuild_workspaces(binary, scratch, scenarios):
     proofs = scratch / "proofs"
     proofs.mkdir()
-    subprocess.run(
-        [sys.executable, ROOT / "scripts/scenario_a_proof.py", binary, proofs / "handoff.json",
-         "--workspace", proofs / "scenario-a"],
-        cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        [sys.executable, ROOT / "scripts/scenario_c_proof.py", "--bin", binary,
-         "--workspace", proofs / "scenario-c"],
-        cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
-    )
-    subprocess.run(
-        ["cargo", "test", "--locked", "--quiet", "-p", "investigation-cli", "--test", "scenario_d",
-         "scenario_d_baseline_conditional_conclusion_from_sources_alone", "--", "--exact"],
-        cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
-        env={**os.environ, "INVESTIGATION_KEEP_SCENARIO_D": str(proofs / "scenario-d")},
-    )
-    for scenario in SCENARIOS:
+    builders = {
+        "scenario-a": lambda: subprocess.run(
+            [sys.executable, ROOT / "scripts/scenario_a_proof.py", binary, proofs / "handoff.json",
+             "--workspace", proofs / "scenario-a"],
+            cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
+        ),
+        "scenario-b": lambda: subprocess.run(
+            [sys.executable, ROOT / "scripts/scenario_b_proof.py", "--bin", binary,
+             "--workspace", proofs / "scenario-b"],
+            cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
+        ),
+        "scenario-c": lambda: subprocess.run(
+            [sys.executable, ROOT / "scripts/scenario_c_proof.py", "--bin", binary,
+             "--workspace", proofs / "scenario-c"],
+            cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
+        ),
+        "scenario-d": lambda: subprocess.run(
+            ["cargo", "test", "--locked", "--quiet", "-p", "investigation-cli", "--test", "scenario_d",
+             "scenario_d_baseline_conditional_conclusion_from_sources_alone", "--", "--exact"],
+            cwd=ROOT, check=True, stdout=subprocess.DEVNULL,
+            env={**os.environ, "INVESTIGATION_KEEP_SCENARIO_D": str(proofs / "scenario-d")},
+        ),
+    }
+    for scenario in scenarios:
+        builders[scenario]()
         keep_workspace(proofs / scenario, scenario)
 
 
@@ -149,16 +164,20 @@ def main():
     parser.add_argument("--write", action="store_true", help="Replace each golden vault with the current render.")
     parser.add_argument("--rebuild-workspaces", action="store_true",
                         help="Rerun the scenario proofs, replace the fixture workspaces, then --write.")
+    parser.add_argument("--only", action="append", choices=SCENARIOS,
+                        help="Limit --write or --rebuild-workspaces to this scenario (repeatable).")
     args = parser.parse_args()
+    chosen = tuple(args.only) if args.only else SCENARIOS
     binary = args.binary.resolve(strict=True)
     with tempfile.TemporaryDirectory(prefix="vault-goldens-") as directory:
         scratch = Path(directory)
         if args.rebuild_workspaces:
-            rebuild_workspaces(binary, scratch)
+            rebuild_workspaces(binary, scratch, chosen)
         problems = []
-        for scenario in SCENARIOS:
+        writing = args.write or args.rebuild_workspaces
+        for scenario in chosen:
             files = rendered(binary, scenario, scratch / "render")
-            if args.write or args.rebuild_workspaces:
+            if writing:
                 write(scenario, files)
                 print(f"{scenario}: wrote {len(files)} files")
             else:

@@ -16,12 +16,20 @@ Rust suite with an isolated network namespace, a clean environment, and a
 PATH containing the pinned toolchain and the native linker tools. Tests should
 use checked-in fixtures and temporary workspaces.
 
-`fixtures/vault-goldens/` holds the Scenario A, C and D workspaces and the
+`fixtures/vault-goldens/` holds the Scenario A, B, C and D workspaces and the
 vaults rendered from them. The vault tests read them and never write them. A
 change to generated vault bytes needs a `RENDERER_VERSION` bump and
 `python3 scripts/vault-goldens.py target/debug/investigation --write`;
 `--rebuild-workspaces` reruns the scenario proofs and replaces the workspaces
-too.
+too (`--only scenario-b` limits either flag to one scenario).
+
+`investigation demo` replays these workspaces' journals: `build.rs` in
+`crates/investigation-cli` embeds them, and `src/demo.rs` submits each
+committed transaction again through the store under the deterministic clock
+and ID seam of `investigation_core::replay_seams`. A rebuilt workspace
+therefore changes the demo too; `tests/demo.rs` checks that every scenario
+still replays, reproduces its bytes and runs its tutorial path, including
+plan §17.5 as written.
 
 `docs/agent/` holds the pages that `investigation docs` prints: the agent
 instructions (`agents`) and the optional skill (`skill`). They are compiled

@@ -1,0 +1,6 @@
+{
+  "schema": "tidepool-stats.interval.v1",
+  "unit": "ms",
+  "lower": "-8",
+  "upper": "3"
+}

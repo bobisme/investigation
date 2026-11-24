@@ -1,0 +1,507 @@
+{
+  "schema": "tidepool-bench.raw.v1",
+  "unit": "ms",
+  "timeout_ms": "1000",
+  "requests": [
+    {
+      "id": 0,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 1,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 2,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 3,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 4,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 5,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 6,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 7,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 8,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 9,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 10,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 11,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 12,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 13,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 14,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 15,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 16,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 17,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 18,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 19,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 20,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 21,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 22,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 23,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 24,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 25,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 26,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 27,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 28,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 29,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 30,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 31,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 32,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 33,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 34,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 35,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 36,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 37,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 38,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 39,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 40,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 41,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 42,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 43,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 44,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 45,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 46,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 47,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 48,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 49,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 50,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 51,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 52,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 53,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 54,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 55,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 56,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 57,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 58,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 59,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 60,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 61,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 62,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 63,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 64,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 65,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 66,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 67,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 68,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 69,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 70,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 71,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 72,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 73,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 74,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 75,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 76,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 77,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 78,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 79,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 80,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 81,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 82,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 83,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 84,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 85,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 86,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 87,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 88,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 89,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 90,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 91,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 92,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 93,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 94,
+      "outcome": "completed",
+      "latency_ms": "10.0"
+    },
+    {
+      "id": 95,
+      "outcome": "unfinished_at_timeout",
+      "latency_ms": null
+    },
+    {
+      "id": 96,
+      "outcome": "unfinished_at_timeout",
+      "latency_ms": null
+    },
+    {
+      "id": 97,
+      "outcome": "unfinished_at_timeout",
+      "latency_ms": null
+    },
+    {
+      "id": 98,
+      "outcome": "unfinished_at_timeout",
+      "latency_ms": null
+    },
+    {
+      "id": 99,
+      "outcome": "unfinished_at_timeout",
+      "latency_ms": null
+    }
+  ]
+}

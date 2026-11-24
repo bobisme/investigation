@@ -1,0 +1,56 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {
+    "name": "tidepool-bench",
+    "version": "0.4.0",
+    "instance": "fixture-a"
+  },
+  "external_run_id": "baseline-treatment-debug-logging",
+  "intent": {
+    "label": "treatment-debug-logging latency capture",
+    "external_plan_digest": null
+  },
+  "execution": {
+    "state": "completed",
+    "exit_code": 0,
+    "started_at": null,
+    "ended_at": null,
+    "clock_quality": "unverified"
+  },
+  "environment": {
+    "revision": "marlin-1.9",
+    "workload": "ledgerd-mixed-requests",
+    "workload_mix": "read90-write10",
+    "warmup_s": "30",
+    "machine": "fixture-host-1"
+  },
+  "artifacts": [
+    {
+      "role": "original-output",
+      "path": "./output.json",
+      "expected_sha256": "84e4cc6e5c4364551f96a958ff7f8360784e4dd56461c862d9328bdded0d5099",
+      "media_type": "application/json",
+      "classification": "internal"
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "reported_metric",
+      "name": "latency.p99",
+      "value": "79.1",
+      "unit": "ms",
+      "validity_claim": "producer_reported"
+    }
+  ],
+  "controls": [
+    {
+      "name": "steady-load",
+      "producer_result": "reported_pass"
+    }
+  ],
+  "receipts": [],
+  "limitations": [
+    "Single synthetic workload; not a production profile.",
+    "Debug logging enabled during capture."
+  ]
+}

@@ -56,6 +56,7 @@ pub mod pack_policy;
 mod parallel;
 pub mod producer_run;
 pub mod receipt_check;
+pub mod replay_seams;
 pub mod retrospective;
 pub mod retrospective_digest;
 mod retrospective_ops;

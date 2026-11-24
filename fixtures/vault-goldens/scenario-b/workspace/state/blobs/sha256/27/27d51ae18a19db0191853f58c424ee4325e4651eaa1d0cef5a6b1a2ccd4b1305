@@ -1,0 +1,55 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {
+    "name": "tidepool-bench",
+    "version": "0.4.0",
+    "instance": "fixture-a"
+  },
+  "external_run_id": "baseline-control",
+  "intent": {
+    "label": "control latency capture",
+    "external_plan_digest": null
+  },
+  "execution": {
+    "state": "completed",
+    "exit_code": 0,
+    "started_at": null,
+    "ended_at": null,
+    "clock_quality": "unverified"
+  },
+  "environment": {
+    "revision": "marlin-1.8",
+    "workload": "ledgerd-mixed-requests",
+    "workload_mix": "read90-write10",
+    "warmup_s": "30",
+    "machine": "fixture-host-1"
+  },
+  "artifacts": [
+    {
+      "role": "original-output",
+      "path": "./output.json",
+      "expected_sha256": "f4692a388249e645e57b9f42d0cd2d5b3fc2a08c0e5f602169a6e010dcb13146",
+      "media_type": "application/json",
+      "classification": "internal"
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "reported_metric",
+      "name": "latency.p99",
+      "value": "28.8",
+      "unit": "ms",
+      "validity_claim": "producer_reported"
+    }
+  ],
+  "controls": [
+    {
+      "name": "steady-load",
+      "producer_result": "reported_pass"
+    }
+  ],
+  "receipts": [],
+  "limitations": [
+    "Single synthetic workload; not a production profile."
+  ]
+}

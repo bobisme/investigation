@@ -1,0 +1,56 @@
+{
+  "schema_version": "inv.producer-run.v1",
+  "producer": {
+    "name": "tidepool-bench",
+    "version": "0.4.0",
+    "instance": "fixture-a"
+  },
+  "external_run_id": "negative-short-window-optimization-a-short",
+  "intent": {
+    "label": "optimization-a-short latency capture",
+    "external_plan_digest": null
+  },
+  "execution": {
+    "state": "completed",
+    "exit_code": 0,
+    "started_at": null,
+    "ended_at": null,
+    "clock_quality": "unverified"
+  },
+  "environment": {
+    "revision": "marlin-1.9",
+    "workload": "ledgerd-mixed-requests",
+    "workload_mix": "read90-write10",
+    "warmup_s": "5",
+    "machine": "fixture-host-1"
+  },
+  "artifacts": [
+    {
+      "role": "original-output",
+      "path": "./output.json",
+      "expected_sha256": "2522fd06220d56af06d95e99d7f38292e9802f1fcb8b0bd31d41dbf9eae8dc34",
+      "media_type": "application/json",
+      "classification": "internal"
+    }
+  ],
+  "assertions": [
+    {
+      "kind": "reported_metric",
+      "name": "latency.p99",
+      "value": "21.4",
+      "unit": "ms",
+      "validity_claim": "producer_reported"
+    }
+  ],
+  "controls": [
+    {
+      "name": "monitor-self-check",
+      "producer_result": "reported_fail"
+    }
+  ],
+  "receipts": [],
+  "limitations": [
+    "Monitor self-check failed.",
+    "Capture stopped early; 8 s observed of 300 s planned."
+  ]
+}

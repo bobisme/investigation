@@ -184,6 +184,9 @@ pub trait Clock {
 pub struct SystemClock;
 impl Clock for SystemClock {
     fn now_utc(&mut self) -> UtcTimestamp {
+        if let Some(now) = crate::replay_seams::now() {
+            return now;
+        }
         let now = time::OffsetDateTime::now_utc();
         let description = time::format_description::parse(
             "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond digits:9]Z",

@@ -214,9 +214,13 @@ pub trait IdSource {
     }
 }
 /// System UUIDv7 generator; use an injected source for reproducible fixtures.
+/// A [`crate::replay_seams::Replay`] on this thread supplies seeded IDs instead.
 pub struct SystemIdSource;
 impl IdSource for SystemIdSource {
     fn next_uuid(&mut self) -> Uuid {
+        if let Some(uuid) = crate::replay_seams::next_uuid() {
+            return uuid;
+        }
         Uuid::now_v7()
     }
 }

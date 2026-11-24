@@ -8,6 +8,7 @@ mod calibration;
 mod capture;
 mod capture_schema;
 mod config;
+mod demo;
 mod docs;
 mod doctor;
 mod dry_run;
@@ -102,6 +103,9 @@ Continue, record and hand off:
   investigation --workspace ./casework note 'Check the clock source' --on <RECORD_ID> --format json
   investigation --workspace ./casework record --input case.json --format json
   investigation --workspace ./casework receipt KEY --actor ACTOR --format json
+
+To learn on a worked tutorial case with real IDs instead (writes only the new directory):
+  investigation demo ./demo-case --scenario choice
 
 Use schema record for the transaction envelope and schema --list for operations.
 Generated shortcut command IDs appear on stderr before writes; reconcile with receipt KEY.
@@ -198,6 +202,9 @@ enum Commands {
         #[arg(long = "import-root", value_name = "DIR")]
         import_roots: Vec<PathBuf>,
     },
+    /// Generate a reproducible tutorial workspace from a worked scenario.
+    #[command(after_help = demo::after_help())]
+    Demo(demo::Args),
     /// Submit one atomic transaction using the operation catalog.
     #[command(
         after_help = "Run investigation schema record for the envelope. Run investigation schema --list for operations.\nExamples:\n  investigation record --input transaction.json --format json\n  investigation record --input transaction.json --dry-run --format json\n--dry-run checks the transaction against the current snapshot like a commit and writes nothing."
@@ -441,6 +448,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
             no_vault,
             import_roots,
         } => init(path.as_deref(), !no_vault, &import_roots, &global),
+        Commands::Demo(args) => demo::run(args),
         Commands::Onboard => onboard::run(&global),
         Commands::Docs(args) => docs::run(args),
         Commands::Guide(args) => guide::show(args, &global),
@@ -507,6 +515,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 }
                 Commands::Schema(_)
                 | Commands::Init { .. }
+                | Commands::Demo(_)
                 | Commands::Onboard
                 | Commands::Docs(_)
                 | Commands::Guide(_)

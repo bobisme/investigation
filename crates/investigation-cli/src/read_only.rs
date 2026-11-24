@@ -39,6 +39,10 @@ pub(crate) enum Effect {
 /// Declared once: command path and its effect. Parent commands are not listed.
 pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("init", Effect::Write),
+    // Creates a new workspace at a fresh or empty PATH, like init, and
+    // replays a fixture into it; refuses a non-empty PATH and writes nothing
+    // outside it.
+    ("demo", Effect::Write),
     // --dry-run validates against the current snapshot and writes nothing:
     // no journal, blob, staging, cache entry or index.
     ("record", Effect::WriteUnlessFlag(&["dry_run"])),

@@ -1805,7 +1805,8 @@ inv --workspace ./demo-case schema comparison.add --format json
 inv --workspace ./demo-case next --format json
 inv --workspace ./demo-case check --format json
 inv --workspace ./demo-case vault render --format json
-inv --workspace ./demo-case export --kind decision-record
+# was: inv --workspace ./demo-case export --kind decision-record
+inv --workspace ./demo-case export --kind decision-record --audience internal  # (erratum 2026-11-23: --audience is required; W14.11)
 ```
 
 The fixture contains already committed objects with real IDs and a replayable exercise, so first-use commands work without copying fake IDs. `inv tutorial next` (optional) can emit the next input operation for tutorial-only use, but must never auto-promote an invalid result to finish the tutorial.
