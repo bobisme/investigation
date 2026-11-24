@@ -41,6 +41,7 @@ mod snapshot;
 mod synopsis;
 mod vault;
 mod vault_copy_map;
+mod vault_note_snapshot;
 mod vault_reconcile;
 mod vault_remove;
 mod view_text;

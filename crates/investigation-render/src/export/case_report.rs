@@ -24,7 +24,7 @@ use investigation_core::{
     state::Record,
 };
 
-use super::{ExportInput, ExportRenderer, dependent_rule};
+use super::{ExportInput, ExportRenderer, dependent_rule, human_files};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::prose,
@@ -39,7 +39,9 @@ use crate::{
 /// v3: the basis names the export's snapshot, which is the bundle when IDs
 /// are remapped; a remapped report gives no command to open the case
 /// (W11.13).
-pub const VERSION: &str = "inv.export.case-report.v3";
+/// v4: the human files records rely on, as captured, with their bytes under
+/// `human/sha256/` (W11.14).
+pub const VERSION: &str = "inv.export.case-report.v4";
 
 /// The report's file name.
 pub const FILE: &str = "case-report.md";
@@ -55,12 +57,17 @@ impl ExportRenderer for CaseReport {
     }
 
     fn plan(&self, input: &ExportInput<'_>, files: &mut PlanBuilder) -> Result<(), RenderError> {
-        let content = report(input);
-        files.add(Phase::Views, PlanPath::new(FILE)?, content, None)
+        let human = human_files::plan(input, files)?;
+        files.add(
+            Phase::Views,
+            PlanPath::new(FILE)?,
+            report(input, &human),
+            None,
+        )
     }
 }
 
-fn report(input: &ExportInput<'_>) -> String {
+fn report(input: &ExportInput<'_>, human: &[human_files::Shown]) -> String {
     let case = input.case;
     let state = case.state();
     let case_record = state
@@ -174,6 +181,8 @@ fn report(input: &ExportInput<'_>) -> String {
             )
         },
     );
+
+    human_files::section(&mut out, human);
 
     out.push_str("\n## Limits\n\n");
     out.push_str(

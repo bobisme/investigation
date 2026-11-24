@@ -22,6 +22,7 @@ fn export_planner_sources_have_no_filesystem_clock_or_randomness() {
         ),
         ("export/archive.rs", include_str!("archive.rs")),
         ("export/retained.rs", include_str!("retained.rs")),
+        ("export/human_files.rs", include_str!("human_files.rs")),
     ];
     let forbidden = [
         ["std", "::fs"].concat(),
@@ -64,6 +65,8 @@ fn no_export_source_reaches_the_network_a_process_or_a_model() {
         ("export/retained.rs", include_str!("retained.rs")),
         ("export/source.rs", include_str!("source.rs")),
         ("export/verify.rs", include_str!("verify.rs")),
+        ("export/human_files.rs", include_str!("human_files.rs")),
+        ("human_files.rs", include_str!("../human_files.rs")),
     ];
     let forbidden = [
         ["std", "::net"].concat(),

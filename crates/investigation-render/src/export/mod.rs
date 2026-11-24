@@ -95,6 +95,7 @@
 pub mod archive;
 mod case_report;
 mod decision_record;
+mod human_files;
 mod identifiers;
 mod inclusion;
 mod manifest;

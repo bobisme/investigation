@@ -35,6 +35,7 @@ pub mod gap_rules;
 pub mod guardrails;
 pub mod guidance;
 pub mod header;
+pub mod human_file;
 pub mod identity;
 pub mod inherited_trust;
 pub mod input;

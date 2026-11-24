@@ -98,6 +98,11 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Creates one new file under the vault's human-owned Boards/; never
     // replaces a file and records nothing.
     ("vault copy-map", Effect::Write),
+    // Retains a human file's bytes and records an annotation (two commits);
+    // the file itself is only read.
+    ("vault snapshot-note", Effect::Write),
+    // Reads the case and the live human files; writes nothing.
+    ("vault note-snapshots", Effect::Read),
     // Writes files into a new directory, inside exports/ or outside the
     // workspace; never changes canonical state.
     ("export", Effect::Write),

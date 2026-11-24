@@ -41,13 +41,17 @@ moved or deleted outside the renderer are left as found and reported as drift;
 drift never fails a render. status and conflicts read the render record only
 and write nothing. reconcile resolves listed drifted paths with one explicit
 disposition. remove deletes the generated files, keeping edited ones.
+snapshot-note captures a human note or board a record relies on, by hash;
+note-snapshots reports when the live file differs from the captured bytes.
 Nothing here opens a viewer.
 Examples:
   investigation vault render --format json
   investigation vault status --format json
   investigation vault conflicts --format json
   investigation vault reconcile PATH --disposition preserve-as-note --dry-run --format json
-  investigation vault copy-map --to Boards/my-map.canvas --format json";
+  investigation vault copy-map --to Boards/my-map.canvas --format json
+  investigation vault snapshot-note Notes/plan.md --on RECORD_ID --format json
+  investigation vault note-snapshots --format json";
 
 #[derive(clap::Subcommand)]
 pub(crate) enum VaultCommand {
@@ -71,6 +75,12 @@ pub(crate) enum VaultCommand {
     /// Delete the projection's generated files; edited and human-owned files stay.
     #[command(after_help = crate::vault_remove::AFTER_HELP)]
     Remove(crate::vault_remove::RemoveArgs),
+    /// Capture the exact bytes of a human note or board that records rely on; the file is only read.
+    #[command(after_help = crate::vault_note_snapshot::SNAPSHOT_AFTER_HELP)]
+    SnapshotNote(crate::vault_note_snapshot::SnapshotNoteArgs),
+    /// Compare each captured human note or board with the live file; writes nothing.
+    #[command(after_help = crate::vault_note_snapshot::LIST_AFTER_HELP)]
+    NoteSnapshots,
 }
 
 pub(crate) fn run(
@@ -78,8 +88,13 @@ pub(crate) fn run(
     global: &Global,
     command: VaultCommand,
 ) -> Result<Output, Failure> {
-    if let VaultCommand::CopyMap(args) = &command {
-        return crate::vault_copy_map::run(store, global, args);
+    match &command {
+        VaultCommand::CopyMap(args) => return crate::vault_copy_map::run(store, global, args),
+        VaultCommand::SnapshotNote(args) => {
+            return crate::vault_note_snapshot::snapshot(store, global, args);
+        }
+        VaultCommand::NoteSnapshots => return crate::vault_note_snapshot::list(store, global),
+        _ => {}
     }
     let scope = Scope::select(store, global)?;
     match command {
@@ -87,7 +102,9 @@ pub(crate) fn run(
         VaultCommand::Status => status(store, &scope),
         VaultCommand::Conflicts => conflicts(store.workspace(), &scope),
         VaultCommand::Reconcile(args) => crate::vault_reconcile::run(store, global, args),
-        VaultCommand::CopyMap(_) => unreachable!("handled before the scope is selected"),
+        VaultCommand::CopyMap(_) | VaultCommand::SnapshotNote(_) | VaultCommand::NoteSnapshots => {
+            unreachable!("handled before the scope is selected")
+        }
         VaultCommand::Remove(args) => crate::vault_remove::run(store.workspace(), &args),
     }
 }

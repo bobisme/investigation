@@ -44,7 +44,7 @@ use investigation_core::{
 };
 use serde_json::Value;
 
-use super::{ExportInput, ExportRenderer, caveats_approved, dependent_rule};
+use super::{ExportInput, ExportRenderer, caveats_approved, dependent_rule, human_files};
 use crate::{
     Phase, PlanBuilder, PlanPath, RenderError,
     evidence::{MAX_LISTED, prose},
@@ -62,7 +62,9 @@ use crate::{
 /// v2: the basis names the export's snapshot, which is the bundle when IDs
 /// are remapped; a remapped record gives no command to open the case
 /// (W11.13).
-pub const VERSION: &str = "inv.export.decision-record.v2";
+/// v3: the human files records rely on, as captured, with their bytes under
+/// `human/sha256/` (W11.14).
+pub const VERSION: &str = "inv.export.decision-record.v3";
 
 /// The record's file name.
 pub const FILE: &str = "decision-record.md";
@@ -78,11 +80,17 @@ impl ExportRenderer for DecisionRecord {
     }
 
     fn plan(&self, input: &ExportInput<'_>, files: &mut PlanBuilder) -> Result<(), RenderError> {
-        files.add(Phase::Views, PlanPath::new(FILE)?, report(input), None)
+        let human = human_files::plan(input, files)?;
+        files.add(
+            Phase::Views,
+            PlanPath::new(FILE)?,
+            report(input, &human),
+            None,
+        )
     }
 }
 
-fn report(input: &ExportInput<'_>) -> String {
+fn report(input: &ExportInput<'_>, human: &[human_files::Shown]) -> String {
     let case = input.case;
     let case_record = case
         .state()
@@ -172,6 +180,8 @@ fn report(input: &ExportInput<'_>) -> String {
             caveats(&mut out, input, decision, "  ");
         }
     }
+
+    human_files::section(&mut out, human);
 
     out.push_str("\n## Limits\n\n");
     out.push_str(

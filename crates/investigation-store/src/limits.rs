@@ -350,6 +350,13 @@ pub const LIMITS: &[Limit] = &[
         NO_REFUSAL,
     ),
     limit(
+        "vault.note_snapshot_bytes",
+        archive::MAX_NOTE_SNAPSHOT_BYTES,
+        Bytes,
+        "One person-owned vault file (Notes/, Boards/, Inbox/) that vault snapshot-note retains for a record that relies on it.",
+        INVALID_INPUT,
+    ),
+    limit(
         "archive.index_bytes",
         archive::MAX_INDEX_BYTES,
         Bytes,

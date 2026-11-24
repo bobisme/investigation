@@ -53,6 +53,10 @@ pub const CONFIG_FILE: &str = "investigation.toml";
 pub const MAX_HUMAN_NOTE_BYTES: u64 = 16 << 20;
 /// Most human notes one archive copies; the rest are listed as skipped.
 pub const MAX_HUMAN_NOTES: usize = 10_000;
+/// Largest person-owned vault file `vault snapshot-note` retains; a larger
+/// one is refused. The archive's per-note bound, so every file a record can
+/// rely on is one an archive would also copy.
+pub const MAX_NOTE_SNAPSHOT_BYTES: u64 = MAX_HUMAN_NOTE_BYTES;
 /// Largest manifest or index `archive verify` reads.
 pub const MAX_INDEX_BYTES: u64 = 64 << 20;
 /// The coordination lock, relative to the workspace root.

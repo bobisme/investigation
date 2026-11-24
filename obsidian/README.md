@@ -135,7 +135,10 @@ The rules:
   are yours, and `vault reconcile --disposition preserve-as-note` moves an
   edit into `<prefix>/Notes/Reconciled/`. `vault copy-map --to
   Boards/<name>.canvas` writes into `<prefix>/Boards/`, never your vault's
-  own `Boards/`. `Start Here.md` names the prefix.
+  own `Boards/`. `vault snapshot-note Notes/<name>.md --on <record>` reads
+  `<prefix>/Notes/<name>.md` (never a file outside the prefix, and never
+  through a link) and records its exact bytes for the record that relies on
+  it. `Start Here.md` names the prefix.
 - **Links stay inside the prefix.** Every generated wikilink, frontmatter
   link and Canvas file path, on generated maps and copied boards alike,
   starts with the prefix

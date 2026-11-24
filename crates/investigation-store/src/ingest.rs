@@ -315,9 +315,45 @@ impl<F: DurableFs> Store<F> {
         stream: Option<&mut dyn Read>,
         during: &mut dyn FnMut(u64),
     ) -> Result<IngestReceipt, Failure> {
+        self.ingest_channel(bytes, stream, AcquisitionChannel::Producer, during)
+    }
+
+    /// [`Self::ingest`] of bytes the caller read from a local file itself,
+    /// such as a person-owned vault note read without following links
+    /// (plan §12.1). The manifest names them as stdin content; they are
+    /// recorded with the `local_file` acquisition channel instead of
+    /// `producer`. Everything else is an ordinary ingest.
+    pub fn ingest_local_bytes(
+        &mut self,
+        manifest: &[u8],
+        bytes: &mut dyn Read,
+    ) -> Result<IngestReceipt, Failure> {
+        self.ingest_channel(
+            manifest,
+            Some(bytes),
+            AcquisitionChannel::LocalFile,
+            &mut |_| {},
+        )
+    }
+
+    fn ingest_channel(
+        &mut self,
+        bytes: &[u8],
+        stream: Option<&mut dyn Read>,
+        stream_channel: AcquisitionChannel,
+        during: &mut dyn FnMut(u64),
+    ) -> Result<IngestReceipt, Failure> {
         let (manifest, raw) = parse_manifest(bytes)?;
         let mut stages = Vec::new();
-        let result = self.ingest_inner(bytes, manifest, raw, stream, &mut stages, during);
+        let result = self.ingest_inner(
+            bytes,
+            manifest,
+            raw,
+            stream,
+            stream_channel,
+            &mut stages,
+            during,
+        );
         if result
             .as_ref()
             .is_err_and(|error| error.error.code == ErrorCode::DurabilityUnknown)
@@ -330,12 +366,14 @@ impl<F: DurableFs> Store<F> {
         result
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn ingest_inner(
         &mut self,
         bytes: &[u8],
         manifest: Manifest,
         raw: Value,
         stream: Option<&mut dyn Read>,
+        stream_channel: AcquisitionChannel,
         stages: &mut Vec<StagedBlob>,
         during: &mut dyn FnMut(u64),
     ) -> Result<IngestReceipt, Failure> {
@@ -413,7 +451,7 @@ impl<F: DurableFs> Store<F> {
                 stages.last().expect("just staged"),
                 name.clone(),
                 name.clone(),
-                AcquisitionChannel::Producer,
+                stream_channel,
                 manifest.extract_text,
             )?);
         }

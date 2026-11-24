@@ -976,7 +976,7 @@ fn resolve_kind_prefix(
     })
 }
 
-fn resolve_any_subject(
+pub(crate) fn resolve_any_subject(
     selector: &str,
     state: &investigation_core::state::State,
 ) -> Result<Id, Failure> {

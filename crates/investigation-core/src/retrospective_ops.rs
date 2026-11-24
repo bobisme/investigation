@@ -13,6 +13,7 @@ use crate::{
     command::{Reference, RevisionRef},
     evidence::{ArtifactAvailability, ArtifactBody, ArtifactIntegrity, ArtifactSensitivity},
     header::ClassificationLevel,
+    human_file::{HumanFile, HumanFileInput},
     identity::{Id, Kind},
     retrospective::{
         AnnotationAdd, AnnotationContent, RetrospectiveRecord, RetrospectiveStatus,
@@ -49,6 +50,11 @@ struct AnnotationInput {
     /// Required with `role: advice_feedback`, and only with it.
     #[serde(default)]
     advice_feedback: Option<AdviceFeedbackInput>,
+    /// The person-owned vault file whose exact bytes the artifact content
+    /// captured (a note snapshot). Only with artifact content and role
+    /// `note`. `investigation vault snapshot-note` writes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    human_file: Option<HumanFileInput>,
 }
 
 fn text(input: &str, path: &str) -> Result<(), Failure> {
@@ -493,6 +499,24 @@ fn annotation_shape(payload: &AnnotationInput) -> Result<(), Failure> {
     if matches!(payload.role, Some(AnnotationRole::Synopsis)) {
         synopsis_shape(&payload.content)?;
     }
+    if let Some(file) = &payload.human_file {
+        if !matches!(payload.role, None | Some(AnnotationRole::Note))
+            || !matches!(payload.content.content, AnnotationContent::Artifact { .. })
+        {
+            return Err(Failure::new(
+                ErrorCode::InvalidInput,
+                "A human_file names where a note snapshot's bytes were read; use it only with artifact content and role note.",
+            )
+            .at("/human_file"));
+        }
+        crate::human_file::folder(&file.path).map_err(|reason| {
+            Failure::new(
+                ErrorCode::InvalidInput,
+                format!("The human_file path is refused: {reason}."),
+            )
+            .at("/human_file/path")
+        })?;
+    }
     Ok(())
 }
 
@@ -523,6 +547,7 @@ fn synopsis_shape(payload: &AnnotationAdd) -> Result<(), Failure> {
 fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
     let synopsis = matches!(payload.role, Some(AnnotationRole::Synopsis));
     let advice = payload.advice_feedback;
+    let human_file = payload.human_file;
     let AnnotationAdd {
         subject_refs,
         mut content,
@@ -592,6 +617,16 @@ fn annotation_add(payload: AnnotationInput, ctx: &mut OperationContext<'_>) -> R
     if let Some(advice) = &advice {
         body["role"] = json!(ADVICE_FEEDBACK_ROLE);
         body["advice_feedback"] = feedback_body(ctx, advice, &subjects)?;
+    }
+    if let Some(file) = &human_file {
+        let file = HumanFile::new(&file.path).map_err(|reason| {
+            Failure::new(
+                ErrorCode::InvalidInput,
+                format!("The human_file path is refused: {reason}."),
+            )
+            .at("/human_file/path")
+        })?;
+        body["human_file"] = json!(file);
     }
     ctx.create_classified(Kind::Annotation, body, classification)?;
     Ok(())
@@ -698,7 +733,7 @@ pub(crate) fn operations() -> [OperationDescriptor; 3] {
                 "annotation.add",
                 "record",
                 "Attach an attributed narrative note, authored synopsis or advice feedback.",
-                "Record context, a note snapshot, with role synopsis a bounded summary of one subject revision, or with role advice_feedback a deferral or resumption of one emitted gap, without asserting evidence.",
+                "Record context, a note snapshot (optionally naming the person-owned vault file in human_file), with role synopsis a bounded summary of one subject revision, or with role advice_feedback a deferral or resumption of one emitted gap, without asserting evidence.",
                 "Create a classified annotation with exact subjects and no evidentiary standing. A synopsis turns stale when its subject changes materially. A deferral stops next ranking its gap until the gap changes materially or is resumed; it satisfies no gate.",
                 "Annotation ID and revision 1.",
                 "Use exact revisions or aliases of subjects created earlier in this transaction.",

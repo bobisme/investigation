@@ -147,6 +147,20 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "type": "string"
     },
+    "HumanFileInput": {
+      "additionalProperties": false,
+      "description": "The `human_file` property of `annotation.add`: the person-owned vault\nfile whose bytes the annotation's artifact content captured.",
+      "properties": {
+        "path": {
+          "description": "Vault-relative, `/`-separated, below `Notes/`, `Boards/` or `Inbox/`\n(inside the managed prefix in existing-vault mode), for example\n`Notes/plan.md`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
     "Id": {
       "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
       "type": "string"
@@ -206,6 +220,17 @@
     },
     "content": {
       "$ref": "#/$defs/AnnotationContent"
+    },
+    "human_file": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HumanFileInput"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The person-owned vault file whose exact bytes the artifact content\ncaptured (a note snapshot). Only with artifact content and role\n`note`. `investigation vault snapshot-note` writes it."
     },
     "role": {
       "anyOf": [

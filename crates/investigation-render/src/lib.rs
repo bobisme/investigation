@@ -222,6 +222,7 @@ pub mod error;
 pub mod evidence;
 pub mod export;
 pub mod fingerprint;
+pub mod human_files;
 pub mod incremental;
 pub mod layout;
 pub mod lock;

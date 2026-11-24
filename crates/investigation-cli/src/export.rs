@@ -20,10 +20,10 @@ use investigation_render::{
     Audience,
     export::{
         self, ExportError, ExportPlan, ExportSnapshot, IdentifierMode, KINDS, KindSpec,
-        MANIFEST_FILE, Pin, Retained, Scope,
+        MANIFEST_FILE, Pin, Scope,
         archive::{ARCHIVE_AUDIENCE, plan_archive},
         plan_export_remap,
-        source::read_archive_source,
+        source::{read_archive_source, read_retained},
         write_export,
     },
 };
@@ -176,8 +176,11 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
     };
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
-    let plan = plan_export_remap(spec, &snapshot, audience, &Retained::none(), args.remap_ids)
-        .map_err(|error| {
+    // The captured bytes of the human files records rely on; the planner
+    // copies only those the audience may see (W11.14).
+    let retained = read_retained(store, &snapshot_digests(&snapshot))?;
+    let plan = plan_export_remap(spec, &snapshot, audience, &retained, args.remap_ids).map_err(
+        |error| {
             let failure = error.to_failure();
             match error {
                 ExportError::KindNotAvailable { .. } => {
@@ -188,7 +191,8 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
                 ExportError::RemapResumable { .. } => failure.at("--remap-ids"),
                 _ => failure,
             }
-        })?;
+        },
+    )?;
     if args.require_complete && !plan.complete() {
         let error = ExportError::Incomplete {
             exclusions: plan.exclusions().to_vec(),
@@ -538,4 +542,28 @@ fn refuse_workspace_internals(root: &Path, out: &Path) -> Result<(), Failure> {
         return Err(failure);
     }
     Ok(())
+}
+
+/// The digests of the human-file snapshots of the pinned case whose bytes
+/// the workspace still retains, in order.
+fn snapshot_digests(snapshot: &ExportSnapshot) -> Vec<Digest> {
+    use investigation_core::{
+        derivation::artifact_body, evidence::ArtifactAvailability, human_file::NoteSnapshot,
+    };
+    let state = snapshot.case().state();
+    let mut digests: Vec<Digest> = NoteSnapshot::all(state)
+        .into_iter()
+        .filter(|note| {
+            state.current(note.artifact.id).is_some_and(|current| {
+                artifact_body(state, current.reference()).is_some_and(|body| {
+                    body.availability == ArtifactAvailability::Retained
+                        && body.digest.as_ref() == Some(&note.sha256)
+                })
+            })
+        })
+        .map(|note| note.sha256)
+        .collect();
+    digests.sort();
+    digests.dedup();
+    digests
 }
