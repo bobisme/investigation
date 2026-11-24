@@ -71,7 +71,12 @@ pub struct GapDisposition {
     pub reason: String,
     #[serde(default)]
     pub uncertainty: Option<String>,
-    /// Current revisions the reviewer read for this gap; each is also in `read_set`.
+    /// Revisions the reviewer read for this gap. A reference that the reviewed
+    /// audit's finding lists (in its `subject_refs` or `related_refs`) is
+    /// accepted as given, even at an earlier revision or beside another
+    /// revision of the same record; the current revision of its record, when
+    /// active, must then be in `read_set`. Any other reference must be the
+    /// current revision, one per record, and is also in `read_set`.
     #[serde(default)]
     pub related_refs: Vec<RevisionRef>,
     /// Records that record or address the gap, including ones created earlier
@@ -234,6 +239,52 @@ fn related(
     Ok(refs.to_vec())
 }
 
+/// A disposition's `related_refs`: the references its audit finding lists
+/// are taken as given (the finding can name the revision a basis read, and one
+/// record at two revisions, bn-dem8), and the current revision of each such
+/// active record joins the required read set. Every other reference follows
+/// [`related`].
+fn disposition_related(
+    ctx: &OperationContext<'_>,
+    refs: &[RevisionRef],
+    finding: &crate::blindspot::Finding,
+    path: &str,
+    read: &mut Vec<RevisionRef>,
+) -> Result<Vec<RevisionRef>, Failure> {
+    let mut given = BTreeSet::new();
+    let mut other = Vec::new();
+    for (index, reference) in refs.iter().enumerate() {
+        let at = format!("{path}/{index}");
+        if !given.insert(*reference) {
+            return Err(invalid(&at, "Supply each reference once."));
+        }
+        let listed =
+            finding.related_refs.contains(reference) || finding.subject_refs.contains(reference);
+        if !listed {
+            other.push((index, *reference));
+            continue;
+        }
+        let current = ctx.current(reference.id).ok_or_else(|| {
+            Failure::new(ErrorCode::UnknownReference, "Cite a record of this case.").at(&at)
+        })?;
+        if !crate::review_ops::inactive(current) && !read.contains(&current.reference()) {
+            read.push(current.reference());
+        }
+    }
+    let mut seen = BTreeSet::new();
+    for (index, reference) in other {
+        let at = format!("{path}/{index}");
+        related(ctx, &[reference], &at, read).map_err(|mut failure| {
+            failure.error.path = Some(at.clone());
+            failure
+        })?;
+        if !seen.insert(reference.id) {
+            return Err(invalid(&at, "Supply one current revision per record."));
+        }
+    }
+    Ok(refs.to_vec())
+}
+
 fn records(
     ctx: &OperationContext<'_>,
     refs: &[Reference],
@@ -364,9 +415,10 @@ pub(crate) fn resolve(
             ));
             return Err(failure);
         };
-        let related_refs = related(
+        let related_refs = disposition_related(
             ctx,
             &disposition.related_refs,
+            finding,
             &format!("{path}/related_refs"),
             &mut read,
         )?;

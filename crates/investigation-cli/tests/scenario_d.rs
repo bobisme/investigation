@@ -1402,21 +1402,13 @@ fn challenge_and_close(w: &mut Walk, validated: &Value, prior: &Value, applies: 
         "{statement}"
     );
     let checks = audit["checks"].as_array().unwrap().clone();
-    // A finding can name the revision its basis read; a review reads and cites
-    // the current one, as the REVISION_CONFLICT repair asks.
-    let related = |check: &Value| -> Vec<Value> {
-        let mut current: Vec<Value> = Vec::new();
-        for reference in check["related_refs"].as_array().unwrap() {
-            let reference = w.current(reference);
-            if !current.contains(&reference) {
-                current.push(reference);
-            }
-        }
-        current
-    };
+    // A finding can name the revision its basis read, and one record at two
+    // revisions. The review copies its related_refs as given (bn-dem8) and
+    // lists the current revision of each of those records in its read_set.
     let mut read_set = vec![validated.clone()];
     for check in &checks {
-        for reference in related(check) {
+        for reference in check["related_refs"].as_array().unwrap() {
+            let reference = w.current(reference);
             if !read_set.contains(&reference) {
                 read_set.push(reference);
             }
@@ -1441,7 +1433,7 @@ fn challenge_and_close(w: &mut Walk, validated: &Value, prior: &Value, applies: 
                 other => panic!("no disposition for audit check {other}: {audit:#}"),
             };
             json!({"gap_id": check["gap_id"], "disposition": "accepted", "reason": reason,
-                "related_refs": related(check)})
+                "related_refs": check["related_refs"]})
         })
         .collect();
     let before = w.show(validated, "full")["record"].clone();

@@ -350,7 +350,7 @@ fn links(record: &Record) -> Result<Vec<RevisionRef>, Failure> {
     crate::freshness::closure_links(record)
 }
 
-fn inactive(record: &Record) -> bool {
+pub(crate) fn inactive(record: &Record) -> bool {
     let body = &record.body;
     body["retracted"] == true
         || matches!(

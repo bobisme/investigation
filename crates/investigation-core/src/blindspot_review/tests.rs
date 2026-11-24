@@ -82,6 +82,37 @@ impl Case {
         .unwrap()
     }
 
+    /// Stores a record image directly, for a body no operation in this
+    /// fixture creates (a supporting Source).
+    fn image(&mut self, kind: Kind, body: Value) -> RevisionRef {
+        let case = self.case.unwrap();
+        let sequence = self.state.sequence() + 1;
+        let mut header = self.state.current(case).unwrap().header.clone();
+        header.acceptance_sequence = sequence;
+        header.id = crate::identity::IdSource::next_id(&mut SystemIdSource, kind).unwrap();
+        header.revision.0 = 1;
+        header.history.clear();
+        let record = Record { header, body };
+        let reference = record.reference();
+        let change = crate::wire::RecordChange {
+            client_ref: None,
+            id: reference.id,
+            revision: reference.revision,
+        };
+        self.state
+            .apply(&AcceptedTransaction {
+                case_id: case,
+                sequence,
+                records: vec![record],
+                created: vec![change],
+                updated: vec![],
+                warnings: vec![],
+            })
+            .unwrap();
+        self.state.note_verified_snapshot(self.snapshot()).unwrap();
+        reference
+    }
+
     fn get(&self, reference: RevisionRef) -> &Record {
         self.state.revision(reference).unwrap()
     }
@@ -548,4 +579,117 @@ fn check_set_change_applies_only_to_submitted_blindspot_reviews_of_an_audit() {
     record.body["status"] = json!("submitted");
     record.body.as_object_mut().unwrap().remove("audit");
     assert!(!check_set_changed(&record));
+}
+
+/// A disposition may copy its finding's `related_refs` as given, even after a
+/// listed record changed (bn-dem8). The current revision of each copied record
+/// must then be in `read_set`. A reference the finding does not list keeps the
+/// current-revision rule, and an entry may not repeat.
+#[test]
+fn a_disposition_accepts_its_findings_related_refs_as_given() {
+    let mut case = Case::new();
+    let question = case.one(
+        "question.create",
+        json!({"importance":"normal","wording":"Why do requests fail?"}),
+    );
+    let factor = case.one(
+        "hypothesis.create",
+        json!({"question_ref":question,"statement":"The scheduler setting causes failures.",
+            "possible_falsifiers":["Failures persist without the setting."],"rival_refs":[],"assumption_refs":[]}),
+    );
+    let rival = case.one(
+        "hypothesis.create",
+        json!({"question_ref":question,"statement":"Client retries cause the failures.",
+            "possible_falsifiers":["Failures persist without retries."],"rival_refs":[factor],"assumption_refs":[]}),
+    );
+    let source = case.image(Kind::Source, json!({"access": "local_only"}));
+    let conclusion = case.one(
+        "conclusion.create",
+        json!({"statement":"The scheduler setting causes the failures.","scope":"The staged workload.",
+            "significance":"Decides whether to change the setting.","support_refs":[source],"contradiction_refs":[],
+            "caveats":["One workload."],"causal_factors":[{"hypothesis_ref":factor,"role":"trigger"}]}),
+    );
+    let before = case.audit(None);
+    let finding = before
+        .checks
+        .iter()
+        .find(|finding| finding.check_id == "conclusion.support_not_assessed_against_rival")
+        .expect("the rival check reports the conclusion")
+        .clone();
+    assert_eq!(finding.related_refs, [rival], "{finding:?}");
+    let amended = case.one(
+        "hypothesis.amend",
+        json!({"hypothesis_ref":rival,"rationale":"Narrow to bursts.","replacement":{
+            "applicability":"The staged workload","assumption_refs":[],
+            "possible_falsifiers":["Failures persist without retries."],
+            "question_ref":question,"rival_refs":[factor],
+            "statement":"Client retries cause the failures during bursts."}}),
+    );
+    assert_eq!(amended.revision, 2);
+
+    let mut payload = review(conclusion, &before, json!([question, factor, amended]));
+    payload["verdict"] = json!("gaps_identified");
+    payload["gap_dispositions"] = json!([{
+        "gap_id": finding.gap_id, "disposition": "accepted",
+        "reason": "The support was not assessed against the retry account.",
+        "related_refs": finding.related_refs, "record_refs": []
+    }]);
+
+    // The copied revision is no longer current and is still accepted;
+    // without the current revision in read_set the review names it.
+    let mut missing = payload.clone();
+    missing["read_set"] = json!([question, factor]);
+    let failure = case.run(vec![op("review.submit", missing)]).unwrap_err();
+    assert_eq!(
+        failure.error.path.as_deref().map(payload_path),
+        Some("/read_set"),
+        "{failure:?}"
+    );
+    assert!(
+        failure
+            .error
+            .expected
+            .as_ref()
+            .unwrap()
+            .as_array()
+            .unwrap()
+            .contains(&json!(amended)),
+        "{failure:?}"
+    );
+
+    // A stale reference the finding does not list keeps the current rule.
+    let mut other = payload.clone();
+    let stale = RevisionRef {
+        revision: 9,
+        ..question
+    };
+    other["gap_dispositions"][0]["related_refs"] = json!([rival, stale]);
+    let failure = case.run(vec![op("review.submit", other)]).unwrap_err();
+    assert_eq!(
+        failure.error.path.as_deref().map(payload_path),
+        Some("/gap_dispositions/0/related_refs/1")
+    );
+
+    // An entry may not repeat.
+    let mut repeated = payload.clone();
+    repeated["gap_dispositions"][0]["related_refs"] = json!([rival, rival]);
+    let failure = case.run(vec![op("review.submit", repeated)]).unwrap_err();
+    assert_eq!(
+        failure.error.path.as_deref().map(payload_path),
+        Some("/gap_dispositions/0/related_refs/1")
+    );
+
+    let accepted = case.run(vec![op("review.submit", payload)]).unwrap();
+    let stored = &accepted.records[0].body;
+    assert_eq!(
+        stored["gap_dispositions"][0]["related_refs"],
+        json!([rival])
+    );
+    assert!(
+        stored["read_set"]
+            .as_array()
+            .unwrap()
+            .contains(&json!(amended)),
+        "{stored:#}"
+    );
 }

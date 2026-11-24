@@ -68,7 +68,7 @@
         },
         "related_refs": {
           "default": [],
-          "description": "Current revisions the reviewer read for this gap; each is also in `read_set`.",
+          "description": "Revisions the reviewer read for this gap. A reference that the reviewed\naudit's finding lists (in its `subject_refs` or `related_refs`) is\naccepted as given, even at an earlier revision or beside another\nrevision of the same record; the current revision of its record, when\nactive, must then be in `read_set`. Any other reference must be the\ncurrent revision, one per record, and is also in `read_set`.",
           "items": {
             "$ref": "#/$defs/RevisionRef"
           },
