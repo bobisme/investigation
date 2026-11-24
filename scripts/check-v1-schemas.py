@@ -17,6 +17,18 @@ SCHEMA_VALUES = {"items", "contains", "additionalProperties", "propertyNames", "
                  "unevaluatedProperties", "allOf", "anyOf", "oneOf", "prefixItems",
                  "not", "if", "then", "else"}
 SCHEMA_MAPS = {"patternProperties", "dependentSchemas"}
+# Frozen v1 enums that may gain values (owner decision, 2026-11-23; ADR 0007):
+# only where every reader of the value must already tolerate one it does not
+# know. Each entry names why that holds. Values may be added, never removed or
+# renamed, and nothing else about the enum may change.
+OPEN_ENUMS = {
+    "command.schema.json/$defs/GuardedOperation": (
+        "Input only: it constrains human_confirmation.confirms[].op in a command, and no response, "
+        "receipt or error schema uses it. Its one reader is the binary validating a request, which "
+        "refuses a value it does not know with INVALID_INPUT at that path, as for any invalid input; "
+        "every request valid before stays valid."
+    ),
+}
 
 
 class BreakingChange(ValueError):
@@ -49,6 +61,10 @@ def compare_schema(old, new, path):
             require(old[key].keys() == new[key].keys(), keyword_path, "changed validation map")
             for name in sorted(old[key]):
                 compare_schema(old[key][name], new[key][name], f"{keyword_path}/{name}")
+        elif key == "enum" and path in OPEN_ENUMS:
+            require(isinstance(new[key], list) and len(set(map(json.dumps, new[key]))) == len(new[key])
+                    and all(value in new[key] for value in old[key]),
+                    keyword_path, "removed or duplicated a value of an open enum")
         else:
             require(old[key] == new[key], keyword_path, "changed validation rule")
 
@@ -73,6 +89,19 @@ def compare_schema(old, new, path):
     require(earlier_defs.keys() <= later_defs.keys(), path, "removed definition")
     for name in sorted(earlier_defs):
         compare_schema(earlier_defs[name], later_defs[name], f"{path}/$defs/{name}")
+
+
+def open_enums_are_input_only(documents):
+    """An open enum's definition name appears in no other published schema."""
+    for location in OPEN_ENUMS:
+        file, _, pointer = location.partition("/")
+        name = pointer.rsplit("/", 1)[-1]
+        require(file in documents and name in documents[file].get("$defs", {}), location,
+                "open enum is not published there")
+        for other, schema in documents.items():
+            if other != file and isinstance(schema, dict):
+                require(name not in schema.get("$defs", {}), f"{other}/$defs/{name}",
+                        "an open enum must not appear in another published schema")
 
 
 def compare_contract(old, new):
@@ -165,6 +194,23 @@ def self_test():
             pass
         else:
             raise AssertionError(f"Breaking contract change accepted: {rejected}")
+    open_path = next(iter(OPEN_ENUMS))
+    guarded = {"type": "string", "enum": ["a", "b"]}
+    compare_schema(guarded, dict(guarded, enum=["a", "new", "b"]), open_path)
+    for rejected in (dict(guarded, enum=["a"]), dict(guarded, enum=["a", "c"]),
+                     dict(guarded, enum=["a", "b", "b"]), dict(guarded, enum=["a", "b", "c"], type="number")):
+        try:
+            compare_schema(guarded, rejected, open_path)
+        except BreakingChange:
+            pass
+        else:
+            raise AssertionError(f"Breaking change to an open enum accepted: {rejected}")
+    try:
+        compare_schema(guarded, dict(guarded, enum=["a", "b", "c"]), "closed.schema.json/$defs/Other")
+    except BreakingChange:
+        pass
+    else:
+        raise AssertionError("A value added to a closed enum was accepted.")
     try:
         compare_schema({}, {"properties": {"typed": {"type": "string"}}}, "open")
     except BreakingChange:
@@ -181,6 +227,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     self_test()
     generated = generate(args.binary.resolve(strict=True))
+    open_enums_are_input_only(generated)
     compare_contract(committed(args.against), generated)
     existing = {file.relative_to(DIRECTORY).as_posix(): json.loads(file.read_text(encoding="utf-8"))
                 for file in DIRECTORY.rglob("*.json")}

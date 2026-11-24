@@ -1,7 +1,8 @@
 //! Opt-in write-side guardrails (W10.19) through the public CLI: a pinned
 //! pack can require a distinct actor, a distinct context or a recorded human
 //! confirmation for conclusion.validate, decision.accept, source.withdraw,
-//! observation.retract and classification.downgrade. A refusal writes nothing
+//! artifact.withdraw, artifact.expire, observation.retract and
+//! classification.downgrade. A refusal writes nothing
 //! and names the route to satisfy it; with no guardrail, nothing changes.
 use std::{
     fs,
@@ -32,6 +33,18 @@ name = "separate-withdrawal"
 operation = "source.withdraw"
 requirement = "distinct_context"
 rationale = "The context that read raw evidence does not withdraw sources."
+
+[[guardrails]]
+name = "separate-artifact-withdrawal"
+operation = "artifact.withdraw"
+requirement = "distinct_context"
+rationale = "The context that read raw evidence does not withdraw the evidence itself."
+
+[[guardrails]]
+name = "separate-expiry"
+operation = "artifact.expire"
+requirement = "distinct_context"
+rationale = "The context that read raw evidence does not make the evidence unreadable."
 
 [[guardrails]]
 name = "confirm-retraction"
@@ -689,4 +702,108 @@ fn a_malformed_human_confirmation_is_rejected_at_the_envelope() {
     );
     assert_eq!(refused["error"]["code"], "INVALID_INPUT");
     assert_eq!(refused["error"]["path"], "/human_confirmation/method");
+}
+
+#[test]
+fn the_session_that_read_untrusted_evidence_cannot_withdraw_the_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+
+    let withdraw = |case: &Case<'_>, key: &str, session: &str, exit| {
+        let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+        case.submit(
+            key,
+            "artifact.withdraw",
+            json!({"artifact_ref":artifact,"reason":"superseded","scope":{"extent":"entire"},
+                "rationale":"A corrected reading replaces it.","evidence_refs":[]}),
+            Envelope {
+                session: Some(session),
+                ..Envelope::default()
+            },
+            exit,
+        )
+    };
+
+    // No pinned guardrail: the reading session may withdraw, and the
+    // withdrawal entry carries no guardrail record.
+    let solo = start(root, "solo-artifact");
+    solo.read_evidence("solo-reader");
+    withdraw(&solo, "withdraw", "solo-reader", 0);
+    let artifact = json!({"id":solo.attachment["artifact_id"],"revision":2});
+    let body = solo.body(&artifact);
+    assert_eq!(body["status"], "withdrawn");
+    assert!(body["withdrawals"][0].get("guardrail").is_none());
+
+    // With a distinct_context guardrail the reading session is refused and
+    // nothing is written; a clean session withdraws and the guardrail is
+    // stored inside the withdrawal entry.
+    let case = start(root, "guarded-artifact");
+    adopt(&case);
+    case.read_evidence("reader");
+    let refused = withdraw(&case, "withdraw", "reader", 5);
+    let unmet = blocker(&refused, "separate-artifact-withdrawal", "distinct_context");
+    assert_eq!(unmet["operation"], "artifact.withdraw");
+    assert_eq!(unmet["unmet"]["session"], "reader");
+    let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+    assert_eq!(case.revision(&artifact), 1);
+    withdraw(&case, "withdraw", "withdrawer", 0);
+    let body = case.body(&json!({"id":artifact["id"],"revision":2}));
+    assert_eq!(body["status"], "withdrawn");
+    let guardrail = &body["withdrawals"][0]["guardrail"];
+    assert_eq!(guardrail["operation"], "artifact.withdraw");
+    assert_eq!(
+        guardrail["rules"][0]["guardrail"],
+        "separate-artifact-withdrawal"
+    );
+}
+
+#[test]
+fn the_session_that_read_untrusted_evidence_cannot_expire_the_artifact() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+
+    let expire = |case: &Case<'_>, key: &str, session: &str, exit| {
+        let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+        case.submit(
+            key,
+            "artifact.expire",
+            json!({"artifact_ref":artifact,"reason":"sensitive_content",
+                "rationale":"The bytes must stop being readable here."}),
+            Envelope {
+                session: Some(session),
+                ..Envelope::default()
+            },
+            exit,
+        )
+    };
+
+    // No pinned guardrail: the reading session may expire the reference, and
+    // the availability change carries no guardrail record.
+    let solo = start(root, "solo-expiry");
+    solo.read_evidence("solo-reader");
+    expire(&solo, "expire", "solo-reader", 0);
+    let body = solo.body(&json!({"id":solo.attachment["artifact_id"],"revision":2}));
+    assert_eq!(body["availability"], "intentionally_removed");
+    assert!(body["availability_change"].get("guardrail").is_none());
+
+    // With a distinct_context guardrail the reading session is refused and
+    // nothing is written; a clean session expires the reference and the
+    // guardrail is stored in the availability change.
+    let case = start(root, "guarded-expiry");
+    adopt(&case);
+    case.read_evidence("reader");
+    let refused = expire(&case, "expire", "reader", 5);
+    let unmet = blocker(&refused, "separate-expiry", "distinct_context");
+    assert_eq!(unmet["operation"], "artifact.expire");
+    assert_eq!(unmet["unmet"]["session"], "reader");
+    let artifact = json!({"id":case.attachment["artifact_id"],"revision":1});
+    assert_eq!(case.revision(&artifact), 1);
+    expire(&case, "expire", "expirer", 0);
+    let body = case.body(&json!({"id":artifact["id"],"revision":2}));
+    assert_eq!(body["availability"], "intentionally_removed");
+    let guardrail = &body["availability_change"]["guardrail"];
+    assert_eq!(guardrail["operation"], "artifact.expire");
+    assert_eq!(guardrail["rules"][0]["guardrail"], "separate-expiry");
 }

@@ -68,6 +68,10 @@ pub struct AvailabilityChange {
     pub from: ArtifactAvailability,
     pub reason: ExpiryReason,
     pub rationale: String,
+    /// The write-side guardrails the change satisfied, when a pinned pack
+    /// declares any for `artifact.expire`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub guardrail: Option<crate::guardrails::GuardrailRecord>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -159,6 +163,12 @@ fn expire(payload: ArtifactExpire, ctx: &mut OperationContext<'_>) -> Result<(),
         failure.error.actual = Some(json!({"method_packs": readers}));
         return Err(failure);
     }
+    let target = target.clone();
+    let guardrail = crate::guardrails::enforce(
+        ctx,
+        crate::guardrails::GuardedOperation::ArtifactExpire,
+        &target,
+    )?;
     let change = AvailabilityChange {
         actor: ctx.actor().clone(),
         accepted_at_sequence: ctx.acceptance_sequence(),
@@ -166,6 +176,7 @@ fn expire(payload: ArtifactExpire, ctx: &mut OperationContext<'_>) -> Result<(),
         from: body.availability,
         reason: payload.reason,
         rationale: payload.rationale,
+        guardrail,
     };
     let mut body = target.body.clone();
     let object = body.as_object_mut().ok_or_else(|| {

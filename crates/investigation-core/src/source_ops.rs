@@ -108,7 +108,7 @@ pub struct Withdrawal {
     pub rationale: String,
     /// Exact records that ground the withdrawal, such as an erratum.
     pub evidence_refs: Vec<RevisionRef>,
-    /// `source.withdraw`: the write-side guardrails the withdrawal satisfied,
+    /// `source.withdraw` and `artifact.withdraw`: the write-side guardrails the withdrawal satisfied,
     /// when a pinned pack declares any.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub guardrail: Option<crate::guardrails::GuardrailRecord>,
@@ -565,7 +565,7 @@ struct WithdrawRequest {
     scope: WithdrawalScope,
     rationale: String,
     evidence_refs: Vec<RevisionRef>,
-    /// The guarded operation, for `source.withdraw` only.
+    /// The guarded operation: `source.withdraw` or `artifact.withdraw`.
     guard: Option<crate::guardrails::GuardedOperation>,
 }
 
@@ -633,7 +633,7 @@ fn withdraw_artifact(
         WithdrawRequest {
             target: payload.artifact_ref,
             path: "/artifact_ref",
-            guard: None,
+            guard: Some(crate::guardrails::GuardedOperation::ArtifactWithdraw),
             reason: payload.reason,
             scope: payload.scope,
             rationale: payload.rationale,

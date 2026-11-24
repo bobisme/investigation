@@ -95,6 +95,8 @@ pub const GUARDED_OPERATIONS: &[&str] = &[
     "decision.accept",
     "observation.retract",
     "source.withdraw",
+    "artifact.withdraw",
+    "artifact.expire",
 ];
 
 /// A validated pack plus the SHA-256 digest of the exact bytes it came from.
@@ -431,7 +433,8 @@ impl PolicyInput {
 pub struct GuardrailProposal {
     pub name: String,
     /// One of `conclusion.validate`, `decision.accept`, `source.withdraw`,
-    /// `observation.retract` or `classification.downgrade`.
+    /// `artifact.withdraw`, `artifact.expire`, `observation.retract` or
+    /// `classification.downgrade`.
     pub operation: String,
     pub requirement: GuardrailRequirement,
     pub rationale: String,
@@ -1181,7 +1184,7 @@ fn validate(pack: &MethodPack) -> Result<(), PackError> {
             return Err(check.fail(
                 PackErrorKind::UnknownReference,
                 "operation",
-                "Guardrails may only guard conclusion.validate, decision.accept, source.withdraw, observation.retract or classification.downgrade",
+                "Guardrails may only guard conclusion.validate, decision.accept, source.withdraw, artifact.withdraw, artifact.expire, observation.retract or classification.downgrade",
             ));
         }
         check.text("rationale", &guardrail.rationale)

@@ -109,10 +109,10 @@ re-gated when a pack is adopted or replaced.
 ## Write-side guardrails
 
 A pinned pack can also separate promotion and suppression from the context
-that read hostile evidence. A guardrail adds one requirement to one of five
+that read hostile evidence. A guardrail adds one requirement to one of seven
 operations: `conclusion.validate`, `decision.accept`, `source.withdraw`,
-`observation.retract` or `classification.downgrade`. No other operation can
-be guarded. Guardrails are opt-in: without one, nothing changes.
+`artifact.withdraw`, `artifact.expire`, `observation.retract` or
+`classification.downgrade`. No other operation can be guarded. Guardrails are opt-in: without one, nothing changes.
 
 | `requirement` | Adds |
 |---|---|

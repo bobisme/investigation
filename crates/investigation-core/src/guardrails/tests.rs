@@ -32,11 +32,11 @@ rationale = "r"
 
 const REQUIREMENTS: [&str; 3] = ["distinct_actor", "distinct_context", "human_confirmation"];
 
-/// Exactly the five named operations can be guarded. A pack that declares a
+/// Exactly the seven named operations can be guarded. A pack that declares a
 /// guardrail on any other catalog operation is rejected when it loads, so
 /// recording, ingest and capture can never be refused by a guardrail.
 #[test]
-fn only_the_five_named_operations_can_be_guarded() {
+fn only_the_seven_named_operations_can_be_guarded() {
     let named: BTreeSet<&str> = GuardedOperation::ALL
         .iter()
         .map(|op| op.operation())
@@ -47,6 +47,8 @@ fn only_the_five_named_operations_can_be_guarded() {
             "conclusion.validate",
             "decision.accept",
             "source.withdraw",
+            "artifact.withdraw",
+            "artifact.expire",
             "observation.retract",
             "classification.downgrade",
         ])
@@ -78,58 +80,62 @@ fn only_the_five_named_operations_can_be_guarded() {
     }
     assert!(refused > 100, "{refused}");
     // Recording operations in particular.
-    for name in [
-        "observation.add",
-        "source.add",
-        "artifact.withdraw",
-        "case.close",
-    ] {
+    for name in ["observation.add", "source.add", "case.close"] {
         assert!(load(pack(name, "human_confirmation").as_bytes()).is_err());
     }
 }
 
-/// Only the handlers of the five operations call the guardrail check, and
-/// `artifact.withdraw` shares the withdrawal handler without a guard.
+/// Only the handlers of the seven operations call the guardrail check; the
+/// two withdrawals share one handler in source_ops.rs, each named once, and
+/// `artifact.expire` has its own in retention_ops.rs.
 #[test]
 fn only_the_guarded_handlers_enforce_guardrails() {
-    for (name, source, operation) in [
+    let handlers: [(&str, &str, &[&str]); 6] = [
         (
             "review_ops.rs",
             include_str!("../review_ops.rs"),
-            "ConclusionValidate",
+            &["ConclusionValidate"],
         ),
         (
             "decision_ops.rs",
             include_str!("../decision_ops.rs"),
-            "DecisionAccept",
+            &["DecisionAccept"],
         ),
         (
             "source_ops.rs",
             include_str!("../source_ops.rs"),
-            "SourceWithdraw",
+            &["SourceWithdraw", "ArtifactWithdraw"],
+        ),
+        (
+            "retention_ops.rs",
+            include_str!("../retention_ops.rs"),
+            &["ArtifactExpire"],
         ),
         (
             "observation_ops.rs",
             include_str!("../observation_ops.rs"),
-            "ObservationRetract",
+            &["ObservationRetract"],
         ),
         (
             "classification_ops.rs",
             include_str!("../classification_ops.rs"),
-            "ClassificationDowngrade",
+            &["ClassificationDowngrade"],
         ),
-    ] {
+    ];
+    for (name, source, operations) in handlers {
         assert!(source.contains("guardrails::enforce("), "{name}");
-        assert_eq!(
-            source
-                .matches(&format!("GuardedOperation::{operation}"))
-                .count(),
-            1,
-            "{name}"
-        );
+        for operation in operations {
+            assert_eq!(
+                source
+                    .matches(&format!("GuardedOperation::{operation}"))
+                    .count(),
+                1,
+                "{name}"
+            );
+        }
         for other in GuardedOperation::ALL {
             let variant = format!("GuardedOperation::{other:?}");
-            if format!("{other:?}") != operation {
+            if !operations.contains(&format!("{other:?}").as_str()) {
                 assert!(!source.contains(&variant), "{name} guards {variant}");
             }
         }

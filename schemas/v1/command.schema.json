@@ -73,6 +73,8 @@
         "conclusion.validate",
         "decision.accept",
         "source.withdraw",
+        "artifact.withdraw",
+        "artifact.expire",
         "observation.retract",
         "classification.downgrade"
       ],

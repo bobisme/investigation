@@ -3,9 +3,12 @@
 //! The worst injection against an epistemic ledger is a schema-valid write
 //! that promotes a false claim, suppresses counter-evidence or declassifies a
 //! record. A case that pins a method pack declaring `[[guardrails]]` adds
-//! requirements to exactly five writes ([`GuardedOperation`]):
+//! requirements to exactly seven writes ([`GuardedOperation`]):
 //! `conclusion.validate`, `decision.accept`, `source.withdraw`,
-//! `observation.retract` and `classification.downgrade`. No other operation
+//! `artifact.withdraw`, `artifact.expire`, `observation.retract` and
+//! `classification.downgrade`. The two Artifact writes are the same
+//! suppression as `source.withdraw`: one takes the Artifact out of
+//! evidentiary use, the other withdraws its bytes' availability. No other operation
 //! can be guarded, so recording, ingest and capture stay cheap. With no
 //! guardrail pinned nothing is checked and nothing is stored, so behaviour is
 //! unchanged.
@@ -71,6 +74,10 @@ pub enum GuardedOperation {
     DecisionAccept,
     #[serde(rename = "source.withdraw")]
     SourceWithdraw,
+    #[serde(rename = "artifact.withdraw")]
+    ArtifactWithdraw,
+    #[serde(rename = "artifact.expire")]
+    ArtifactExpire,
     #[serde(rename = "observation.retract")]
     ObservationRetract,
     #[serde(rename = "classification.downgrade")]
@@ -78,10 +85,12 @@ pub enum GuardedOperation {
 }
 
 impl GuardedOperation {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 7] = [
         Self::ConclusionValidate,
         Self::DecisionAccept,
         Self::SourceWithdraw,
+        Self::ArtifactWithdraw,
+        Self::ArtifactExpire,
         Self::ObservationRetract,
         Self::ClassificationDowngrade,
     ];
@@ -91,6 +100,8 @@ impl GuardedOperation {
             Self::ConclusionValidate => "conclusion.validate",
             Self::DecisionAccept => "decision.accept",
             Self::SourceWithdraw => "source.withdraw",
+            Self::ArtifactWithdraw => "artifact.withdraw",
+            Self::ArtifactExpire => "artifact.expire",
             Self::ObservationRetract => "observation.retract",
             Self::ClassificationDowngrade => "classification.downgrade",
         }

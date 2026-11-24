@@ -156,7 +156,7 @@
           "type": "string"
         },
         "operation": {
-          "description": "One of `conclusion.validate`, `decision.accept`, `source.withdraw`,\n`observation.retract` or `classification.downgrade`.",
+          "description": "One of `conclusion.validate`, `decision.accept`, `source.withdraw`,\n`artifact.withdraw`, `artifact.expire`, `observation.retract` or\n`classification.downgrade`.",
           "type": "string"
         },
         "rationale": {
