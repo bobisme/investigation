@@ -1069,6 +1069,24 @@ fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failur
         failure.error.actual =
             Some(json!({"case_local_references":refs,"snapshot":replay.snapshot}));
     }
+    // A repair that reads the case names the request's case, so following
+    // it works in a workspace with several cases.
+    if let Some(case) = command.case_id
+        && let Some(argv) = failure
+            .error
+            .repair
+            .as_mut()
+            .and_then(|repair| repair.argv.as_mut())
+        && argv.first().is_some_and(|program| program == PROGRAM_NAME)
+        && argv.get(1).is_some_and(|name| {
+            ["show", "brief", "explain", "frontier", "next", "blindspots"].contains(&name.as_str())
+        })
+        && !argv.iter().any(|word| word == "--case")
+    {
+        // After the record ID of `show ID`, as other repairs place it.
+        let at = if argv[1] == "show" { 3 } else { 2 }.min(argv.len());
+        argv.splice(at..at, ["--case".to_owned(), case.to_string()]);
+    }
     with_workspace_repair(store.workspace(), failure)
 }
 

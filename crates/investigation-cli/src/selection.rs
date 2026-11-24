@@ -383,6 +383,37 @@ pub(crate) fn require_case_agreement(
     Ok(())
 }
 
+/// A `--case` given to a command whose input already names its case (a
+/// capture handle, a vault path) must select that case: a mismatch is
+/// refused, never silently overridden. `owner` says what named the case.
+pub(crate) fn require_selected_case(
+    store: &mut Store,
+    selector: Option<&str>,
+    case: Id,
+    owner: &str,
+) -> Result<(), Failure> {
+    let Some(selector) = selector else {
+        return Ok(());
+    };
+    let selected = match selector.parse::<Id>() {
+        Ok(id) if id.kind() == Kind::Case => id,
+        _ => select_case(store, Some(selector))?,
+    };
+    if selected != case {
+        let mut failure = Failure::new(
+            ErrorCode::InvalidInput,
+            format!(
+                "--case must name {case}, the case of {owner}. Omit --case: {owner} names its case."
+            ),
+        )
+        .at("--case");
+        failure.error.expected = Some(json!(case));
+        failure.error.actual = Some(json!(selected));
+        return Err(failure);
+    }
+    Ok(())
+}
+
 pub(crate) fn workspace_argv(workspace: &Workspace) -> Vec<String> {
     vec![
         PROGRAM_NAME.into(),

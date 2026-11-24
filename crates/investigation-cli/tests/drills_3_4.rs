@@ -62,6 +62,8 @@ use std::{
 use investigation_render::VerifiedSnapshot;
 use serde_json::{Value, json};
 
+#[path = "support/acceptance.rs"]
+mod acceptance;
 #[path = "support/fixtures.rs"]
 mod fixtures;
 
@@ -477,6 +479,30 @@ impl Drill {
                 .map(|finding| finding["check_id"].as_str().unwrap())
                 .collect();
             found.sort_unstable();
+            // Matched one for one: a pinned check reported twice counts twice
+            // only when the audit reports it twice.
+            let mut unmatched = found.clone();
+            let detected = pinned
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|check| {
+                    unmatched
+                        .iter()
+                        .position(|reported| Some(*reported) == check.as_str())
+                        .map(|at| unmatched.remove(at))
+                        .is_some()
+                })
+                .count();
+            // For the deterministic acceptance report: the seeded gaps this
+            // audit pins and how many it reported; the audit text was
+            // already checked for completeness claims above.
+            acceptance::observe(
+                "blindspot_calibration",
+                &format!("{}-step-{}", self.name, self.step),
+                &json!({"seeded": pinned, "reported": found, "detected": detected,
+                        "completeness_claims": 0}),
+            );
             assert_eq!(json!(found), *pinned, "{}: {response:#}", self.context());
         }
         for wanted in expect

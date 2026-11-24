@@ -128,7 +128,7 @@ EOF
 
 ```text
 /operations/0/payload/support_refs: The conclusion rests on an absence or equivalence basis that does not support it. Until the missing requirements are recorded it reads as inconclusive.
-Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a20751-c2d2-7000-93c2-636322f244b0 --depth full --format json
+Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a20751-c2d2-7000-93c2-636322f244b0 --case case_01a20751-b71f-7003-98ca-1391c7aafc36 --depth full --format json
 See investigation schema conclusion.request_review
 ```
 

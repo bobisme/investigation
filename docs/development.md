@@ -79,6 +79,20 @@ sample counts, warmup, trial order and nearest-rank percentiles with their
 n. `just check` runs only a smoke run on tiny fixtures; timings on a shared
 or loaded machine are noisy, so compare runs at similar load.
 
+`just acceptance` runs the deterministic acceptance measures of plan §20.5
+(`scripts/acceptance-measures.py`): correct case targeting, lost and duplicate
+writes, false promotion in invalid-control and stale-basis fixtures,
+repairability, context efficiency, blindspot calibration and domain neutrality.
+It runs the tests behind each measure, most of them earlier tests and the rest
+in `crates/investigation-cli/tests/acceptance_measures.rs`, with
+`INV_ACCEPTANCE_OBSERVATIONS` set so they record what they measured, and writes
+`target/acceptance/deterministic-report.json`: per measure the target, the
+observed value, pass or fail and every test with its outcome. The report labels
+itself as deterministic checks; agent-trial results come from
+`scripts/release-trial.py`. Its tests also run in `just check`; the CI offline
+job runs the script itself without a network. It takes about 40 seconds after a
+build (`--quick` skips the slow trial-task rehearsals and takes under 10).
+
 `just load-test DIR` runs the plan §12.5 vault load test (about 50,000 notes, with and without the viewer features, hours long, not part of `just check`). An ignored test, `cargo test -p investigation-cli --test vault_load_smoke -- --ignored`, checks the harness on a tiny workspace. See [vault-load.md](vault-load.md) for the method, observations and limits.
 
 The neutrality check reads the actual CLI help, published schemas, the

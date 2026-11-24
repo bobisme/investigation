@@ -11,14 +11,15 @@ use investigation_core::{
     wire::{ErrorCode, Failure},
 };
 use investigation_recording::{
-    BeginCapture, CaptureEvent, CaseTarget, Finalization, FinalizeCapture, LocalRecorder,
-    ReceiptResult, Recorder, RecordingError, RecoverScope, StableArtifact, StagedAvailability,
+    BeginCapture, CaptureEvent, CaptureHandle, CaseTarget, Finalization, FinalizeCapture,
+    LocalRecorder, ReceiptResult, Recorder, RecordingError, RecoverScope, StableArtifact,
+    StagedAvailability,
 };
 use investigation_store::Store;
 
 use crate::{
     Global, Output, display_argv, read_input, scope_argv,
-    selection::{require_case_agreement, select_actor},
+    selection::{require_case_agreement, require_selected_case, select_actor},
     with_workspace_repair,
 };
 
@@ -179,9 +180,9 @@ pub(crate) fn run(
 ) -> Result<Output, Failure> {
     match command {
         CaptureCommand::Begin { input } => begin(store, global, &input),
-        CaptureCommand::Append { input } => append(store, &input),
-        CaptureCommand::Attach { input } => attach(store, &input),
-        CaptureCommand::Finalize { input } => finalize(store, &input),
+        CaptureCommand::Append { input } => append(store, global, &input),
+        CaptureCommand::Attach { input } => attach(store, global, &input),
+        CaptureCommand::Finalize { input } => finalize(store, global, &input),
         CaptureCommand::Recover { handle, input } => {
             recover(store, handle.as_deref(), input.as_deref())
         }
@@ -222,11 +223,33 @@ fn begin(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Fail
 }
 
 /// The handle names the Run, its case and its actor, so `--case` and
-/// `--actor` play no part.
-fn append(store: &mut Store, path: &Path) -> Result<Output, Failure> {
+/// `--actor` are not needed. A `--case` that names another case is refused
+/// before anything is staged, as `begin` refuses one that disagrees with its
+/// request, so a call never writes into a case other than the one it named.
+fn require_handle_case(
+    store: &mut Store,
+    global: &Global,
+    handle: &CaptureHandle,
+) -> Result<(), Failure> {
+    let Some(selector) = global.case.as_deref() else {
+        return Ok(());
+    };
+    let state = LocalRecorder::open(store.workspace().root())
+        .and_then(|recorder| recorder.recover(&RecoverScope::Handle { handle: *handle }))
+        .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
+    // An unknown handle is reported by the call itself.
+    let Some(case_id) = state.handles.first().map(|recovered| recovered.case_id) else {
+        return Ok(());
+    };
+    require_selected_case(store, Some(selector), case_id, "the handle's Run")
+}
+
+/// See [`require_handle_case`] for `--case`; `--actor` plays no part.
+fn append(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Failure> {
     let request: CaptureEvent = input::parse_request(&read_input(path)?)
         .and_then(|value| input::decode(&value))
         .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?;
+    require_handle_case(store, global, &request.handle)?;
     let receipt = LocalRecorder::open(store.workspace().root())
         .and_then(|recorder| recorder.append(&request))
         .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
@@ -247,10 +270,11 @@ fn append(store: &mut Store, path: &Path) -> Result<Output, Failure> {
 }
 
 /// Like `append`, the handle names the Run, its case and its actor.
-fn attach(store: &mut Store, path: &Path) -> Result<Output, Failure> {
+fn attach(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Failure> {
     let request: StableArtifact = input::parse_request(&read_input(path)?)
         .and_then(|value| input::decode(&value))
         .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?;
+    require_handle_case(store, global, &request.handle)?;
     let receipt = LocalRecorder::open(store.workspace().root())
         .and_then(|recorder| recorder.attach(&request))
         .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;
@@ -273,10 +297,11 @@ fn attach(store: &mut Store, path: &Path) -> Result<Output, Failure> {
 }
 
 /// Like `append`, the handle names the Run, its case and its actor.
-fn finalize(store: &mut Store, path: &Path) -> Result<Output, Failure> {
+fn finalize(store: &mut Store, global: &Global, path: &Path) -> Result<Output, Failure> {
     let request: FinalizeCapture = input::parse_request(&read_input(path)?)
         .and_then(|value| input::decode(&value))
         .map_err(|error| Failure::new(ErrorCode::InvalidInput, error.message).at(error.path))?;
+    require_handle_case(store, global, &request.handle)?;
     let receipt = LocalRecorder::open(store.workspace().root())
         .and_then(|recorder| recorder.finalize(&request))
         .map_err(|error| with_workspace_repair(store.workspace(), rejection(error)))?;

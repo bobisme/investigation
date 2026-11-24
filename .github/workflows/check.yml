@@ -63,3 +63,15 @@ jobs:
             /usr/bin/env -i HOME="$HOME" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
             PATH="$toolchain_bin:$tool_path" \
             cargo test --locked --offline --workspace --all-features
+      - name: Deterministic acceptance measures in the isolated network namespace
+        shell: bash
+        run: |
+          toolchain_bin="$(dirname "$(rustup which cargo)")"
+          tool_path="$(mktemp -d)"
+          for tool in cc as ld ar python3; do
+            ln -s "$(command -v "$tool")" "$tool_path/$tool"
+          done
+          sudo unshare --net -- setpriv --reuid="$(id -u)" --regid="$(id -g)" --init-groups -- \
+            /usr/bin/env -i HOME="$HOME" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}" \
+            PATH="$toolchain_bin:$tool_path" \
+            python3 scripts/acceptance-measures.py --offline

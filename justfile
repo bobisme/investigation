@@ -28,6 +28,13 @@ boundaries:
 audit *options:
     cargo-deny --locked --all-features {{options}} check advisories licenses sources
 
+# Plan §20.5 deterministic acceptance measures: runs the tests behind each
+# measure and writes target/acceptance/deterministic-report.json. Not part of
+# `check` (whose tests include every one it runs); CI runs it in the offline
+# job. `just acceptance --quick` skips the slow trial-task rehearsals.
+acceptance *options:
+    python3 scripts/acceptance-measures.py {{options}}
+
 # Plan §10.5 benchmarks on release builds; writes target/bench/report.json.
 # Not part of `check` (a smoke run of the harness is). Pass options through,
 # e.g. `just bench --samples 50 --fixtures target/bench/fixtures`.

@@ -32,7 +32,7 @@ use serde_json::{Value, json};
 
 use crate::{
     Global, Output, display_argv, inherited_trust,
-    selection::select_actor,
+    selection::{require_selected_case, select_actor},
     shortcuts::{announce_generated_id, generated_command_id},
     vault::{argv, drift_json},
 };
@@ -244,6 +244,8 @@ fn proposal(
     if value.trim().is_empty() {
         return Err(invalid("--value must not be empty.", "--value"));
     }
+    // The path names the case; a --case that names another one is refused.
+    require_selected_case(store, global.case.as_deref(), case, &step.path.to_string())?;
     let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
     let reference = current(store, case)?;
     let reason = args.reason.clone().unwrap_or_else(|| {

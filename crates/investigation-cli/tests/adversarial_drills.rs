@@ -34,6 +34,9 @@ use std::{
 
 use serde_json::{Value, json};
 
+#[path = "support/acceptance.rs"]
+mod acceptance;
+
 const ACTOR: &str = "agent:drill";
 
 fn repository() -> &'static Path {
@@ -957,6 +960,16 @@ fn cold_start(built: &mut Built, variant: &str) -> Bytes {
         bytes.titles,
         bytes.full_traversal,
         bytes.full_traversal as f64 / bytes.compact as f64,
+    );
+    // For the deterministic acceptance report (plan §20.5, context
+    // efficiency): the compact brief against a full-record traversal.
+    acceptance::observe(
+        "context_efficiency",
+        &format!("drill-1-{variant}"),
+        &json!({"records": bytes.records, "compact_brief_bytes": bytes.compact,
+                "standard_brief_bytes": bytes.standard, "title_sweep_bytes": bytes.titles,
+                "cold_path_bytes": bytes.cold_path, "full_traversal_bytes": bytes.full_traversal,
+                "compact_to_full_ratio": bytes.compact as f64 / bytes.full_traversal as f64}),
     );
     // Significantly smaller: at least a fifth of the full traversal, and
     // within the default budget whatever the case size.

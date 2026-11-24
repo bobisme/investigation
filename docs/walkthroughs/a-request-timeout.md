@@ -187,7 +187,7 @@ EOF
 
 ```text
 /operations/0/payload/causal_test: Record a compatible, matching build and environment for the baseline, treatment, and reversal.
-Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a20751-91ae-7000-a632-b287464ae6d2 --depth full --format json
+Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a20751-91ae-7000-a632-b287464ae6d2 --case case_01a20751-8e54-7001-b14b-62fb37d7b21b --depth full --format json
 See investigation schema conclusion.request_review
 ```
 
