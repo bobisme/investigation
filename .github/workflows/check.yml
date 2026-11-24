@@ -14,6 +14,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
+      - name: Record the runner platform for the support matrix
+        run: |
+          uname -srm
+          findmnt --target . --noheadings --output FSTYPE,OPTIONS
+          findmnt --target "$RUNNER_TEMP" --noheadings --output FSTYPE,OPTIONS
+          python3 --version
       - run: cargo install --locked just --version 1.57.0
       - run: cargo install --locked cargo-deny --version 0.20.2
       - run: just check
@@ -33,15 +39,19 @@ jobs:
           python3 scripts/check-v1-schemas.py target/debug/investigation --against "$V1_SCHEMA_BASE"
           python3 scripts/check-v1-legacy.py target/debug/investigation
           python3 scripts/check-cli-goldens.py target/debug/investigation
-          python3 scripts/check-readme-quickstart.py target/debug/investigation
+          # Runs docs/quickstart.md's install block as written, then both
+          # quickstarts from empty directories with the installed executable.
+          python3 scripts/check-readme-quickstart.py target/debug/investigation --install "$RUNNER_TEMP/cargo-install"
           python3 scripts/prove_milestone_a.py target/debug/investigation
           python3 scripts/scenario_b_proof.py --bin target/debug/investigation
           python3 scripts/check-diagnostic-logs.py target/debug/investigation
           python3 examples/python-producer/producer.py --bin target/debug/investigation --workspace "$RUNNER_TEMP/python-producer" --fixtures fixtures
       - name: Check the minimum supported Rust version
+        # The toolchain must equal `rust-version` in Cargo.toml; tests/docs.rs
+        # checks that, and docs/support-matrix.md lists it.
         run: |
-          rustup toolchain install 1.89.0 --profile minimal
-          cargo +1.89.0 check --locked --workspace --all-targets --all-features
+          rustup toolchain install 1.100.0 --profile minimal
+          cargo +1.100.0 check --locked --workspace --all-targets --all-features
 
   offline:
     runs-on: ubuntu-24.04

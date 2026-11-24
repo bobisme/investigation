@@ -14,6 +14,50 @@ The filesystem checks admit recognized local Linux filesystems. The evidence bel
 | Linux cloud-synchronized canonical directories | Unsupported | Unsupported | Local filesystem detection cannot identify a sync agent. Keep canonical state outside synchronized folders. |
 | macOS APFS and Windows NTFS | Unqualified | Unqualified | Publication, locking, directory synchronization and archive restore have no platform-specific test evidence. CI runs only on Linux. |
 
+## Tested configurations
+
+Each row is a configuration on which the named checks ran, and how. A configuration that is not listed has not been tested.
+
+| Configuration | How it was tested | When |
+| --- | --- | --- |
+| Linux 7.2.8-arch1-2 x86_64; checkout on ext4 (`rw,relatime`), temporary workspaces on tmpfs (`TMPDIR`) | `just check` (format, Clippy, every test, crate boundaries, dependency audit), the extra CI scripts, and [docs/quickstart.md](quickstart.md) including its install block, run by `scripts/check-readme-quickstart.py --install` | 2026-11-24, for REL.02 |
+| Linux 7.2.8-arch1-2 x86_64; ext4 (`rw,relatime`) and tmpfs | The clean-machine archive restore, in both isolation modes (see below) | 2026-11-24 |
+| QEMU guest, Linux 7.2.8-arch1-2, libfuse 3.18.3; LazyFS 0.3.1 over tmpfs | `bash scripts/qualify-lazyfs.sh` (see below) | 2026-11-22 |
+| GitHub-hosted `ubuntu-24.04` runner | The `check` job (`just check`, the extra scripts, the quickstarts with the install block, the minimum Rust version) and the `offline` job (every test in a namespace without network) on each push. The job log records the kernel and the filesystems of the checkout and of `RUNNER_TEMP`; no result is kept in this repository. | Each push |
+| macOS, Windows, other Linux filesystems | Nothing. | — |
+
+## Versions
+
+| Item | Value | Source |
+| --- | --- | --- |
+| Package version | `0.1.0` | `version` in the workspace `Cargo.toml`. `investigation --version` prints it. |
+| Source revision | Not recorded in the executable | Record `git rev-parse HEAD` of the checkout beside the executable you ship. The milestone proofs record the executable's SHA-256. |
+| Rust toolchain | `1.100.0` | `rust-toolchain.toml`, with Clippy and rustfmt. |
+| Minimum Rust version | `1.100` | `rust-version` in `Cargo.toml`. CI checks the workspace with this toolchain. |
+| Just | `1.57.0` | The version CI installs. |
+| cargo-deny | `0.20.2` | The version CI installs. |
+| SQLite | `libsqlite3-sys` `0.40.0`, bundled | `Cargo.lock`. SQLite holds only the disposable index. |
+| Python | Python 3, standard library only | The repository scripts. No version is pinned: the local runs above used 3.14.5, and CI uses the runner's `python3`. |
+
+Contract versions that this build reads and writes:
+
+| Contract | Version |
+| --- | --- |
+| Command envelope | `inv.command.v1` |
+| Responses and structured errors | `inv.response.v1` |
+| Operation catalog | `inv.catalog.v1` |
+| Local import manifest | `inv.ingest.v1` |
+| Producer-run envelope | `inv.producer-run.v1` |
+| Capture protocol | `inv.capture.v1` |
+| Export manifest | `inv.export-manifest.v1` |
+| Producer bundle | `inv.producer-bundle.v1` |
+| Agent instructions and skill (`investigation docs agents`, `docs skill`) | `inv.agent-instructions.v5` |
+| Producer onboarding (`investigation docs producer`) | `inv.producer-onboarding.v2` |
+| Migration guidance (`investigation docs migration`) | `inv.migration-guidance.v1` |
+| Exposure guidance (`investigation docs exposure`) | `inv.exposure-guidance.v2` |
+
+The published wire schemas in [`schemas/v1`](../schemas/v1/) are the ones `investigation schema NAME` prints: `record`, `receipt`, `error`, `ingest`, `ingest-receipt`, `evidence-selector`, `producer-run`, `producer-run-receipt`, `audit`, `method-pack`, `export-manifest`, `dry-run`, `producer-bundle`, `capture`, `capture.begin`, `capture.begin.receipt`, `capture.append`, `capture.append.receipt`, `capture.attach`, `capture.attach.receipt`, `capture.finalize`, `capture.finalize.receipt`, `capture.recover` and `capture.recover.receipt`. Each active operation's payload schema is in [`schemas/v1/operations`](../schemas/v1/operations/). CI compares the published files with the executable (`scripts/check-v1-schemas.py`), and a test compares this section with the build.
+
 ## Raw-file limits
 
 Every bound on bytes the build parses from outside is listed in one table, [`investigation_store::limits`](../crates/investigation-store/src/limits.rs). Each entry refers to the constant its parser enforces, and the table serializes for diagnostic reports. A test fails if this section and the table differ.

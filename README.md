@@ -6,18 +6,24 @@
 
 `investigation` is an offline workbench for questions that need multiple observations, competing explanations or options, and a handoff. It retains original bytes, binds observations to selectors, and records attributed claims, comparisons, reviews, objections, and retrospectives. A successor can trace a finding to the exact revisions and select the next useful observation from the committed case.
 
-## Build and check
+## Install and check
+
+```sh
+cargo install --locked --path crates/investigation-cli
+```
+
+This installs one executable, `investigation`, into Cargo's install directory (`~/.cargo/bin` by default). Nothing else is installed. Some people add `inv` as a shell alias; the documents use `investigation`. To build and test without installing:
 
 ```sh
 cargo build --locked -p investigation-cli
 just check
 ```
 
-The executable is `target/debug/investigation`. Use the pinned Rust toolchain and a local Linux workspace. See the filesystem support matrix for the tested configurations. [Support matrix](docs/support-matrix.md)
+The built executable is `target/debug/investigation`. Use the pinned Rust toolchain and a local Linux filesystem. The support matrix lists the tested platforms and filesystems, how each was tested, and the toolchain and contract versions. [Support matrix](docs/support-matrix.md)
 
 ## Quickstart
 
-Put the built executable on `PATH`. These commands start an exploratory case, retain the first source from standard input in the same transaction, and recover its receipt and handoff.
+Put the executable on `PATH`. These commands start an exploratory case, retain the first source from standard input in the same transaction, and recover its receipt and handoff. CI runs them as written from an empty directory. The [full quickstart](docs/quickstart.md) continues through `next`, a rendered vault and an exported report.
 
 <!-- quickstart:start -->
 ```sh
@@ -75,4 +81,4 @@ Use `--output PATH` to keep the case workspaces and their handoffs in a new dire
 | [`docs/support-matrix.md`](docs/support-matrix.md) | Filesystem support, durability tests, and recovery limits |
 | [`notes/plan.md`](notes/plan.md) | Implementation specification, review dispositions, and acceptance gates |
 
-The sealed release trial follows the A-gate pilot. Its preregistration fixes the outcome, burden limit and sample size before sealed cases are opened. [Release trial](docs/release-trial.md)
+The sealed release trial has not run yet. Its preregistration fixes the outcome, burden limit and sample size before sealed cases are opened. [Release trial](docs/release-trial.md)

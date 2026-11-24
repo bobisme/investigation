@@ -1,9 +1,11 @@
 # Development
 
-Rust 1.98.1, Clippy, and rustfmt are selected by `rust-toolchain.toml`. The
-workspace MSRV is 1.89, the first stable release with `std::fs::File::lock`.
-Install Just 1.57.0 and cargo-deny 0.20.2 to match CI. The checks also use
-Python 3 from the system.
+Rust 1.100.0, Clippy, and rustfmt are selected by `rust-toolchain.toml`. The
+workspace MSRV (`rust-version` in `Cargo.toml`) is 1.100, and CI checks the
+workspace with that toolchain too. Install Just 1.57.0 and cargo-deny 0.20.2
+to match CI. The checks also use Python 3 from the system. The versions and
+the tested configurations are listed in the
+[support matrix](support-matrix.md#versions).
 
 Run `just check` for formatting, linting, tests, crate direction, domain
 neutrality, and the RustSec, license, and dependency source checks. The audit
@@ -80,6 +82,43 @@ they check every operation name against the catalog. A page whose text
 changes needs a new version marker and a new row in `RELEASED`. Then
 `onboard` reports the new version.
 
+Every other document is checked against the binary too (REL.02):
+
+- `every_document_names_only_what_the_binary_has` in
+  `crates/investigation-cli/src/docs.rs` reads `README.md`, `AGENTS.md`,
+  everything under `docs/` and `methods/`, and the READMEs of `examples/`,
+  `obsidian/`, `schemas/` and `scripts/`. Each `investigation ...` command in
+  a code span or code block must parse against the live command tree, with
+  its subcommands, flags and literal values, and each name shaped like an
+  operation (`family.verb`, both halves used by the catalog) must be a
+  catalog operation. Schematic text passes: `<ID>` and `ID` placeholders,
+  `[optional]` parts, `...`, and required arguments left out. Anything else
+  the binary lacks needs a row in `ALLOWED` there with its reason, such as an
+  audit quoting a wrong command whose error it checked.
+- `every_json_example_in_the_documents_validates_against_its_schema` in
+  `tests/docs.rs` validates each fenced `json` block in those documents
+  against the schema `investigation schema NAME` prints. Its `EXAMPLES` table
+  names the schema of every block, or the reason a block has none; a new
+  block fails until it has a row. Only the placeholders in `PLACEHOLDERS`
+  (a handle or digest the binary would supply) are filled in first.
+- `the_documented_versions_are_this_builds` in `tests/docs.rs` compares the
+  versions in [support-matrix.md](support-matrix.md#versions) with the
+  package, `rust-toolchain.toml`, `Cargo.lock`, the CI workflow and the
+  contract versions the executable prints.
+- `scripts/check-readme-quickstart.py` runs the README quickstart and
+  [quickstart.md](quickstart.md) as written, each from an empty directory.
+  CI passes `--install DIR`, which first runs the install block of
+  quickstart.md from the repository root and then uses the executable it
+  installed.
+
+Generated material stays current by construction or by a check: the
+`docs/agent/` pages and `methods/general.toml` are compiled in, and the
+`agents-block` that `integration show` prints is built from the compiled
+`agents` page; the walkthroughs run in `tests/walkthroughs.rs`; the published
+`schemas/` are compared with the executable by `scripts/check-v1-schemas.py`;
+the producer onboarding page is checked against the Python example by
+`tests/docs.rs`.
+
 `investigation integration apply` writes the same pages into a file the user
 names, and only then: the `agents` page as a managed block between
 `<!-- investigation:begin VERSION -->` and `<!-- investigation:end VERSION -->`
@@ -130,5 +169,6 @@ introduces it. Update the allowed crate edges and reviewed deny-list alongside
 any boundary change.
 
 Keep crash-injection property tests in the normal suite when W02.15 lands.
-Add a separate LazyFS job for W02.16 and include the MCP tools-list size check
-with the transport tests in W13.02.
+The LazyFS job for W02.16 is `.github/workflows/lazyfs.yml`. Include the MCP
+tools-list size check with the transport tests in W13.02; `crates/investigation-mcp`
+holds only a README until then.

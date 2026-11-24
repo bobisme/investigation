@@ -336,3 +336,336 @@ fn the_producer_page_names_everything_the_python_example_uses() {
         assert!(page.contains(step), "producer.md never explains {step}");
     }
 }
+
+/// Where each fenced JSON block in a document belongs: the schema it must
+/// validate against, as `investigation schema NAME` prints it, or why it is
+/// shown without one.
+enum Example {
+    Schema(&'static str),
+    /// One `$defs` entry of a schema: a fragment such as one operation of a
+    /// transaction.
+    Within(&'static str, &'static str),
+    /// Shown without a schema, with the reason.
+    Unschematized(#[allow(dead_code)] &'static str),
+}
+
+/// Placeholders the examples use for values only the binary can supply,
+/// each with a valid value of the same shape. Nothing else is substituted.
+const PLACEHOLDERS: &[(&str, &str)] = &[
+    (
+        "\"HANDLE\"",
+        "\"handle_01890000-0000-7000-8000-000000000001\"",
+    ),
+    (
+        "\"handle_…\"",
+        "\"handle_01890000-0000-7000-8000-000000000001\"",
+    ),
+    (
+        "\"sha256:HEX\"",
+        "\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"",
+    ),
+    (
+        "\"sha256:…\"",
+        "\"sha256:0000000000000000000000000000000000000000000000000000000000000000\"",
+    ),
+];
+
+/// Every ```json block in the documents, by file and 1-based position among
+/// that file's JSON blocks. A new block needs a row; a removed one must lose
+/// its row.
+const EXAMPLES: &[(&str, usize, Example)] = &[
+    (
+        "docs/agent/producer.md",
+        1,
+        Example::Schema("capture.begin"),
+    ),
+    (
+        "docs/agent/producer.md",
+        2,
+        Example::Schema("capture.append"),
+    ),
+    (
+        "docs/agent/producer.md",
+        3,
+        Example::Schema("capture.attach"),
+    ),
+    (
+        "docs/agent/producer.md",
+        4,
+        Example::Schema("capture.finalize"),
+    ),
+    ("docs/recording.md", 1, Example::Schema("capture.begin")),
+    ("docs/recording.md", 2, Example::Schema("capture.append")),
+    ("docs/recording.md", 3, Example::Schema("capture.attach")),
+    ("docs/recording.md", 4, Example::Schema("capture.finalize")),
+    ("docs/recording.md", 5, Example::Schema("producer-run")),
+    (
+        "docs/recording.md",
+        6,
+        Example::Unschematized(
+            "adapter output (inv.producer-adapter.v1) for the conformance runner, not a binary schema",
+        ),
+    ),
+    (
+        "docs/recording.md",
+        7,
+        Example::Unschematized(
+            "adapter output (inv.producer-adapter.v1) for the conformance runner, not a binary schema",
+        ),
+    ),
+    (
+        "methods/README.md",
+        1,
+        Example::Within("record", "Operation"),
+    ),
+];
+
+/// The documents the docs-versus-binary checks read (REL.02).
+fn documents() -> Vec<(String, String)> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files: Vec<_> = [
+        "README.md",
+        "AGENTS.md",
+        "obsidian/README.md",
+        "schemas/README.md",
+        "scripts/README.md",
+        "examples/README.md",
+        "examples/python-producer/README.md",
+        "examples/rust-producer/README.md",
+    ]
+    .iter()
+    .map(|file| root.join(file))
+    .collect();
+    let mut pending = vec![root.join("docs"), root.join("methods")];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|extension| extension == "md") {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+        .into_iter()
+        .map(|path| {
+            let text = fs::read_to_string(&path).unwrap();
+            let relative = path.strip_prefix(&root).unwrap().display().to_string();
+            (relative, text)
+        })
+        .collect()
+}
+
+/// The bodies of the ```json blocks in `markdown`, in order.
+fn json_blocks(markdown: &str) -> Vec<String> {
+    let mut blocks = Vec::new();
+    let mut current: Option<String> = None;
+    for line in markdown.lines() {
+        let fence = line.trim_start();
+        match &mut current {
+            None if fence.starts_with("```json") => current = Some(String::new()),
+            Some(_) if fence.starts_with("```") => blocks.extend(current.take()),
+            Some(body) => {
+                body.push_str(line);
+                body.push('\n');
+            }
+            None => {}
+        }
+    }
+    blocks
+}
+
+#[test]
+fn every_json_example_in_the_documents_validates_against_its_schema() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut seen = Vec::new();
+    let mut failures = Vec::new();
+    for (file, text) in documents() {
+        for (index, block) in json_blocks(&text).iter().enumerate() {
+            let position = index + 1;
+            seen.push((file.clone(), position));
+            let Some((_, _, example)) = EXAMPLES
+                .iter()
+                .find(|(name, at, _)| *name == file && *at == position)
+            else {
+                failures.push(format!(
+                    "{file}: JSON block {position} has no row in EXAMPLES"
+                ));
+                continue;
+            };
+            let filled = PLACEHOLDERS
+                .iter()
+                .fold(block.clone(), |text, (placeholder, value)| {
+                    text.replace(placeholder, value)
+                });
+            let instance: Value = match serde_json::from_str(&filled) {
+                Ok(value) => value,
+                Err(error) => {
+                    failures.push(format!(
+                        "{file}: JSON block {position} is not JSON: {error}"
+                    ));
+                    continue;
+                }
+            };
+            let (name, schema) = match example {
+                Example::Schema(name) => (*name, published(directory.path(), name)),
+                Example::Within(name, definition) => {
+                    let whole = published(directory.path(), name);
+                    let part = serde_json::json!({
+                        "$schema": whole["$schema"],
+                        "$defs": whole["$defs"],
+                        "$ref": format!("#/$defs/{definition}"),
+                    });
+                    assert!(
+                        whole["$defs"].get(definition).is_some(),
+                        "{name} {definition}"
+                    );
+                    (*name, part)
+                }
+                Example::Unschematized(_) => continue,
+            };
+            let validator = jsonschema::validator_for(&schema).unwrap();
+            for error in validator.iter_errors(&instance) {
+                failures.push(format!(
+                    "{file}: JSON block {position} against {name}: {error} at {}",
+                    error.instance_path
+                ));
+            }
+        }
+    }
+    for (file, position, _) in EXAMPLES {
+        if !seen.contains(&((*file).to_owned(), *position)) {
+            failures.push(format!(
+                "EXAMPLES names {file} block {position}, which does not exist"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+/// The schema `investigation schema NAME` prints.
+fn published(cwd: &Path, name: &str) -> Value {
+    let (code, printed) = json(cwd, &["schema", name]);
+    assert_eq!(code, 0, "schema {name}: {printed}");
+    printed["schema"].clone()
+}
+
+/// The text of `## heading` in `markdown`, up to the next `## ` heading.
+fn section<'a>(markdown: &'a str, heading: &str) -> &'a str {
+    let start = markdown
+        .find(&format!("\n## {heading}\n"))
+        .unwrap_or_else(|| panic!("no ## {heading}"));
+    let rest = &markdown[start + heading.len() + 5..];
+    &rest[..rest.find("\n## ").unwrap_or(rest.len())]
+}
+
+/// The first code span of the table row whose first cell is `label`.
+fn row_value<'a>(table: &'a str, label: &str) -> &'a str {
+    let row = table
+        .lines()
+        .find(|line| line.starts_with(&format!("| {label} |")))
+        .unwrap_or_else(|| panic!("no row {label}"));
+    row.split('`')
+        .nth(1)
+        .unwrap_or_else(|| panic!("row {label} has no value"))
+}
+
+/// Tokens shaped like a contract version: `inv.NAME.vN`.
+fn contract_versions(text: &str) -> std::collections::BTreeSet<String> {
+    text.split(|c: char| !(c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_')))
+        .map(|word| word.trim_end_matches('.'))
+        .filter(|word| {
+            word.starts_with("inv.")
+                && word
+                    .rsplit_once(".v")
+                    .is_some_and(|(_, n)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+/// REL.02: the versions in docs/support-matrix.md are this build's.
+#[test]
+fn the_documented_versions_are_this_builds() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let read = |file: &str| fs::read_to_string(root.join(file)).unwrap();
+    let matrix = read("docs/support-matrix.md");
+    let versions = section(&matrix, "Versions");
+    let workflow = read(".github/workflows/check.yml");
+    let directory = tempfile::tempdir().unwrap();
+    let cwd = directory.path();
+
+    let package = row_value(versions, "Package version");
+    assert_eq!(package, env!("CARGO_PKG_VERSION"));
+    let (_, printed) = investigation(cwd, &["--version"], &[]);
+    assert_eq!(printed.trim(), format!("investigation {package}"));
+
+    let toolchain = read("rust-toolchain.toml");
+    let rust = row_value(versions, "Rust toolchain");
+    assert!(
+        toolchain.contains(&format!("channel = \"{rust}\"")),
+        "{toolchain}"
+    );
+    let minimum = row_value(versions, "Minimum Rust version");
+    assert_eq!(minimum, env!("CARGO_PKG_RUST_VERSION"));
+    assert!(
+        workflow.contains(&format!("cargo +{minimum}.0 check")),
+        "CI checks another minimum Rust version than {minimum}"
+    );
+    let just = row_value(versions, "Just");
+    assert!(workflow.contains(&format!("cargo install --locked just --version {just}")));
+    let deny = row_value(versions, "cargo-deny");
+    assert!(workflow.contains(&format!(
+        "cargo install --locked cargo-deny --version {deny}"
+    )));
+    let lock = read("Cargo.lock");
+    let sqlite = versions
+        .lines()
+        .find(|line| line.starts_with("| SQLite |"))
+        .and_then(|line| line.split('`').nth(3))
+        .unwrap();
+    assert!(lock.contains(&format!(
+        "name = \"libsqlite3-sys\"\nversion = \"{sqlite}\""
+    )));
+
+    // Every contract version named is one the executable prints, and every
+    // embedded page version is named.
+    let (_, list) = json(cwd, &["schema", "--list"]);
+    let wire: Vec<&str> = list["wire_schemas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|name| name.as_str().unwrap())
+        .collect();
+    let mut printed = read("schemas/v1/catalog.json");
+    for name in &wire {
+        printed.push_str(&json(cwd, &["schema", name]).1.to_string());
+    }
+    let (_, pages) = json(cwd, &["docs"]);
+    printed.push_str(&pages.to_string());
+    printed.push_str(&json(cwd, &["version"]).1.to_string());
+    let printed = contract_versions(&printed);
+    let named = contract_versions(versions);
+    assert!(named.len() >= 12, "{named:?}");
+    let unknown: Vec<_> = named.difference(&printed).collect();
+    assert!(
+        unknown.is_empty(),
+        "the executable never prints {unknown:?}"
+    );
+    for page in pages["pages"].as_array().unwrap() {
+        let version = page["version"].as_str().unwrap();
+        assert!(named.contains(version), "{version} is not listed");
+    }
+    let sentence = versions
+        .lines()
+        .find(|line| line.starts_with("The published wire schemas"))
+        .unwrap();
+    let sentence = &sentence[sentence.find("prints: ").unwrap()..sentence.find(". ").unwrap()];
+    let listed: Vec<&str> = sentence.split('`').skip(1).step_by(2).collect();
+    assert_eq!(
+        listed, wire,
+        "the listed wire schemas differ from the executable's"
+    );
+}

@@ -322,21 +322,87 @@ mod tests {
 
     /// Everything in `markdown` that the binary does not support.
     fn problems(markdown: &str) -> (Vec<String>, usize) {
+        check(markdown, false)
+    }
+
+    /// Whether a word stands for a value the reader supplies: `<ID>`,
+    /// `ID`, `DIR/producer-bundle.json`, `SEQUENCE]`, `$scratch`.
+    fn placeholder(word: &str) -> bool {
+        let word = word.trim_matches(|c| matches!(c, '[' | ']' | '(' | ')' | ',' | '.'));
+        word.contains(['<', '$', '…'])
+            || word.contains("...")
+            || word.split(['/', '=', '-', ':']).next().is_some_and(|head| {
+                head.len() > 1
+                    && head
+                        .chars()
+                        .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_')
+            })
+    }
+
+    /// Whether a parse error only reflects schematic text: a required
+    /// argument or subcommand left out, or a value written as a
+    /// placeholder. Unknown commands, flags and literal values are real.
+    fn schematic(error: &clap::Error) -> bool {
+        use clap::error::{ContextKind, ContextValue, ErrorKind};
+        match error.kind() {
+            ErrorKind::MissingRequiredArgument
+            | ErrorKind::MissingSubcommand
+            | ErrorKind::DisplayHelpOnMissingArgumentOrSubcommand
+            | ErrorKind::DisplayHelp
+            | ErrorKind::DisplayVersion => true,
+            ErrorKind::InvalidValue | ErrorKind::ValueValidation => matches!(
+                error.get(ContextKind::InvalidValue),
+                Some(ContextValue::String(value)) if placeholder(value)
+            ),
+            // An upper-case word in a subcommand slot, as in `capture OP`.
+            ErrorKind::InvalidSubcommand => matches!(
+                error.get(ContextKind::InvalidSubcommand),
+                Some(ContextValue::String(value)) if value.len() > 1
+                    && value.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+            ),
+            _ => false,
+        }
+    }
+
+    /// [`problems`], and with `lenient` the text may also be schematic:
+    /// optional parts in brackets, placeholders for values, required parts
+    /// left out ([`schematic`]).
+    fn check(markdown: &str, lenient: bool) -> (Vec<String>, usize) {
         let tree = crate::shortcuts::augment(crate::Cli::command());
         let catalog = standard_catalog();
         let pack = load(GENERAL_PACK_SOURCE).expect("built-in pack loads");
+        let subcommands: Vec<String> = tree
+            .get_subcommands()
+            .flat_map(|sub| std::iter::once(sub.get_name()).chain(sub.get_all_aliases()))
+            .map(str::to_owned)
+            .collect();
         let mut problems = Vec::new();
         let mut commands = 0;
         for span in code(markdown) {
             let start = format!("{PROGRAM_NAME} ");
-            let Some(at) = span.find(&start) else {
+            let found = if lenient {
+                invocation(&span, &subcommands)
+            } else {
+                span.find(&start).map(|at| span[at..].to_owned())
+            };
+            let Some(invocation) = found else {
                 if span.starts_with("inv ") {
                     problems.push(format!("`{span}` uses the alias; use {PROGRAM_NAME}"));
                 }
                 continue;
             };
             commands += 1;
-            let argv = words(&span[at..]);
+            let mut argv = words(&invocation);
+            if lenient {
+                // A here-document or redirection ends the command line.
+                let line = invocation.split(" <<").next().unwrap_or_default();
+                argv = words(&angle_placeholders(line))
+                    .into_iter()
+                    .map(|word| word.trim_matches(['[', ']']).to_owned())
+                    .take_while(|word| !matches!(word.as_str(), "..." | "…" | "#"))
+                    .filter(|word| !word.is_empty() && word != "OPTIONS")
+                    .collect();
+            }
             match tree.clone().try_get_matches_from(&argv) {
                 Ok(matches) => {
                     if let Some(("guide", guide)) = matches.subcommand()
@@ -347,15 +413,94 @@ mod tests {
                         problems.push(format!("`{span}`: no built-in card {name}"));
                     }
                 }
-                Err(error) => problems.push(format!("`{span}`: {error}")),
+                Err(error) if lenient && schematic(&error) => {}
+                Err(error) => problems.push(format!(
+                    "`{span}`: {}",
+                    error.to_string().lines().next().unwrap_or_default()
+                )),
             }
         }
+        let families: std::collections::BTreeSet<&str> = catalog
+            .available()
+            .filter_map(|op| op.info().name.split_once('.').map(|(family, _)| family))
+            .collect();
+        let verbs: std::collections::BTreeSet<&str> = catalog
+            .available()
+            .filter_map(|op| op.info().name.split_once('.').map(|(_, verb)| verb))
+            .collect();
         for name in operation_names(markdown) {
-            if !catalog.available().any(|op| op.info().name == name) {
+            if catalog.available().any(|op| op.info().name == name) {
+                continue;
+            }
+            // In general prose `family.word` is also a field path or a rule
+            // name; it claims an operation when both halves are an
+            // operation family and verb the catalog uses.
+            let (family, verb) = name.split_once('.').expect("an operation-shaped name");
+            if !lenient || (families.contains(family) && verbs.contains(verb)) {
                 problems.push(format!("{name} is not a catalog operation"));
             }
         }
         (problems, commands)
+    }
+
+    /// The command a code span runs, from `investigation` on: at the start
+    /// of the span, or after a shell separator, prompt or label, and not as
+    /// part of a path (`target/debug/investigation`) or of prose ("the
+    /// investigation is complete": the next word must be a subcommand or a
+    /// flag). Inside quotes the command ends at the closing quote; a version
+    /// line (`investigation 0.1.0`) is output, not a command.
+    fn invocation(span: &str, subcommands: &[String]) -> Option<String> {
+        let start = format!("{PROGRAM_NAME} ");
+        let mut from = 0;
+        while let Some(found) = span[from..].find(&start) {
+            let at = from + found;
+            from = at + start.len();
+            let before = span[..at].chars().next_back();
+            if before.is_some_and(|c| !(c.is_whitespace() || matches!(c, '(' | '\'' | '"'))) {
+                continue;
+            }
+            let mut rest = span[at..].to_owned();
+            if let Some(quote) = before.filter(|c| matches!(c, '\'' | '"'))
+                && let Some(end) = rest.find(quote)
+            {
+                rest.truncate(end);
+            }
+            let next = words(&angle_placeholders(&rest[start.len()..]))
+                .into_iter()
+                .next()
+                .unwrap_or_default();
+            let next = next.trim_start_matches('[');
+            if next.starts_with('-') || subcommands.iter().any(|name| name == next) {
+                return Some(rest);
+            }
+            if (at == 0 || before.is_some_and(|c| matches!(c, '\'' | '"')))
+                && !next.starts_with(|c: char| c.is_ascii_digit())
+                && !next.is_empty()
+            {
+                // A span, or a quoted string, that starts with the program
+                // names a command.
+                return Some(rest);
+            }
+        }
+        None
+    }
+
+    /// `<NAME>` placeholders as plain words, so they parse as values.
+    fn angle_placeholders(line: &str) -> String {
+        let mut out = String::new();
+        let mut inside = false;
+        for c in line.chars() {
+            match c {
+                '<' if !inside => {
+                    inside = true;
+                    out.push_str("PLACEHOLDER");
+                }
+                '>' if inside => inside = false,
+                _ if inside => {}
+                c => out.push(c),
+            }
+        }
+        out
     }
 
     #[test]
@@ -381,6 +526,129 @@ mod tests {
         let (problems, commands) = problems(readme);
         assert!(problems.is_empty(), "README.md: {problems:#?}");
         assert!(commands >= 5);
+    }
+
+    /// REL.02 (bn-29bx): every command, subcommand, flag, literal value and
+    /// operation named in a document must exist in this binary. Schematic
+    /// text is allowed only as [`check`] describes it, or by an explicit
+    /// [`ALLOWED`] entry with its reason.
+    #[test]
+    fn every_document_names_only_what_the_binary_has() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let mut files: Vec<_> = [
+            "README.md",
+            "AGENTS.md",
+            "obsidian/README.md",
+            "schemas/README.md",
+            "scripts/README.md",
+            "examples/python-producer/README.md",
+            "examples/rust-producer/README.md",
+        ]
+        .iter()
+        .map(|file| root.join(file))
+        .collect();
+        let mut pending = vec![root.join("docs"), root.join("methods")];
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(&directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                } else if path
+                    .extension()
+                    .is_some_and(|extension| extension == "md" || extension == "toml")
+                {
+                    files.push(path);
+                }
+            }
+        }
+        files.sort();
+        let mut failures = Vec::new();
+        let mut used = vec![false; ALLOWED.len()];
+        let mut total = 0;
+        for path in &files {
+            let text = std::fs::read_to_string(path).unwrap();
+            let relative = path.strip_prefix(&root).unwrap().display().to_string();
+            let (problems, commands) = check(&text, true);
+            total += commands;
+            failures.extend(
+                problems
+                    .into_iter()
+                    .filter(|problem| {
+                        let allowed = ALLOWED.iter().position(|(file, text, _)| {
+                            *file == relative && problem.contains(text)
+                        });
+                        if let Some(index) = allowed {
+                            used[index] = true;
+                        }
+                        allowed.is_none()
+                    })
+                    .map(|problem| format!("{relative}: {problem}")),
+            );
+        }
+        assert!(
+            total > 200,
+            "only {total} commands found in {} files",
+            files.len()
+        );
+        for ((file, text, _), used) in ALLOWED.iter().zip(used) {
+            assert!(
+                used,
+                "ALLOWED names {text} in {file}, which no longer needs it"
+            );
+        }
+        assert!(
+            failures.is_empty(),
+            "{} problem(s):\n{}",
+            failures.len(),
+            failures.join("\n")
+        );
+    }
+
+    /// Text a document shows on purpose although the binary lacks it, with
+    /// why: (file, text the problem names, reason).
+    const ALLOWED: &[(&str, &str, &str)] = &[
+        (
+            "docs/cli-conventions-audit.md",
+            "`investigation doctor --fix`",
+            "the audit quotes the wrong usage whose error it checked",
+        ),
+        (
+            "docs/cli-conventions-audit.md",
+            "`investigation --format json vault render --bogus`",
+            "the audit quotes the wrong usage whose repair it checked",
+        ),
+        (
+            "docs/first-use.md",
+            "`investigation \"Initial discovery of …\"`",
+            "the trial report quotes prose a participant ran as a command",
+        ),
+    ];
+
+    #[test]
+    fn the_document_check_allows_schematic_text_and_nothing_else() {
+        for fine in [
+            "`investigation --workspace <WS> show ID [--depth full] --format json`",
+            "Usage: `investigation show [OPTIONS] <ID>`",
+            "```sh\ninvestigation --workspace ./w record --input - <<'EOF'\n```",
+            "`investigation evidence read`, then `target/debug/investigation x`",
+            "`it does not mean the investigation is complete`",
+            "`investigation 0.1.0` and `investigation --version`",
+            "`run(['investigation', 'brief'])` and `measurement.unit`",
+        ] {
+            let (problems, _) = check(fine, true);
+            assert!(problems.is_empty(), "{fine}: {problems:?}");
+        }
+        for bad in [
+            "`investigation frobnicate ID`",
+            "`investigation show ID --depth everything`",
+            "`investigation brief --no-such-flag`",
+            "`script -qc 'investigation shwo ID' /dev/null`",
+            "`investigation \"Initial discovery of …\"`",
+            "`inv brief`",
+            "`case.explode` and `review.close`",
+        ] {
+            assert!(!check(bad, true).0.is_empty(), "{bad}");
+        }
     }
 
     #[test]

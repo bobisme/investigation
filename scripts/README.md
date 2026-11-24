@@ -2,6 +2,7 @@
 
 Repository checks and cross-language conformance runners.
 
+- `check-readme-quickstart.py BIN [--install DIR]` runs the README quickstart and [docs/quickstart.md](../docs/quickstart.md) as written, each from an empty directory. `--install DIR` first runs the quickstart's install block from the repository root with `CARGO_INSTALL_ROOT=DIR` and uses the executable it installed.
 - `prove_milestone_b.py BIN` runs every Milestone B check on one executable from a `git archive` copy of the committed tree. It reports one JSON object. See [docs/milestone-b.md](../docs/milestone-b.md).
 - `run-conformance.py` runs the recording conformance suite in `fixtures/conformance/v1` against one or more producer adapters, and compares the adapters with each other. See [docs/recording.md](../docs/recording.md#conformance-suite).
 - `conformance/reference_producer.py` is a standard-library producer that passes the suite. `conformance/non_idempotent_producer.py` is a deliberately broken one that must fail it.
