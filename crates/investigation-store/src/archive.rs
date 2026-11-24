@@ -10,10 +10,12 @@
 //!
 //! Blob bytes are read separately, after the lock is released, with
 //! [`Store::retained_bytes`]; the caller checks them against their digests.
-//! Nothing here writes to the workspace. Pinning the head and its blobs
-//! against a concurrent reclamation is W11.09: today no command reclaims a
-//! referenced blob, and a blob that vanished or changed fails the archive
-//! rather than being skipped.
+//! Before the lock is released the read creates an [`ArchivePin`] naming
+//! the heads and every required blob (W11.09, see [`super::pins`]): a
+//! reclamation cannot remove a pinned blob while the pin is held, and the
+//! pin ends when the caller drops or releases it, or when the process
+//! dies. A blob that vanished or changed still fails the archive rather
+//! than being skipped. The pin record, under `local/`, is the only write.
 //!
 //! [`restore_layout`] creates the non-canonical skeleton (directories, empty
 //! lock files, the pointer file) that a directory of restored canonical
@@ -36,7 +38,7 @@ use serde::Serialize;
 
 use super::{
     BLOBS, CASE_LOCK, CaseHead, CheckReport, DurableFs, ProjectionStatus, Store, case_directory,
-    integrity, io_failure,
+    integrity, io_failure, pins::ArchivePin,
 };
 use crate::{
     journal::{CaseReplay, EVENTS_DIRECTORY, GENESIS_FILENAME, event_filename, hash_bytes},
@@ -157,7 +159,16 @@ impl<F: DurableFs> Store<F> {
     /// archive copies, except blob bytes. Refused while a capture holds
     /// staged evidence that is not yet canonical (§10.7): an archive never
     /// drops it silently.
-    pub fn read_canonical(&mut self) -> Result<CanonicalState, Failure> {
+    ///
+    /// The state comes with an [`ArchivePin`] created under the same lock,
+    /// so the heads read and the heads pinned are one atomic step. Hold the
+    /// pin until the archive is published or abandoned, then pass it to
+    /// [`Store::release_pin`] (dropping it also ends it). Appends continue
+    /// meanwhile; the archive covers exactly the pinned heads.
+    pub fn read_canonical(&mut self) -> Result<(CanonicalState, ArchivePin), Failure>
+    where
+        F::Guard: 'static,
+    {
         let _lock = self.coordinate()?;
         let verified = self.load_fully_verified()?;
         self.refuse_unsettled_staging(&verified)?;
@@ -169,7 +180,7 @@ impl<F: DurableFs> Store<F> {
         }
         let (blobs, not_retained) =
             required_blobs(cases.iter().map(|case| (case.case_id, &case.replay)));
-        Ok(CanonicalState {
+        let state = CanonicalState {
             workspace_id: self.workspace.id(),
             marker,
             config,
@@ -177,7 +188,9 @@ impl<F: DurableFs> Store<F> {
             cases,
             blobs,
             not_retained,
-        })
+        };
+        let pin = self.create_archive_pin(&state.heads(), &state.blobs)?;
+        Ok((state, pin))
     }
 
     /// The bytes of the retained blob with `digest`, as stored. The caller
@@ -245,7 +258,22 @@ impl<F: DurableFs> Store<F> {
         };
         self.check_staging(verified, &mut report);
         let staging = &report.staging;
-        if staging.active + staging.sealed + staging.orphaned == 0 {
+        // Every staging state that is not settled: an open or sealed handle,
+        // a handle declared but never allocated, staging bound to no handle,
+        // and staging that cannot be verified (a binding or seal finding, an
+        // unreadable root). Only finalized captures, retired or awaiting
+        // retirement, hold nothing the journal lacks.
+        let unsettled: Vec<&super::CheckIssue> = report
+            .issues
+            .iter()
+            .filter(|issue| {
+                issue.severity == super::Severity::Error
+                    || UNSETTLED_CODES.contains(&issue.code.as_str())
+            })
+            .collect();
+        if staging.active + staging.sealed + staging.unallocated + staging.orphaned == 0
+            && unsettled.is_empty()
+        {
             return Ok(());
         }
         let mut failure = Failure::new(
@@ -256,7 +284,18 @@ impl<F: DurableFs> Store<F> {
         failure.error.actual = Some(serde_json::json!({
             "active": staging.active,
             "sealed": staging.sealed,
+            "unallocated": staging.unallocated,
             "orphaned": staging.orphaned,
+            "handles": unsettled
+                .iter()
+                .take(MAX_LISTED_HANDLES)
+                .map(|issue| serde_json::json!({
+                    "code": issue.code,
+                    "objects": issue.objects,
+                    "reason": issue.reason,
+                }))
+                .collect::<Vec<_>>(),
+            "handles_capped_at": MAX_LISTED_HANDLES,
         }));
         Err(failure.with_argv(vec![
             investigation_core::PROGRAM_NAME.to_owned(),
@@ -266,6 +305,15 @@ impl<F: DurableFs> Store<F> {
         ]))
     }
 }
+
+/// Staging findings that mean a capture is not settled, besides any error.
+const UNSETTLED_CODES: [&str; 3] = [
+    "CAPTURE_STAGING_UNALLOCATED",
+    "CAPTURE_SEALED_UNCOMMITTED",
+    "STAGING_ORPHAN",
+];
+/// Most unsettled handles a refusal lists.
+const MAX_LISTED_HANDLES: usize = 50;
 
 /// The blobs these verified journals require, and the Artifacts that hold
 /// no bytes. The rule is `check`'s: event attachments and manifests, and

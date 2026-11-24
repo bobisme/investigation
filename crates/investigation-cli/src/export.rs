@@ -344,7 +344,7 @@ fn run_archive(
         failure.error.expected = Some(json!({"audience": ARCHIVE_AUDIENCE.as_str()}));
         return Err(failure);
     }
-    let source = read_archive_source(store, crate::schema::published_documents())?;
+    let (source, pin) = read_archive_source(store, crate::schema::published_documents())?;
     let plan = plan_archive(spec, &source, audience).map_err(|error| {
         let failure = error.to_failure();
         match &error {
@@ -357,7 +357,11 @@ fn run_archive(
         }
     })?;
     let (out, shown) = destination(store, args, &plan);
+    // The pin lives until the archive is written; an error here drops it.
     let written = write(store, &plan, &out, &shown)?;
+    // A failed release leaves a record no process holds; the next pin or
+    // reclamation expires it, so it does not fail a finished archive.
+    let _ = store.release_pin(pin);
     let manifest = plan.manifest();
     let canonical = &source.canonical;
     let verify_argv: Vec<String> = [

@@ -106,6 +106,11 @@ fn files(root: &Path) -> BTreeMap<String, Vec<u8>> {
     found
 }
 
+/// Pin records left below `local/pins`.
+fn pin_records(workspace: &Path) -> usize {
+    fs::read_dir(workspace.join("local/pins")).map_or(0, Iterator::count)
+}
+
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for entry in fs::read_dir(from).unwrap() {
@@ -188,6 +193,8 @@ fn scenario_archives_verify_offline_and_restore_to_the_same_state_and_receipts()
         assert_eq!(exit, 0, "{receipt}");
         assert_eq!(receipt["kind"], "workspace-archive");
         assert_eq!(receipt["completeness"], "complete");
+        // The archive's pin ended with it (W11.09): no record is left behind.
+        assert_eq!(pin_records(&workspace), 0);
         assert_eq!(receipt["human_notes"], 1, "{receipt}");
         assert_eq!(
             receipt["human_notes_skipped"],
@@ -542,6 +549,7 @@ fn an_archive_is_only_for_the_restricted_audience_covers_every_case_and_waits_fo
     assert_eq!(value["error"]["code"], "GATE_FAILED");
     assert_eq!(value["error"]["actual"]["active"], 1, "{value}");
     assert!(!out.exists());
+    assert_eq!(pin_records(&root.join("staging")), 0);
 
     // Verification needs no workspace and refuses what is not a directory.
     let (exit, value) = run(root, &["archive", "verify", "begin.json"]);

@@ -873,3 +873,80 @@ fn a_power_loss_at_any_point_of_retirement_leaves_the_full_staging_or_none() {
         "the schedule must fail after the rename"
     );
 }
+
+/// W11.09: a complete archive refuses in every unsettled staging state and
+/// names the handle, and is allowed once the captures are finalized.
+#[test]
+fn an_archive_refuses_every_unsettled_staging_state_and_lists_the_handle() {
+    fn refusal(fixture: &mut Fixture) -> Failure {
+        let failure = fixture.store.read_canonical().unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::GateFailed);
+        // A refusal creates no pin.
+        assert!(fixture.store.archive_pins().unwrap().is_empty());
+        failure
+    }
+    fn actual(failure: &Failure) -> &serde_json::Value {
+        failure.error.actual.as_ref().unwrap()
+    }
+
+    // Open (active).
+    let mut fixture = self::fixture();
+    fixture.stage_items();
+    let failure = refusal(&mut fixture);
+    assert_eq!(actual(&failure)["active"], 1);
+    assert_eq!(actual(&failure)["handles"].as_array().unwrap().len(), 0);
+
+    // Sealed, not committed.
+    let handle = fixture.handle();
+    fixture
+        .store
+        .finalize_capture(&submission(handle), &mut Ticks(20), |context| {
+            let mut planned = plan(context)?;
+            planned.section = Box::new(|_| Err(integrity("interrupted")));
+            Ok(planned)
+        })
+        .unwrap_err();
+    let failure = refusal(&mut fixture);
+    assert_eq!(actual(&failure)["sealed"], 1);
+    let listed = &actual(&failure)["handles"][0];
+    assert_eq!(listed["code"], "CAPTURE_SEALED_UNCOMMITTED");
+    assert_eq!(listed["objects"][0], handle.to_string());
+
+    // Orphaned: staging bound to no declared handle.
+    let stray = fixture
+        .root
+        .join(STAGING_ROOT)
+        .join("run_01a20705-7fe2-7bc3-ae85-416bf664a62c");
+    fs::create_dir(&stray).unwrap();
+    let failure = refusal(&mut fixture);
+    assert_eq!(actual(&failure)["orphaned"], 1);
+    fs::remove_dir(&stray).unwrap();
+
+    // A binding that no longer matches its declaration is an error finding.
+    let binding = fixture.staging().join(BINDING_FILE);
+    let original = fs::read(&binding).unwrap();
+    fs::set_permissions(&binding, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::write(&binding, b"{}").unwrap();
+    let failure = refusal(&mut fixture);
+    assert_eq!(
+        actual(&failure)["handles"][0]["code"],
+        "STAGING_BINDING_MISMATCH"
+    );
+    fs::write(&binding, original).unwrap();
+
+    // Finalized: nothing is unsettled, retirable staging included.
+    fixture.finalize();
+    let (state, pin) = fixture.store.read_canonical().unwrap();
+    assert_eq!(state.cases.len(), 1);
+    fixture.store.release_pin(pin).unwrap();
+
+    // Declared and never allocated.
+    let mut unallocated = self::fixture();
+    fs::remove_dir_all(unallocated.staging()).unwrap();
+    let failure = refusal(&mut unallocated);
+    assert_eq!(actual(&failure)["unallocated"], 1);
+    assert_eq!(
+        actual(&failure)["handles"][0]["code"],
+        "CAPTURE_STAGING_UNALLOCATED"
+    );
+}

@@ -15,7 +15,10 @@ use investigation_core::wire::{Digest, Failure};
 use investigation_store::{
     Store,
     durable::DurableFs,
-    store::archive::{MAX_HUMAN_NOTE_BYTES, MAX_HUMAN_NOTES},
+    store::{
+        archive::{MAX_HUMAN_NOTE_BYTES, MAX_HUMAN_NOTES},
+        pins::ArchivePin,
+    },
 };
 
 use super::{
@@ -44,12 +47,18 @@ pub fn read_retained<'a, F: DurableFs>(
 
 /// Read what a workspace archive copies: the verified canonical state, every
 /// required blob, the human notes when the vault is enabled, and the
-/// published contracts the caller passes (`schemas`).
+/// published contracts the caller passes (`schemas`). The returned pin holds
+/// the recovery heads and every required blob against reclamation: keep it
+/// until the archive is written, then `store.release_pin(pin)`. Dropping it
+/// also ends it, on any error path.
 pub fn read_archive_source<F: DurableFs>(
     store: &mut Store<F>,
     schemas: Vec<(String, Vec<u8>)>,
-) -> Result<ArchiveSource, Failure> {
-    let canonical = store.read_canonical()?;
+) -> Result<(ArchiveSource, ArchivePin), Failure>
+where
+    F::Guard: 'static,
+{
+    let (canonical, pin) = store.read_canonical()?;
     let mut retained = Retained::none();
     for blob in &canonical.blobs {
         let bytes = store.retained_bytes(&blob.digest)?;
@@ -68,13 +77,14 @@ pub fn read_archive_source<F: DurableFs>(
     } else {
         (Vec::new(), Vec::new())
     };
-    Ok(ArchiveSource {
+    let source = ArchiveSource {
         canonical,
         retained,
         human_notes,
         skipped_notes,
         schemas,
-    })
+    };
+    Ok((source, pin))
 }
 
 /// Every regular file below the human folders of `vault`, never following

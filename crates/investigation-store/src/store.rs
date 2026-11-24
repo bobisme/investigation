@@ -78,6 +78,9 @@ pub mod archive;
 mod scope;
 use scope::Reads;
 
+#[path = "pins.rs"]
+pub mod pins;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;
