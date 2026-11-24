@@ -74,7 +74,7 @@ const TEACH: &[Teach] = &[
     t!(&["integration", "remove"], [], "investigation integration inspect --format json"),
     t!(&["integration", "inspect"], [], "investigation docs agents"),
     t!(&["observe"], ["investigation --workspace ./casework observe 'The log reports 28 seconds' --source <ARTIFACT_ID> --quote 'waited 28 seconds' --format json"], "investigation --workspace ./casework brief --format json"),
-    t!(&["note"], ["investigation --workspace ./casework note 'Check the clock source' --on <RECORD_ID> --format json"], "investigation --workspace ./casework brief --format json"),
+    t!(&["note"], ["investigation --workspace ./casework note 'Monday batches ran hot; check the setpoint' --format json", "investigation --workspace ./casework note 'Check the clock source' --on <RECORD_ID> --format json"], "investigation --workspace ./casework brief --format json"),
     t!(&["case"], ["investigation --workspace ./casework case new 'Request latency' --format json"], "investigation --workspace ./casework case new 'Request latency' --format json"),
     t!(&["case", "new"], ["investigation --workspace ./casework case new 'Request latency' --format json"], "investigation --workspace ./casework source add ./results.log --format json"),
     t!(&["source"], ["investigation --workspace ./casework source add ./results.log --format json"], "investigation --workspace ./casework source add ./results.log --format json"),

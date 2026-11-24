@@ -171,6 +171,7 @@ After run 2 (not measured):
 - TEXT values of the shortcuts (`observe TEXT`, `--quote`, `note TEXT`) may start with a hyphen.
 - A refused quote names the nearest source line and its exact text (bn-2mkk): the line where the longest start of the quote begins, when that start covers half the quote or runs to a line break, or else the closest line within a bounded edit distance. Its repair argv repeats the call with that line as `--quote` when the source holds the line once. A quote with no near line is called reworded. What is accepted does not change.
 - A missing attachment names, and repairs to, a file of the same name in an import root (`../source.txt` from the root).
+- `note TEXT` without `--on` is a note on the selected case: the only case, or `--case` (bn-3jr1). The receipt warns that `--on` was omitted and names the case. With several cases and no `--case` the call is refused with `CASE_REQUIRED` and the case IDs, as other case-scoped writes are. The note keeps no evidentiary standing.
 - The root help's `Next:` line is the `init` command, not `onboard`.
 
 Follow-ups under W17 (bn-3hdd): bn-2mkk (a refused quote points at the nearest source passage), bn-3jr1 (`note` without `--on`), bn-2cc0 (`init` inside a workspace), bn-3bky (brief shows each observation's quote and source lines, for successor citation). The arms are `--arm docs --arm help-only` in `scripts/run-first-use.py`, so the W14 release trial (bn-2aic) can reuse them.

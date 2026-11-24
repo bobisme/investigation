@@ -196,9 +196,9 @@ const NOTE_ARGS: &[ShortcutArgument] = &[
         long: Some("on"),
         positional: false,
         value_name: "RECORD_ID",
-        help: "Exact subject record ID or unique prefix.",
+        help: "Subject record ID or unique prefix; without --on the note is on the selected case (the only case, or --case).",
         payload_paths: &["subject_refs"],
-        required: true,
+        required: false,
     },
 ];
 

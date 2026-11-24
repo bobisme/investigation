@@ -113,6 +113,22 @@ fn shortcut_leaf(
             .help(argument.help)
             .required(argument.required)
             .allow_hyphen_values(argument.value_name == "TEXT");
+        if argument.positional && argument.value_name == "TEXT" {
+            // A lone `--name` is a mistyped option, not prose: once `note`
+            // needs no `--on`, it would otherwise become the note's text.
+            arg = arg.value_parser(ValueParser::new(|input: &str| {
+                if input.len() > 2
+                    && input.starts_with("--")
+                    && !input.contains(char::is_whitespace)
+                {
+                    Err(format!(
+                        "unexpected argument {input}; this command has no such option, and TEXT that looks like an option is refused"
+                    ))
+                } else {
+                    Ok(input.to_owned())
+                }
+            }));
+        }
         if argument.positional {
             arg = arg.index(positional_index(spec, argument.id));
         } else if let Some(long) = argument.long {
@@ -626,7 +642,7 @@ fn run_operation(
     if generated {
         announce_generated_id(command_id)?;
     }
-    let receipt = store
+    let mut receipt = store
         .record(&bytes)
         .map_err(|failure| with_workspace_repair(store.workspace(), failure))
         .map_err(|failure| {
@@ -636,6 +652,12 @@ fn run_operation(
             let failure = crate::first_use::explain_quote_failure(failure, quote);
             crate::quote_hint::point_at_nearest_passage(store, &envelope, quote, failure)
         })?;
+    if operation == "annotation.add" && !shortcut.values.contains_key("on") {
+        receipt.warnings.push(format!(
+            "--on was omitted, so the note is on the selected case {}.",
+            request.case_id.expect("annotation.add selects a case")
+        ));
+    }
     Ok(receipt_output(store.workspace(), receipt))
 }
 
@@ -697,9 +719,13 @@ fn build_operation_payload(
         "annotation.add" => {
             let case = select_case(store, shortcut.global.case.as_deref())?;
             let replay = store.case(case)?;
-            let subject_id =
-                resolve_kind_prefix(value(shortcut, "on"), &replay.state, Kind::Case, "/on")
-                    .or_else(|_| resolve_any_subject(value(shortcut, "on"), &replay.state))?;
+            // Without --on the note is on the selected case (W17.08): agents
+            // reached for a case-level note and were refused.
+            let subject_id = match shortcut.values.get("on") {
+                None => case,
+                Some(on) => resolve_kind_prefix(on, &replay.state, Kind::Case, "/on")
+                    .or_else(|_| resolve_any_subject(on, &replay.state))?,
+            };
             let subject = replay
                 .state
                 .current(subject_id)
