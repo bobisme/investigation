@@ -1,0 +1,2 @@
+- [ ] Re-run the broker trial at peak load
+- [x] Read the cost model

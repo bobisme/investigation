@@ -9,7 +9,53 @@ use investigation_core::{
 use investigation_store::{Store, Workspace, workspace::WorkspaceError};
 use serde_json::json;
 
+thread_local! {
+    /// The command this invocation runs when it writes, so opening the
+    /// workspace can refuse a write the workspace's format forbids.
+    static WRITE_INTENT: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Writing commands the format gate lets through: an export only reads the
+/// workspace, and migrate applies the format rules itself.
+const FORMAT_EXEMPT: [&str; 2] = ["export", "migrate"];
+
+/// Record which command this invocation runs, when it writes.
+pub(crate) fn note_write_intent(command: Option<String>) {
+    WRITE_INTENT.with(|intent| *intent.borrow_mut() = command);
+}
+
+/// Refuse a writing command on a workspace whose format this program must
+/// not write: a newer format, a migration in progress, or a required
+/// migration (W11.15, ADR 0014). Reads pass. Every commit checks the format
+/// again under the coordination lock.
+pub(crate) fn refuse_unwritable(workspace: &Workspace) -> Result<(), Failure> {
+    let Some(command) = WRITE_INTENT.with(|intent| intent.borrow().clone()) else {
+        return Ok(());
+    };
+    if FORMAT_EXEMPT.contains(&command.as_str()) {
+        return Ok(());
+    }
+    let format = workspace.format();
+    match investigation_store::migration::write_refusal(format) {
+        None => Ok(()),
+        Some(refusal) => {
+            let mut failure = investigation_store::store::format_failure(&refusal, format);
+            if let Some(actual) = failure.error.actual.as_mut() {
+                actual["command"] = json!(command);
+            }
+            Err(failure)
+        }
+    }
+}
+
 pub(crate) fn open_workspace(path: Option<&Path>) -> Result<Workspace, Failure> {
+    let workspace = open_workspace_ungated(path)?;
+    refuse_unwritable(&workspace)?;
+    Ok(workspace)
+}
+
+fn open_workspace_ungated(path: Option<&Path>) -> Result<Workspace, Failure> {
     match path {
         Some(path) => Workspace::open(path).map_err(|error| {
             if matches!(&error, WorkspaceError::Io { source, .. } if source.kind() == io::ErrorKind::NotFound)

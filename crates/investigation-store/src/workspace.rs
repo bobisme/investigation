@@ -56,6 +56,10 @@ struct WorkspaceGenesis {
     /// additive, like `demo`; see [`ForkMarker`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     fork: Option<ForkMarker>,
+    /// Present only once a migration ran. Optional and additive; absent
+    /// means [`WorkspaceFormat::BASELINE`]. See [`format`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    format: Option<WorkspaceFormat>,
 }
 
 /// Marks a workspace `demo` generated: which tutorial scenario, replayed from
@@ -353,6 +357,7 @@ pub struct Workspace {
     genesis_sequence: u64,
     demo: Option<DemoMarker>,
     fork: Option<ForkMarker>,
+    format: WorkspaceFormat,
 }
 
 impl Workspace {
@@ -560,6 +565,7 @@ impl Workspace {
             genesis_sequence: 0,
             demo,
             fork: None,
+            format: None,
         };
         let marker_bytes = serde_json::to_vec_pretty(&marker)
             .map_err(|error| WorkspaceError::Serialization(error.to_string()))?;
@@ -581,6 +587,7 @@ impl Workspace {
             genesis_sequence: marker.genesis_sequence,
             demo: marker.demo,
             fork: None,
+            format: WorkspaceFormat::BASELINE,
         })
     }
 
@@ -632,8 +639,20 @@ impl Workspace {
         let bytes = read_bytes(&marker_path)?;
         let value = investigation_core::input::parse_request(&bytes)
             .map_err(|error| WorkspaceError::InvalidGenesis(error.to_string()))?;
+        // The format is read before the strict decode, so a marker a newer
+        // program wrote is explained instead of only rejected.
+        let peeked = format::peek(&value)?;
+        if peeked.read_requires > FORMAT_VERSION {
+            return Err(WorkspaceError::FormatTooNew {
+                version: peeked.version,
+                read_requires: peeked.read_requires,
+            });
+        }
+        let value = format::readable(value, &peeked);
         let marker: WorkspaceGenesis = investigation_core::input::decode(&value)
             .map_err(|error| WorkspaceError::InvalidGenesis(error.to_string()))?;
+        let workspace_format = marker.format.clone().unwrap_or(WorkspaceFormat::BASELINE);
+        workspace_format.validate()?;
         if marker.schema_version != WORKSPACE_VERSION {
             return Err(WorkspaceError::UnsupportedWorkspaceVersion);
         }
@@ -670,6 +689,7 @@ impl Workspace {
             genesis_sequence: marker.genesis_sequence,
             demo: marker.demo,
             fork: marker.fork,
+            format: workspace_format,
         })
     }
 
@@ -1103,9 +1123,18 @@ pub(crate) fn io_at(path: &Path, source: io::Error) -> WorkspaceError {
 
 #[derive(Debug)]
 pub enum WorkspaceError {
-    Io { path: PathBuf, source: io::Error },
-    FilesystemDetection { path: PathBuf, source: io::Error },
-    UnsupportedFilesystem { name: String, kind: FilesystemKind },
+    Io {
+        path: PathBuf,
+        source: io::Error,
+    },
+    FilesystemDetection {
+        path: PathBuf,
+        source: io::Error,
+    },
+    UnsupportedFilesystem {
+        name: String,
+        kind: FilesystemKind,
+    },
     WorkspaceAlreadyExists(PathBuf),
     WorkspaceNotFound(PathBuf),
     InvalidRoot(PathBuf),
@@ -1120,6 +1149,11 @@ pub enum WorkspaceError {
     InvalidWorkspaceId,
     InvalidGenesisSequence(u64),
     LayoutMismatch(String),
+    /// The marker's format needs a newer program to read it.
+    FormatTooNew {
+        version: u32,
+        read_requires: u32,
+    },
 }
 
 impl fmt::Display for WorkspaceError {
@@ -1169,6 +1203,16 @@ impl fmt::Display for WorkspaceError {
                 write!(f, "workspace genesis sequence must be 0, got {sequence}")
             }
             Self::LayoutMismatch(message) => write!(f, "workspace layout is invalid: {message}"),
+            Self::FormatTooNew {
+                version,
+                read_requires,
+            } => write!(
+                f,
+                "WORKSPACE_FORMAT_NEWER: this workspace is at format {version} and a newer \
+                 program wrote it; reading it needs a program that understands format \
+                 {read_requires} or later, and this one understands up to format \
+                 {FORMAT_VERSION}, so it reads and writes nothing here. Use the newer program"
+            ),
         }
     }
 }
@@ -1184,9 +1228,11 @@ impl std::error::Error for WorkspaceError {
 
 mod config_keys;
 mod fork;
+pub mod format;
 mod local_actor;
 pub use config_keys::CONFIG_FILE_NAME;
 pub use fork::{ForkMarker, MAX_FORK_CASES};
+pub use format::{FORMAT_VERSION, FormatRefusal, FormatStatus, Migrating, WorkspaceFormat};
 pub use local_actor::LOCAL_ACTOR_FILE;
 
 #[cfg(test)]

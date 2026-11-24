@@ -15,3 +15,4 @@
 | [0011](0011-case-scoped-verification.md) | Case-scoped verification: a command verifies the cases it reads |
 | [0012](0012-batched-vault-durability.md) | Vault publication in durability batches, and unchanged files known by their status |
 | [0013](0013-archive-restore-and-fork.md) | Archive restore and fork: verified staging, marker-last publication, and fork identity |
+| [0014](0014-migration-framework.md) | Workspace format in the marker, ordered migrations with a verified backup, and historical fixtures |

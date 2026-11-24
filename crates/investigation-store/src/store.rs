@@ -84,6 +84,10 @@ pub mod pins;
 #[path = "retention.rs"]
 pub mod retention;
 
+#[path = "format_gate.rs"]
+mod format_gate;
+pub use format_gate::format_failure;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;
@@ -383,6 +387,9 @@ impl<F: DurableFs> Store<F> {
         self.gate.check().map_err(durability_failure)?;
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
+        // A newer format, or a migration in progress, stops every commit
+        // (W11.15, ADR 0014); read from disk under the lock.
+        self.refuse_unwritable_format()?;
         trace.enter(Stage::VerifyTail);
         let mut scope = self.load_scope(case_id, reads)?;
         self.fs.reclaim_publication_temporaries();

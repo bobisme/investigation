@@ -414,6 +414,10 @@ fn workspace_health(
                     "WORKSPACE_CONFIG_INVALID",
                     "Correct investigation.toml; unknown top-level keys are errors and extensions must be namespaced.",
                 ),
+                WorkspaceError::FormatTooNew { .. } => (
+                    "WORKSPACE_FORMAT_NEWER",
+                    "A newer program wrote this workspace at a format this one cannot read; use that program. Nothing was changed.",
+                ),
                 WorkspaceError::UnsupportedWorkspaceVersion
                 | WorkspaceError::UnsupportedRecordSchemaFamily => (
                     "WORKSPACE_VERSION_UNSUPPORTED",
@@ -445,6 +449,9 @@ fn workspace_health(
         "workspace_id": workspace_id,
         "import_roots": import_roots,
     });
+    if let Ok((format, _)) = store.format_status() {
+        value["format"] = json!(format);
+    }
     match store.check() {
         Ok(report) => {
             let unsettled =
@@ -520,6 +527,15 @@ fn check_step(code: &str, has_argv: bool) -> &'static str {
         }
         "PRIOR_SYNC_FAILURE" => {
             "Retry any uncertain command with the same actor and command ID; check verified the current heads."
+        }
+        "MIGRATION_INCOMPLETE" => {
+            "Run investigation migrate to see the plan, then finish it with migrate --apply and the same plan ID, or restore the backup it names with archive restore."
+        }
+        "MIGRATION_AVAILABLE" => {
+            "Nothing migrates on its own. Run investigation migrate for the dry run before you decide."
+        }
+        "WORKSPACE_FORMAT_NEWER" => {
+            "A newer program wrote this workspace; this one reads it and refuses writes. Use the newer program to write here."
         }
         _ if has_argv => "Run the repair command shown.",
         _ => {

@@ -132,7 +132,82 @@ impl<F: DurableFs> Store<F> {
                 repair: None,
             });
         }
+        self.check_format(&mut report);
         Ok(report)
+    }
+
+    /// Report a migration in progress (an error, so check refuses), a newer
+    /// format this program reads but does not write, and an available
+    /// migration (W11.15, ADR 0014).
+    fn check_format(&self, report: &mut CheckReport) {
+        use crate::workspace::FormatStatus;
+        let migrate = || {
+            Some(vec![
+                PROGRAM_NAME.into(),
+                "migrate".into(),
+                "--format".into(),
+                "json".into(),
+            ])
+        };
+        let issue = |severity, code: &str, reason: String, repair| CheckIssue {
+            severity,
+            code: code.into(),
+            objects: Vec::new(),
+            reason,
+            repair,
+        };
+        let (format, status) = match self.format_status() {
+            Ok(found) => found,
+            Err(failure) => {
+                report.issues.push(issue(
+                    Severity::Error,
+                    "WORKSPACE_MARKER_UNREADABLE",
+                    failure.error.message,
+                    None,
+                ));
+                return;
+            }
+        };
+        match status {
+            FormatStatus::Migrating { from, to } => report.issues.push(issue(
+                Severity::Error,
+                "MIGRATION_INCOMPLETE",
+                format!(
+                    "A migration from format {from} to {to} started and did not finish; writes \
+                     are refused until it does. The case journals are checked above. Finish it \
+                     with migrate --apply and the same plan, or restore its backup (export {}).",
+                    format
+                        .migrating
+                        .as_ref()
+                        .map_or("", |migrating| migrating.backup_export_id.as_str())
+                ),
+                migrate(),
+            )),
+            FormatStatus::WritesRefused {
+                version,
+                write_requires,
+            } => report.issues.push(issue(
+                Severity::Warning,
+                "WORKSPACE_FORMAT_NEWER",
+                format!(
+                    "The workspace is at format {version}; writing it needs a program that \
+                     understands format {write_requires}, and this one understands up to format \
+                     {}. This program reads it and refuses every write.",
+                    crate::workspace::FORMAT_VERSION
+                ),
+                None,
+            )),
+            FormatStatus::Older { version, latest } => report.issues.push(issue(
+                Severity::Warning,
+                "MIGRATION_AVAILABLE",
+                format!(
+                    "The workspace is at format {version}; migrations to format {latest} are \
+                     available. Nothing migrates on its own: run migrate to see the plan."
+                ),
+                migrate(),
+            )),
+            FormatStatus::Current | FormatStatus::NewerCompatible { .. } => {}
+        }
     }
 
     fn check_blobs(&self, workspace: &WorkspaceReplay, report: &mut CheckReport) {

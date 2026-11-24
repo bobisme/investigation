@@ -124,6 +124,7 @@ impl Workspace {
             genesis_sequence: 0,
             demo: staged.demo,
             fork: Some(fork),
+            format: (staged.format != super::WorkspaceFormat::BASELINE).then_some(staged.format),
         };
         let mut bytes = serde_json::to_vec_pretty(&marker)
             .map_err(|error| WorkspaceError::Serialization(error.to_string()))?;

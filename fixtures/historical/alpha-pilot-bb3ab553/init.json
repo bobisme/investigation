@@ -1,0 +1,1 @@
+{"actor":"AGENT","case_id":"translation-index-selection","command_id":"init-case-create","operations":[{"op":"case.create","payload":{"mode":"record","title":"Translation Index Architecture Selection"}}],"preconditions":[],"schema_version":"inv.command.v0-alpha"}

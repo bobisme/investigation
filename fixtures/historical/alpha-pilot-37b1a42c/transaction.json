@@ -1,0 +1,16 @@
+{
+  "actor": null,
+  "case_id": null,
+  "command_id": "create-sprite-desat-case",
+  "operations": [
+    {
+      "op": "case.create",
+      "payload": {
+        "mode": "record",
+        "title": "sprite desaturation investigation"
+      }
+    }
+  ],
+  "preconditions": [],
+  "schema_version": "inv.command.v0-alpha"
+}

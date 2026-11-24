@@ -229,6 +229,7 @@ pub mod lock;
 pub mod manifest;
 pub mod map;
 pub mod marker;
+pub mod migrate;
 pub mod note;
 pub mod plan;
 pub mod policy;

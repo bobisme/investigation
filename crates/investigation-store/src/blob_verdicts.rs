@@ -76,8 +76,11 @@ impl<F: DurableFs> Store<F> {
         };
         let blob = Path::new(BLOBS).join(&hex[..2]).join(hex);
         if self.fs.identity(&blob).ok().as_ref() == Some(before) {
-            self.fs
-                .write_cache(&path, entry(size, before, intact).as_bytes());
+            let entry = entry(size, before, intact);
+            // A read that confirms a kept verdict writes nothing (W11.15).
+            if self.fs.read_cache(&path).as_deref() != Some(entry.as_bytes()) {
+                self.fs.write_cache(&path, entry.as_bytes());
+            }
         }
     }
 }

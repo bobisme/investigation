@@ -1,0 +1,13 @@
+# Investigation workspace configuration. Unknown top-level keys are rejected.
+# state/ is canonical evidence and journal data; do not sync it as an Obsidian vault.
+# cache/ is rebuildable and can be deleted by cache maintenance.
+# local/ stores machine-specific, noncanonical bookkeeping.
+# vault/ is an optional child projection; Notes, Boards and Inbox are human-owned.
+# Import roots are read-only inputs. They do not authorize writes or external actions.
+schema_version = "inv.workspace-config.v1"
+import_roots = []
+
+[vault_policy]
+enabled = false
+include_approved_derivatives = false
+preserve_human_folders = true

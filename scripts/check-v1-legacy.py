@@ -40,6 +40,20 @@ def extract_handoffs(destination):
         assert process.wait() == 0
 
 
+def historical_copies_match(directory):
+    """Each fixtures/historical/alpha-pilot-<run> is that run's casework, file for file."""
+    copies = sorted((ROOT / "fixtures/historical").glob("alpha-pilot-*"))
+    assert copies, "no historical alpha pilot workspace"
+    for copy in copies:
+        prefix = copy.name.removeprefix("alpha-pilot-")
+        [run] = [run for run in directory.iterdir() if run.name.startswith(prefix)]
+        source = run / "handoff/casework"
+        files = lambda root: {p.relative_to(root).as_posix(): p.read_bytes()
+                              for p in root.rglob("*") if p.is_file()}
+        assert files(copy) == files(source), f"{copy} differs from the pilot archive"
+    return len(copies)
+
+
 def verify(binary, directory):
     def run(workspace, *args, input_data=None):
         proc = subprocess.run([binary, "--workspace", workspace, *args, "--format", "json"],
@@ -83,5 +97,7 @@ if __name__ == "__main__":
     with tempfile.TemporaryDirectory(prefix="investigation-legacy-pilot-") as directory:
         root = Path(directory)
         extract_handoffs(root)
+        copies = historical_copies_match(root)
         workspaces, events = verify(args.binary.resolve(strict=True), root)
-    print(f"Reopened {workspaces} alpha pilot workspaces and replayed {events} original receipts byte for byte.")
+    print(f"Reopened {workspaces} alpha pilot workspaces and replayed {events} original receipts byte for byte; "
+          f"{copies} historical fixture copies equal the archive.")

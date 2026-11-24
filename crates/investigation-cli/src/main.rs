@@ -28,6 +28,7 @@ mod integration;
 mod lessons;
 mod lineage;
 mod logging;
+mod migrate;
 mod next;
 mod obsidian_setup;
 mod onboard;
@@ -334,6 +335,9 @@ enum Commands {
     /// Rebuild derived workspace data or retire settled capture staging.
     #[command(subcommand)]
     Repair(RepairCommand),
+    /// Dry-run or apply a workspace format migration, with a verified backup first.
+    #[command(after_help = migrate::AFTER_HELP)]
+    Migrate(migrate::Args),
     /// Publish the working vault and inspect its health and drift.
     #[command(subcommand, after_help = vault::AFTER_HELP)]
     Vault(vault::VaultCommand),
@@ -514,6 +518,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::Retention(command) => retention::run(&mut store, &global, command),
                 Commands::Vault(command) => vault::run(&mut store, &global, command),
                 Commands::Export(args) => export::run(&mut store, &global, args),
+                Commands::Migrate(args) => migrate::run(&mut store, &args),
                 Commands::Repair(RepairCommand::Staging { handle }) => {
                     capture::retire(&mut store, handle.as_deref())
                 }
@@ -838,6 +843,7 @@ fn init(
         Err(error @ WorkspaceError::WorkspaceAlreadyExists(_)) => {
             if path.join("investigation.toml").is_file() {
                 let mut workspace = Workspace::open(path).map_err(workspace_failure)?;
+                selection::refuse_unwritable(&workspace)?;
                 added = workspace
                     .add_import_roots(&import_roots)
                     .map_err(|error| workspace_failure(error).at("--import-root"))?;
@@ -1226,6 +1232,9 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
     if let Some(fork) = workspace.fork() {
         report["fork"] = json!(fork);
     }
+    if let Ok((format, _)) = store.format_status() {
+        report["format"] = json!(format);
+    }
     let mut output = Output::success("checked", report, text);
     output.value["ok"] = json!(integrity_ok);
     if !integrity_ok {
@@ -1243,6 +1252,9 @@ fn main() -> ExitCode {
     let parsed = parser.try_get_matches_from(args);
     let output = match parsed {
         Ok(mut matches) => {
+            // `open_workspace` refuses a write this program must not make
+            // to the workspace's format (W11.15, ADR 0014).
+            selection::note_write_intent(read_only::writing_command(&matches));
             if let Some(refusal) = read_only::refusal(&matches) {
                 Output::failure(refusal)
             } else if let Some(shortcut) = shortcuts::from_matches(&mut matches) {

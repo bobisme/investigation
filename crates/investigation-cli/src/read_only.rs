@@ -77,6 +77,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // obligations under the commit lock; writes nothing.
     ("retention preview", Effect::Read),
     ("repair index", Effect::Write),
+    // A dry run by default; --apply writes a backup archive under exports/
+    // (or --backup), the marker's format section and derived state.
+    ("migrate", Effect::ReadUnlessFlag(&["apply"])),
     ("repair staging", Effect::Write),
     (
         "observe",
@@ -191,18 +194,29 @@ fn write_reason(path: &str, leaf: &ArgMatches) -> Option<String> {
     }
 }
 
-/// The refusal for this parsed command line, if read-only mode forbids it.
-pub(crate) fn refusal(matches: &ArgMatches) -> Option<Failure> {
-    if !enabled(matches) {
-        return None;
-    }
+/// The leaf command path of a parsed command line and its matches.
+fn leaf(matches: &ArgMatches) -> (String, &ArgMatches) {
     let mut names = Vec::new();
     let mut leaf = matches;
     while let Some((name, next)) = leaf.subcommand() {
         names.push(name);
         leaf = next;
     }
-    let path = names.join(" ");
+    (names.join(" "), leaf)
+}
+
+/// The command path when this invocation writes, `None` when it reads.
+pub(crate) fn writing_command(matches: &ArgMatches) -> Option<String> {
+    let (path, leaf) = leaf(matches);
+    write_reason(&path, leaf).map(|_| path)
+}
+
+/// The refusal for this parsed command line, if read-only mode forbids it.
+pub(crate) fn refusal(matches: &ArgMatches) -> Option<Failure> {
+    if !enabled(matches) {
+        return None;
+    }
+    let (path, leaf) = leaf(matches);
     let reason = write_reason(&path, leaf)?;
     let alternatives: Vec<&str> = EFFECTS
         .iter()

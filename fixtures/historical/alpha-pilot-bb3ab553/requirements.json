@@ -1,0 +1,1 @@
+{"actor":"AGENT","case_id":"translation-index-selection","command_id":"add-requirements-note","operations":[{"op":"note","payload":{"text":"Requirements from /work/source.txt:\n1. Search p95 under 130ms\n2. One full re-index per night"}}],"preconditions":[],"schema_version":"inv.command.v0-alpha"}
