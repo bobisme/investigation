@@ -1,5 +1,7 @@
 //! Disposable SQLite projection of verified journal events. Mutation validation
-//! and idempotency decisions always use canonical journal state.
+//! uses canonical journal state. For the cases a commit does not load, its
+//! idempotency and ID checks read this index only while the indexed head of
+//! each such case is its canonical head (ADR 0011, `store::scope`).
 
 use std::{path::Path, time::Duration};
 
@@ -19,9 +21,10 @@ use rusqlite::{Connection, OpenFlags, OptionalExtension, TransactionBehavior, pa
 use crate::store::ingest::acquisition::AcquisitionCursor;
 
 // Version 2 added acquisitions; version 3 added the record dependency index;
-// version 4 adds full-text search over labelled record text. Older indexes are
-// rebuilt.
-pub const INDEX_USER_VERSION: u32 = 4;
+// version 4 added full-text search over labelled record text; version 5 adds
+// the transaction IDs that case-scoped commits check (ADR 0011). Older
+// indexes are rebuilt.
+pub const INDEX_USER_VERSION: u32 = 5;
 /// Rows read from the full-text index for one query, before canonical checks.
 pub const MAX_SEARCH_CANDIDATES: usize = 5_000;
 const BUSY_TIMEOUT: Duration = Duration::from_millis(300);
@@ -60,8 +63,16 @@ pub struct StoredDependency {
 
 impl Projection {
     pub fn inspect(path: &Path, workspace: Id) -> Result<Vec<(Id, Snapshot)>, Failure> {
+        Self::open_read_only(path, workspace)?.heads()
+    }
+
+    /// Open an existing index of this workspace and version for reading
+    /// only. Creates and changes nothing; an absent, older or foreign index
+    /// is an error.
+    pub fn open_read_only(path: &Path, workspace: Id) -> Result<Self, Failure> {
         let database = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(db_error)?;
+        database.busy_timeout(BUSY_TIMEOUT).map_err(db_error)?;
         let version: u32 = database
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .map_err(db_error)?;
@@ -77,7 +88,7 @@ impl Projection {
                 "Index identity or version differs from this workspace.",
             ));
         }
-        Self { database }.heads()
+        Ok(Self { database })
     }
 
     pub fn open(path: &Path, workspace: Id) -> Result<Self, Failure> {
@@ -104,6 +115,9 @@ impl Projection {
                  CREATE TABLE IF NOT EXISTS receipts (
                      actor TEXT NOT NULL, command_id TEXT NOT NULL, case_id TEXT NOT NULL,
                      receipt_json TEXT NOT NULL, PRIMARY KEY (actor, command_id)
+                 );
+                 CREATE TABLE IF NOT EXISTS transactions (
+                     transaction_id TEXT PRIMARY KEY, case_id TEXT NOT NULL
                  );
                  CREATE TABLE IF NOT EXISTS relations (
                      case_id TEXT NOT NULL, kind TEXT NOT NULL,
@@ -161,14 +175,71 @@ impl Projection {
         if stored != workspace.to_string() {
             return Err(invalid("Index belongs to a different workspace."));
         }
-        database
-            .pragma_update(None, "user_version", INDEX_USER_VERSION)
-            .map_err(db_error)?;
+        // Rewriting an unchanged version is a write transaction with its own
+        // syncs on every open, so it is set only on a new index.
+        if version != INDEX_USER_VERSION {
+            database
+                .pragma_update(None, "user_version", INDEX_USER_VERSION)
+                .map_err(db_error)?;
+        }
         Ok(Self { database })
     }
 
     pub fn head(&self, case_id: Id) -> Result<Option<Snapshot>, Failure> {
         load_head(&self.database, case_id)
+    }
+
+    /// The case whose applied events hold `(actor, command_id)`, if any. A
+    /// pointer for the caller to verify against canonical state.
+    pub fn command_case(&self, actor: &Actor, command_id: &str) -> Result<Option<Id>, Failure> {
+        self.database
+            .query_row(
+                "SELECT case_id FROM receipts WHERE actor = ?1 AND command_id = ?2",
+                params![actor.to_string(), command_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(db_error)?
+            .map(|id| parse_case_id(&id))
+            .transpose()
+    }
+
+    /// The cases whose applied events created record `id` or accepted
+    /// transaction `id`, by the ID's kind.
+    pub fn id_cases(&self, id: Id) -> Result<Vec<Id>, Failure> {
+        let table = if id.kind() == Kind::Transaction {
+            "transactions".to_owned()
+        } else {
+            format!("record_{}", id.kind().prefix())
+        };
+        // Record tables are created with the first record of their kind.
+        let exists: bool = self
+            .database
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [&table],
+                |row| row.get(0),
+            )
+            .map_err(db_error)?;
+        if !exists {
+            return Ok(Vec::new());
+        }
+        let column = if id.kind() == Kind::Transaction {
+            "transaction_id"
+        } else {
+            "id"
+        };
+        let mut query = self
+            .database
+            .prepare(&format!(
+                "SELECT DISTINCT case_id FROM {table} WHERE {column} = ?1"
+            ))
+            .map_err(db_error)?;
+        let rows = query
+            .query_map([id.to_string()], |row| row.get::<_, String>(0))
+            .map_err(db_error)?;
+        rows.map(|row| parse_case_id(&row.map_err(db_error)?))
+            .collect()
     }
 
     /// Inspect projections without taking them as proof of canonical state.
@@ -188,9 +259,7 @@ impl Projection {
             .map_err(db_error)?;
         rows.map(|row| {
             let (id, sequence, digest) = row.map_err(db_error)?;
-            let case_id = id
-                .parse()
-                .map_err(|_| invalid("Index contains an invalid case ID."))?;
+            let case_id = parse_case_id(&id)?;
             let head_hash = digest
                 .parse()
                 .map_err(|_| invalid("Index contains an invalid head digest."))?;
@@ -337,6 +406,11 @@ impl Projection {
             )
             .map_err(db_error)?;
         }
+        tx.execute(
+            "INSERT INTO transactions (transaction_id, case_id) VALUES (?1, ?2)",
+            params![receipt.transaction_id.to_string(), case_id],
+        )
+        .map_err(db_error)?;
         tx.execute(
             "INSERT INTO receipts (actor, command_id, case_id, receipt_json)
              VALUES (?1, ?2, ?3, ?4)",
@@ -630,6 +704,14 @@ fn load_head(database: &Connection, case_id: Id) -> Result<Option<Snapshot>, Fai
         .transpose()
 }
 
+fn parse_case_id(value: &str) -> Result<Id, Failure> {
+    value
+        .parse::<Id>()
+        .ok()
+        .filter(|id| id.kind() == Kind::Case)
+        .ok_or_else(|| invalid("Index contains an invalid case ID."))
+}
+
 fn sql_counter(counter: u64) -> Result<i64, Failure> {
     i64::try_from(counter).map_err(|_| invalid("Index counter exceeds SQLite's integer range."))
 }
@@ -711,7 +793,13 @@ mod tests {
             ok: true,
             result: CommitResult::Committed,
             command_id: command_id.to_owned(),
-            transaction_id: "tx_018d87fc-5234-7000-8000-000000000055".parse().unwrap(),
+            // One transaction per head hash: the index keeps them unique.
+            transaction_id: format!(
+                "tx_018d87fc-5234-7000-8000-00000000{}",
+                &hash.as_str()[7..11]
+            )
+            .parse()
+            .unwrap(),
             snapshot: Snapshot {
                 sequence: accepted.sequence,
                 head_hash: hash,
@@ -1011,8 +1099,9 @@ mod tests {
 
     #[test]
     fn older_index_versions_are_not_reused() {
-        // Version 3 lacks the search tables, so it must be rebuilt too.
-        for version in [1, 3] {
+        // Version 3 lacks the search tables and version 4 the transaction
+        // IDs, so they must be rebuilt too.
+        for version in [1, 3, 4] {
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path().join("index.sqlite");
             let workspace_id = "ws_018d87fc-5234-7000-8000-000000000097".parse().unwrap();

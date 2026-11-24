@@ -285,8 +285,20 @@ fn replay_reports_duplicate_sequences_and_unknown_versions_in_place() {
     let advanced = serde_json::to_vec(&event).unwrap();
     fs::remove_file(&original_path).unwrap();
     fs::write(&original_path, &advanced).unwrap();
-    let error = submit(&mut store, &create("blocked", "Do not proceed")).unwrap_err();
+    // A command that loads the case refuses it (ADR 0011); a new case,
+    // which reads no other case, does not.
+    let blocked = command(
+        "blocked",
+        Some(id),
+        json!({
+            "op":"question.create",
+            "payload":{"wording":"Do not proceed?","importance":"normal"}
+        }),
+    );
+    let error = submit(&mut store, &blocked).unwrap_err();
     assert_eq!(error.exit_code(), 6);
+    assert!(store.case(id).is_err());
+    submit(&mut store, &create("elsewhere", "Proceed elsewhere")).unwrap();
     assert!(error.error.message.contains("inv.event.future"));
     assert_eq!(fs::read(&original_path).unwrap(), advanced);
     assert!(!store.check().unwrap().integrity_ok());

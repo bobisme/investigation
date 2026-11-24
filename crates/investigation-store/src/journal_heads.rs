@@ -1,6 +1,7 @@
 //! Disposable checkpoints of verified case heads (PERF.01, §10.5–§10.6).
 //!
-//! Every commit and read verifies the journal under the commit lock. A full
+//! Every commit and read verifies the cases it loads under the commit lock
+//! (ADR 0011 limits a command to the cases it reads). A full
 //! verification parses, bounds and validates every event; on a journal of
 //! tens of megabytes that dominated the cost of a one-operation commit. Once
 //! a commit publishes, the heads its load verified are kept under

@@ -33,7 +33,7 @@ Other observations at 60 and 130 cases:
 - The viewer features add 1,170 Base files (1.1 MB) and 130 Canvas files (1.5 MB) at 130 cases: 16% more files, 8% more bytes, 2 to 5% more full-render time.
 - Render manifest: 5.1 MB at 9.9k notes (about 520 bytes per note), so about 25 MB at 50k.
 - A render writes about 25 to 30 ms per note, and 99% of that is `fsync` (about two per note).
-- Brief, next and status on one small case cost as much as on the whole workspace: they verify every case (see PERF.06, bn-24bx).
+- At the measured commit, brief, next and status on one small case cost as much as on the whole workspace, because they verified every case. Since PERF.06 (bn-24bx, ADR 0011), `brief`, `next`, `show` and `record` verify only the cases they read: at 650 cases they take 15, 19, 13 and 85 ms. `vault status` still reads the whole workspace.
 
 Against the plan's §10.5 targets (warm brief/next under 250 ms p95 and mutation under 150 ms p95, set for 10,000 objects in one case): at 60 cases (3,840 objects) brief and next met them and `record` was at the limit; from about 8,000 objects over 130 cases they were missed by 4x to 10x and at 41,600 objects over 650 cases by 2x to 4x on a less loaded moment. Slow commands are filed as PERF bones under bn-9muo: PERF.06 (bn-24bx, commit and read cost grows with the number of cases), PERF.07 (bn-kxx5, render fsync and unchanged-render cost), PERF.08 (bn-171a, `repair index`).
 

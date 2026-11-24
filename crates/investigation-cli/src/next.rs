@@ -41,6 +41,8 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
     // Guidance comes from the built-in pack and the case's available pins only.
     let packs = store.method_packs(&replay.state, case_id, None)?;
     let mode = TriggerContext::evaluate(&replay.state, case_id, &inventory).mode;
+    // The verified case is no longer read; the answer does not wait on freeing it.
+    investigation_store::store::free_later(replay);
     value["guidance_rule_version"] = json!(GUIDANCE_RULE_VERSION);
     let unavailable: Vec<_> = packs.iter().filter(|pack| !pack.is_available()).collect();
     if !unavailable.is_empty() {

@@ -64,6 +64,17 @@ pub(crate) fn pin_argv(snapshot: &Snapshot) -> Vec<String> {
     ]
 }
 
+impl Drop for Pinned {
+    /// A read answers without waiting on freeing its verified replays.
+    fn drop(&mut self) {
+        investigation_store::store::free_later((
+            std::mem::take(&mut self.head.state),
+            std::mem::take(&mut self.head.events),
+            self.pinned.take(),
+        ));
+    }
+}
+
 /// Resolve the requested snapshot against `head`. A failure carries `retry`
 /// as its repair argv.
 pub(crate) fn resolve(

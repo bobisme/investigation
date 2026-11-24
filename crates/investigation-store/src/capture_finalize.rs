@@ -603,6 +603,7 @@ impl<F: DurableFs> Store<F> {
             .commit_plan(
                 CommitPlan {
                     case_id: Some(handle.case_id),
+                    reads: Reads::Target,
                     event: EventInput {
                         actor: &declared.actor,
                         command_id: &submission.command_id,

@@ -367,6 +367,8 @@ impl Store {
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: submission.case_id,
+                // The acquisition and the attempt may be recorded in any case.
+                reads: Reads::Workspace,
                 event: EventInput {
                     actor: &event_actor,
                     command_id: &command_id,
@@ -1047,7 +1049,7 @@ fn refuse_captured_attempt(run: &ProducerRun, visible: &Visible<'_>) -> Result<(
         producer: &run.producer.name,
         external_run_id: &run.external_run_id,
     };
-    let recorded = capture::recorded_attempts(visible, identity);
+    let recorded = capture::recorded_attempts(visible, identity)?;
     if recorded
         .iter()
         .any(|(_, _, path)| *path == AttemptPath::ProducerRun)

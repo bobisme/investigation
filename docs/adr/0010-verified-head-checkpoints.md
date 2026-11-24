@@ -1,6 +1,6 @@
 # ADR 0010 – Verified-head checkpoints for journal verification
 
-Accepted with PERF.01 (bn-30dc); 2026-11-23. Refines plan §10.5 and §10.6. [Module](../../crates/investigation-store/src/journal_heads.rs) · [Reader](../../crates/investigation-store/src/journal.rs)
+Accepted with PERF.01 (bn-30dc); 2026-11-23. Refines plan §10.5 and §10.6. ADR 0011 narrows which cases a command verifies; each case it verifies is verified as described here. [Module](../../crates/investigation-store/src/journal_heads.rs) · [Reader](../../crates/investigation-store/src/journal.rs)
 
 **Problem.** Every commit, and every read through the store, verifies the whole journal under the commit lock before it validates anything. On the `just bench` large fixture (10,101 objects, 418 events, 22 MB) a one-operation `record` took 408 ms p50 and 428 ms p95 against a 150 ms target. A profile split it as follows: the verified replay took about 205 ms. Of that, the bounded duplicate-key parse took 70 ms, the path-tracked decode from a `Value` took 105 ms, and the metadata validation and after-image application took the rest. Two deep clones of the state took about 56 ms: the commit's projected state and the validation scratch state. Freeing the replay under the lock took about 50 ms.
 
@@ -48,6 +48,6 @@ Two mutations were checked by hand: removing the head-hash comparison and removi
 **Consequences.**
 
 - *Trust in the cache.* For a prefix that ends at a kept head, a commit now trusts the entry's claim that those exact bytes passed `validate_metadata` in this build. A writer who can edit `cache/` can make the store accept edited events. That writer could equally write a valid chain into `state/` (§10.6). `check` still reports the edit: test `check_verifies_every_byte_even_when_a_kept_head_matches`.
-- *Cost.* A commit still reads and hashes the whole journal, so its cost still grows linearly with the journal, at hashing and decode speed instead of validation speed.
+- *Cost.* A commit still reads and hashes the whole journal, so its cost still grows linearly with the journal, at hashing and decode speed instead of validation speed. ADR 0011 limits that to the cases the command reads.
 - *Threads.* The store now starts up to 7 decode threads for each load, and one thread to free memory for each commit.
 - *Measured.* On the large fixture with `just bench --skip-render`, on a shared 64-thread machine, `record_single_operation` went from 407.9 ms p50 and 428.3 ms p95 (1-minute load average 22.8 during the measurement) to 86.7 ms p50 and 96.1 ms p95 (load 33.5). On the sparse choice fixture it went from 135.3/161.9 ms to 27.7/31.0 ms. Full verification, which `check` and a cold cache use, also uses the parallel decode. It went from about 205 ms to about 100 ms.

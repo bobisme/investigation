@@ -47,7 +47,7 @@ use crate::{
     blob::StagedBlob,
     durable::DurableFs,
     journal::EventInput,
-    store::{CommitPlan, Prepared, Store, integrity, io_failure, show_argv},
+    store::{CommitPlan, Prepared, Reads, Store, integrity, io_failure, show_argv},
 };
 use investigation_core::{command::SemanticRequest, header::SystemClock, identity::SystemIdSource};
 
@@ -400,6 +400,7 @@ impl<F: DurableFs> Store<F> {
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: Some(case_id),
+                reads: Reads::Target,
                 event: EventInput {
                     actor: &manifest.actor,
                     command_id: &manifest.command_id,

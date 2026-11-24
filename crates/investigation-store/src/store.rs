@@ -74,6 +74,10 @@ mod journal_heads;
 #[path = "archive.rs"]
 pub mod archive;
 
+#[path = "scope.rs"]
+mod scope;
+use scope::Reads;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;
@@ -158,17 +162,25 @@ impl<F: DurableFs> Store<F> {
         )
     }
 
+    /// The head of every case, from a verified load of the whole workspace.
     pub fn list_cases(&mut self) -> Result<Vec<CaseHead>, Failure> {
         let _lock = self.coordinate()?;
         Ok(self.load_verified()?.heads())
     }
 
+    /// The published case IDs, from the cases directory alone. Nothing is
+    /// verified here: a command verifies the case it reads with
+    /// [`Self::case`] (ADR 0011).
+    pub fn case_ids(&mut self) -> Result<Vec<Id>, Failure> {
+        let _lock = self.coordinate()?;
+        self.published_cases()
+    }
+
     /// Read a snapshot after the publisher has released the commit lock.
+    /// Verifies this case alone, reusing its kept head (ADR 0010, 0011).
     pub fn case(&mut self, case_id: Id) -> Result<CaseReplay, Failure> {
         let _lock = self.coordinate()?;
-        self.load_verified()?
-            .cases
-            .remove(&case_id)
+        self.load_case_verified(case_id)?
             .ok_or_else(|| missing_case(case_id))
     }
 
@@ -244,6 +256,7 @@ impl<F: DurableFs> Store<F> {
             let attempt = self.commit_plan_traced(
                 CommitPlan {
                     case_id: command.case_id,
+                    reads: Reads::Target,
                     event: EventInput {
                         actor: &command.actor,
                         command_id: &command.command_id,
@@ -350,6 +363,7 @@ impl<F: DurableFs> Store<F> {
     ) -> Result<Option<Receipt>, Failure> {
         let CommitPlan {
             case_id,
+            reads,
             event: meta,
             request,
             blobs,
@@ -364,10 +378,18 @@ impl<F: DurableFs> Store<F> {
         let _coordination = self.coordinate()?;
         self.gate.check().map_err(durability_failure)?;
         trace.enter(Stage::VerifyTail);
-        let mut replay = FreeLater::new(self.load_verified()?);
+        let mut scope = self.load_scope(case_id, reads)?;
         self.fs.reclaim_publication_temporaries();
         trace.enter(Stage::Idempotency);
-        if let Some(existing) = replay.find(meta.actor, meta.command_id) {
+        if let Some((existing_case, offset)) =
+            self.find_command(&mut scope, meta.actor, meta.command_id)?
+        {
+            let replay = &scope.replay;
+            let existing = replay
+                .cases
+                .get(&existing_case)
+                .and_then(|case| case.events.get(offset))
+                .ok_or_else(|| integrity("A recorded command is missing."))?;
             if existing.event.request != request {
                 return Err(Failure::new(
                     ErrorCode::IdempotencyKeyReused,
@@ -377,14 +399,18 @@ impl<F: DurableFs> Store<F> {
                 .with_argv(receipt_argv(meta.actor, meta.command_id)));
             }
             let mut receipt = receipt_for(existing).as_retry();
-            self.apply_projection_health(&replay, &mut receipt);
+            self.apply_projection_health(replay, &mut receipt);
             return Ok(Some(receipt));
         }
 
         trace.enter(Stage::Lock);
         let case = case_id
             .map(|id| {
-                let case = replay.cases.remove(&id).ok_or_else(|| missing_case(id))?;
+                let case = scope
+                    .replay
+                    .cases
+                    .remove(&id)
+                    .ok_or_else(|| missing_case(id))?;
                 Ok::<_, Failure>(FreeLater::new(case))
             })
             .transpose()?;
@@ -413,7 +439,7 @@ impl<F: DurableFs> Store<F> {
             },
             Visible {
                 target: case.as_deref(),
-                others: &replay,
+                others: &scope.replay,
                 packs: &method_packs::RetainedPacks(&self.fs),
             },
         )
@@ -424,6 +450,10 @@ impl<F: DurableFs> Store<F> {
                 case_id: existing,
                 sequence,
             } => {
+                if case_id != Some(existing) {
+                    self.ensure_loaded(&mut scope, existing)?;
+                }
+                let replay = &mut scope.replay;
                 let events = match &case {
                     Some(loaded) if case_id == Some(existing) => &loaded.events,
                     _ => {
@@ -443,7 +473,7 @@ impl<F: DurableFs> Store<F> {
                 if let (Some(loaded), Some(id)) = (case, case_id) {
                     replay.cases.insert(id, loaded.into_inner());
                 }
-                self.apply_projection_health(&replay, &mut receipt);
+                self.apply_projection_health(replay, &mut receipt);
                 return Ok(Some(receipt));
             }
         };
@@ -453,7 +483,13 @@ impl<F: DurableFs> Store<F> {
         projected.apply(&accepted)?;
         self.verify_promotion_artifacts(&projected, &accepted, promotion)?;
         self.verify_method_pack_adoptions(&accepted)?;
-        lessons::verify_consultations(&replay.cases, &accepted)?;
+        // A consultation reads its lesson's case: verify that case first.
+        for source in lessons::source_cases(&accepted) {
+            if source != accepted.case_id {
+                self.ensure_loaded(&mut scope, source)?;
+            }
+        }
+        lessons::verify_consultations(&scope.replay.cases, &accepted)?;
         if !promotion.pending.is_empty() {
             // Nothing is written yet: the caller hashes these blobs after
             // the lock is released and retries.
@@ -464,12 +500,12 @@ impl<F: DurableFs> Store<F> {
             .next_id(Kind::Transaction)
             .map_err(|_| integrity("Could not allocate a transaction ID."))?;
         trace.accepted(&accepted, transaction_id);
-        if accepted
+        let allocated = accepted
             .created
             .iter()
-            .any(|change| replay.records.contains(&change.id))
-            || replay.transactions.contains(&transaction_id)
-        {
+            .map(|change| change.id)
+            .chain([transaction_id]);
+        if self.already_recorded(&scope, allocated)? {
             return Err(integrity("ID generator returned an already recorded ID."));
         }
         let genesis = case
@@ -507,7 +543,8 @@ impl<F: DurableFs> Store<F> {
             })?;
         // The heads this commit verified, before its own event; the next
         // load verifies that event in full.
-        self.keep_verified_heads(&replay);
+        let replay = &mut scope.replay;
+        self.keep_verified_heads(replay);
 
         let verified = VerifiedEvent { event, hash };
         let mut receipt = receipt_for(&verified);
@@ -525,7 +562,7 @@ impl<F: DurableFs> Store<F> {
 
         // Past durable publication, projection failures cannot uncommit.
         trace.enter(Stage::IndexUpdate);
-        self.apply_projection_health(&replay, &mut receipt);
+        self.apply_projection_health(replay, &mut receipt);
         trace.enter(Stage::Receipt);
         Ok(Some(receipt))
     }
@@ -651,52 +688,14 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn load(&self, reuse_heads: bool) -> Result<WorkspaceReplay, Failure> {
-        let mut result = WorkspaceReplay::default();
-        for directory in self.fs.list(Path::new(CASES)).map_err(io_failure)? {
-            let case_id = directory
-                .file_name()
-                .and_then(|name| name.to_str())
-                .and_then(|name| name.parse::<Id>().ok())
-                .filter(|id| id.kind() == Kind::Case)
-                .ok_or_else(|| integrity("Canonical cases directory has an invalid entry."))?;
-            let known = reuse_heads.then(|| self.known_head(case_id)).flatten();
-            let replay = replay_case_from(
-                &self.fs,
-                &directory,
-                self.workspace.id(),
-                case_id,
-                known.as_ref(),
-            )?;
-            if replay.events.is_empty() {
-                return Err(integrity("A published case has no first transaction."));
+        let mut result = WorkspaceReplay {
+            complete: true,
+            ..WorkspaceReplay::default()
+        };
+        for case_id in self.published_cases()? {
+            if !self.load_case_into(&mut result, case_id, reuse_heads)? {
+                return Err(integrity("A published case disappeared during a load."));
             }
-            if reuse_heads
-                && known.as_ref().is_none_or(|known| {
-                    known.sequence != replay.snapshot.sequence
-                        || known.head_hash != replay.snapshot.head_hash
-                })
-            {
-                result.unkept.push((case_id, replay.snapshot.clone()));
-            }
-            for (offset, event) in replay.events.iter().enumerate() {
-                if !result.transactions.insert(event.event.transaction_id) {
-                    return Err(integrity(
-                        "A transaction ID appears twice in the workspace.",
-                    ));
-                }
-                let key = (event.event.actor.clone(), event.event.command_id.clone());
-                if result.commands.insert(key, (case_id, offset)).is_some() {
-                    return Err(integrity(
-                        "An actor and command ID appear twice in the workspace.",
-                    ));
-                }
-                for change in &event.event.accepted.created {
-                    if !result.records.insert(change.id) {
-                        return Err(integrity("A record ID was created twice in the workspace."));
-                    }
-                }
-            }
-            result.cases.insert(case_id, replay);
         }
         Ok(result)
     }
@@ -715,6 +714,10 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn rebuild_index(&self, workspace: &WorkspaceReplay) -> Result<(), Failure> {
+        if !workspace.complete {
+            // A rebuild needs every case, each verified.
+            return self.rebuild_index(&FreeLater::new(self.load_verified()?));
+        }
         let receipts = workspace.receipts();
         Projection::rebuild(
             &self.index_path(),
@@ -736,7 +739,13 @@ impl<F: DurableFs> Store<F> {
                 return self.rebuild_index(workspace);
             }
         };
+        // A case-scoped load (ADR 0011) holds the cases whose indexed head
+        // was not their canonical head when it loaded, under this same lock;
+        // the index is current for every other case.
         let valid_prefix = heads.iter().all(|(id, head)| {
+            if !workspace.complete && !workspace.cases.contains_key(id) {
+                return true;
+            }
             head.sequence
                 .checked_sub(1)
                 .and_then(|offset| usize::try_from(offset).ok())
@@ -832,7 +841,8 @@ impl<T: Send + 'static> Drop for FreeLater<T> {
 struct Visible<'a> {
     /// The target case, when it already exists.
     target: Option<&'a CaseReplay>,
-    /// Every other case.
+    /// The other cases: every one when the plan reads [`Reads::Workspace`],
+    /// otherwise only those loaded so far. See [`WorkspaceReplay::all`].
     others: &'a WorkspaceReplay,
     /// Retained method pack bytes, read under the commit lock for policy gates.
     packs: &'a dyn investigation_core::pack_policy::PackSource,
@@ -850,6 +860,8 @@ enum Prepared {
 
 struct CommitPlan<'a> {
     case_id: Option<Id>,
+    /// What the preparation reads beyond the target case.
+    reads: Reads,
     event: EventInput<'a>,
     request: SemanticRequest,
     blobs: &'a [StagedBlob],
@@ -857,7 +869,10 @@ struct CommitPlan<'a> {
 
 #[derive(Default)]
 struct WorkspaceReplay {
+    /// Verified cases: every published case when `complete`, otherwise the
+    /// cases a case-scoped command loaded (ADR 0011).
     cases: BTreeMap<Id, CaseReplay>,
+    complete: bool,
     commands: BTreeMap<(Actor, String), (Id, usize)>,
     transactions: BTreeSet<Id>,
     records: BTreeSet<Id>,
@@ -866,6 +881,18 @@ struct WorkspaceReplay {
 }
 
 impl WorkspaceReplay {
+    /// Every verified case, for a preparation that searches the workspace.
+    /// A case-scoped load has not verified every case, so it refuses.
+    fn all(&self) -> Result<&BTreeMap<Id, CaseReplay>, Failure> {
+        if self.complete {
+            Ok(&self.cases)
+        } else {
+            Err(integrity(
+                "A preparation searched other cases without loading the workspace.",
+            ))
+        }
+    }
+
     fn heads(&self) -> Vec<CaseHead> {
         self.cases
             .iter()

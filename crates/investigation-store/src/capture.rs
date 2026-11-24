@@ -223,6 +223,8 @@ impl<F: DurableFs> Store<F> {
             .commit_plan(
                 CommitPlan {
                     case_id: existing,
+                    // A prior declaration of the same attempt may be in any case.
+                    reads: Reads::Workspace,
                     event: EventInput {
                         actor: &declaration.actor,
                         command_id: &declaration.command_id,
@@ -239,7 +241,7 @@ impl<F: DurableFs> Store<F> {
                 &mut SystemClock,
                 &mut SystemIdSource,
                 |state, catalog, acceptance, visible| {
-                    if let Some(prior) = prior_declaration(visible, declaration) {
+                    if let Some(prior) = prior_declaration(visible, declaration)? {
                         return Err(prior);
                     }
                     current_name(declaration)?;
@@ -505,18 +507,18 @@ fn declaration_path(mut failure: Failure, new_case: bool) -> Failure {
 pub(super) fn recorded_attempts<'v>(
     visible: &Visible<'v>,
     identity: AttemptIdentity<'_>,
-) -> Vec<(&'v CaseReplay, &'v Record, AttemptPath)> {
-    visible
+) -> Result<Vec<(&'v CaseReplay, &'v Record, AttemptPath)>, Failure> {
+    Ok(visible
         .target
         .into_iter()
-        .chain(visible.others.cases.values())
+        .chain(visible.others.all()?.values())
         .flat_map(|case| case.state.records().map(move |record| (case, record)))
         .filter(|(_, record)| record.header.id.kind() == Kind::Run)
         .filter_map(|(case, record)| {
             let (recorded, path) = attempt::recorded_attempt(&record.body)?;
             (recorded == identity).then_some((case, record, path))
         })
-        .collect()
+        .collect())
 }
 
 /// Refusal of a capture or envelope for an attempt that the other path
@@ -564,22 +566,27 @@ pub(super) fn recorded_by_other_path(record: &Record, path: AttemptPath) -> Fail
 
 /// The same logical attempt declared earlier under another key or actor, or
 /// recorded by a producer-run envelope.
-fn prior_declaration(visible: Visible<'_>, declaration: &CaptureDeclaration) -> Option<Failure> {
+fn prior_declaration(
+    visible: Visible<'_>,
+    declaration: &CaptureDeclaration,
+) -> Result<Option<Failure>, Failure> {
     let identity = AttemptIdentity {
         producer: &declaration.producer,
         external_run_id: &declaration.external_run_id,
     };
-    let recorded = recorded_attempts(&visible, identity);
+    let recorded = recorded_attempts(&visible, identity)?;
     let Some((case, record, _)) = recorded
         .iter()
         .find(|(_, _, path)| *path == AttemptPath::Capture)
     else {
-        return recorded
+        return Ok(recorded
             .first()
-            .map(|(_, record, path)| recorded_by_other_path(record, *path));
+            .map(|(_, record, path)| recorded_by_other_path(record, *path)));
     };
     let capture = &record.body[attempt::CAPTURE_KEY];
-    let event = declaring_event(case, &case.state, record.header.id).ok()?;
+    let Ok(event) = declaring_event(case, &case.state, record.header.id) else {
+        return Ok(None);
+    };
     let mut failure = Failure::new(
         ErrorCode::IdempotencyKeyReused,
         "This producer already declared this external run ID under another command ID or actor. Resend that begin request to get its handle.",
@@ -596,7 +603,7 @@ fn prior_declaration(visible: Visible<'_>, declaration: &CaptureDeclaration) -> 
         "command_id": declaration.command_id,
         "actor": declaration.actor,
     }));
-    Some(failure)
+    Ok(Some(failure))
 }
 
 /// A new declaration's producer name follows the shared rule. Retries of a

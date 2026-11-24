@@ -485,6 +485,12 @@ impl<F: DurableFs> Store<F> {
         let receipt = self.commit_plan(
             CommitPlan {
                 case_id: manifest.case_id,
+                // A keyed acquisition may be recorded in any case.
+                reads: if manifest.source.acquisition_key.is_some() {
+                    Reads::Workspace
+                } else {
+                    Reads::Target
+                },
                 event: EventInput {
                     actor: &manifest.actor,
                     command_id: &manifest.command_id,
@@ -818,7 +824,7 @@ fn home_of<'v>(
     let target = case_id.zip(visible.target);
     let homes: Vec<(Id, &CaseReplay, Id)> = visible
         .others
-        .cases
+        .all()?
         .iter()
         .map(|(case_id, case)| (*case_id, case))
         .chain(target)

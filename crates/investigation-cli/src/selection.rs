@@ -210,27 +210,27 @@ pub(crate) fn select_actor(
     })
 }
 
+/// Resolve `--case` (or the only case) from the published case IDs. Nothing
+/// is verified here; the command verifies the case it then reads.
 pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<Id, Failure> {
-    let heads = store.list_cases()?;
+    let cases = store.case_ids()?;
     if let Some(selector) = selector {
-        return resolve_case_prefix(selector, heads.iter().map(|head| head.case_id));
+        return resolve_case_prefix(selector, cases.iter().copied());
     }
-    if let [head] = heads.as_slice() {
-        return Ok(head.case_id);
+    if let [case] = cases.as_slice() {
+        return Ok(*case);
     }
 
     let mut failure = Failure::new(
         ErrorCode::CaseRequired,
-        if heads.is_empty() {
+        if cases.is_empty() {
             "Create a case with investigation start QUESTION --attach FILE, or with investigation case new TITLE."
         } else {
             "Select a case with --case ID."
         },
     )
     .at("/case_id");
-    failure.error.actual = Some(json!(
-        heads.iter().map(|head| head.case_id).collect::<Vec<_>>()
-    ));
+    failure.error.actual = Some(json!(cases));
     let mut argv = workspace_argv(store.workspace());
     argv.extend(["onboard", "--format", "json"].map(str::to_owned));
     Err(failure.with_argv(argv))

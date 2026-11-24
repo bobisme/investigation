@@ -12,3 +12,4 @@
 | [0008](0008-method-pack-security.md) | Method pack security and policy inputs at promotion gates |
 | [0009](0009-incremental-vault-render.md) | Incremental vault render and the basis an unchanged note keeps |
 | [0010](0010-verified-head-checkpoints.md) | Verified-head checkpoints for journal verification |
+| [0011](0011-case-scoped-verification.md) | Case-scoped verification: a command verifies the cases it reads |

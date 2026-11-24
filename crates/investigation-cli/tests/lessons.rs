@@ -889,3 +889,82 @@ fn a_restricted_lesson_is_not_revealed_to_another_case() {
     assert_eq!(keys.len(), 2, "{cleared_read}");
     assert!(keys.contains(&&json!(secret_key)));
 }
+
+/// PERF.06 (ADR 0011): a consultation commit verifies its own case and the
+/// lesson's case, and no other. A tampered lesson case refuses it; a tampered
+/// case it does not read does not.
+#[test]
+fn a_consultation_verifies_the_lesson_case_and_no_other() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    run(root, &["init", ".", "--no-vault", "--json"], None, 0);
+    let source = create_case(root, "source", "Why is the stage slow?");
+    let reader = create_case(root, "reader", "Why does the batch stall?");
+    let bystander = create_case(root, "bystander", "Why is the queue long?");
+    let failed = record(
+        root,
+        "run",
+        AUTHOR,
+        &source,
+        json!([{"op":"run.record","payload":{
+            "intent":{"kind":"exploration","intent":"Trace one burst."},"producer":"agent:producer",
+            "artifact_refs":[],"execution_status":"failed","evidence_completeness":"missing",
+            "evidence_kind":"observational","variables_changed":[]}}]),
+        0,
+    )["created"][0]["id"]
+        .clone();
+    let retrospective = marked_retrospective(root, "retro", &source, &failed, "Scoped");
+    admit_first_lesson(root, "admit", &source, &retrospective);
+    let listed = run(
+        root,
+        &[
+            "--case",
+            reader.as_str().unwrap(),
+            "retrospective",
+            "--lessons",
+            "--json",
+        ],
+        None,
+        0,
+    );
+    let pointer = listed["lessons"][0]["pointer"].clone();
+    assert_eq!(pointer["source_case_id"], source);
+    let consult = |key: &str, exit: i32| {
+        record(
+            root,
+            key,
+            READER,
+            &reader,
+            json!([{"op":"lesson.consult","payload":{"lesson":pointer}}]),
+            exit,
+        )
+    };
+    let first_event = |case: &Value| {
+        root.join("state/cases")
+            .join(case.as_str().unwrap())
+            .join("events/000000000001.json")
+    };
+    let tamper = |case: &Value| {
+        let path = first_event(case);
+        let original = std::fs::read(&path).unwrap();
+        let mut event: Value = serde_json::from_slice(&original).unwrap();
+        event["request"]["input"]["operations"][0]["payload"]["title"] = json!("Edited?");
+        std::fs::remove_file(&path).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&event).unwrap()).unwrap();
+        original
+    };
+
+    // The lesson's case is read, so it is verified: an edit refuses.
+    let original = tamper(&source);
+    let refused = consult("consult-tampered", 6);
+    assert_eq!(refused["error"]["code"], "INTEGRITY_FAILURE");
+    std::fs::remove_file(first_event(&source)).unwrap();
+    std::fs::write(first_event(&source), original).unwrap();
+
+    // A case the consultation does not read is not verified by it; check is.
+    tamper(&bystander);
+    let receipt = consult("consult", 0);
+    assert_eq!(receipt["created"][0]["id"].as_str().unwrap()[..4], *"ann_");
+    let check = run(root, &["check", "--json"], None, 6);
+    assert_eq!(check["issues"][0]["code"], "EVENT_REQUEST_HASH_MISMATCH");
+}
