@@ -24,7 +24,7 @@ use investigation_core::{
 };
 use investigation_render::{
     RenderError,
-    human_files::{FileRead, read_one},
+    human_files::{FileRead, LiveStatus, read_live, read_one},
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes, store::ingest::IngestVersion};
 use serde_json::{Value, json};
@@ -381,28 +381,29 @@ pub(crate) fn list(store: &mut Store, global: &Global) -> Result<Output, Failure
             lines.push(format!("restricted  {}", snapshot.annotation.id));
             continue;
         }
-        let live = read_one(workspace, &snapshot.file.path)
-            .map_err(|error| read_failure(workspace, &snapshot.file.path, error))?;
-        let (status, detail) = match live {
-            FileRead::Bytes(bytes) => {
-                let digest = hash_bytes(&bytes);
-                if digest == snapshot.sha256 {
-                    counts[0] += 1;
-                    ("unchanged", json!(null))
-                } else {
-                    counts[1] += 1;
-                    ("changed", json!({"sha256":digest,"bytes":bytes.len()}))
-                }
+        // The same comparison the working vault's annotation note shows.
+        let live = read_live(workspace, &snapshot.file.path)
+            .map_err(|error| read_failure(workspace, &snapshot.file.path, error))?
+            .status(&snapshot.sha256);
+        let detail = match &live {
+            LiveStatus::Unchanged => {
+                counts[0] += 1;
+                json!(null)
             }
-            FileRead::Missing => {
+            LiveStatus::Changed { sha256, bytes } => {
+                counts[1] += 1;
+                json!({"sha256":sha256,"bytes":bytes})
+            }
+            LiveStatus::Missing => {
                 counts[2] += 1;
-                ("missing", json!(null))
+                json!(null)
             }
-            FileRead::Refused(reason) => {
+            LiveStatus::Refused(reason) => {
                 counts[3] += 1;
-                ("refused", json!({"reason":reason}))
+                json!({"reason":reason})
             }
         };
+        let status = live.word();
         lines.push(format!(
             "{status:<9}  {}  captured {}  annotation {}",
             snapshot.file.path, snapshot.sha256, snapshot.annotation.id

@@ -7,6 +7,9 @@
 //! | An export lists each included human file with its hash and role | `an_export_shows_the_captured_version_not_the_live_one` |
 //! | Human files are byte-identical before and after snapshot and export | both tests above |
 //!
+//! The working vault's annotation note shows the captured file and whether
+//! it still matches: `the_working_vault_note_shows_the_captured_file_and_whether_it_still_matches`.
+//!
 //! Also: `restricted_note_bytes_never_reach_a_non_restricted_export`,
 //! `links_special_files_and_paths_outside_the_human_folders_are_refused`,
 //! `existing_vault_mode_reads_only_inside_the_managed_prefix`,
@@ -269,6 +272,114 @@ fn a_record_keeps_the_cited_bytes_after_the_note_is_edited() {
     assert_eq!(casework.listing()["counts"]["missing"], 1);
     assert_eq!(casework.head(), head);
     assert_eq!(casework.run(&["check"], 0)["ok"], true);
+}
+
+/// The working vault's note of `annotation`, below the projection root.
+fn annotation_note(casework: &Casework, annotation: &str) -> String {
+    let (path, bytes) = files(&casework.projection)
+        .into_iter()
+        .find(|(path, _)| path.ends_with(&format!("{annotation}.md")))
+        .unwrap_or_else(|| panic!("no note for {annotation}"));
+    assert!(path.contains("Annotations/"), "{path}");
+    String::from_utf8(bytes).unwrap()
+}
+
+/// The `### Human file` section of a rendered annotation note.
+fn human_file_section(note: &str) -> &str {
+    let start = note
+        .find("### Human file")
+        .unwrap_or_else(|| panic!("no human file section in {note}"));
+    let rest = &note[start..];
+    let end = rest[1..].find("\n#").map_or(rest.len(), |at| at + 1);
+    &rest[..end]
+}
+
+#[test]
+fn the_working_vault_note_shows_the_captured_file_and_whether_it_still_matches() {
+    let casework = Casework::dedicated();
+    let original = b"# Plan\n\nCheck the proxy timeout first.\n";
+    casework.write("Notes/plan.md", original);
+    let snapshot = casework.snapshot("Notes/plan.md", &casework.case, &[]);
+    let annotation = snapshot["annotation_id"].as_str().unwrap().to_owned();
+    let captured = snapshot["sha256"].as_str().unwrap().to_owned();
+    let render = || casework.run(&["vault", "render"], 0);
+
+    render();
+    let note = annotation_note(&casework, &annotation);
+    let section = human_file_section(&note);
+    assert!(
+        section.contains("[[Notes/plan|Notes/plan.md]]"),
+        "{section}"
+    );
+    assert!(section.contains(&format!("`{captured}`")), "{section}");
+    assert!(
+        section.contains(&format!("`{}` bytes", original.len())),
+        "{section}"
+    );
+    assert!(section.contains("rendered: `unchanged`"), "{section}");
+    assert!(section.contains("vault note-snapshots"), "{section}");
+
+    // An edit is shown as changed with the live digest; rendering never
+    // writes the person's file and records nothing.
+    let head = casework.head();
+    let edited = b"# Plan\n\nThe timeout is 60 s.\n";
+    casework.write("Notes/plan.md", edited);
+    render();
+    assert_eq!(
+        fs::read(casework.projection.join("Notes/plan.md")).unwrap(),
+        edited
+    );
+    let note = annotation_note(&casework, &annotation);
+    let section = human_file_section(&note);
+    assert!(section.contains("rendered: `changed`"), "{section}");
+    assert!(section.contains(&format!("`{captured}`")), "{section}");
+    let listing = casework.listing();
+    let live = listing["snapshots"][0]["live_file"]["sha256"]
+        .as_str()
+        .unwrap();
+    assert!(section.contains(&format!("`{live}`")), "{section}");
+    assert_eq!(listing["snapshots"][0]["live"], "changed");
+    assert_eq!(casework.head(), head);
+    assert_eq!(casework.run(&["vault", "status"], 0)["drift_count"], 0);
+
+    // A removed file is missing.
+    fs::remove_file(casework.projection.join("Notes/plan.md")).unwrap();
+    render();
+    let note = annotation_note(&casework, &annotation);
+    assert!(
+        human_file_section(&note).contains("rendered: `missing`"),
+        "{note}"
+    );
+
+    // A link to a file outside the projection root is refused, never read.
+    let outside = casework.parent.join("outside.md");
+    fs::write(&outside, original).unwrap();
+    symlink(&outside, casework.projection.join("Notes/plan.md")).unwrap();
+    render();
+    let note = annotation_note(&casework, &annotation);
+    let section = human_file_section(&note);
+    assert!(section.contains("rendered: `refused`"), "{section}");
+    assert!(section.contains("symbolic link"), "{section}");
+    assert_eq!(listing_word(&casework), "refused");
+
+    // A review export shows the annotation but never the live comparison.
+    let out = casework.export("review-vault", "internal", "review");
+    for (path, bytes) in files(&out) {
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(!text.contains("### Human file"), "{path}");
+        assert!(
+            !text.contains("Live file when this note was rendered"),
+            "{path}"
+        );
+        assert!(!text.contains("vault note-snapshots"), "{path}");
+    }
+}
+
+fn listing_word(casework: &Casework) -> String {
+    casework.listing()["snapshots"][0]["live"]
+        .as_str()
+        .unwrap()
+        .to_owned()
 }
 
 #[test]
@@ -592,6 +703,18 @@ fn existing_vault_mode_reads_only_inside_the_managed_prefix() {
         "the snapshot changed nothing in the vault"
     );
     assert_eq!(casework.listing()["counts"]["unchanged"], 1);
+    // The annotation note links inside the prefix and compared the file
+    // there, not the person's note at the same path outside it.
+    casework.run(&["vault", "render"], 0);
+    let annotation = snapshot["annotation_id"].as_str().unwrap();
+    let note = annotation_note(&casework, annotation);
+    let section = human_file_section(&note);
+    assert!(
+        section.contains("[[Investigation/Notes/plan|Notes/plan.md]]"),
+        "{section}"
+    );
+    assert!(section.contains("rendered: `unchanged`"), "{section}");
+    let vault_before = files(&vault);
 
     // The archive reads the human folders through the prefix too.
     let archive = casework.export("workspace-archive", "restricted", "archive");

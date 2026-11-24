@@ -1,16 +1,22 @@
-//! The planner's only input from disk: one verified, immutable workspace snapshot.
+//! The planner's only input from disk: one verified, immutable workspace
+//! snapshot, and for the working vault the person-owned files its note
+//! snapshots captured, as read when the render began.
 
 use std::collections::BTreeMap;
 
 use investigation_core::{
+    human_file::NoteSnapshot,
     identity::Id,
     inherited_trust::SessionLedger,
     state::State,
     wire::{Digest, Snapshot},
 };
-use investigation_store::{Store, durable::DurableFs, journal::CaseReplay};
+use investigation_store::{Store, Workspace, durable::DurableFs, journal::CaseReplay};
 
-use crate::RenderError;
+use crate::{
+    RenderError,
+    human_files::{LiveFile, read_live},
+};
 
 /// Every case's verified state at its journal head, read in one pass.
 ///
@@ -32,6 +38,11 @@ pub struct CaseSnapshot {
     /// The verified hash of each journal event, by sequence from 1: the head
     /// the case had at that sequence.
     chain: Vec<Digest>,
+    /// The person-owned files this case's note snapshots captured, as read
+    /// for a working-vault render ([`VerifiedSnapshot::with_live_human_files`]),
+    /// by vault-relative path. `None` everywhere else, exports included: they
+    /// never compare with the live vault.
+    live_human_files: Option<BTreeMap<String, LiveFile>>,
 }
 
 impl VerifiedSnapshot {
@@ -96,7 +107,30 @@ impl VerifiedSnapshot {
     pub fn case(&self, case_id: Id) -> Option<&CaseSnapshot> {
         self.cases.get(&case_id)
     }
+
+    /// This snapshot with every file its note snapshots captured read from
+    /// the projection root as it is now ([`read_live`]: no link is followed
+    /// and nothing outside the root is read), for the working vault's
+    /// annotation notes. Only the working-vault render calls it, under the
+    /// render lock. A file that cannot be read is recorded as refused, so a
+    /// person's file never stops a render.
+    pub(crate) fn with_live_human_files(mut self, workspace: &Workspace) -> Self {
+        for case in self.cases.values_mut() {
+            let mut live = BTreeMap::new();
+            for snapshot in NoteSnapshot::all(&case.state) {
+                live.entry(snapshot.file.path.clone()).or_insert_with(|| {
+                    read_live(workspace, &snapshot.file.path)
+                        .unwrap_or_else(|_| LiveFile::Refused(UNREADABLE.to_owned()))
+                });
+            }
+            case.live_human_files = Some(live);
+        }
+        self
+    }
 }
+
+/// Why a person-owned file is shown as refused when reading it failed.
+const UNREADABLE: &str = "could not be read";
 
 impl CaseSnapshot {
     fn from_replay(case_id: Id, replay: CaseReplay) -> Self {
@@ -110,6 +144,7 @@ impl CaseSnapshot {
                 .collect(),
             head: replay.snapshot,
             state: replay.state,
+            live_human_files: None,
         }
     }
 
@@ -127,6 +162,7 @@ impl CaseSnapshot {
             state: self.state.retain(keep),
             sessions: self.sessions.clone(),
             chain: Vec::new(),
+            live_human_files: None,
         }
     }
 
@@ -137,6 +173,23 @@ impl CaseSnapshot {
 
     pub const fn state(&self) -> &State {
         &self.state
+    }
+
+    /// The person-owned file at `path` as the working-vault render read it:
+    /// `None` when this snapshot was not read for the working vault, and
+    /// `Some(None)` when the path is not one of its note snapshots.
+    pub fn live_human_file(&self, path: &str) -> Option<Option<&LiveFile>> {
+        self.live_human_files.as_ref().map(|live| live.get(path))
+    }
+
+    /// [`Self::live_human_file`] for the file `record` snapshots; `None`
+    /// also when `record` is not a note snapshot of a person-owned file.
+    pub fn live_human_file_for(
+        &self,
+        record: &investigation_core::state::Record,
+    ) -> Option<Option<&LiveFile>> {
+        let snapshot = NoteSnapshot::of(&self.state, record)?;
+        self.live_human_file(&snapshot.file.path)
     }
 
     /// Session reads by acceptance sequence; a sequence without one declared
@@ -181,6 +234,7 @@ impl VerifiedSnapshot {
                         state,
                         sessions: SessionLedger::new(),
                         chain: Vec::new(),
+                        live_human_files: None,
                     },
                 )
             })

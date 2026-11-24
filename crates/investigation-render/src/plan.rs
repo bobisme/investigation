@@ -81,7 +81,13 @@ use crate::{
 /// `/lustre/`, `/afs/`, `/net/`, `/workspace/`, `/workspaces/`, `/builds/`,
 /// `/cygdrive/`) and `file:` URLs, so a legacy title or identity holding one
 /// renders `[local path elided]` (bn-uar0).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v25";
+/// v26: an annotation that snapshots a person-owned file (`human_file`,
+/// W11.14) gains a `### Human file` section in the working vault: the
+/// captured path linked to the live file, the captured digest and size, and
+/// whether the live file was unchanged, changed, missing or refused when the
+/// note was rendered, as `vault note-snapshots` reports. Review exports do
+/// not show it (bn-e6uw).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v26";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

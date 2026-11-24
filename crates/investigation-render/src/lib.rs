@@ -359,7 +359,9 @@ pub(crate) fn render_locked<F: DurableFs>(
     mode: PublishMode,
     observe: &mut dyn FnMut(&PublishStep<'_>),
 ) -> Result<RenderReport, RenderError> {
-    let snapshot = VerifiedSnapshot::read(store)?;
+    // Annotation notes show whether each captured person-owned file still
+    // matches; only the working vault reads them, under the render lock.
+    let snapshot = VerifiedSnapshot::read(store)?.with_live_human_files(store.workspace());
     let workspace = store.workspace();
     let mut loaded = Manifest::load(workspace, lock)?;
     let projection = projection::Projection::of(workspace);

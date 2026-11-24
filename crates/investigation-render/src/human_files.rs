@@ -6,8 +6,9 @@
 //! - a workspace archive copies every file below the human folders
 //!   ([`read_all`]), listing what it leaves out and why;
 //! - `vault snapshot-note` captures one file a record relies on
-//!   ([`read_one`]) and `vault note-snapshots` compares it with the bytes
-//!   captured earlier.
+//!   ([`read_one`]), and `vault note-snapshots` and the working vault's
+//!   annotation notes compare it with the bytes captured earlier
+//!   ([`read_live`], [`LiveFile::status`]).
 //!
 //! The root is the dedicated vault's `vault/` or, in existing-vault mode, the
 //! managed prefix inside the person's vault ([`crate::projection`]). Every
@@ -21,9 +22,13 @@
 
 use std::{fs::File, io::Read, os::fd::OwnedFd};
 
-use investigation_core::human_file::{self, HUMAN_FOLDERS};
+use investigation_core::{
+    human_file::{self, HUMAN_FOLDERS},
+    wire::Digest,
+};
 use investigation_store::{
     Workspace,
+    journal::hash_bytes,
     store::archive::{MAX_HUMAN_NOTE_BYTES, MAX_HUMAN_NOTES, MAX_NOTE_SNAPSHOT_BYTES},
 };
 use rustix::{
@@ -61,6 +66,79 @@ pub enum FileRead {
     /// The path is a link, lies below one, is not a regular file or is over
     /// the limit; the reason is a fixed phrase.
     Refused(String),
+}
+
+/// A person-owned file as read now, for comparing with a note snapshot.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveFile {
+    /// A regular file within the limit: the digest and size of its bytes.
+    Read { sha256: Digest, bytes: u64 },
+    /// Nothing at the path.
+    Missing,
+    /// A link, special file or file over the limit; the reason is a fixed
+    /// phrase ([`FileRead::Refused`]).
+    Refused(String),
+}
+
+impl From<FileRead> for LiveFile {
+    fn from(read: FileRead) -> Self {
+        match read {
+            FileRead::Bytes(bytes) => Self::Read {
+                sha256: hash_bytes(&bytes),
+                bytes: bytes.len() as u64,
+            },
+            FileRead::Missing => Self::Missing,
+            FileRead::Refused(reason) => Self::Refused(reason),
+        }
+    }
+}
+
+/// How the live file compares with the bytes a snapshot captured: what
+/// `vault note-snapshots` reports and the working vault's annotation note
+/// shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LiveStatus {
+    /// The live file holds exactly the captured bytes.
+    Unchanged,
+    /// The live file holds other bytes: their digest and size.
+    Changed {
+        sha256: Digest,
+        bytes: u64,
+    },
+    Missing,
+    Refused(String),
+}
+
+impl LiveFile {
+    /// Compare with the `captured` digest.
+    pub fn status(&self, captured: &Digest) -> LiveStatus {
+        match self {
+            Self::Read { sha256, .. } if sha256 == captured => LiveStatus::Unchanged,
+            Self::Read { sha256, bytes } => LiveStatus::Changed {
+                sha256: sha256.clone(),
+                bytes: *bytes,
+            },
+            Self::Missing => LiveStatus::Missing,
+            Self::Refused(reason) => LiveStatus::Refused(reason.clone()),
+        }
+    }
+}
+
+impl LiveStatus {
+    /// `unchanged`, `changed`, `missing` or `refused`.
+    pub const fn word(&self) -> &'static str {
+        match self {
+            Self::Unchanged => "unchanged",
+            Self::Changed { .. } => "changed",
+            Self::Missing => "missing",
+            Self::Refused(_) => "refused",
+        }
+    }
+}
+
+/// Read the person-owned file at `path` ([`read_one`]) for comparison.
+pub fn read_live(workspace: &Workspace, path: &str) -> Result<LiveFile, RenderError> {
+    read_one(workspace, path).map(LiveFile::from)
 }
 
 /// The projection root, opened without following links; `None` when the

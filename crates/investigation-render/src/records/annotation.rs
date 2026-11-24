@@ -1,15 +1,20 @@
 //! Annotation notes: attributed notes about other records. An annotation
 //! carries no evidentiary weight; a note snapshot points at a retained
-//! artifact whose bytes stay in the store.
+//! artifact whose bytes stay in the store. In the working vault, a snapshot
+//! of a person-owned file (W11.14) also names the file, links to it and says
+//! whether it still holds the captured bytes, as `vault note-snapshots`
+//! reports; a review export never shows that comparison.
 
 use std::fmt::Write as _;
 
-use investigation_core::{coverage, selector_attest};
+use investigation_core::{PROGRAM_NAME, coverage, human_file::NoteSnapshot, selector_attest};
 
 use super::Facts;
 use crate::{
-    RenderError,
+    PlanPath, RenderError,
     evidence::prose,
+    human_files::LiveStatus,
+    layout,
     note::{text_at, wire_word},
     text::inline_code,
 };
@@ -32,6 +37,7 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
             f.out.push_str(
                 "  - The snapshot's bytes are retained in the store and are not copied into the vault.\n",
             );
+            human_file_section(f);
         }
         _ => {}
     }
@@ -65,6 +71,78 @@ pub(super) fn sections(f: &mut Facts<'_, '_, '_>) -> Result<(), RenderError> {
         f.text("Rationale", "selector_attestation.rationale");
     }
     Ok(())
+}
+
+/// The person-owned file a note snapshot captured and whether it still holds
+/// the captured bytes, as the working-vault render read it. Absent from a
+/// review export, whose snapshot never carries the live files.
+fn human_file_section(f: &mut Facts<'_, '_, '_>) {
+    let case = f.notes.case();
+    let Some(live) = case
+        .live_human_file_for(f.record)
+        .filter(|_| !f.notes.reviewing())
+    else {
+        return;
+    };
+    let Some(snapshot) = NoteSnapshot::of(case.state(), f.record) else {
+        return;
+    };
+    let path = &snapshot.file.path;
+    f.heading("Human file");
+    let shown = linkable(path).map_or_else(
+        || inline_code(path),
+        |planned| layout::wikilink(&planned, path),
+    );
+    let _ = writeln!(
+        f.out,
+        "- Captured from: {shown}, a person's file in {}; the renderer never writes it",
+        inline_code(&format!("{}/", snapshot.file.folder))
+    );
+    let size = snapshot.bytes.map_or_else(String::new, |bytes| {
+        format!(", {} bytes", inline_code(&bytes.to_string()))
+    });
+    let _ = writeln!(
+        f.out,
+        "- Captured bytes: {}{size}",
+        inline_code(snapshot.sha256.as_str())
+    );
+    let status = live.map(|file| file.status(&snapshot.sha256));
+    let detail = match &status {
+        Some(LiveStatus::Unchanged) => "it still holds the captured bytes".to_owned(),
+        Some(LiveStatus::Changed { sha256, bytes }) => format!(
+            "it now holds other bytes ({}, {} bytes). The annotation still relies on the \
+             captured bytes; to rely on the edited version, take a new snapshot",
+            inline_code(sha256.as_str()),
+            inline_code(&bytes.to_string())
+        ),
+        Some(LiveStatus::Missing) => "nothing is at that path".to_owned(),
+        Some(LiveStatus::Refused(reason)) => {
+            format!("it was not read: {}", inline_code(reason))
+        }
+        None => "it was not read".to_owned(),
+    };
+    let _ = writeln!(
+        f.out,
+        "- Live file when this note was rendered: {}: {detail}",
+        inline_code(status.as_ref().map_or("not_compared", LiveStatus::word))
+    );
+    let _ = writeln!(
+        f.out,
+        "- Compare it now: {}",
+        inline_code(&format!(
+            "{PROGRAM_NAME} --case {} vault note-snapshots --format json",
+            case.case_id()
+        ))
+    );
+}
+
+/// `path` as a planned path a wikilink may target: only identifier
+/// characters, as every generated link uses. Other paths are shown as code.
+fn linkable(path: &str) -> Option<PlanPath> {
+    path.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | ' '))
+        .then(|| PlanPath::new(path).ok())
+        .flatten()
 }
 
 /// A coverage plan's reading: the percentage only as its full statement,
