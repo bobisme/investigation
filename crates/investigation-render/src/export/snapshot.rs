@@ -1,11 +1,21 @@
 //! The one disk read of an export: a case pinned to one verified head.
 
+use std::collections::BTreeMap;
+
 use investigation_core::{
-    identity::Id,
+    evidence::{ArtifactBody, ObservationBasis, ObservationBody},
+    identity::{Id, Kind},
     state::State,
     wire::{Digest, ErrorCode, Failure, Snapshot},
 };
-use investigation_store::{Store, durable::DurableFs};
+use investigation_store::{
+    Store,
+    durable::DurableFs,
+    store::{
+        cited_lines::{CitedLines, CitedSpan},
+        evidence_read::MAX_EXCERPT_BYTES,
+    },
+};
 use serde_json::json;
 
 use crate::{CaseSnapshot, VerifiedSnapshot};
@@ -27,6 +37,7 @@ pub struct ExportSnapshot {
     pinned: VerifiedSnapshot,
     latest: Snapshot,
     today: Option<State>,
+    long_citations: BTreeMap<Id, (u64, u64)>,
 }
 
 impl ExportSnapshot {
@@ -41,11 +52,13 @@ impl ExportSnapshot {
         let head = store.case(case_id)?;
         let latest = head.snapshot.clone();
         let Some(sequence) = pin.sequence else {
+            let long_citations = long_citations(store, &head.state, None);
             return Ok(Self {
                 case_id,
                 pinned: VerifiedSnapshot::single_case(workspace_id, case_id, head),
                 latest,
                 today: None,
+                long_citations,
             });
         };
         let head_hash = match &pin.head_hash {
@@ -69,19 +82,23 @@ impl ExportSnapshot {
             head_hash,
         };
         if snapshot == latest {
+            let long_citations = long_citations(store, &head.state, None);
             return Ok(Self {
                 case_id,
                 pinned: VerifiedSnapshot::single_case(workspace_id, case_id, head),
                 latest,
                 today: None,
+                long_citations,
             });
         }
         let pinned = head.at_snapshot(&snapshot)?;
+        let long_citations = long_citations(store, &pinned.state, Some(&head.state));
         Ok(Self {
             case_id,
             pinned: VerifiedSnapshot::single_case(workspace_id, case_id, pinned),
             latest,
             today: Some(head.state),
+            long_citations,
         })
     }
 
@@ -115,4 +132,68 @@ impl ExportSnapshot {
     pub const fn historical(&self) -> bool {
         self.today.is_some()
     }
+
+    /// The one-based, inclusive lines each Observation cites in an Artifact
+    /// too large for one `evidence read`, keyed by Observation ID: where
+    /// `brief` locates its citation. Citations of smaller Artifacts, and
+    /// those that cannot be located, are absent.
+    pub const fn long_citations(&self) -> &BTreeMap<Id, (u64, u64)> {
+        &self.long_citations
+    }
+}
+
+/// Locate the citations of every Observation in `state` whose cited Artifact
+/// holds more bytes than one `evidence read` prints, the only ones a reader
+/// must read in line ranges. Disclosure follows `today` when the state is
+/// pinned before it, as in `brief`; restricted bytes are never opened.
+fn long_citations<F: DurableFs>(
+    store: &Store<F>,
+    state: &State,
+    today: Option<&State>,
+) -> BTreeMap<Id, (u64, u64)> {
+    let long = |reference| {
+        state
+            .revision(reference)
+            .and_then(|record| serde_json::from_value::<ArtifactBody>(record.body.clone()).ok())
+            .and_then(|body| body.size_bytes)
+            .is_some_and(|size| size > MAX_EXCERPT_BYTES as u64)
+    };
+    let bodies: Vec<(Id, ObservationBody)> = state
+        .records()
+        .filter(|record| record.header.id.kind() == Kind::Observation)
+        .filter_map(|record| {
+            ObservationBody::from_stored(&record.body)
+                .ok()
+                .map(|body| (record.header.id, body))
+        })
+        .collect();
+    let spans: Vec<(Id, CitedSpan<'_>)> = bodies
+        .iter()
+        .filter_map(|(id, body)| match &body.basis {
+            ObservationBasis::Source {
+                artifact_ref,
+                selector,
+                text_quote,
+            } if long(*artifact_ref) => Some((
+                *id,
+                CitedSpan {
+                    artifact: *artifact_ref,
+                    selector,
+                    quote: text_quote,
+                },
+            )),
+            _ => None,
+        })
+        .collect();
+    if spans.is_empty() {
+        return BTreeMap::new();
+    }
+    store
+        .cited_lines(state, today.unwrap_or(state), &spans)
+        .into_iter()
+        .filter_map(|(id, lines)| match lines {
+            CitedLines::Located { start, end } => Some((id, (start, end))),
+            _ => None,
+        })
+        .collect()
 }

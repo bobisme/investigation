@@ -368,6 +368,9 @@ pub struct ExportInput<'a> {
     pub retained: &'a Retained,
     /// The snapshot the export names and whether IDs are remapped.
     pub identity: &'a ExportIdentity,
+    /// The lines each Observation cites in an Artifact too large for one
+    /// `evidence read`; see [`ExportSnapshot::long_citations`].
+    pub long_citations: &'a std::collections::BTreeMap<Id, (u64, u64)>,
     /// What the kind reported leaving out; see [`Self::omit`].
     pub(crate) omissions: &'a Omissions,
 }
@@ -779,6 +782,7 @@ pub fn plan_export_remap(
         inclusion: &inclusion,
         retained,
         identity: &identity,
+        long_citations: snapshot.long_citations(),
         omissions: &omissions,
     };
     let mut files = PlanBuilder::new(generation.clone());

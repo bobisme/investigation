@@ -53,12 +53,15 @@ use investigation_core::{
     blindspot_review, brief_select,
     classification::Field,
     command::RevisionRef,
+    evidence::{ArtifactAvailability, ArtifactBody, ObservationBasis, ObservationBody},
     freshness::dependency_edges,
     gap_rules::{Gap, GapInventory, GapStatus, enumerate_gaps},
     identity::{Id, Kind},
     next_rank::{NextResponse, Recommendation, rank_next},
+    retention_ops::bytes_withdrawn,
     state::{Record, State},
 };
+use investigation_store::store::evidence_read::MAX_EXCERPT_BYTES;
 use serde_json::Value;
 
 use super::{ExportInput, ExportRenderer, Omission, Omitted, dependent_rule};
@@ -84,7 +87,10 @@ use crate::{
 /// v3 (bn-1i89): the frontier, next and retrospective commands are pinned to
 /// the export's snapshot like every other case read, and no longer say they
 /// read the current head.
-pub const VERSION: &str = "inv.export.handoff.v3";
+/// v4 (bn-3fbv): escalation gives each named Artifact and Observation the
+/// runnable `evidence read` of its bytes, `--whole` or the cited `--lines`,
+/// instead of a selector file the reader had to write.
+pub const VERSION: &str = "inv.export.handoff.v4";
 
 /// The compact agent brief.
 pub const BRIEF_FILE: &str = "handoff-brief.md";
@@ -100,6 +106,9 @@ const MAX_HIGHLIGHTS: usize = 5;
 
 /// Lessons and residual unknowns listed from the current retrospective.
 const MAX_LESSONS: usize = 5;
+
+/// Cited line ranges listed under one Artifact; the rest are counted.
+const MAX_RANGES: usize = 5;
 
 /// Gap rules that report a comparison cell a decision still needs.
 const COMPARISON_RULES: [&str; 3] = [
@@ -342,6 +351,93 @@ impl<'i, 'a> Story<'i, 'a> {
             "{PROGRAM_NAME} --case {} {tail}",
             self.input.snapshot().case_id
         ))
+    }
+
+    /// An included Artifact revision whose retained bytes `evidence read`
+    /// can print in this workspace, with its recorded body.
+    fn readable(&self, reference: RevisionRef) -> Option<(&'a Record, ArtifactBody)> {
+        let record = self.state.revision(reference)?;
+        let body: ArtifactBody = serde_json::from_value(record.body.clone()).ok()?;
+        (self.input.includes(record)
+            && body.availability == ArtifactAvailability::Retained
+            && !bytes_withdrawn(self.state, None, reference.id))
+        .then_some((record, body))
+    }
+
+    /// Whether `body`'s bytes fit one `evidence read --whole`.
+    fn fits_one_read(body: &ArtifactBody) -> bool {
+        body.size_bytes
+            .is_some_and(|size| size <= MAX_EXCERPT_BYTES as u64)
+    }
+
+    /// The Artifact an Observation cites, when it cites one.
+    fn cited_artifact(record: &Record) -> Option<RevisionRef> {
+        match ObservationBody::from_stored(&record.body).ok()?.basis {
+            ObservationBasis::Source { artifact_ref, .. } => Some(artifact_ref),
+            ObservationBasis::Assertion { .. } => None,
+        }
+    }
+
+    /// What escalation prints under a named Artifact to read its bytes:
+    /// labels with an `evidence read` tail, or a sentence when no read can
+    /// run as written. Empty for every other kind.
+    fn evidence_reads(&self, id: Id) -> Vec<(String, Option<String>)> {
+        let Some(record) = self.state.current(id) else {
+            return Vec::new();
+        };
+        match id.kind() {
+            Kind::Artifact => {
+                let Some((_, body)) = self.readable(record.reference()) else {
+                    return vec![(
+                        "original bytes: not retained in this workspace, or withdrawn".to_owned(),
+                        None,
+                    )];
+                };
+                if Self::fits_one_read(&body) {
+                    return vec![(
+                        "original bytes".to_owned(),
+                        Some(format!("evidence read {id} --whole")),
+                    )];
+                }
+                let ranges: BTreeSet<(u64, u64)> = self
+                    .state
+                    .records()
+                    .filter(|cites| cites.header.id.kind() == Kind::Observation)
+                    .filter(|cites| self.input.includes(cites))
+                    .filter(|cites| Self::cited_artifact(cites).is_some_and(|at| at.id == id))
+                    .filter_map(|cites| self.input.long_citations.get(&cites.header.id))
+                    .copied()
+                    .collect();
+                if ranges.is_empty() {
+                    return vec![(
+                        format!(
+                            "original bytes: {} bytes, more than one read prints and no cited line \
+                             is located; read them in line ranges with --lines START:END",
+                            body.size_bytes.unwrap_or_default()
+                        ),
+                        None,
+                    )];
+                }
+                let mut reads: Vec<_> = ranges
+                    .iter()
+                    .take(MAX_RANGES)
+                    .map(|(start, end)| {
+                        (
+                            cited_lines(*start, *end),
+                            Some(format!("evidence read {id} --lines {start}:{end}")),
+                        )
+                    })
+                    .collect();
+                if ranges.len() > MAX_RANGES {
+                    reads.push((
+                        format!("… and {} more cited ranges", ranges.len() - MAX_RANGES),
+                        None,
+                    ));
+                }
+                reads
+            }
+            _ => Vec::new(),
+        }
     }
 
     fn brief(&self) -> String {
@@ -1500,8 +1596,9 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
                 format!("explain <ID> {pin}"),
             ),
             (
-                "Original bytes behind an Artifact",
-                "evidence read <ARTIFACT_ID> --selector-file selector.json".to_owned(),
+                "Original bytes behind an Artifact, for one at most 32768 bytes (Escalation gives \
+                 the exact read of each Artifact and Observation named)",
+                "evidence read <ARTIFACT_ID> --whole".to_owned(),
             ),
             ("Structural checks", format!("blindspots {pin}")),
             ("Every gap", format!("frontier {pin}")),
@@ -1625,9 +1722,27 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
             }
             return self.out;
         }
+        // The Artifact each named Observation cites joins escalation, which
+        // gives the read of its bytes.
+        let cited: Vec<Id> = self
+            .named
+            .iter()
+            .filter(|id| id.kind() == Kind::Observation)
+            .filter_map(|id| story.state.current(*id))
+            .filter_map(Story::cited_artifact)
+            .filter(|reference| {
+                story
+                    .state
+                    .revision(*reference)
+                    .is_some_and(|record| story.input.includes(record))
+            })
+            .map(|reference| reference.id)
+            .collect();
+        self.named.extend(cited);
         self.out.push_str(
-            "Every record named above, from its title to the evidence behind it, at this \
-             snapshot. Add --format json for machine-readable output.\n",
+            "Every record named above, and the Artifact each named Observation cites, from its \
+             title to the evidence behind it, at this snapshot; an Artifact also gives the read \
+             of its bytes as retained today. Add --format json for machine-readable output.\n",
         );
         for id in &self.named {
             let _ = write!(self.out, "\n- {}\n", inline_code(&id.to_string()));
@@ -1639,11 +1754,31 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
             ] {
                 let _ = writeln!(self.out, "  - {depth}: {}", story.command(&tail));
             }
+            // Bytes are read as retained today; `evidence read` takes no pin.
+            for (label, tail) in story.evidence_reads(*id) {
+                match tail {
+                    Some(tail) => {
+                        let _ = writeln!(self.out, "  - {label}: {}", story.command(&tail));
+                    }
+                    None => {
+                        let _ = writeln!(self.out, "  - {label}");
+                    }
+                }
+            }
         }
         if self.named.is_empty() {
             self.out.push_str("\n- No record is named above.\n");
         }
         self.out
+    }
+}
+
+/// "cited line N" or "cited lines N-M".
+fn cited_lines(start: u64, end: u64) -> String {
+    if start == end {
+        format!("cited line {start}")
+    } else {
+        format!("cited lines {start}-{end}")
     }
 }
 

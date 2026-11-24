@@ -523,7 +523,19 @@ fn every_command_a_handoff_prints_runs_as_written_and_gives_the_pinned_view() {
         }
         for text in &files {
             assert!(!text.contains("current head"), "{audience}: {text}");
+            assert!(!text.contains("--selector-file"), "{audience}: {text}");
         }
+        // Escalation gives runnable reads of the bytes behind named records;
+        // Scenario A's sources each fit one read.
+        let reads: Vec<&String> = printed
+            .iter()
+            .filter(|command| command.contains(" evidence read art_"))
+            .collect();
+        assert!(!reads.is_empty(), "{audience}: no evidence read");
+        assert!(
+            reads.iter().all(|command| command.ends_with(" --whole")),
+            "{reads:#?}"
+        );
         // What every pinned read gives before later commits.
         let runnable: Vec<Vec<&str>> = printed
             .iter()
@@ -548,6 +560,14 @@ fn every_command_a_handoff_prints_runs_as_written_and_gives_the_pinned_view() {
             // As written: the text form, or JSON where it says so.
             let (code, stdout) = invoke(&workspace, args, None);
             assert_eq!(code, 0, "{name}\n{stdout}");
+            if args.get(2) == Some(&"evidence") {
+                // Bytes are read as retained today: the same bytes as before.
+                let after = json(&workspace, args, 0);
+                for field in ["artifact", "selector", "excerpt"] {
+                    assert_eq!(after[field], before[field], "{name}: {field}");
+                }
+                continue;
+            }
             if !args.contains(&"--snapshot") {
                 continue;
             }
@@ -574,6 +594,144 @@ fn every_command_a_handoff_prints_runs_as_written_and_gives_the_pinned_view() {
             }
             assert_eq!(old, new, "{name}");
         }
+    }
+}
+
+/// A source larger than one `evidence read` (32768 bytes): the handoff gives
+/// the Observation's cited lines as a runnable `--lines` read, never
+/// `--whole`, and a remapped handoff gives no read at all.
+#[test]
+fn a_handoff_reads_a_large_source_by_its_cited_lines() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let mut log = String::new();
+    for line in 1..=2000 {
+        if line == 1500 {
+            log.push_str("request 1500 waited 28 seconds for a pooled connection\n");
+        } else {
+            log.push_str(&format!(
+                "request {line} finished in 2 ms after a routine wait of no consequence\n"
+            ));
+        }
+    }
+    assert!(log.len() > 32_768);
+    fs::write(root.join("big.log"), &log).unwrap();
+    fs::write(root.join("small.log"), "request 7 waited 3 seconds\n").unwrap();
+    json(
+        root,
+        &[
+            "init",
+            "./ws",
+            "--actor",
+            "agent:snapshot-pin",
+            "--no-vault",
+            "--import-root",
+            ".",
+        ],
+        0,
+    );
+    let workspace = root.join("ws");
+    let started = json(
+        &workspace,
+        &[
+            "--actor",
+            "agent:snapshot-pin",
+            "start",
+            "Why did requests wait?",
+            "--attach",
+            "../big.log",
+        ],
+        0,
+    );
+    let case = started["created"][0]["id"].as_str().unwrap().to_owned();
+    assert!(case.starts_with("case_"), "{started}");
+    let added = json(
+        &workspace,
+        &[
+            "--actor",
+            "agent:snapshot-pin",
+            "--case",
+            &case,
+            "source",
+            "add",
+            "../small.log",
+        ],
+        0,
+    );
+    let original = |response: &Value| {
+        response["items"][0]["artifact_id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let (big, small) = (original(&started), original(&added));
+    for (source, quote) in [(&big, "waited 28 seconds"), (&small, "waited 3 seconds")] {
+        json(
+            &workspace,
+            &[
+                "--actor",
+                "agent:snapshot-pin",
+                "--case",
+                &case,
+                "observe",
+                &format!("The log reports that a request {quote}"),
+                "--source",
+                source,
+                "--quote",
+                quote,
+            ],
+            0,
+        );
+    }
+    let files = export(&workspace, &case, &root.join("internal"), "internal", false);
+    let mut printed: Vec<String> = files.iter().flat_map(|text| commands(text)).collect();
+    printed.sort();
+    printed.dedup();
+    let reads: Vec<&String> = printed
+        .iter()
+        .filter(|command| command.contains(" evidence read art_"))
+        .collect();
+    // The quote in the large source, at line 1500, read through the text the
+    // source was decoded to; the small source whole.
+    let lines: Vec<&&String> = reads
+        .iter()
+        .filter(|command| command.ends_with(" --lines 1500:1500"))
+        .collect();
+    assert_eq!(lines.len(), 1, "{reads:#?}");
+    // The small source, or the text it was decoded to, is read whole.
+    let small_text = added["items"][0]["derivative_id"]
+        .as_str()
+        .unwrap_or(&small);
+    assert!(
+        reads.iter().any(|command| (command.contains(small.as_str())
+            || command.contains(small_text))
+            && command.ends_with(" --whole")),
+        "{reads:#?}"
+    );
+    for command in &reads {
+        let args: Vec<&str> = command.split(' ').skip(1).collect();
+        let (code, stdout) = invoke(&workspace, &args, None);
+        assert_eq!(code, 0, "{command}\n{stdout}");
+        if command.ends_with(" --lines 1500:1500") {
+            assert!(
+                stdout.contains("request 1500 waited 28 seconds"),
+                "{stdout}"
+            );
+        }
+    }
+    // No `--whole` of the large source or its text: one read cannot print
+    // either. The small source is read whole.
+    let text = started["items"][0]["derivative_id"].as_str().unwrap();
+    let whole_big: Vec<&&String> = reads
+        .iter()
+        .filter(|command| command.ends_with(" --whole"))
+        .filter(|command| command.contains(big.as_str()) || command.contains(text))
+        .collect();
+    assert!(whole_big.is_empty(), "{whole_big:#?}");
+    // A remapped handoff names no workspace read.
+    for text in export(&workspace, &case, &root.join("remapped"), "internal", true) {
+        assert!(!text.contains("evidence read art_"), "{text}");
+        assert!(!text.contains("--lines"), "{text}");
     }
 }
 
