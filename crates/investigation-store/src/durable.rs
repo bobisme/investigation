@@ -32,6 +32,12 @@ impl FileIdentity {
         self.size
     }
 
+    /// The file's last modification time in whole seconds since the Unix
+    /// epoch, as the filesystem reports it.
+    pub fn modified_seconds(&self) -> i64 {
+        self.modified.0
+    }
+
     /// A stable text form, for a disposable cache entry naming this file.
     pub(crate) fn key(&self) -> String {
         format!(

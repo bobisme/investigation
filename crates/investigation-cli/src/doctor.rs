@@ -5,7 +5,8 @@
 //! constants, capture support from [`CaptureCapabilities::current`], selector
 //! validation from [`SELECTOR_SUPPORT`], bounds from [`LIMITS`] and [`EXPANSION`], filesystem
 //! support from [`FilesystemInfo::support`], index, staging and lock state
-//! from [`Store::check`] and vault state from [`vault_status`]. Doctor writes
+//! from [`Store::check`], archive pins from [`Store::archive_pin_status`]
+//! and vault state from [`vault_status`]. Doctor writes
 //! nothing, probes no external tool and sends nothing anywhere. A refused or
 //! broken workspace is a finding, not a failure, so the report always
 //! arrives; each finding names its repair.
@@ -13,6 +14,7 @@
 use std::{
     env,
     path::{Path, PathBuf},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use investigation_core::{
@@ -39,7 +41,10 @@ use investigation_store::{
     limits::{EXPANSION, LIMITS},
     projection::INDEX_USER_VERSION,
     selectors::SELECTOR_SUPPORT,
-    store::Severity as CheckSeverity,
+    store::{
+        Severity as CheckSeverity,
+        pins::{PinInfo, PinStatus},
+    },
     workspace::{
         FilesystemDetector, FilesystemInfo, NativeFilesystemDetector, RECORD_FAMILY, SupportLevel,
         WORKSPACE_VERSION, WorkspaceError,
@@ -52,7 +57,8 @@ use crate::{Global, Output, display_argv, scope_argv};
 
 pub(crate) const AFTER_HELP: &str = "\
 doctor reports versions, capabilities, enforced limits, filesystem support and
-the selected workspace's index, staging, lock and vault state. Each finding
+the selected workspace's index, staging, lock, archive pin and vault state.
+Each finding
 names a repair. It writes nothing, probes no external tool and uploads nothing;
 a workspace it cannot use is reported as a finding with exit status 0.
 Examples:
@@ -482,6 +488,7 @@ fn workspace_health(
             if report.structurally_valid {
                 value["method_packs"] = method_packs(&mut store, findings);
             }
+            value["archive_pins"] = archive_pins(&mut store, findings, unix_now());
         }
         Err(failure) if failure.error.code == ErrorCode::WorkspaceBusy => {
             value["lock"] = json!("busy");
@@ -595,6 +602,111 @@ fn method_packs(store: &mut Store, findings: &mut Vec<Finding>) -> Value {
         }
     }
     json!({"pinned": pinned, "unavailable": unavailable})
+}
+
+/// Digests listed per pin; the counts are always complete.
+const MAX_HELD_LISTED: usize = 50;
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| {
+            i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+        })
+}
+
+/// Every archive pin, live or stale, with its heads, blob count, age and
+/// what it holds back from reclamation; stale pins are one finding.
+fn archive_pins(store: &mut Store, findings: &mut Vec<Finding>, now: i64) -> Value {
+    // The holder view needs verified heads; without them, list the pins.
+    let status = store.archive_pin_status().or_else(|_| {
+        store.archive_pins().map(|pins| {
+            pins.into_iter()
+                .map(|pin| PinStatus {
+                    holds_back: (!pin.live).then(Vec::new),
+                    pin,
+                })
+                .collect::<Vec<_>>()
+        })
+    });
+    let Ok(status) = status else {
+        return json!(null);
+    };
+    let pins: Vec<Value> = status.iter().map(|entry| pin_value(entry, now)).collect();
+    let stale: Vec<&PinInfo> = status
+        .iter()
+        .map(|entry| &entry.pin)
+        .filter(|pin| !pin.live)
+        .collect();
+    if !stale.is_empty() {
+        let listed: Vec<String> = stale
+            .iter()
+            .map(|pin| {
+                let held = if pin.readable {
+                    format!("{} case head(s), {} blob(s)", pin.heads.len(), pin.blobs)
+                } else {
+                    "record unreadable".to_owned()
+                };
+                format!("{} ({held}, {})", pin.id, age_text(pin.recorded_at, now))
+            })
+            .collect();
+        findings.push(
+            Finding::new(
+                Severity::Warning,
+                "ARCHIVE_PIN_STALE",
+                format!(
+                    "{} archive pin record(s) are stale: {}. No process holds them, so they protect no blob and hold nothing back from reclamation; an archive stopped without releasing its pin.",
+                    stale.len(),
+                    listed.join("; ")
+                ),
+                "Release the stale records; a live pin is never released. The next archive or reclamation would also remove them.",
+            )
+            .argv(argv(&["archive", "pins", "release", "--stale"])),
+        );
+    }
+    json!({
+        "live": status.iter().filter(|entry| entry.pin.live).count(),
+        "stale": stale.len(),
+        "pins": pins,
+    })
+}
+
+fn pin_value(entry: &PinStatus, now: i64) -> Value {
+    let pin = &entry.pin;
+    let holds_back = entry.holds_back.as_ref().map_or_else(
+        || json!({"every_blob": true, "reason": "the live pin's record cannot be read, so it holds every blob"}),
+        |held| {
+            json!({
+                "blobs": held.len(),
+                "bytes": held.iter().filter_map(|blob| blob.size_bytes).sum::<u64>(),
+                "digests": held.iter().take(MAX_HELD_LISTED).map(|blob| &blob.digest).collect::<Vec<_>>(),
+                "lists_capped_at": MAX_HELD_LISTED,
+            })
+        },
+    );
+    json!({
+        "id": pin.id,
+        "state": if pin.live { "live" } else { "stale" },
+        "heads": pin.heads,
+        "blobs": pin.blobs,
+        "readable": pin.readable,
+        "recorded_at_unix_seconds": pin.recorded_at,
+        "age_seconds": pin.recorded_at.map(|at| now.saturating_sub(at).max(0)),
+        "holds_back": holds_back,
+    })
+}
+
+fn age_text(recorded_at: Option<i64>, now: i64) -> String {
+    let Some(at) = recorded_at else {
+        return "age unknown".to_owned();
+    };
+    let seconds = now.saturating_sub(at).max(0);
+    match seconds {
+        0..60 => format!("{seconds}s old"),
+        60..3600 => format!("{}m old", seconds / 60),
+        3600..86_400 => format!("{}h old", seconds / 3600),
+        _ => format!("{}d old", seconds / 86_400),
+    }
 }
 
 fn vault(store: &mut Store, findings: &mut Vec<Finding>) -> Value {
@@ -729,6 +841,13 @@ fn doctor_output(report: Report) -> Output {
             workspace["index"].as_str().unwrap_or("unknown"),
             workspace["lock"].as_str().unwrap_or("unknown"),
         ));
+        let pins = &workspace["archive_pins"];
+        if pins["pins"].as_array().is_some_and(|pins| !pins.is_empty()) {
+            text.push_str(&format!(
+                "\narchive pins  {} live  {} stale",
+                pins["live"], pins["stale"]
+            ));
+        }
         if let Some(state) = workspace["vault"]["state"].as_str() {
             text.push_str(&format!(
                 "\nvault  {state}  {}",

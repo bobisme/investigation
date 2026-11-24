@@ -224,3 +224,64 @@ fn reclamation_is_refused_while_the_format_on_disk_forbids_writes() {
     let done = store.reclaim_blobs(&digests).unwrap();
     assert_eq!(done[0].outcome, ReclaimOutcome::Reclaimed);
 }
+
+#[test]
+fn pin_status_names_what_a_live_pin_holds_back_and_a_stale_pin_holds_nothing() {
+    let temporary = tempfile::tempdir().unwrap();
+    let (root, case, digest) = workspace(&temporary);
+    // An archive is running, and another one stopped without releasing:
+    // both records name the digest; only the live one holds it.
+    let mut archiver = open(&root);
+    let (_state, live) = archiver.read_canonical().unwrap();
+    let live_id = live.id().unwrap().to_owned();
+    let (_state, dead) = archiver.read_canonical().unwrap();
+    let dead_id = dead.id().unwrap().to_owned();
+    drop(dead);
+
+    let mut store = open(&root);
+    // Nothing is withdrawn yet: records hold the bytes, not the pins.
+    let status = store.archive_pin_status().unwrap();
+    assert!(
+        status
+            .iter()
+            .all(|entry| entry.holds_back == Some(Vec::new()))
+    );
+
+    let operations: Vec<_> = references(&mut store, case, &digest)
+        .iter()
+        .map(|holder| {
+            json!({"op":"artifact.expire","payload":{
+                "artifact_ref": holder, "reason":"owner_request",
+                "rationale":"The owner asked for this capture to be withdrawn."
+            }})
+        })
+        .collect();
+    let request = json!({
+        "schema_version":"inv.command.v1", "command_id":"expire-pinned", "actor":ACTOR,
+        "case_id":case, "preconditions":[], "operations":operations,
+    });
+    store
+        .record(&serde_json::to_vec(&request).unwrap())
+        .unwrap();
+
+    let status = store.archive_pin_status().unwrap();
+    let find = |id: &str| status.iter().find(|entry| entry.pin.id == id).unwrap();
+    let held = find(&live_id).holds_back.clone().unwrap();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].digest, digest);
+    assert_eq!(held[0].size_bytes, Some(18));
+    assert!(find(&live_id).pin.live);
+    let stale = find(&dead_id);
+    assert!(!stale.pin.live, "{stale:?}");
+    assert_eq!(stale.pin.blobs, find(&live_id).pin.blobs, "{stale:?}");
+    assert_eq!(stale.holds_back, Some(Vec::new()));
+
+    // What the live pin holds back is exactly what reclamation waits on.
+    let digests = BTreeSet::from([digest.clone()]);
+    let waiting = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(waiting[0].outcome, ReclaimOutcome::Waiting);
+    archiver.release_pin(live).unwrap();
+    assert_eq!(store.release_stale_pins().unwrap(), [dead_id]);
+    let done = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(done[0].outcome, ReclaimOutcome::Reclaimed);
+}

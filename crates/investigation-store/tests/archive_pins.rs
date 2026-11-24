@@ -11,7 +11,10 @@ use std::{
 };
 
 use investigation_core::wire::{Digest, ErrorCode};
-use investigation_store::{Store, Workspace};
+use investigation_store::{
+    Store, Workspace,
+    store::pins::{PinRelease, is_pin_name},
+};
 use serde_json::json;
 
 const HOLDER_ENV: &str = "INVESTIGATION_PIN_HOLDER_WORKSPACE";
@@ -209,4 +212,146 @@ fn a_killed_archive_leaves_no_permanent_pin_and_the_next_run_succeeds() {
     assert!(blob(&root, &digest).is_file());
     store.release_pin(pin).unwrap();
     assert!(store.archive_pins().unwrap().is_empty());
+}
+
+/// Every file below `root` with its bytes, for "nothing was written".
+fn tree(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(&directory).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path.clone());
+                found.push((path, Vec::new()));
+            } else {
+                let bytes = fs::read(&path).unwrap();
+                found.push((path, bytes));
+            }
+        }
+    }
+    found.sort();
+    found
+}
+
+#[test]
+fn pin_names_are_never_reused_and_earlier_numbered_records_are_still_handled() {
+    let (_temporary, root, _digest) = workspace();
+    let mut store = open(&root);
+    let mut seen = Vec::new();
+    // Each pin dies without release; the next creation expires its record.
+    // Earlier builds then reused archive-0001 for every new pin.
+    for _ in 0..3 {
+        let (_state, pin) = store.read_canonical().unwrap();
+        let id = pin.id().unwrap().to_owned();
+        assert!(is_pin_name(&id), "{id}");
+        assert_eq!(id.len(), "archive-".len() + 32, "{id}");
+        assert!(!seen.contains(&id), "{id} was reused");
+        seen.push(id);
+        drop(pin);
+    }
+    let pins = store.archive_pins().unwrap();
+    assert_eq!(pins.len(), 1);
+    assert_eq!(pins[0].id, seen[2]);
+    assert!(!pins[0].live && pins[0].readable);
+    assert!(pins[0].recorded_at.is_some());
+
+    // A record an earlier build named by number is listed and released;
+    // other files in the directory are never touched.
+    let directory = root.join("local/pins");
+    fs::write(directory.join("archive-0001.json"), b"{}\n").unwrap();
+    fs::write(directory.join("notes.json"), b"{}\n").unwrap();
+    let pins = store.archive_pins().unwrap();
+    let legacy = pins.iter().find(|pin| pin.id == "archive-0001").unwrap();
+    assert!(!legacy.live && !legacy.readable);
+    assert_eq!(pins.len(), 2);
+    let mut released = store.release_stale_pins().unwrap();
+    released.sort();
+    assert_eq!(released, ["archive-0001".to_owned(), seen[2].clone()]);
+    assert!(directory.join("notes.json").is_file());
+    for name in [
+        "archive-0001",
+        "archive-",
+        "archive-ABCDEF",
+        "../investigation",
+        "notes",
+    ] {
+        assert_eq!(is_pin_name(name), name == "archive-0001", "{name}");
+    }
+}
+
+#[test]
+fn a_named_release_refuses_a_live_pin_releases_nothing_and_is_retry_safe() {
+    let (_temporary, root, digest) = workspace();
+    let mut archiver = open(&root);
+    let (_state, live) = archiver.read_canonical().unwrap();
+    let live_id = live.id().unwrap().to_owned();
+    let (_state, dead) = archiver.read_canonical().unwrap();
+    let dead_id = dead.id().unwrap().to_owned();
+    drop(dead);
+
+    let mut store = open(&root);
+    let failure = store
+        .release_named_pins(&[dead_id.clone(), live_id.clone()])
+        .unwrap_err();
+    assert_eq!(failure.error.code, ErrorCode::GateFailed);
+    assert_eq!(failure.error.actual.unwrap()["live"], json!([live_id]));
+    // All or none: the stale pin named beside it is still there.
+    assert_eq!(store.archive_pins().unwrap().len(), 2);
+    // --stale never touches the live pin, which still protects the blob.
+    assert_eq!(
+        store.release_stale_pins().unwrap(),
+        std::slice::from_ref(&dead_id)
+    );
+    let pins = store.archive_pins().unwrap();
+    assert_eq!(pins.len(), 1);
+    assert!(pins[0].live);
+    let refused = store.remove_blob_unless_pinned(&digest).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed);
+
+    // A name whose record is gone is reported, so a repeat succeeds.
+    assert_eq!(
+        store
+            .release_named_pins(std::slice::from_ref(&dead_id))
+            .unwrap(),
+        [(dead_id, PinRelease::AlreadyAbsent)]
+    );
+    for bad in ["../investigation.toml", "archive-0001.json", "pin"] {
+        let failure = store.release_named_pins(&[bad.to_owned()]).unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::InvalidInput, "{bad}");
+    }
+
+    // Once its archive has ended the pin is stale and a named release frees it.
+    drop(live);
+    assert_eq!(
+        store
+            .release_named_pins(std::slice::from_ref(&live_id))
+            .unwrap(),
+        [(live_id, PinRelease::Released)]
+    );
+    assert!(store.archive_pins().unwrap().is_empty());
+}
+
+#[test]
+fn opening_and_reading_never_sweep_a_stale_pin() {
+    let (_temporary, root, _digest) = workspace();
+    let mut store = open(&root);
+    let (_state, pin) = store.read_canonical().unwrap();
+    let id = pin.id().unwrap().to_owned();
+    drop(pin);
+    // Settle the disposable caches a first check writes.
+    assert!(open(&root).check().unwrap().integrity_ok());
+    let before = tree(&root);
+
+    let mut reader = open(&root);
+    assert!(reader.check().unwrap().integrity_ok());
+    let listed = reader.archive_pins().unwrap();
+    let status = reader.archive_pin_status().unwrap();
+    drop(reader);
+
+    assert_eq!(tree(&root), before, "a read changed the workspace");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, id);
+    assert!(!listed[0].live);
+    assert_eq!(status[0].holds_back, Some(Vec::new()));
 }

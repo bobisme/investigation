@@ -121,6 +121,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // render its vault; nothing is written outside PATH.
     ("archive restore", Effect::Write),
     ("archive fork", Effect::Write),
+    // Removes stale archive pin records below local/pins; never a live pin.
+    ("archive pins release", Effect::Write),
     // Moves observed files into Notes/Reconciled/ or local/conflicts/,
     // updates the manifest and renders; propose-change also records a
     // change. --dry-run checks and prints only.

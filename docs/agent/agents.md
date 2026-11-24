@@ -1,4 +1,4 @@
-<!-- inv.agent-instructions.v2 -->
+<!-- inv.agent-instructions.v3 -->
 # Investigation workflow: use it when uncertainty accumulates
 
 Use `investigation` when a question needs several observations, the
@@ -15,8 +15,13 @@ Pass `--workspace ./casework` to later commands unless you run them inside
 that directory. Writes need `--actor`, the AGENT variable, or the actor that
 `init --actor` recorded on this machine; a receipt says when it used that one. Resume with
 `investigation brief`. Skim with `investigation show ID --depth summary`; use
-`--depth full` or `investigation evidence read ARTIFACT --selector-file FILE`
-only when needed. A synopsis never replaces its sources. If several cases
+`--depth full` or read a source only when needed:
+`investigation evidence read ARTIFACT --whole` prints a source of up to 32 KiB.
+Read a larger one in line ranges of its text derivative, the `derivative_id`
+its receipt lists: `investigation evidence read DERIVATIVE --lines 1:200`.
+Read an exact span with
+`investigation evidence read ARTIFACT --selector-file FILE`. Every read checks
+the bytes against their digest. A synopsis never replaces its sources. If several cases
 exist, select one with `--case ID`; never guess a case from its title.
 
 Core model:
@@ -73,6 +78,16 @@ Do not edit generated vault notes to change accepted state. Put freeform
 material in the vault's Notes or Inbox folders and change canonical records
 only through typed operations. When data is corrected or retracted, recheck
 the comparisons, conclusions and decisions that rest on it.
+
+Workspace care: `investigation doctor` reports workspace health with a repair
+for each finding. `investigation migrate` is a dry run that prints a plan ID;
+the same command with `--apply --plan ID` runs that plan after a verified
+backup. Reads never migrate. To withdraw a source's availability, preview with
+`investigation retention preview ARTIFACT`, commit `artifact.expire`, and only
+then remove the stored bytes with `retention reclaim ARTIFACT`; records and
+history stay. An archive pin left by an archive that stopped holds
+nothing; `investigation archive pins release --stale` frees it and never
+releases a live one.
 
 If stuck: `investigation guide stalled` and `investigation frontier`. If
 auditing: `investigation blindspots`, then `investigation guide blindspot`.

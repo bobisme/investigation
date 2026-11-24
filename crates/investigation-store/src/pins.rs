@@ -9,8 +9,18 @@
 //! blobs: the kernel drops it when the holder exits, is killed or crashes,
 //! so a dead archive can never leave a permanent pin. A record whose lock
 //! is free is *stale*; it protects nothing, and the next pin creation or
-//! reclamation expires it. Only files this module created (named
-//! `archive-<digits>.json` below `local/pins/`) are ever removed.
+//! reclamation expires it, and `archive pins release` removes it on
+//! request. Only files this module created (named `archive-<name>.json`
+//! below `local/pins/`, see [`is_pin_name`]) are ever removed.
+//!
+//! Pin names are never reused: each is drawn from a fresh UUIDv7, so a
+//! report, log or refusal that named a dead pin never comes to name a later
+//! one. Records named `archive-<digits>` by earlier builds are still read,
+//! listed and expired.
+//!
+//! Nothing sweeps stale records when a store is opened: opening is part of
+//! every read, and reads change no file (W11.15). A stale record is removed
+//! by the next pin creation, by a reclamation, or by `archive pins release`.
 //!
 //! Pin creation, stale expiry and reclamation all run under the workspace
 //! coordination lock, so a reclamation either sees a pin or runs wholly
@@ -30,7 +40,7 @@ use std::{
 };
 
 use investigation_core::{
-    identity::Id,
+    identity::{Id, IdSource as _, SystemIdSource},
     wire::{Digest, ErrorCode, Failure},
 };
 use serde::{Deserialize, Serialize};
@@ -46,6 +56,9 @@ pub const PIN_DIRECTORY: &str = "local/pins";
 const RECORD_SCHEMA: &str = "inv.archive-pin.v1";
 const PREFIX: &str = "archive-";
 const SUFFIX: &str = ".json";
+/// Fresh names drawn for one pin before giving up; a UUIDv7 collision
+/// within one workspace means something else is writing names like ours.
+const NAME_ATTEMPTS: usize = 8;
 /// Largest pin record read back; a larger one is treated as unreadable and
 /// protects every blob.
 const MAX_RECORD_BYTES: u64 = 256 << 20;
@@ -94,7 +107,7 @@ impl std::fmt::Debug for ArchivePin {
 pub(crate) type LivePin = (String, Option<BTreeSet<Digest>>);
 
 impl ArchivePin {
-    /// The pin's name (`archive-0001`), or `None` in a dry run, which writes
+    /// The pin's name (`archive-` and 32 hex digits), or `None` in a dry run, which writes
     /// nothing and so pins nothing.
     pub fn id(&self) -> Option<&str> {
         self.id.as_deref()
@@ -120,6 +133,59 @@ pub struct PinInfo {
     pub live: bool,
     pub heads: Vec<PinnedHead>,
     pub blobs: usize,
+    /// Whether the record could be read. A live pin whose record cannot be
+    /// read holds every blob; `heads` and `blobs` are then empty and zero.
+    pub readable: bool,
+    /// When the record was written, in seconds since the Unix epoch, from
+    /// the filesystem's modification time; `None` when it cannot be read.
+    /// The record is never rewritten, so this is when the pin was taken.
+    pub recorded_at: Option<i64>,
+}
+
+/// What releasing one named pin did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PinRelease {
+    /// The stale record was removed.
+    Released,
+    /// No record has this name: an earlier release or expiry removed it.
+    AlreadyAbsent,
+}
+
+/// One stored blob that nothing but live archive pins holds: a reclamation
+/// would remove it if those pins ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HeldBack {
+    pub digest: Digest,
+    pub size_bytes: Option<u64>,
+}
+
+/// A pin with what it holds back from reclamation now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PinStatus {
+    #[serde(flatten)]
+    pub pin: PinInfo,
+    /// Stored bytes whose every reference is withdrawn and that this pin,
+    /// alone or with other live pins, keeps from reclamation. Always empty
+    /// for a stale pin: no process holds it, so it holds nothing back.
+    /// `None` for a live pin whose record cannot be read, which holds every
+    /// blob.
+    pub holds_back: Option<Vec<HeldBack>>,
+}
+
+/// Whether `name` is a pin name this module creates or created: `archive-`
+/// followed by 32 lowercase hex digits, or by decimal digits (earlier
+/// builds). Nothing else below `local/pins/` is ever touched.
+pub fn is_pin_name(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix(PREFIX) else {
+        return false;
+    };
+    let legacy = !rest.is_empty() && rest.bytes().all(|byte| byte.is_ascii_digit());
+    let current = rest.len() == 32
+        && rest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+    legacy || current
 }
 
 impl<F: DurableFs> Store<F> {
@@ -166,8 +232,9 @@ impl<F: DurableFs> Store<F> {
         let mut bytes =
             serde_json::to_vec(&record).map_err(|error| integrity(error.to_string()))?;
         bytes.push(b'\n');
-        for number in 1u32.. {
-            let id = format!("{PREFIX}{number:04}");
+        let mut names = SystemIdSource;
+        for _ in 0..NAME_ATTEMPTS {
+            let id = format!("{PREFIX}{:032x}", names.next_uuid().as_u128());
             let path = pin_path(&id);
             let mut file = match self.fs.create_private(&path) {
                 Ok(file) => file,
@@ -201,7 +268,10 @@ impl<F: DurableFs> Store<F> {
                 }
             };
         }
-        unreachable!("the pin numbers are not exhausted")
+        Err(Failure::new(
+            ErrorCode::WorkspaceBusy,
+            "Every fresh archive pin name was already taken below local/pins; retry the identical request.",
+        ))
     }
 
     /// End a pin: remove its record and release its lock. Safe to skip: a
@@ -227,14 +297,149 @@ impl<F: DurableFs> Store<F> {
         for (id, path) in self.pin_files()? {
             let live = self.pin_is_live(&path)?;
             let record = self.read_record(&path);
-            found.push(PinInfo {
-                id,
-                live,
-                heads: record.as_ref().map(|r| r.heads.clone()).unwrap_or_default(),
-                blobs: record.as_ref().map_or(0, |r| r.blobs.len()),
-            });
+            found.push(self.pin_info(id, &path, live, record.as_ref()));
         }
         Ok(found)
+    }
+
+    fn pin_info(&self, id: String, path: &Path, live: bool, record: Option<&PinRecord>) -> PinInfo {
+        PinInfo {
+            id,
+            live,
+            heads: record.map(|r| r.heads.clone()).unwrap_or_default(),
+            blobs: record.map_or(0, |r| r.blobs.len()),
+            readable: record.is_some(),
+            recorded_at: self
+                .fs
+                .identity(path)
+                .ok()
+                .map(|identity| identity.modified_seconds()),
+        }
+    }
+
+    /// Every pin record, as [`Self::archive_pins`], with the stored bytes
+    /// each live pin holds back from reclamation now. Writes nothing; pins
+    /// and obligations are read under one coordination lock.
+    pub fn archive_pin_status(&mut self) -> Result<Vec<PinStatus>, Failure> {
+        let _lock = self.coordinate()?;
+        let mut pins = Vec::new();
+        for (id, path) in self.pin_files()? {
+            let live = self.pin_is_live(&path)?;
+            let record = self.read_record(&path);
+            let info = self.pin_info(id, &path, live, record.as_ref());
+            let held = record.map(|record| record.blobs.into_iter().collect::<BTreeSet<_>>());
+            pins.push((info, held));
+        }
+        let asked: BTreeSet<Digest> = pins
+            .iter()
+            .filter(|(info, _)| info.live)
+            .filter_map(|(_, held)| held.as_ref())
+            .flatten()
+            .cloned()
+            .collect();
+        let obligations = if asked.is_empty() {
+            Vec::new()
+        } else {
+            self.retention_obligations_locked(&asked, &BTreeSet::new())?
+        };
+        // Held back: stored, withdrawn everywhere, and nothing but live
+        // pins between the bytes and a reclamation.
+        let only_pinned: Vec<_> = obligations
+            .iter()
+            .filter(|entry| {
+                entry.stored
+                    && !entry.withdrawn.is_empty()
+                    && !entry.held_by_records()
+                    && !entry.unsettled_staging
+                    && entry.staged_copies.is_empty()
+                    && !entry.archive_pins.is_empty()
+            })
+            .collect();
+        Ok(pins
+            .into_iter()
+            .map(|(pin, held)| {
+                let holds_back = match (pin.live, held) {
+                    (false, _) => Some(Vec::new()),
+                    (true, None) => None,
+                    (true, Some(_)) => Some(
+                        only_pinned
+                            .iter()
+                            .filter(|entry| entry.archive_pins.contains(&pin.id))
+                            .map(|entry| HeldBack {
+                                digest: entry.digest.clone(),
+                                size_bytes: entry.size_bytes,
+                            })
+                            .collect(),
+                    ),
+                };
+                PinStatus { pin, holds_back }
+            })
+            .collect())
+    }
+
+    /// Remove the named pin records, all or none: every name must be a pin
+    /// name and no named pin may be live. A live pin is refused with
+    /// `GATE_FAILED` naming it, and nothing is removed; a name with no
+    /// record is reported as already absent, so a retry succeeds.
+    pub fn release_named_pins(
+        &mut self,
+        names: &[String],
+    ) -> Result<Vec<(String, PinRelease)>, Failure> {
+        if let Some(bad) = names.iter().find(|name| !is_pin_name(name)) {
+            let mut failure = Failure::new(
+                ErrorCode::InvalidInput,
+                format!(
+                    "{bad} is not an archive pin name. Pin names are archive- followed by hex or decimal digits, as doctor lists them."
+                ),
+            )
+            .at("PIN");
+            failure.error.actual = Some(serde_json::json!({"pin": bad}));
+            return Err(failure);
+        }
+        let _lock = self.coordinate()?;
+        let mut live = Vec::new();
+        for name in names {
+            if self.pin_is_live(&pin_path(name))? {
+                live.push(name.clone());
+            }
+        }
+        if !live.is_empty() {
+            let mut failure = Failure::new(
+                ErrorCode::GateFailed,
+                format!(
+                    "{} {} live: a running archive holds {} and needs every blob {} names until it finishes. Nothing was released; the pin ends when its archive ends.",
+                    live.join(", "),
+                    if live.len() == 1 { "is" } else { "are" },
+                    if live.len() == 1 { "it" } else { "them" },
+                    if live.len() == 1 { "it" } else { "each" },
+                ),
+            )
+            .at("PIN");
+            failure.error.actual = Some(serde_json::json!({"live": live}));
+            return Err(failure);
+        }
+        let mut outcome = Vec::new();
+        let mut removed = false;
+        for name in names {
+            if outcome.iter().any(|(done, _)| done == name) {
+                continue;
+            }
+            let release = match self.fs.remove(&pin_path(name)) {
+                Ok(()) => {
+                    removed = true;
+                    PinRelease::Released
+                }
+                Err(error) if error.kind() == io::ErrorKind::NotFound => PinRelease::AlreadyAbsent,
+                Err(error) => return Err(io_failure(error)),
+            };
+            outcome.push((name.clone(), release));
+        }
+        if removed {
+            self.fs
+                .sync_dir(Path::new(PIN_DIRECTORY))
+                .map_err(io_failure)?;
+        }
+        Ok(outcome)
     }
 
     /// Remove the records of abandoned pins, those no process holds, and
@@ -302,9 +507,7 @@ impl<F: DurableFs> Store<F> {
             .filter_map(|path| {
                 let name = path.file_name()?.to_str()?;
                 let id = name.strip_suffix(SUFFIX)?;
-                let digits = id.strip_prefix(PREFIX)?;
-                (!digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit()))
-                    .then(|| (id.to_owned(), path.clone()))
+                is_pin_name(id).then(|| (id.to_owned(), path.clone()))
             })
             .collect())
     }

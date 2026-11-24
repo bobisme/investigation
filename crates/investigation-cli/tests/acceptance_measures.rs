@@ -361,6 +361,10 @@ const NOT_CASE_TARGETED: &[(&str, &str)] = &[
         "retires finalized capture staging and records nothing",
     ),
     (
+        "archive pins release",
+        "removes stale archive pin records below local/pins, machine-local bookkeeping; it records nothing and names no case",
+    ),
+    (
         "vault render",
         "regenerates the vault projection and records nothing; the fuzz runs it and checks every journal is unchanged",
     ),

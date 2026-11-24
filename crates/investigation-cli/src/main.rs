@@ -474,7 +474,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
         Commands::Doctor(args) => doctor::run(args, &global),
         Commands::Config(command) => config::run(&global, command),
         Commands::Integration(command) => integration::run(command),
-        Commands::Archive(command) => archive::run(command),
+        Commands::Archive(command) => archive::run(command, &global),
         Commands::Obsidian(command) => obsidian_setup::run(command),
         Commands::Version => Ok(version_output(format!(
             "{PROGRAM_NAME} {}",
