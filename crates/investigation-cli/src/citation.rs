@@ -26,8 +26,57 @@ use investigation_store::{
 use serde_json::{Map, Value, json};
 
 /// How to cite, stated once at the top of a brief that shows citations.
-pub(crate) const GUIDE: &str = "Cite evidence as FILE line N \"QUOTE\" from an observation's \
-source title and citation. Only quote_state verified was found in the retained source bytes.";
+pub(crate) const GUIDE: &str = "Cite each quote alone, exactly as its cite line prints it. Never merge lines into a range or list.";
+
+/// The cite line of one evidence item: `"FILE" line N "QUOTE"`, with FILE
+/// its source title. Only for current evidence in use with a verified
+/// quote, or a verified line selector without a quote, whose lines were
+/// located in the source bytes; any other citation stays with its item,
+/// which states why it is not current.
+pub(crate) fn cite(item: &Value) -> Option<String> {
+    use investigation_core::authored_text::quote;
+    let current = item["freshness"]["effective"]
+        .as_str()
+        .or_else(|| item["freshness"]["state"].as_str())
+        == Some("current");
+    if !current || item["evidentiary_use"]["state"] != "in_use" {
+        return None;
+    }
+    let citation = &item["citation"];
+    let state = citation["quote_state"].as_str()?;
+    let (start, end) = (
+        citation["lines"]["start"].as_u64()?,
+        citation["lines"]["end"].as_u64()?,
+    );
+    let title = item["source_title"].as_str()?;
+    let at = if start == end {
+        format!("line {start}")
+    } else {
+        format!("lines {start}-{end}")
+    };
+    match (state, citation["quote"].as_str()) {
+        ("verified", Some(exact)) => Some(format!("{} {at} {}", quote(title), quote(exact))),
+        ("not_applicable", None) => Some(format!("{} {at}", quote(title))),
+        _ => None,
+    }
+}
+
+/// The `citations` section of a brief: one cite line per evidence item that
+/// has one, in the order the evidence is listed. It is filled before the
+/// evidence, so every quote and line fits even when evidence items do not.
+pub(crate) fn section(evidence: &[Value]) -> Vec<Value> {
+    evidence
+        .iter()
+        .filter_map(|item| {
+            Some(json!({
+                "observation": item["id"].clone(),
+                "lines": item["citation"]["lines"].clone(),
+                "cite": cite(item)?,
+                "content_trust": "untrusted_evidence",
+            }))
+        })
+        .collect()
+}
 
 /// The citation of every Observation `brief` can list, keyed by its ID.
 pub(crate) fn citations(

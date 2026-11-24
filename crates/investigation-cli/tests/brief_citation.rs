@@ -223,7 +223,10 @@ fn a_successor_brief_gives_each_verified_quote_with_its_source_line() {
 
     let brief = work.brief(&[]);
     let guide = brief["citation_guide"].as_str().unwrap();
-    assert!(guide.contains("FILE line N"), "{guide}");
+    assert!(
+        guide.contains("Never merge lines into a range or list"),
+        "{guide}"
+    );
     let citation = &item(&brief, &decisive)["citation"];
     assert_eq!(citation["quote_state"], "verified");
     assert_eq!(
@@ -240,15 +243,42 @@ fn a_successor_brief_gives_each_verified_quote_with_its_source_line() {
     let citation = &item(&brief, &spanning)["citation"];
     assert_eq!(citation["quote"], passage);
     assert_eq!(citation["lines"], json!({"start":6,"end":7}));
+    // Citation first: one ready cite per verified quote, before the evidence.
+    let cites: Vec<&Value> = brief["citations"].as_array().unwrap().iter().collect();
+    assert_eq!(cites.len(), 2, "{}", brief["citations"]);
+    assert_eq!(cites[0]["observation"], decisive.as_str());
+    assert_eq!(
+        cites[0]["cite"],
+        "\"Initial attachment / source.txt\" line 4 \"2024  6.1  (new site, provisional; data not yet quality checked)\""
+    );
+    assert_eq!(cites[1]["lines"], json!({"start":6,"end":7}));
+    assert!(
+        cites[1]["cite"]
+            .as_str()
+            .unwrap()
+            .contains("\" lines 6-7 \"")
+    );
+    assert_eq!(cites[0]["content_trust"], "untrusted_evidence");
 
     // The compact index stays an index: no citation and no guide.
     let compact = work.brief(&["--level", "compact"]);
     assert!(item(&compact, &decisive).get("citation").is_none());
     assert!(compact.get("citation_guide").is_none());
+    assert_eq!(compact["citations"], json!([]), "{compact}");
 
-    // The text a successor reads states how to cite, then each quote and line.
+    // The text a successor reads states how to cite, then one cite line per
+    // quote, ready to copy, before the evidence; the evidence item keeps its
+    // line and does not repeat the quote.
     let text = work.brief_text();
     assert!(text.contains(guide), "{text}");
+    let cite = format!(
+        "cite {decisive} [untrusted_evidence]: \"Initial attachment / source.txt\" line 4 \"2024  6.1  (new site, provisional; data not yet quality checked)\""
+    );
+    let at = |needle: &str| {
+        text.find(needle)
+            .unwrap_or_else(|| panic!("{needle}\n{text}"))
+    };
+    assert!(at(&cite) < at("\nevidence  "), "{text}");
     let lines = text_of(&text, &decisive);
     assert!(
         lines.contains(
@@ -258,10 +288,7 @@ fn a_successor_brief_gives_each_verified_quote_with_its_source_line() {
         "{lines:#?}"
     );
     assert!(
-        lines.contains(
-            &"  quote [untrusted_evidence]: \"2024  6.1  (new site, provisional; data not yet quality checked)\""
-                .to_owned()
-        ),
+        !lines.iter().any(|line| line.starts_with("  quote ")),
         "{lines:#?}"
     );
     let lines = text_of(&text, &spanning);
@@ -272,11 +299,10 @@ fn a_successor_brief_gives_each_verified_quote_with_its_source_line() {
         "{lines:#?}"
     );
     assert!(
-        lines.contains(
-            &"  quote [untrusted_evidence]: \"can change after quality checks.\\nWe do not describe a reading\""
-                .to_owned()
-        ),
-        "{lines:#?}"
+        text.contains(&format!(
+            "cite {spanning} [untrusted_evidence]: \"Initial attachment / source.txt\" lines 6-7 \"can change after quality checks.\\nWe do not describe a reading\""
+        )),
+        "{text}"
     );
 
     // The JSON stays within its budget with the citations in it.
@@ -359,6 +385,12 @@ fn a_verified_line_selector_without_a_quote_gives_its_own_lines() {
     assert_eq!(citation["lines"], json!({"start":4,"end":4}));
     assert_eq!(citation["quote_state"], "not_applicable");
     assert!(citation.get("quote").is_none(), "{citation}");
+    // Its cite line names the file and line, with no quote.
+    assert_eq!(
+        brief["citations"],
+        json!([{"observation":measured,"lines":{"start":4,"end":4},
+            "cite":"\"Initial attachment / source.txt\" line 4","content_trust":"untrusted_evidence"}])
+    );
     let lines = text_of(&work.brief_text(), &measured);
     assert!(
         lines
@@ -426,7 +458,16 @@ fn a_citation_of_withdrawn_evidence_says_so_on_its_line() {
     });
     let args = work.args(&["record", "--input", "-", "--format", "json"]);
     ok(&work.root, &args, Some(&command));
-    let lines = text_of(&work.brief_text(), &observation);
+    // Withdrawn evidence gets no ready cite line; its item keeps the quote
+    // and says why it is not current.
+    assert_eq!(work.brief(&[])["citations"], json!([]));
+    let text = work.brief_text();
+    assert!(!text.contains("\ncite "), "{text}");
+    let lines = text_of(&text, &observation);
+    assert!(
+        lines.iter().any(|line| line.starts_with("  quote ")),
+        "{lines:#?}"
+    );
     let citation = lines
         .iter()
         .find(|line| line.starts_with("  citation  "))
@@ -437,4 +478,47 @@ fn a_citation_of_withdrawn_evidence_says_so_on_its_line() {
         "{citation}"
     );
     assert!(citation.contains("  use withdrawn  "), "{citation}");
+}
+
+#[test]
+fn a_budget_that_cuts_evidence_keeps_every_cite_line() {
+    let work = FirstUse::start();
+    let quotes = [
+        ("Station history", 1),
+        ("2019  5.6  (old site)", 2),
+        ("2020  5.9  (old site)", 3),
+        (
+            "2024  6.1  (new site, provisional; data not yet quality checked)",
+            4,
+        ),
+        ("Provisional values can change after quality checks.", 6),
+        (
+            "We do not describe a reading as a record until the series is adjusted.",
+            7,
+        ),
+    ];
+    let ids: Vec<String> = quotes
+        .iter()
+        .map(|(quote, line)| work.observe(&format!("Source line {line} reads as quoted"), quote))
+        .collect();
+    let brief = work.brief(&["--max-bytes", "8192"]);
+    assert!(brief.to_string().len() <= 8192);
+    let cut = brief["omitted_items"]["evidence"].as_u64().unwrap();
+    assert!(
+        cut >= 3,
+        "the budget cuts evidence: {}",
+        brief["omitted_items"]
+    );
+    assert_eq!(brief["omitted_items"]["citations"], 0);
+    let cites = brief["citations"].as_array().unwrap();
+    assert_eq!(cites.len(), quotes.len(), "{}", brief["citations"]);
+    for ((cite, (quote, line)), id) in cites.iter().zip(quotes).zip(&ids) {
+        assert_eq!(cite["observation"], id.as_str());
+        assert!(source_line(line).contains(quote));
+        // One file, one line and one quote per cite, never a merged range.
+        assert_eq!(
+            cite["cite"],
+            format!("\"Initial attachment / source.txt\" line {line} \"{quote}\"")
+        );
+    }
 }

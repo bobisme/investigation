@@ -40,9 +40,13 @@ use --format json for every field.
 
 At standard and deep level, each observation with a quote or line selector
 shows its citation: the line or lines in its source, the exact quote and its
-quote_state.
-Cite it as FILE line N \"QUOTE\". Only quote_state verified was found in the
-retained source bytes; any other state is shown as recorded.
+quote_state. The citations section comes before the evidence and lists one
+cite line per verified quote of current evidence in use, FILE line N \"QUOTE\"
+with its source title as FILE, so a budget that cuts evidence items keeps
+every quote and line. Cite each quote on its own, exactly as its cite line
+prints it; never merge lines into a range or a list. Only quote_state
+verified was found in the retained source bytes; any other state is shown as
+recorded.
 
 --level sets depth, not size. compact is an index of outcomes and evidence with
 their status, freshness, caveat and contradiction. standard adds bounded
@@ -349,6 +353,10 @@ pub fn brief(
     if let Some(label) = &inputs.historical {
         output["historical_read"] = label.clone();
     }
+    // Citation first among the evidence: every verified quote and its line,
+    // after the outcomes and open questions and before the evidence items
+    // that carry them, so a budget that cuts evidence keeps them.
+    let citations = crate::citation::section(&evidence);
     let mut sections = vec![
         Section::new(
             "deeper_read_commands",
@@ -356,6 +364,7 @@ pub fn brief(
         ),
         Section::new("outcomes", outcomes),
         Section::new("unresolved_questions", questions),
+        Section::new("citations", citations),
         Section::new("full_outcomes", full_outcomes),
         Section::new("evidence", evidence),
         inquiries,

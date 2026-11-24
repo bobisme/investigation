@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 use crate::Output;
 
 /// Version of the agent instructions (the `agents` snippet and the `skill`).
-pub(crate) const AGENT_INSTRUCTIONS_VERSION: &str = "inv.agent-instructions.v4";
+pub(crate) const AGENT_INSTRUCTIONS_VERSION: &str = "inv.agent-instructions.v5";
 
 /// Version of the producer onboarding page.
 pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v2";
@@ -231,6 +231,16 @@ mod tests {
             "skill",
             "inv.agent-instructions.v4",
             "sha256:dd5db4e4ac55a8eb53dd4218bad2f2e59be79100b3c24be9e0f7716b9bc28ba8",
+        ),
+        (
+            "agents",
+            "inv.agent-instructions.v5",
+            "sha256:aa52aeb92bde4abfd54ff1e9a2f3b04caa757bd9ef7d8cb418d369d0b8dec665",
+        ),
+        (
+            "skill",
+            "inv.agent-instructions.v5",
+            "sha256:626cafeb6da23388a60c920a77ea3cb05426e782d7fe9279c4ae2d95d613906a",
         ),
         (
             "producer",

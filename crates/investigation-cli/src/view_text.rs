@@ -764,6 +764,35 @@ pub(crate) fn brief(view: &Value) -> String {
     if let Some(guide) = view["citation_guide"].as_str() {
         out.push(guide.to_owned());
     }
+    // Cite lines first, ready to copy; the evidence below keeps the rest.
+    let cited: Vec<&str> = view["citations"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry["observation"].as_str())
+        .collect();
+    let citations = view["citations"].as_array().map_or(&[][..], Vec::as_slice);
+    let omitted_citations = view["omitted_items"]["citations"].as_u64().unwrap_or(0);
+    if !citations.is_empty() || omitted_citations > 0 {
+        out.push(fields([
+            "citations".to_owned(),
+            format!("shown {}", citations.len()),
+            if omitted_citations > 0 {
+                format!("omitted {omitted_citations}")
+            } else {
+                String::new()
+            },
+        ]));
+        for entry in citations {
+            if let (Some(id), Some(cite)) = (entry["observation"].as_str(), entry["cite"].as_str())
+            {
+                out.push(format!(
+                    "cite {id} [{}]: {cite}",
+                    investigation_core::authored_text::UNTRUSTED_EVIDENCE
+                ));
+            }
+        }
+    }
     let trust = &view["inherited_trust"];
     if let Value::Object(levels) = &trust["items_by_level"] {
         let mut parts = vec!["inherited_trust".to_owned()];
@@ -813,6 +842,18 @@ pub(crate) fn brief(view: &Value) -> String {
             },
         ]));
         for item in items {
+            // A quote its cite line already printed is not repeated.
+            if *name == "evidence"
+                && item["id"].as_str().is_some_and(|id| cited.contains(&id))
+                && item["citation"].get("quote").is_some()
+            {
+                let mut item = item.clone();
+                if let Some(citation) = item["citation"].as_object_mut() {
+                    citation.remove("quote");
+                }
+                record(&item, &mut out);
+                continue;
+            }
             record(item, &mut out);
         }
     }

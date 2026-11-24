@@ -182,4 +182,21 @@ Run 1 and run 2 successors that used `brief` saw observation titles but not the 
 
 Run 3 measured `9ea7b46` (this change on main `e12063e`) with the same runner, cases, seed, models and budgets ([help-only/run3](../training/first-use/help-only/run3/)). Every handoff workspace with observations gave line-located citations in its brief. Successor citation did not rise: 2/12 in the docs arm and 6/12 in help-only, against 5 and 7 in run 2 (answers 7 and 9, limitations 7 and 8, no unsupported claims). Of the 8 answered successors without a decisive citation, 7 cited ranges wider than three lines (for example `source.txt lines 7-10, 13-15` after a brief that showed lines 7 and 9), which the grader does not accept, and 1 cited lines that are not decisive. Two of the 8 did not read `brief`: one never ran the CLI and one read `state/` event files. The remaining loss is how successors summarise, not what `brief` shows. One run per cell; a difference of one or two assignments is noise.
 
+### Cite lines first (bn-102q)
+
+`brief` (standard and deep) now lists a `citations` section after the outcomes and open questions and before the evidence: one cite line per current, in-use observation with a verified quote, `"FILE" line N "QUOTE"` with the source title as FILE (or `"FILE" line N` for a verified line selector). A budget that cuts evidence items keeps these lines; in text mode the evidence item does not repeat the quote. The citation guide and the agent instructions (v5) say to cite each quote on its own exactly as its cite line prints it, never merged into a range or a list, and to read the case through `brief` and `show`, not the event files under `state/`.
+
+Run 4 measured `4d6708a` (this change; the merged commit differs only in `brief --help` wrapping) with the same runner, cases, seed, models and budgets ([help-only/run4](../training/first-use/help-only/run4/)). The docs page grew from 5018 to 6398 bytes (v3 to v5 instructions).
+
+| Successors out of 12 | Run 2 docs | Run 2 help-only | Run 3 docs | Run 3 help-only | Run 4 docs | Run 4 help-only |
+|---|---|---|---|---|---|---|
+| Current answer | 7 | 9 | 7 | 9 | 10 | 8 |
+| Decisive citation | 5 | 7 | 2 | 6 | 10 | 8 |
+| Material limitation | 7 | 7 | 7 | 8 | 9 | 7 |
+| Source-linked handoff | 5 | 4 | 2 | 4 | 9 | 5 |
+| Unsupported claims | 0 | 0 | 0 | 0 | 0 | 0 |
+| Successor out of budget or time | 4 | 3 | 5 | 3 | 2 | 4 |
+
+Every answered successor in both arms gave a decisive citation (10 of 10 docs, 8 of 8 help-only); every miss was a successor that ran out of budget before it answered (2 docs, 4 help-only). Docs-arm successors mostly cited `source.txt line N "QUOTE"` once per quote, as the cite lines print it; help-only successors, who do not read the instructions, mostly gave exact quotations without line numbers, which the scoring also accepts. By a text heuristic over the successor transcripts, docs-arm successors that read raw `state/` event files fell from 6 to 2. Against the preregistered W17.03 targets, help-only now misses the receipt and handoff margins because the docs baseline rose (receipt 6 against 9, handoff 5 against 9); unsupported claims and both friction budgets are met. One run per cell; the docs-arm rise is larger than the noise of one or two assignments, the help-only change is not.
+
 Follow-ups under W17 (bn-3hdd): bn-2mkk (a refused quote points at the nearest source passage), bn-3jr1 (`note` without `--on`), bn-2cc0 (`init` inside a workspace), bn-3bky (brief shows each observation's quote and source lines, for successor citation). The arms are `--arm docs --arm help-only` in `scripts/run-first-use.py`, so the W14 release trial (bn-2aic) can reuse them.

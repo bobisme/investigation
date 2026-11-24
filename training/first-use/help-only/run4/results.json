@@ -1,0 +1,4822 @@
+{
+  "schema": "first-use-results.v1",
+  "runs": [
+    {
+      "directory": "run4",
+      "role": "comparison",
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "seed": 51701,
+      "models": {
+        "qwen3.5:9b": "6488c96fa5faab64bb65cbd30d4289e20e6130ef535a93ef9a49f42eda893ea7",
+        "gemma4:26b": "5571076f3d70050487b26b341705799e0ab29b808164f90d20d4cf84f699d251"
+      },
+      "binaries": {
+        "docs": {
+          "path": "investigation-4d6708a",
+          "sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+          "commit": "4d6708a"
+        },
+        "help-only": {
+          "path": "investigation-4d6708a",
+          "sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+          "commit": "4d6708a"
+        }
+      },
+      "runner_sha256": "b0afee213bb4631f0b811fa7605d3ceebfdf4fb0a52dc56dd64ab5ba73eb6f1a",
+      "fixture_commit": "4d6708ab87075634369e337413b2aa958de41e5c",
+      "blocks": [
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 745346620,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 2124881018,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1557843569,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "qwen3.5:9b",
+          "block_seed": 1081929851,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "qwen3.5:9b",
+          "block_seed": 1592218822,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "qwen3.5:9b",
+          "block_seed": 545735307,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "river-gauge-record",
+          "variant": "default",
+          "domain": "source-research",
+          "model": "gemma4:26b",
+          "block_seed": 897622071,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "greenhouse-humidity-alarm",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 1411254907,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "kiln-thermocouple-offset",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 1779656773,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "oven-setpoint-reversion",
+          "variant": "default",
+          "domain": "debugging",
+          "model": "gemma4:26b",
+          "block_seed": 589334537,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        },
+        {
+          "family": "choir-score-sharing",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "gemma4:26b",
+          "block_seed": 365780597,
+          "order": [
+            "docs",
+            "help-only"
+          ]
+        },
+        {
+          "family": "tram-door-gateway",
+          "variant": "default",
+          "domain": "architecture",
+          "model": "gemma4:26b",
+          "block_seed": 1706133070,
+          "order": [
+            "help-only",
+            "docs"
+          ]
+        }
+      ],
+      "docs_page": {
+        "argv": [
+          "investigation",
+          "docs",
+          "agents"
+        ],
+        "sha256": "aa52aeb92bde4abfd54ff1e9a2f3b04caa757bd9ef7d8cb418d369d0b8dec665",
+        "bytes": 6398
+      }
+    }
+  ],
+  "assignments": [
+    {
+      "id": "e2e45a11-bba4-4f92-bcd6-6b869b2e2004",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 21,
+        "elapsed_ms": 79204,
+        "input_tokens": 25947,
+        "output_tokens": 5942,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 18,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 27695,
+        "input_tokens": 5688,
+        "output_tokens": 2164,
+        "cli_calls": 2,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 12
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          12,
+          16,
+          18,
+          23
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 106899,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 12,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework --actor agent:analyst --case case_01a20edb-73f0-7312-b838-3bddaf54c6c5 observe \"Option 1 updates appear immediately and effort is low.\" --source src_01a20edb-73f0-7312-b838-3be09531d5a3 --quote \"Updates ",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace ./casework --actor agent:analyst --case case_01a20edb-73f0-7312-b838-3bddaf54c6c5 observe Option 1 updates appear immediately and effort is low. --source src_01a20edb-73f0-7312-b838-3be09531d5a3 --quote - Updates appear immediately. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 16,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework --actor agent:analyst --case case_01a20edb-73f0-7312-b838-3bddaf54c6c5 observe \"Option 2 updates reach the binder within a week; the link is updated the same day. Effort is about one hour a week.\" --sour",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace ./casework --actor agent:analyst --case case_01a20edb-73f0-7312-b838-3bddaf54c6c5 observe Option 2 updates reach the binder within a week; the link is updated the same day. Effort is about one hour a week. --source src_01a20edb-73f0-7312-b838-3be09531d5a3 --quote - Updates reach the binder within a week; the link is updated the same day. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "brief",
+          "command": "investigation brief",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "a2584942-96ff-4406-96c0-bc52adcf0535",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 6,
+        "elapsed_ms": 23377,
+        "input_tokens": 1087,
+        "output_tokens": 2156,
+        "first_contact_call": null,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 25723,
+        "input_tokens": 2975,
+        "output_tokens": 2476,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          16,
+          17
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 49100,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": []
+    },
+    {
+      "id": "e107c6c2-dff0-411e-96b9-9c251bee253a",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 9,
+        "elapsed_ms": 23867,
+        "input_tokens": 4463,
+        "output_tokens": 2058,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 7,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 28491,
+        "input_tokens": 5161,
+        "output_tokens": 2628,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          6
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 52358,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "mkdir -p /work/investigation && investigation \"Initial discovery of source data\"",
+          "cause": "unrecognized subcommand ID or text",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "observe",
+          "command": "investigation --workspace ./investion_work --case case_01a20ed5-50f1-7520-b9ca-01c85a2f1e56 observe 'Sensor H4-a is located 40 cm from misting nozzle N7, and alarms occur during the 02:00 to 02:06 misting window.' --source src_01a20ed5-50f1",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "observe",
+          "command": "investigation --workspace ./investigation_work --case case_01a20ed5-50f1-7520-b9ca-01c85a2f1e56 observe 'Alarms occur during the misting window (02:00-02:06) with peak RH reaching 98%.' --source src_01a20ed5-50f1-7520-b9ca-01d2b126f9d3 --qu",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace ./investigation_work --case case_01a20ed5-50f1-7520-b9ca-01c85a2f1e56 observe Alarms occur during the misting window (02:00-02:06) with peak RH reaching 98%. --source src_01a20ed5-50f1-7520-b9ca-01d2b126f9d3 --quote Night  | alarm start | alarm end | peak RH --limitations [\"The alarm duration extends slightly beyond the misting window (until ~02:10).\"] --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "59961f0d-bb5e-464d-a54b-ff192141f842",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 5,
+        "elapsed_ms": 23229,
+        "input_tokens": 4173,
+        "output_tokens": 2074,
+        "first_contact_call": 3,
+        "first_onboard_call": 3,
+        "first_receipt_call": 5,
+        "source_case_call": 5,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 1671
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 20570,
+        "input_tokens": 4046,
+        "output_tokens": 1840,
+        "cli_calls": 3,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          1,
+          5,
+          6,
+          9,
+          10,
+          14
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 43799,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": []
+    },
+    {
+      "id": "c57b5362-5768-4b16-b02f-93d4a4623490",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 17,
+        "elapsed_ms": 42169,
+        "input_tokens": 27738,
+        "output_tokens": 2502,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 5,
+        "source_case_call": 5,
+        "cli_calls": 14,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": 18110
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 45897,
+        "input_tokens": 6564,
+        "output_tokens": 3978,
+        "cli_calls": 3,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          4,
+          7,
+          9,
+          10
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 88066,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 3,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "(unknown)",
+          "command": "investigation --workspace ./casework --actor agent:analyst --case case_01a20ed6-c124-7c33-9ac9-7e955e3a7357 assess \"The kiln controller's temperature reading appears to be under-reading the actual temperature, likely due to thermocouple dri",
+          "cause": "unrecognized subcommand assess",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 14,
+          "verb": "explain",
+          "command": "investigation --workspace ./casework --actor agent:analyst --case case_01a20ed6-c124-7c33-9ac9-7e955e3a7357 explain hypothesis.create --subject \"The kiln controller's temperature reading is under-reading the actual temperature due to thermo",
+          "cause": "unexpected argument --subject",
+          "hint": "investigation explain --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 16,
+          "verb": "(unknown)",
+          "command": "investigation --workspace ./casework --show case_01a20ed6-c124-7c33-9ac9-7e955e3a7357 --format json",
+          "cause": "unexpected argument --show",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 2,
+          "verb": "brief",
+          "command": "investigation brief",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "b6dcd11e-e476-447e-9072-392c45e49327",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 17,
+        "elapsed_ms": 43484,
+        "input_tokens": 7350,
+        "output_tokens": 2947,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 7,
+        "source_case_call": 7,
+        "cli_calls": 13,
+        "cli_error_calls": 6,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 5,
+        "elapsed_ms": 24265,
+        "input_tokens": 7686,
+        "output_tokens": 1929,
+        "cli_calls": 3,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 3,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          7,
+          9,
+          10
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 67749,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "investigation \"Initial discovery of source text and identification of kiln K2 temperature discrepancy.\"",
+          "cause": "unrecognized subcommand ID or text",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework observe --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --source src_01a20ed8-322f-7981-9fae-ebcd4fa9de13 --quote \"Controller peak reading: 1204 C... cone 6 fully bent... cone 6 bends at about 1222 C...",
+          "cause": "missing <TEXT>",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework observe --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --source src_01a20rald8-322f-7981-9fae-ebcd4fa9de13 --quote \"Controller peak reading: 1204 C... cone 6 fully bent... cone 6 bends at about 1222 C.",
+          "cause": "INVALID_INPUT --source Supply a Source ID, Artifact ID, or unique typed p",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework observe --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --source src_01a20ed8-322f-7981-9fae-ebcd4fa9de13 --quote \"Controller peak reading: 1204 C... cone 6 fully bent... cone 6 bends at about 1222 C...",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace ./casework observe --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --source src_01a20ed8-322f-7981-9fae-ebcd4fa9de13 --quote Controller peak reading: 1204 C In Firing 112, the controller's peak reading of 1204 C was at least 18 C lower than the temperature indicated by the witness cones (cone 6 bends at ~1222 C). --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "observe",
+          "command": "investigation --workspace ./casework observe --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --source src_01a20ed8-322f-79rald8-322f-7981-9fae-ebcd4fa9de13 --quote \"Controller peak reading: 1204 C\" \"In Firing 112, the controller's peak rea",
+          "cause": "INVALID_INPUT --source Supply a Source ID, Artifact ID, or unique typed p",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "note",
+          "command": "investigation --workspace ./casework note --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --text \"Summary of Findings: The evidence suggests that kiln K2's temperature reading is likely inaccurate and specifically reading low. In Firing 11",
+          "cause": "unexpected argument positional",
+          "hint": "investigation note --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 4,
+          "verb": "show",
+          "command": "investigation --workspace /work/casework show --case case_01a20ed8-322f-7981-9fae-ebb8234a8771 --format json",
+          "cause": "missing <ID>",
+          "hint": "investigation show --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "119b43b7-709a-45b3-afb5-e2c3f26f5fc1",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 16,
+        "elapsed_ms": 42344,
+        "input_tokens": 7775,
+        "output_tokens": 3560,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 10,
+        "source_case_call": 10,
+        "cli_calls": 13,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": 8562
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 2,
+        "elapsed_ms": 23973,
+        "input_tokens": 1836,
+        "output_tokens": 2218,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 66317,
+      "discovery": {
+        "investigator": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "investigation --init \"Investigation into Monday overbaking in deck oven 2\"",
+          "cause": "unexpected argument --init",
+          "hint": "investigation --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "start",
+          "command": "investigation start /work/investigation_workspace --actor agent:investigator \"Explain what the available evidence supports about the Monday overbaking in deck oven 2\" --attach /work/source.txt --format json",
+          "cause": "unexpected argument positional",
+          "hint": "investigation start --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "start",
+          "command": "investigation start /work/investigation_workspace --actor agent:investigator --attach /work/source.txt --format json \"Explain what the available evidence supports about the Monday overbaking in deck oven 2\"",
+          "cause": "unexpected argument positional",
+          "hint": "investigation start --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "start",
+          "command": "investigation start /work/investigation_workspace --attach /work/source.txt 'Monday overbaking' --format json",
+          "cause": "unexpected argument positional",
+          "hint": "investigation start --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "e0f648db-d5e6-4fa0-96da-46bb1e61818f",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 20,
+        "elapsed_ms": 62354,
+        "input_tokens": 29200,
+        "output_tokens": 3299,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 18,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": 24378
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 22364,
+        "input_tokens": 5530,
+        "output_tokens": 1863,
+        "cli_calls": 2,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          12,
+          15,
+          18,
+          24,
+          25
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 84718,
+      "discovery": {
+        "investigator": {
+          "help": 5,
+          "onboard": 0,
+          "schema": 5,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "(unknown)",
+          "command": "investigation --workspace ./casework --actor agent:analyst hypothesis 'The Monday overbaking is caused by the oven setpoint being restored to 230 C when power-save mode exits on Monday mornings (around 04:00), and this setpoint remains at 2",
+          "cause": "unrecognized subcommand hypothesis",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "explain",
+          "command": "investigation --workspace ./casework --actor agent:analyst explain hypothesis.create 'The Monday overbaking is caused by the oven setpoint being restored to 230 C when power-save mode exits on Monday mornings (around 04:00), and this setpoi",
+          "cause": "unexpected argument positional",
+          "hint": "investigation explain --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "schema",
+          "command": "investigation schema explain.hypothesis.create --workspace ./casework --format json",
+          "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 2,
+          "verb": "brief",
+          "command": "investigation brief",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "aee231d7-8ad9-4585-9e84-4bfc6ff84f4d",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 7,
+        "elapsed_ms": 18416,
+        "input_tokens": 5295,
+        "output_tokens": 1617,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 5,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 20975,
+        "input_tokens": 4898,
+        "output_tokens": 1942,
+        "cli_calls": 2,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 3
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 39391,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "successor",
+          "call": 3,
+          "verb": "brief",
+          "command": "investigation brief",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "6b03a112-9f09-450c-8136-cae69a7361e5",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 13,
+        "elapsed_ms": 27065,
+        "input_tokens": 6106,
+        "output_tokens": 2177,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 10,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 2,
+        "elapsed_ms": 14694,
+        "input_tokens": 1592,
+        "output_tokens": 1345,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 3,
+        "annotation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          16,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 41759,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 3,
+          "verb": "(unknown)",
+          "command": "investigation \"Claim: 'the river reached a record 6.1 m'\n\nStatus: Not Supported (Premature/Unverified)\n\nEvidence Analysis:\n- Item 2 in source.txt shows a reading of 6.1 m for the year 2024 at the Millford Bridge station.\n- However, this 6.1",
+          "cause": "unrecognized subcommand Claim:",
+          "hint": "investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "note",
+          "command": "investigation --workspace ./casework note 'The claim that the river reached a record 6.1 m is not supported by the evidence because (1) the 6.1 m reading for 2024 is provisional and unverified, and (2) official policy states readings are no",
+          "cause": "/case_id: No case matches the supplied ID.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "99da5f15-7fa4-4844-96a6-b0377007bbe1",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "handoff_marker",
+        "tool_calls": 6,
+        "elapsed_ms": 18898,
+        "input_tokens": 1041,
+        "output_tokens": 1762,
+        "first_contact_call": null,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 13982,
+        "input_tokens": 1684,
+        "output_tokens": 1196,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          3,
+          16,
+          18,
+          23,
+          24
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 32880,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": []
+    },
+    {
+      "id": "54b3db88-b92e-41ba-8a74-3e81ab1bc56a",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "gemma4:26b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "completed",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 12,
+        "elapsed_ms": 31608,
+        "input_tokens": 6834,
+        "output_tokens": 2301,
+        "first_contact_call": 2,
+        "first_onboard_call": null,
+        "first_receipt_call": 3,
+        "source_case_call": 3,
+        "cli_calls": 11,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 3,
+        "elapsed_ms": 31457,
+        "input_tokens": 4725,
+        "output_tokens": 2862,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 3
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 63065,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 4,
+          "verb": "evidence read",
+          "command": "investigation evidence read src_01a20ede-440a-7ab0-9350-e4bace850715 --whole --workspace ./casework",
+          "cause": "/artifact: Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "observe",
+          "command": "investigation observe 'Option Y met requirement T1 during a 30-second dropout test at 200 messages per second.' --source art_01a20ede-440a-7ab0-9350-e4c3be259752 --quote '- The on-board gateway writes messages to flash and forwards them aft",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation observe Option Y met requirement T1 during a 30-second dropout test at 200 messages per second. --source art_01a20ede-440a-7ab0-9350-e4c3be259752 --quote - The on-board gateway writes messages to flash and forwards them after the link returns. --workspace ./casework --format json",
+          "hint_followed": true,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "74937b79-036a-4586-8395-cba3c414e7e8",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 67349,
+        "input_tokens": 31214,
+        "output_tokens": 4862,
+        "first_contact_call": 2,
+        "first_onboard_call": 2,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 18,
+        "cli_error_calls": 7,
+        "shell_timeouts": 0,
+        "discovery_bytes": 36682
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 41561,
+        "input_tokens": 22300,
+        "output_tokens": 3062,
+        "cli_calls": 4,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 1
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          9,
+          12,
+          17,
+          18,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 108910,
+      "discovery": {
+        "investigator": {
+          "help": 2,
+          "onboard": 1,
+          "schema": 3,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 2,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 5,
+          "verb": "start",
+          "command": "cd /work/casework && investigation --workspace ./casework --actor agent:choir-analyst start 'How should choir share rehearsal scores?' --attach ../source.txt --format json 2>&1 | head -80",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "observe",
+          "command": "cd /work && investigation --workspace ./casework --actor agent:choir-analyst observe 'Option 1 (shared cloud folder) requires members to sign in with a personal account on the storage service, which violates hard requirement H1 for several ",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "observe",
+          "command": "cd /work && investigation observe 'Option 1 (shared cloud folder) requires members to sign in with a personal account on the storage service, which violates hard requirement H1 for several choir members who will not create accounts.' --sour",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "observe",
+          "command": "cd /work && investigation observe 'Option 1 (shared cloud folder) requires members to sign in with a personal account on the storage service, which violates hard requirement H1 for several choir members who will not create accounts.' --sour",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "record",
+          "command": "cd /work && cat obs1.json | investigation record --input - --workspace ./casework --actor agent:choir-analyst 2>&1 | head -50",
+          "cause": "/basis: Field does not match the expected schema",
+          "hint": "investigation schema record",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "(unknown)",
+          "command": "cd /work && investigation --workspace ./casework actor agent:choir-analyst observe 'Option 1 (shared cloud folder) requires members to sign in with a personal account on the storage service, which violates hard requirement H1 for several ch",
+          "cause": "unrecognized subcommand actor",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "observe",
+          "command": "cd /work && investigation observe 'Option 1 (shared cloud folder) requires members to sign in with a personal account on the storage service, which violates hard requirement H1 for several choir members who will not create accounts.' --sour",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 13,
+          "verb": "evidence read",
+          "command": "cd /work && /tools/investigation --workspace ./casework evidence read src_01a20ec4-ed65-71b3-83fd-bd95507e8244 --lines 1:30 --format json 2>&1 | head -100",
+          "cause": "UNKNOWN_REFERENCE /artifact Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "50850603-1337-40bb-b3f7-b9005186ebe7",
+      "family": "choir-score-sharing",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 57772,
+        "input_tokens": 15554,
+        "output_tokens": 4295,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 25,
+        "cli_error_calls": 3,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 35304,
+        "input_tokens": 16374,
+        "output_tokens": 2635,
+        "cli_calls": 4,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 11,
+        "annotation.add": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          16,
+          17,
+          18,
+          19
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 93076,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Option 1 shared cloud folder requires members to sign in with a personal account on storage service. Updates appear immediately and volunteer effort is low, but this fails the hard requireme",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe 'Option 1 shared cloud folder requires members to sign in with a personal account on storage service. Updates appear immediately and volunteer effort is low, but this fails the hard requirement H1.' --source src_01a20ec6-9d9e-7cd3-97ce-4baa226f6b96 --quote 'Option 1: shared cloud folder'",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Option 2 printed binder plus public PDF link works without signing in, meets H1. Binder updates within a week (fails S1), PDF same day (meets S1). Volunteer effort about one hour weekly.' --",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe 'Option 2 printed binder plus public PDF link works without signing in, meets H1. Binder updates within a week (fails S1), PDF same day (meets S1). Volunteer effort about one hour weekly.' --source src_01a20ec6-9d9e-7cd3-97ce-4baa226f6b96 --quote '- The librarian prints changed pages each Thursday; the PDF link works without signing in.'",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Option 3 email PDF needs an email address not account, but two members have no email.' --source src_01a20ec6-9d9e-7cd3-97ce-4baa226f6b96 --quote '- Needs an email address, not an account on ",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe 'Option 3 email PDF needs an email address not account, but two members have no email.' --source src_01a20ec6-9d9e-7cd3-97ce-4baa226f6b96 --quote '- Needs an email address, not an account on any service.'",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 4,
+          "verb": "brief",
+          "command": "cd /work/casework && investigation --brief 2>&1 | head -50 || investigation --workspace . brief --format json 2>&1 | head -80",
+          "cause": "unexpected argument --brief",
+          "hint": "investigation --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 13,
+          "verb": "evidence read",
+          "command": "cd /work/casework && investigation --workspace . evidence read 000000000001.json --whole --format text 2>&1 | head -80 || cat state/events/000000000001.json 2>/dev/null",
+          "cause": "/artifact: Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "73c9ccac-5ec0-4f39-af5b-8c2065449882",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 75355,
+        "input_tokens": 16149,
+        "output_tokens": 5425,
+        "first_contact_call": 3,
+        "first_onboard_call": 14,
+        "first_receipt_call": 11,
+        "source_case_call": 11,
+        "cli_calls": 26,
+        "cli_error_calls": 11,
+        "shell_timeouts": 0,
+        "discovery_bytes": 13239
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 6,
+        "elapsed_ms": 15780,
+        "input_tokens": 16452,
+        "output_tokens": 911,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 7
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 91135,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 2,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 5,
+          "verb": "source (unknown)",
+          "command": "investigation --workspace /work/investigation source /work/source.txt 2>&1",
+          "cause": "unrecognized subcommand /work/source.txt",
+          "hint": "investigation source --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "source add",
+          "command": "investigation --workspace /work/investigation source add /work/source.txt --format text 2>&1",
+          "cause": "/actor: Specify an attributed actor with --actor or AGENT, f",
+          "hint": "investigation --actor agent:investigator --workspace /work/investigation source add /work/source.txt --format text",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "source add",
+          "command": "investigation --workspace /work/investigation source add /work/source.txt --format text --actor agent:investigator 2>&1",
+          "cause": "PATH: /work/source.txt resolves to /work/source.txt, which i",
+          "hint": "investigation init /work/investigation --import-root /work --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "source add",
+          "command": "investigation --workspace /work/investigation source add /work/source.txt --format text --actor agent:investigator 2>&1",
+          "cause": "/case_id: Create a case with investigation start QUESTION --",
+          "hint": "investigation --workspace /work/investigation onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'The alarm pattern aligns precisely with misting schedule: alarms start at 02:01, during the 02:00-02:06 misting window. Sensor H4-a is mounted only 40cm from nozzle N7.' --source src_01",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'The alarm pattern aligns precisely with misting schedule: alarms start at 02:01, during the 02:00-02:06 misting window. Sensor H4-a is mounted only 40cm from nozzle N7.' --source src_01",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'The alarm pattern aligns precisely with misting schedule: alarms start at 02:01, during the 02:00-02:06 misting window. Sensor H4-a is mounted only 40cm from nozzle N7.' --source src_01",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/investigation observe The alarm pattern aligns precisely with misting schedule: alarms start at 02:01, during the 02:00-02:06 misting window. Sensor H4-a is mounted only 40cm from nozzle N7. --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote Sensor placement (from the install sheet): H4-a is mounted 40 cm from misting nozzle N7. --actor agent:investigator --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 19,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'Alarms consistently occur during misting: 02:01-02:10 on nights when misting runs 02:00-02:06. Bay-average humidity from other sensors was only 78% to 83%, not above threshold.' --sourc",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/investigation observe Alarms consistently occur during misting: 02:01-02:10 on nights when misting runs 02:00-02:06. Bay-average humidity from other sensors was only 78% to 83%, not above threshold. --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote Night  | alarm start | alarm end | peak RH --actor agent:investigator --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'Bay-wide conditions are normal during alarm windows; only sensor H4-a near nozzle N7 triggers alarms.' --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote 'Bay-average humidity fr",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/investigation observe Bay-wide conditions are normal during alarm windows; only sensor H4-a near nozzle N7 triggers alarms. --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote Bay-average humidity from the three other bay sensors during the same windows: 78% to 83%. --actor agent:investigator --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'Alarm times consistently occur at 02:01, immediately after misting starts at 02:00.' --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote 'Night  | alarm start | alarm end | peak R",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/investigation observe Alarm times consistently occur at 02:01, immediately after misting starts at 02:00. --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote Night  | alarm start | alarm end | peak RH --actor agent:investigator --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 28,
+          "verb": "observe",
+          "command": "investigation --workspace /work/investigation observe 'Evidence supports: alarms in greenhouse bay 4 are caused by localized humidity near sensor H4-a, which is mounted only 40cm from misting nozzle N7 during the nightly 02:00-02:06 misting",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/investigation observe Evidence supports: alarms in greenhouse bay 4 are caused by localized humidity near sensor H4-a, which is mounted only 40cm from misting nozzle N7 during the nightly 02:00-02:06 misting window. --source src_01a20ecd-f7c5-7852-b608-c922e620261d --quote Sensor placement (from the install sheet): H4-a is mounted 40 cm from misting nozzle N7. --actor agent:investigator --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "ce2fba51-2ef4-4acd-8162-9f7f8c8db9a4",
+      "family": "greenhouse-humidity-alarm",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 76947,
+        "input_tokens": 30684,
+        "output_tokens": 5392,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 23,
+        "cli_error_calls": 4,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 9,
+        "elapsed_ms": 32006,
+        "input_tokens": 45692,
+        "output_tokens": 1605,
+        "cli_calls": 4,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 13
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 108953,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 3,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "observe",
+          "command": "cd /work/casework && investigation --actor agent:analyst observe 'The climate controller export shows alarm data for sensor H4-a in greenhouse bay 4 during nights of June 2-5.' --source src_01a20ecf-259f-7190-ab15-caa4e74dadbf --quote \"Gree",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --actor agent:analyst observe The climate controller export shows alarm data for sensor H4-a in greenhouse bay 4 during nights of June 2-5. --source src_01a20ecf-259f-7190-ab15-caa4e74dadbf --quote Greenhouse bay 4: night humidity alarms --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 16,
+          "verb": "observe",
+          "command": "cd /work/casework && investigation --actor agent:analyst observe 'On June 2 night, alarm started at 02:01:10 and ended at 02:09:40 with peak RH of 97%.' --source src_01a20ecf-259f-7190-ab15-caa4e74dadbf --quote \"Night  | alarm start | alarm",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --actor agent:analyst observe On June 2 night, alarm started at 02:01:10 and ended at 02:09:40 with peak RH of 97%. --source src_01a20ecf-259f-7190-ab15-caa4e74dadbf --quote Night  | alarm start | alarm end | peak RH --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 25,
+          "verb": "observe",
+          "command": "cd /work/casework && investigation --actor agent:analyst observe 'The timing correlation is strong: all alarms occur within 1-8 minutes after misting begins (02:00), and end before or shortly after the scheduled misting ends at 02:06.' --fo",
+          "cause": "missing --source <SOURCE_OR_ARTIFACT_ID>",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "observe",
+          "command": "cd /work/casework && investigation --actor agent:analyst observe 'The timing correlation is strong: all alarms occur within 1-8 minutes after misting begins (02:00), and end before or shortly after the scheduled misting ends at 02:06.' --so",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --case case_01a20ecf-259f-7190-ab15-ca958d53269a evidence read art_01a20ecf-259f-7190-ab15-cacb860f56df --whole --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 6,
+          "verb": "brief",
+          "command": "cd /work/casework && /tools/investigation --workspace ./casework --case case_01a20ecf-259f-7190-ab15-ca958d53269a brief --format json 2>&1 | head -100",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "1e093896-9cbd-441b-92b9-d3f243e63973",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 4,
+        "elapsed_ms": 12481,
+        "input_tokens": 18072,
+        "output_tokens": 644,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": null,
+        "source_case_call": null,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 4,
+        "elapsed_ms": 17495,
+        "input_tokens": 4606,
+        "output_tokens": 1488,
+        "cli_calls": 1,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {},
+      "persisted_source_and_case": false,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          7,
+          9,
+          10,
+          12
+        ]
+      },
+      "source_linked_handoff": false,
+      "total_ms": 29976,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": []
+    },
+    {
+      "id": "d1296293-0181-4d10-b82a-8cf0721dfd4b",
+      "family": "kiln-thermocouple-offset",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 65139,
+        "input_tokens": 15668,
+        "output_tokens": 5096,
+        "first_contact_call": 4,
+        "first_onboard_call": 7,
+        "first_receipt_call": 9,
+        "source_case_call": 9,
+        "cli_calls": 24,
+        "cli_error_calls": 7,
+        "shell_timeouts": 0,
+        "discovery_bytes": 3865
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 10,
+        "elapsed_ms": 40147,
+        "input_tokens": 28270,
+        "output_tokens": 2578,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 11
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": true,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          7
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 105286,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 2,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "start",
+          "command": "cd /work/casework && /tools/investigation --workspace ./casework --actor agent:analyst start \"What does evidence support about kiln K2 temperature reading accuracy?\" --attach source.txt 2>&1",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "start",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework --actor agent:analyst start 'What does evidence support about kiln K2 temperature reading accuracy?' --attach source.txt 2>&1",
+          "cause": "--attach: source.txt resolves to /work/casework/source.txt, ",
+          "hint": "investigation --workspace /work/casework --actor agent:analyst start 'What does evidence support about kiln K2 temperature reading accuracy?' --attach /work/source.txt",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "evidence read",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework evidence read src_01a20ec8-83c1-7b40-862b-f9105925a2b1 2>&1 | head -50",
+          "cause": "missing <--selector-file <FILE|->",
+          "hint": "investigation evidence read --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 12,
+          "verb": "evidence read",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework evidence read src_01a20ec8-83c1-7b40-862b-f9105925a2b1 --whole 2>&1 | head -50",
+          "cause": "/artifact: Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "observe",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework --actor agent:analyst --case case_01a20ec8-83c1-7b40-862b-f9042b697527 observe 'Cones were on one shelf position only, middle shelf centre' --source src_01a20ec8-83c1-7b40",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:analyst --case case_01a20ec8-83c1-7b40-862b-f9042b697527 observe 'Cones were on one shelf position only, middle shelf centre' --source src_01a20ec8-83c1-7b40-862b-f9105925a2b1 --quote '- Cones were on one shelf position only; the kiln is known to run cooler near the door, and no cones were placed there.'",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "(unknown)",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework --actor agent:analyst --case case_01a20ec8-83c1-7b40-862b-f9042b697527 hypothesis 'Kiln K2 controller reads low due to thermocouple drift' 2>&1",
+          "cause": "unrecognized subcommand hypothesis",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "schema",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework schema list 2>&1 | head -50",
+          "cause": "operation: Unknown operation. Run investigation schema --lis",
+          "hint": "investigation schema --list --format json",
+          "hint_followed": true,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "b15822fb-8647-4c77-8f1a-d88e4f27b83b",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 81526,
+        "input_tokens": 15457,
+        "output_tokens": 6733,
+        "first_contact_call": 4,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 24,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": 6551
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 3,
+        "elapsed_ms": 11179,
+        "input_tokens": 18323,
+        "output_tokens": 527,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 13
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 92705,
+      "discovery": {
+        "investigator": {
+          "help": 1,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "observe",
+          "command": "cd /work && investigation --workspace ./casework --actor agent:investigator --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 observe 'On each Monday, the oven controller shows power-save exited at ~04:xx with setpoint restored to factory de",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 evidence read art_01a20ec1-eb1e-71c3-bd4f-b823e4160d7b --whole --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "evidence read",
+          "command": "cd /work && investigation --workspace ./casework evidence read art_01a20ec1-eb1e-71c3-bd4f-b8185cb23d93 2>&1 | head -60",
+          "cause": "missing <--selector-file <FILE|->",
+          "hint": "investigation evidence read --help --format json",
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 12,
+          "verb": "show",
+          "command": "cd /work && investigation --workspace ./casework show 2>&1 | head -80",
+          "cause": "missing <ID>",
+          "hint": "investigation show --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "observe",
+          "command": "cd /work && investigation --workspace ./casework --actor agent:investigator --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 observe 'On each Monday, the oven controller shows power-save exited at ~04:xx with setpoint restored to factory de",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 evidence read art_01a20ec1-eb1e-71c3-bd4f-b823e4160d7b --whole --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "observe",
+          "command": "cd /work && investigation --workspace ./casework --actor agent:investigator --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 observe 'On each Monday, the oven controller shows power-save exited at ~04:xx with setpoint restored to factory de",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace ./casework --actor agent:investigator --case case_01a20ec1-eb1e-71c3-bd4f-b7feafcc8ef5 observe 'On each Monday, the oven controller shows power-save exited at ~04:xx with setpoint restored to factory default 230 C. Then a panel change reduced it to 205 C by ~05:xx (the recipe temperature).' --source src_01a20ec1-eb1e-71c3-bd4f-b80140c32ebb --quote 'Mon 29 Apr 04:12  power-save exited, setpoint restored to factory default 230 C' --limitations '[]' --format text",
+          "hint_followed": true,
+          "unstuck": true
+        }
+      ]
+    },
+    {
+      "id": "b3be94fc-99b1-4c42-9327-cf903830ce23",
+      "family": "oven-setpoint-reversion",
+      "variant": "default",
+      "domain": "debugging",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": "returned_without_handoff",
+        "tool_calls": 24,
+        "elapsed_ms": 63352,
+        "input_tokens": 16683,
+        "output_tokens": 4890,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 21,
+        "cli_error_calls": 2,
+        "shell_timeouts": 0,
+        "discovery_bytes": 0
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 40382,
+        "input_tokens": 17893,
+        "output_tokens": 3097,
+        "cli_calls": 12,
+        "cli_error_calls": 9,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 9
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          8,
+          9,
+          12,
+          13,
+          15,
+          16,
+          17,
+          18,
+          19,
+          22,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 103734,
+      "discovery": {
+        "investigator": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "evidence read",
+          "command": "cd /work/casework && investigation --actor agent:analyst evidence read src_01a20ec3-4c63-7dd1-89e4-ce954bdfc42a --whole 2>&1 | head -100",
+          "cause": "/artifact: Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "observe",
+          "command": "cd /work/casework && investigation --actor agent:analyst observe 'On Mondays across three weeks, rye batches showed dark crust and loaves were discarded.' --source src_01a20ec3-4c63-7dd1-89e4-ce954bdfc42a --quote 'Mon 29 Apr 05:10  rye batc",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "successor",
+          "call": 5,
+          "verb": "show",
+          "command": "investigation --workspace /work/casework --case case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd show --format json 2>&1 | head -150",
+          "cause": "missing <ID>",
+          "hint": "investigation show --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 6,
+          "verb": "show",
+          "command": "investigation show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd 2>&1 | head -50",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 8,
+          "verb": "show",
+          "command": "investigation --workspace ./casework show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd 2>&1 | head -50",
+          "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 9,
+          "verb": "show",
+          "command": "investigation --workspace ./casework show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd 2>&1 | head -50",
+          "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 10,
+          "verb": "show",
+          "command": "investigation show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd --workspace ./casework 2>&1 | head -50",
+          "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 11,
+          "verb": "show",
+          "command": "investigation --workspace ./casework show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd 2>&1 | head -50",
+          "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 12,
+          "verb": "show",
+          "command": "investigation --workspace ./casework show case_01a20ec4-4f39-7ff3-83c4-f8132e2a34bd 2>&1 | head -50",
+          "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 13,
+          "verb": "brief",
+          "command": "cd /work/casework && investigation --workspace ./casework brief 2>&1 | head -50",
+          "cause": "no workspace found",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 14,
+          "verb": "evidence read",
+          "command": "cd /work/casework && investigation --workspace ./casework evidence read src_01a20ec4-4f3a-7a33-9fbd-4204797e71ec 2>&1 | head -50",
+          "cause": "missing <--selector-file <FILE|->",
+          "hint": "investigation evidence read --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "1677b2ad-c6f7-4b82-8b15-0ec3ed8f4cbe",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 70883,
+        "input_tokens": 15926,
+        "output_tokens": 5574,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 4,
+        "source_case_call": 4,
+        "cli_calls": 21,
+        "cli_error_calls": 9,
+        "shell_timeouts": 0,
+        "discovery_bytes": 5292
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 49309,
+        "input_tokens": 29148,
+        "output_tokens": 3680,
+        "cli_calls": 6,
+        "cli_error_calls": 1,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 4
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          11,
+          12,
+          13,
+          14,
+          15,
+          16
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 120192,
+      "discovery": {
+        "investigator": {
+          "help": 4,
+          "onboard": 0,
+          "schema": 1,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 2,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:analyst observe 'The parish newsletter claimed a record reading of 6.1 metres at Millford bridge.' --source src_01a20ed0-d894-7320-b016-3f309629281d --quote \"Last month the river reache",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 15,
+          "verb": "(unknown)",
+          "command": "investigation --workspace /work/casework --actor agent:analyst assess 'The 6.1 m reading cannot be verified as a record because it is provisional, unquality-checked data from a new gauge site without published adjustment.' --source src_01a2",
+          "cause": "unrecognized subcommand assess",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "record",
+          "command": "cat << 'EOF' | investigation --workspace /work/casework --actor agent:analyst record - 2>&1\nassessment.add {\n  \"statement\": \"The claim that the river reached a record 6.1 m is not supported by evidence.\",\n  \"source_id\": \"src_01a20ed0-d894-7",
+          "cause": "unexpected argument -",
+          "hint": "investigation record --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "record",
+          "command": "investigation --workspace /work/casework record -i /work/casework/assessment.json --format json 2>&1 | head -60",
+          "cause": "unexpected argument -i",
+          "hint": "investigation record --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "record",
+          "command": "investigation --workspace /work/casework record --input /work/casework/assessment.json --format json 2>&1 | head -60",
+          "cause": "INVALID_INPUT /limitations Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 23,
+          "verb": "record",
+          "command": "investigation record --input /work/casework/assessment.json --dry-run --format json 2>&1 | head -80",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace ./casework onboard --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "record",
+          "command": "investigation record --input /work/casework/assessment.json --dry-run --format json --workspace /work/casework 2>&1 | head -80",
+          "cause": "INVALID_INPUT /limitations Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "record",
+          "command": "investigation record --input /work/casework/assessment.json --dry-run --format json --workspace /work/casework 2>&1 | head -80",
+          "cause": "INVALID_INPUT /operation Field does not match the expected schema",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 28,
+          "verb": "(unknown)",
+          "command": "investigation assess --help 2>&1 | head -60",
+          "cause": "unrecognized subcommand assess",
+          "hint": "investigation --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        },
+        {
+          "phase": "successor",
+          "call": 11,
+          "verb": "evidence read",
+          "command": "cd /work && investigation --workspace ./casework evidence read src_01a20ed0-d894-7320-b016-3f309629281d --whole 2>&1 | head -50",
+          "cause": "/artifact: Supply a unique Artifact ID from this case.",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "1a14805c-47c8-47b2-9d75-2d6322a907a1",
+      "family": "river-gauge-record",
+      "variant": "default",
+      "domain": "source-research",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 59005,
+        "input_tokens": 16190,
+        "output_tokens": 4785,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 20,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": 8257
+      },
+      "successor": {
+        "status": "budget_exhausted",
+        "tool_calls": 6,
+        "elapsed_ms": 23899,
+        "input_tokens": 30278,
+        "output_tokens": 1436,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": false
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 5
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": false,
+        "citation": false,
+        "limitation": false,
+        "unwarranted": [],
+        "cited_lines": []
+      },
+      "source_linked_handoff": false,
+      "total_ms": 82904,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 4,
+          "verb": "init",
+          "command": "investigation init --workspace /work 2>&1",
+          "cause": "PATH: workspace path is not empty: /work. Create the workspa",
+          "hint": "investigation init --workspace /work/casework --import-root /work --actor agent:investigator",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 8,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator --case case_01a20ed2-bba6-7a50-90c2-5a22366a897c observe 'Item 2 (water office data) shows annual maxima from 2019-2024, with gauge relocation in 2022 and provisional statu",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:investigator --case case_01a20ed2-bba6-7a50-90c2-5a22366a897c observe Item 2 (water office data) shows annual maxima from 2019-2024, with gauge relocation in 2022 and provisional status on 2024 reading --source src_01a20ed2-bba6-7a50-90c2-5a3afc597b18 --quote Station history --limitations [\"LIMITATION: Readings at new site are not comparable with old site without datum adjustment which has not been published; 2024 reading is provisional and not yet quality checked\"] --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 11,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator --case case_01a20ed2-bba6-7a50-90c2-5a22366a897c observe 'Item 2 (water office data) shows gauge relocation in 2022 with readings not comparable without published datum adj",
+          "cause": "UNKNOWN_REFERENCE --source No Source or Artifact matches in the selected case",
+          "hint": null,
+          "hint_followed": false,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 17,
+          "verb": "show",
+          "command": "investigation --workspace /work/casework show case_01a20ed2-bba6-7a50-90c2-5a22366a897c full 2>&1 | head -200",
+          "cause": "unexpected argument positional",
+          "hint": "investigation show --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 21,
+          "verb": "record",
+          "command": "investigation --workspace /work/casework record list 2>&1 | head -50",
+          "cause": "unexpected argument positional",
+          "hint": "investigation record --help --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "48c9c868-0142-47da-b696-9468f85cf590",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "docs",
+      "order": 1,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 75580,
+        "input_tokens": 31177,
+        "output_tokens": 4894,
+        "first_contact_call": 4,
+        "first_onboard_call": 6,
+        "first_receipt_call": 10,
+        "source_case_call": 10,
+        "cli_calls": 23,
+        "cli_error_calls": 5,
+        "shell_timeouts": 0,
+        "discovery_bytes": 12904
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 14,
+        "elapsed_ms": 60166,
+        "input_tokens": 29315,
+        "output_tokens": 4193,
+        "cli_calls": 4,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 11
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": false,
+      "receipt_within_three_after_onboard": false,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5,
+          17,
+          18,
+          24
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 135746,
+      "discovery": {
+        "investigator": {
+          "help": 3,
+          "onboard": 3,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 1,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 5,
+          "verb": "start",
+          "command": "cd /work/casework && /tools/investigation --workspace ./casework --actor agent:analyst start 'Recommend a transport for the tram door sensor gateway and state how well evidence supports it' --attach ../source.txt --format json 2>&1",
+          "cause": "WORKSPACE_REQUIRED no workspace found",
+          "hint": "investigation --workspace /work/casework onboard --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 6,
+          "verb": "onboard",
+          "command": "cd /work && /tools/investigation --workspace /work/casework --actor agent:analyst onboard 'Recommend a transport for the tram door sensor gateway' --attach source.txt --format json 2>&1",
+          "cause": "unexpected argument positional",
+          "hint": "investigation onboard --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "start",
+          "command": "cd /work && /tools/investigation --workspace /work/casework --actor agent:analyst start 'Recommend a transport for the tram door sensor gateway and state how well evidence supports it' --attach ../source.txt --format json 2>&1 | head -80",
+          "cause": "INVALID_INPUT --attach ../source.txt resolves to /source.txt, which does",
+          "hint": "investigation --workspace /work/casework --actor agent:analyst start Recommend a transport for the tram door sensor gateway and state how well evidence supports it --attach /work/source.txt --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 13,
+          "verb": "observe",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework --actor agent:analyst observe 'Option X sends messages immediately over radio link; during dropout they are discarded. Bench test with 30-second dropout showed of 1,800 me",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:analyst observe Option X sends messages immediately over radio link; during dropout they are discarded. Bench test with 30-second dropout showed of 1,800 messages sent only 1,212 were received (40% loss). --source src_01a20eca-34f3-7571-8b0f-22628bac4b25 --quote Option X: direct publish over the radio link --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "(unknown)",
+          "command": "cd /work/casework && /tools/investigation --workspace /work/casework hypothesis.create 'Option X fails hard requirement T1 because it discards messages during radio dropout' --format json 2>&1 | head -50",
+          "cause": "unrecognized subcommand ID or text",
+          "hint": "investigation --help --format json",
+          "hint_followed": true,
+          "unstuck": false
+        }
+      ]
+    },
+    {
+      "id": "39ad97f8-7c45-4e72-ab49-972f22576cf6",
+      "family": "tram-door-gateway",
+      "variant": "default",
+      "domain": "architecture",
+      "model": "qwen3.5:9b",
+      "arm": "help-only",
+      "order": 2,
+      "binary_sha256": "a03e6be9465600f8dd7c39617d33350385747b8ab1fc97fb963b085bcb9d0fe8",
+      "investigator": {
+        "status": "budget_exhausted",
+        "interruption": null,
+        "tool_calls": 28,
+        "elapsed_ms": 79990,
+        "input_tokens": 31280,
+        "output_tokens": 5690,
+        "first_contact_call": 3,
+        "first_onboard_call": null,
+        "first_receipt_call": 6,
+        "source_case_call": 6,
+        "cli_calls": 26,
+        "cli_error_calls": 10,
+        "shell_timeouts": 0,
+        "discovery_bytes": 9778
+      },
+      "successor": {
+        "status": "completed",
+        "tool_calls": 7,
+        "elapsed_ms": 30143,
+        "input_tokens": 24565,
+        "output_tokens": 2114,
+        "cli_calls": 0,
+        "cli_error_calls": 0,
+        "shell_timeouts": 0,
+        "answered": true
+      },
+      "handoff_operations": {
+        "case.create": 1,
+        "observation.add": 12
+      },
+      "persisted_source_and_case": true,
+      "receipt_within_three_after_contact": true,
+      "receipt_within_three_after_onboard": null,
+      "grade": {
+        "answer": true,
+        "citation": true,
+        "limitation": true,
+        "unwarranted": [],
+        "cited_lines": [
+          5
+        ]
+      },
+      "source_linked_handoff": true,
+      "total_ms": 110133,
+      "discovery": {
+        "investigator": {
+          "help": 2,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        },
+        "successor": {
+          "help": 0,
+          "onboard": 0,
+          "schema": 0,
+          "docs": 0
+        }
+      },
+      "friction": [
+        {
+          "phase": "investigator",
+          "call": 4,
+          "verb": "init",
+          "command": "investigation init --workspace /work 2>&1",
+          "cause": "PATH: workspace path is not empty: /work. Create the workspa",
+          "hint": "investigation init --workspace /work/casework --import-root /work --actor agent:investigator",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 7,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator --case case_01a20ecc-2c13-7820-b0a3-423a9757ebce observe 'Option X (direct publish over radio link) fails hard requirement T1' --source src_01a20ecc-2c13-7820-b0a3-4245d31e",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 9,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator observe 'Option X fails hard requirement T1' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote \"During a dropout messages are discarded. Bench test: 30-second dropo",
+          "cause": "invalid value for --limitations",
+          "hint": "investigation observe --help --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 10,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator observe 'Option X fails hard requirement T1' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote \"During a dropout messages are discarded. Bench test: 30-second dropo",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:investigator observe Option X fails hard requirement T1 --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote - Each sensor message is sent immediately. During a dropout messages are discarded. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 20,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator observe 'Option Y limitation - flash write speed untested at peak' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- Flash write speed at peak was not tested.' -",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:investigator observe Option Y limitation - flash write speed untested at peak --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote - Option Y has only been tested at 200 messages per second, one third of peak. Flash write speed at peak was not tested. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 22,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator observe 'Hard requirement T1 requires no message loss during dropout' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- No door-event message may be lost during ",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:investigator observe Hard requirement T1 requires no message loss during dropout --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote T1. No door-event message may be lost during a tunnel radio dropout of up to 30 seconds. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 24,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework --actor agent:investigator observe 'Preference T2 is lower latency' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- Lower end-to-end latency in normal service.' --format json 2>&1",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework --actor agent:investigator observe Preference T2 is lower latency --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote T2. Lower end-to-end latency in normal service. --format json",
+          "hint_followed": true,
+          "unstuck": true
+        },
+        {
+          "phase": "investigator",
+          "call": 26,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Preference T3 is use equipment depot already maintains' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- Use equipment the depot already maintains.' --format json 2>&1",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe Preference T3 is use equipment depot already maintains --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote T3. Use equipment the depot already maintains. --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 27,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Preference T3 is use equipment depot already maintains' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- Use equipment the depot already maintains.' --format json 2>&1",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe Preference T3 is use equipment depot already maintains --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote T3. Use equipment the depot already maintains. --format json",
+          "hint_followed": true,
+          "unstuck": false
+        },
+        {
+          "phase": "investigator",
+          "call": 28,
+          "verb": "observe",
+          "command": "investigation --workspace /work/casework observe 'Preference T3 is use equipment depot already maintains' --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote '- Use equipment the depot already maintains.' --format json 2>&1",
+          "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+          "hint": "investigation --workspace /work/casework observe Preference T3 is use equipment depot already maintains --source src_01a20ecc-2c13-7820-b0a3-4245d31e8f53 --quote T3. Use equipment the depot already maintains. --format json",
+          "hint_followed": false,
+          "unstuck": false
+        }
+      ]
+    }
+  ],
+  "comparison": {
+    "runs": [
+      "run4"
+    ],
+    "arms": [
+      "docs",
+      "help-only"
+    ],
+    "targets": {
+      "schema": "first-use-targets.v1",
+      "bone": "bn-1tzg (W17.03)",
+      "preregistered": "2026-11-23, committed before any docs or help-only run",
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "baseline": "docs",
+      "treatment": "help-only",
+      "assignments_per_arm": 12,
+      "rule": "The help-only arm meets the W17.03 target when every target below is met. Counts are assignments out of 12 per arm, matched by case, model and seed.",
+      "targets": {
+        "receipt": {
+          "measure": "receipt_within_three_after_contact",
+          "margin": 2,
+          "min": 6,
+          "text": "Persisted Source and Case within three calls after first CLI contact: help-only >= docs - 2, and help-only >= 6/12."
+        },
+        "handoff": {
+          "measure": "source_linked_handoff",
+          "margin": 2,
+          "text": "Source-linked handoff (persisted record, answer cites a decisive line and states the limitation): help-only >= docs - 2."
+        },
+        "unsupported_claims": {
+          "measure": "unwarranted_claims",
+          "max": 0,
+          "text": "Assignments whose successor answer matches a false-promotion pattern: help-only = 0/12."
+        },
+        "refused_share": {
+          "measure": "refused_call_share",
+          "max_increase": 0.1,
+          "text": "Friction budget 1: refused investigator CLI calls / investigator CLI calls, help-only <= docs + 0.10."
+        },
+        "recovery": {
+          "measure": "refused_unstuck",
+          "max_decrease": 0.1,
+          "text": "Friction budget 2: share of refused CLI calls (both phases) after which a later call of the same command succeeds, help-only >= docs - 0.10."
+        }
+      }
+    }
+  },
+  "summary": {
+    "by_arm": {
+      "docs": {
+        "assignments": 12,
+        "receipt_within_three_after_contact": {
+          "count": 9,
+          "of": 12
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 2,
+          "of": 4
+        },
+        "ran_onboard": {
+          "count": 4,
+          "of": 12
+        },
+        "persisted_source_and_case": {
+          "count": 12,
+          "of": 12
+        },
+        "source_linked_handoff": {
+          "count": 9,
+          "of": 12
+        },
+        "successor_answered": {
+          "count": 10,
+          "of": 12
+        },
+        "successor_citation": {
+          "count": 10,
+          "of": 12
+        },
+        "successor_limitation": {
+          "count": 9,
+          "of": 12
+        },
+        "successor_answer": {
+          "count": 10,
+          "of": 12
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_used_cli": {
+          "count": 12,
+          "of": 12
+        },
+        "investigator_failed_cli_calls": 44,
+        "investigator_cli_calls": 199,
+        "investigator_budget_or_timeout": {
+          "count": 8,
+          "of": 12
+        },
+        "successor_budget_or_timeout": {
+          "count": 2,
+          "of": 12
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 4.0,
+        "median_calls_contact_to_source_case": 1.0,
+        "mean_total_seconds": 92.4,
+        "mean_investigator_calls": 20.5,
+        "refused_calls": {
+          "investigator": 44,
+          "successor": 16
+        },
+        "refused_unstuck": {
+          "count": 34,
+          "of": 60
+        },
+        "refused_with_hint": {
+          "count": 52,
+          "of": 60
+        },
+        "hint_followed": {
+          "count": 28,
+          "of": 52
+        },
+        "friction_causes": [
+          {
+            "verb": "observe",
+            "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+            "calls": 8,
+            "assignments": 5,
+            "with_hint": 8,
+            "hint_followed": 8,
+            "unstuck": 8
+          },
+          {
+            "verb": "brief",
+            "cause": "no workspace found",
+            "calls": 5,
+            "assignments": 5,
+            "with_hint": 5,
+            "hint_followed": 0,
+            "unstuck": 4
+          },
+          {
+            "verb": "observe",
+            "cause": "invalid value for --limitations",
+            "calls": 5,
+            "assignments": 3,
+            "with_hint": 5,
+            "hint_followed": 4,
+            "unstuck": 5
+          },
+          {
+            "verb": "show",
+            "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+            "calls": 5,
+            "assignments": 1,
+            "with_hint": 5,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "evidence read",
+            "cause": "/artifact: Supply a unique Artifact ID from this case.",
+            "calls": 4,
+            "assignments": 4,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 2
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand assess",
+            "calls": 3,
+            "assignments": 2,
+            "with_hint": 3,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand hypothesis",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "evidence read",
+            "cause": "missing <--selector-file <FILE|->",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /limitations Field does not match the expected schema",
+            "calls": 2,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "start",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 1,
+            "unstuck": 2
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --show",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand ID or text",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand actor",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "brief",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "evidence read",
+            "cause": "UNKNOWN_REFERENCE /artifact Supply a unique Artifact ID from this case.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "explain",
+            "cause": "unexpected argument --subject",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "explain",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "missing --source <SOURCE_OR_ARTIFACT_ID>",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "onboard",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "/basis: Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "INVALID_INPUT /operation Field does not match the expected schema",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "record",
+            "cause": "unexpected argument -",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "unexpected argument -i",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "schema",
+            "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "schema",
+            "cause": "operation: Unknown operation. Run investigation schema --lis",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "show",
+            "cause": "missing <ID>",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "show",
+            "cause": "no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "start",
+            "cause": "--attach: source.txt resolves to /work/casework/source.txt, ",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "start",
+            "cause": "INVALID_INPUT --attach ../source.txt resolves to /source.txt, which does",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "start",
+            "cause": "no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          }
+        ],
+        "ran_docs_page": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "ran_help": {
+          "count": 4,
+          "of": 12
+        }
+      },
+      "help-only": {
+        "assignments": 12,
+        "receipt_within_three_after_contact": {
+          "count": 6,
+          "of": 12
+        },
+        "receipt_within_three_after_onboard": {
+          "count": 0,
+          "of": 1,
+          "upper_95": 0.95
+        },
+        "ran_onboard": {
+          "count": 1,
+          "of": 12
+        },
+        "persisted_source_and_case": {
+          "count": 9,
+          "of": 12
+        },
+        "source_linked_handoff": {
+          "count": 5,
+          "of": 12
+        },
+        "successor_answered": {
+          "count": 8,
+          "of": 12
+        },
+        "successor_citation": {
+          "count": 8,
+          "of": 12
+        },
+        "successor_limitation": {
+          "count": 7,
+          "of": 12
+        },
+        "successor_answer": {
+          "count": 8,
+          "of": 12
+        },
+        "unwarranted_claims": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "successor_used_cli": {
+          "count": 6,
+          "of": 12
+        },
+        "investigator_failed_cli_calls": 49,
+        "investigator_cli_calls": 165,
+        "investigator_budget_or_timeout": {
+          "count": 6,
+          "of": 12
+        },
+        "successor_budget_or_timeout": {
+          "count": 4,
+          "of": 12
+        },
+        "shell_call_timeouts": 0,
+        "median_source_case_call": 6,
+        "median_calls_contact_to_source_case": 3,
+        "mean_total_seconds": 67.5,
+        "mean_investigator_calls": 17.6,
+        "refused_calls": {
+          "investigator": 49,
+          "successor": 3
+        },
+        "refused_unstuck": {
+          "count": 34,
+          "of": 52
+        },
+        "refused_with_hint": {
+          "count": 47,
+          "of": 52
+        },
+        "hint_followed": {
+          "count": 34,
+          "of": 47
+        },
+        "friction_causes": [
+          {
+            "verb": "observe",
+            "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+            "calls": 21,
+            "assignments": 7,
+            "with_hint": 21,
+            "hint_followed": 18,
+            "unstuck": 16
+          },
+          {
+            "verb": "observe",
+            "cause": "invalid value for --limitations",
+            "calls": 4,
+            "assignments": 2,
+            "with_hint": 4,
+            "hint_followed": 3,
+            "unstuck": 4
+          },
+          {
+            "verb": "start",
+            "cause": "unexpected argument positional",
+            "calls": 3,
+            "assignments": 1,
+            "with_hint": 3,
+            "hint_followed": 3,
+            "unstuck": 3
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand ID or text",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "init",
+            "cause": "PATH: workspace path is not empty: /work. Create the workspa",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 2,
+            "unstuck": 2
+          },
+          {
+            "verb": "observe",
+            "cause": "INVALID_INPUT --source Supply a Source ID, Artifact ID, or unique typed p",
+            "calls": 2,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 2
+          },
+          {
+            "verb": "show",
+            "cause": "missing <ID>",
+            "calls": 2,
+            "assignments": 2,
+            "with_hint": 2,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unexpected argument --init",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "(unknown)",
+            "cause": "unrecognized subcommand Claim:",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "brief",
+            "cause": "unexpected argument --brief",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "evidence read",
+            "cause": "/artifact: Supply a unique Artifact ID from this case.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "evidence read",
+            "cause": "missing <--selector-file <FILE|->",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "note",
+            "cause": "/case_id: No case matches the supplied ID.",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "note",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "UNKNOWN_REFERENCE --source No Source or Artifact matches in the selected case",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 0,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "WORKSPACE_REQUIRED no workspace found",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 1
+          },
+          {
+            "verb": "observe",
+            "cause": "missing <TEXT>",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "record",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "show",
+            "cause": "unexpected argument positional",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 1
+          },
+          {
+            "verb": "source (unknown)",
+            "cause": "unrecognized subcommand /work/source.txt",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "source add",
+            "cause": "/actor: Specify an attributed actor with --actor or AGENT, f",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          },
+          {
+            "verb": "source add",
+            "cause": "/case_id: Create a case with investigation start QUESTION --",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 0,
+            "unstuck": 0
+          },
+          {
+            "verb": "source add",
+            "cause": "PATH: /work/source.txt resolves to /work/source.txt, which i",
+            "calls": 1,
+            "assignments": 1,
+            "with_hint": 1,
+            "hint_followed": 1,
+            "unstuck": 0
+          }
+        ],
+        "ran_docs_page": {
+          "count": 0,
+          "of": 12,
+          "upper_95": 0.221
+        },
+        "ran_help": {
+          "count": 10,
+          "of": 12
+        }
+      }
+    },
+    "by_model": {
+      "gemma4:26b": {
+        "docs": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 6,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 1,
+            "of": 1
+          },
+          "ran_onboard": {
+            "count": 1,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 5,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 10,
+          "investigator_cli_calls": 69,
+          "investigator_budget_or_timeout": {
+            "count": 2,
+            "of": 6
+          },
+          "successor_budget_or_timeout": {
+            "count": 1,
+            "of": 6
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 4.0,
+          "median_calls_contact_to_source_case": 1.0,
+          "mean_total_seconds": 71.0,
+          "mean_investigator_calls": 13.7,
+          "refused_calls": {
+            "investigator": 10,
+            "successor": 4
+          },
+          "refused_unstuck": {
+            "count": 10,
+            "of": 14
+          },
+          "refused_with_hint": {
+            "count": 13,
+            "of": 14
+          },
+          "hint_followed": {
+            "count": 5,
+            "of": 13
+          },
+          "friction_causes": [
+            {
+              "verb": "brief",
+              "cause": "no workspace found",
+              "calls": 4,
+              "assignments": 4,
+              "with_hint": 4,
+              "hint_followed": 0,
+              "unstuck": 4
+            },
+            {
+              "verb": "observe",
+              "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+              "calls": 3,
+              "assignments": 2,
+              "with_hint": 3,
+              "hint_followed": 3,
+              "unstuck": 3
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --show",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand assess",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand hypothesis",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "/artifact: Supply a unique Artifact ID from this case.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "explain",
+              "cause": "unexpected argument --subject",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "explain",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "INVALID_INPUT operation Unknown operation. Run investigation schema --list",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            }
+          ],
+          "ran_docs_page": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "ran_help": {
+            "count": 1,
+            "of": 6
+          }
+        },
+        "help-only": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 2,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 0,
+            "upper_95": null
+          },
+          "ran_onboard": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "persisted_source_and_case": {
+            "count": 4,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 3,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 4,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 5,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 3,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 15,
+          "investigator_cli_calls": 43,
+          "investigator_budget_or_timeout": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_budget_or_timeout": {
+            "count": 1,
+            "of": 6
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 6.5,
+          "median_calls_contact_to_source_case": 3.5,
+          "mean_total_seconds": 51.7,
+          "mean_investigator_calls": 11.2,
+          "refused_calls": {
+            "investigator": 15,
+            "successor": 1
+          },
+          "refused_unstuck": {
+            "count": 10,
+            "of": 16
+          },
+          "refused_with_hint": {
+            "count": 13,
+            "of": 16
+          },
+          "hint_followed": {
+            "count": 7,
+            "of": 13
+          },
+          "friction_causes": [
+            {
+              "verb": "start",
+              "cause": "unexpected argument positional",
+              "calls": 3,
+              "assignments": 1,
+              "with_hint": 3,
+              "hint_followed": 3,
+              "unstuck": 3
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand ID or text",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "observe",
+              "cause": "INVALID_INPUT --source Supply a Source ID, Artifact ID, or unique typed p",
+              "calls": 2,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 2
+            },
+            {
+              "verb": "observe",
+              "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unexpected argument --init",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand Claim:",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "note",
+              "cause": "/case_id: No case matches the supplied ID.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "note",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "observe",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "observe",
+              "cause": "missing <TEXT>",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "show",
+              "cause": "missing <ID>",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            }
+          ],
+          "ran_docs_page": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "ran_help": {
+            "count": 4,
+            "of": 6
+          }
+        }
+      },
+      "qwen3.5:9b": {
+        "docs": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 3,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 1,
+            "of": 3
+          },
+          "ran_onboard": {
+            "count": 3,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 6,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 5,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 5,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 6,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 34,
+          "investigator_cli_calls": 130,
+          "investigator_budget_or_timeout": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_budget_or_timeout": {
+            "count": 1,
+            "of": 6
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 5.0,
+          "median_calls_contact_to_source_case": 2.5,
+          "mean_total_seconds": 113.8,
+          "mean_investigator_calls": 27.3,
+          "refused_calls": {
+            "investigator": 34,
+            "successor": 12
+          },
+          "refused_unstuck": {
+            "count": 24,
+            "of": 46
+          },
+          "refused_with_hint": {
+            "count": 39,
+            "of": 46
+          },
+          "hint_followed": {
+            "count": 23,
+            "of": 39
+          },
+          "friction_causes": [
+            {
+              "verb": "observe",
+              "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+              "calls": 5,
+              "assignments": 3,
+              "with_hint": 5,
+              "hint_followed": 5,
+              "unstuck": 5
+            },
+            {
+              "verb": "observe",
+              "cause": "invalid value for --limitations",
+              "calls": 5,
+              "assignments": 3,
+              "with_hint": 5,
+              "hint_followed": 4,
+              "unstuck": 5
+            },
+            {
+              "verb": "show",
+              "cause": "/case_id: Select a case with --case ID. The workspace has 2 ",
+              "calls": 5,
+              "assignments": 1,
+              "with_hint": 5,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "/artifact: Supply a unique Artifact ID from this case.",
+              "calls": 3,
+              "assignments": 3,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand assess",
+              "calls": 2,
+              "assignments": 1,
+              "with_hint": 2,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "missing <--selector-file <FILE|->",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /limitations Field does not match the expected schema",
+              "calls": 2,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "start",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 1,
+              "unstuck": 2
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand ID or text",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand actor",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "(unknown)",
+              "cause": "unrecognized subcommand hypothesis",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "brief",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "brief",
+              "cause": "no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "UNKNOWN_REFERENCE /artifact Supply a unique Artifact ID from this case.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "observe",
+              "cause": "missing --source <SOURCE_OR_ARTIFACT_ID>",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "observe",
+              "cause": "no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "onboard",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "/basis: Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "INVALID_INPUT /operation Field does not match the expected schema",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "WORKSPACE_REQUIRED no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "record",
+              "cause": "unexpected argument -",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "unexpected argument -i",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "schema",
+              "cause": "operation: Unknown operation. Run investigation schema --lis",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "show",
+              "cause": "missing <ID>",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "show",
+              "cause": "no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "start",
+              "cause": "--attach: source.txt resolves to /work/casework/source.txt, ",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "start",
+              "cause": "INVALID_INPUT --attach ../source.txt resolves to /source.txt, which does",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "start",
+              "cause": "no workspace found",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            }
+          ],
+          "ran_docs_page": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "ran_help": {
+            "count": 3,
+            "of": 6
+          }
+        },
+        "help-only": {
+          "assignments": 6,
+          "receipt_within_three_after_contact": {
+            "count": 4,
+            "of": 6
+          },
+          "receipt_within_three_after_onboard": {
+            "count": 0,
+            "of": 1,
+            "upper_95": 0.95
+          },
+          "ran_onboard": {
+            "count": 1,
+            "of": 6
+          },
+          "persisted_source_and_case": {
+            "count": 5,
+            "of": 6
+          },
+          "source_linked_handoff": {
+            "count": 2,
+            "of": 6
+          },
+          "successor_answered": {
+            "count": 3,
+            "of": 6
+          },
+          "successor_citation": {
+            "count": 3,
+            "of": 6
+          },
+          "successor_limitation": {
+            "count": 3,
+            "of": 6
+          },
+          "successor_answer": {
+            "count": 3,
+            "of": 6
+          },
+          "unwarranted_claims": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "successor_used_cli": {
+            "count": 3,
+            "of": 6
+          },
+          "investigator_failed_cli_calls": 34,
+          "investigator_cli_calls": 122,
+          "investigator_budget_or_timeout": {
+            "count": 6,
+            "of": 6
+          },
+          "successor_budget_or_timeout": {
+            "count": 3,
+            "of": 6
+          },
+          "shell_call_timeouts": 0,
+          "median_source_case_call": 6,
+          "median_calls_contact_to_source_case": 3,
+          "mean_total_seconds": 83.3,
+          "mean_investigator_calls": 24.0,
+          "refused_calls": {
+            "investigator": 34,
+            "successor": 2
+          },
+          "refused_unstuck": {
+            "count": 24,
+            "of": 36
+          },
+          "refused_with_hint": {
+            "count": 34,
+            "of": 36
+          },
+          "hint_followed": {
+            "count": 27,
+            "of": 34
+          },
+          "friction_causes": [
+            {
+              "verb": "observe",
+              "cause": "OBSERVATION_TEXT_QUOTE_NOT_FOUND",
+              "calls": 19,
+              "assignments": 5,
+              "with_hint": 19,
+              "hint_followed": 17,
+              "unstuck": 15
+            },
+            {
+              "verb": "observe",
+              "cause": "invalid value for --limitations",
+              "calls": 4,
+              "assignments": 2,
+              "with_hint": 4,
+              "hint_followed": 3,
+              "unstuck": 4
+            },
+            {
+              "verb": "init",
+              "cause": "PATH: workspace path is not empty: /work. Create the workspa",
+              "calls": 2,
+              "assignments": 2,
+              "with_hint": 2,
+              "hint_followed": 2,
+              "unstuck": 2
+            },
+            {
+              "verb": "brief",
+              "cause": "unexpected argument --brief",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "/artifact: Supply a unique Artifact ID from this case.",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "evidence read",
+              "cause": "missing <--selector-file <FILE|->",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "observe",
+              "cause": "UNKNOWN_REFERENCE --source No Source or Artifact matches in the selected case",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 0,
+              "hint_followed": 0,
+              "unstuck": 1
+            },
+            {
+              "verb": "record",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "show",
+              "cause": "missing <ID>",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "show",
+              "cause": "unexpected argument positional",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 1
+            },
+            {
+              "verb": "source (unknown)",
+              "cause": "unrecognized subcommand /work/source.txt",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "source add",
+              "cause": "/actor: Specify an attributed actor with --actor or AGENT, f",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            },
+            {
+              "verb": "source add",
+              "cause": "/case_id: Create a case with investigation start QUESTION --",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 0,
+              "unstuck": 0
+            },
+            {
+              "verb": "source add",
+              "cause": "PATH: /work/source.txt resolves to /work/source.txt, which i",
+              "calls": 1,
+              "assignments": 1,
+              "with_hint": 1,
+              "hint_followed": 1,
+              "unstuck": 0
+            }
+          ],
+          "ran_docs_page": {
+            "count": 0,
+            "of": 6,
+            "upper_95": 0.393
+          },
+          "ran_help": {
+            "count": 6,
+            "of": 6
+          }
+        }
+      }
+    },
+    "paired": {
+      "pairs": 12,
+      "mean_total_seconds": {
+        "docs": 92.4,
+        "help-only": 67.5
+      },
+      "mean_difference_seconds": -24.9,
+      "help-only_to_docs_time_ratio": 0.731,
+      "pairs_help-only_faster": 10,
+      "source_linked_handoff": {
+        "docs": 9,
+        "help-only": 5
+      },
+      "successor_citation_and_limitation": {
+        "docs": 9,
+        "help-only": 7
+      }
+    },
+    "targets": {
+      "met": false,
+      "targets": {
+        "receipt": {
+          "met": false,
+          "value": 6,
+          "treatment": {
+            "count": 6,
+            "of": 12
+          },
+          "baseline": {
+            "count": 9,
+            "of": 12
+          }
+        },
+        "handoff": {
+          "met": false,
+          "value": 5,
+          "treatment": {
+            "count": 5,
+            "of": 12
+          },
+          "baseline": {
+            "count": 9,
+            "of": 12
+          }
+        },
+        "unsupported_claims": {
+          "met": true,
+          "value": 0,
+          "treatment": {
+            "count": 0,
+            "of": 12,
+            "upper_95": 0.221
+          },
+          "baseline": {
+            "count": 0,
+            "of": 12,
+            "upper_95": 0.221
+          }
+        },
+        "refused_share": {
+          "met": true,
+          "value": 0.076,
+          "treatment": 0.297,
+          "baseline": 0.221
+        },
+        "recovery": {
+          "met": true,
+          "value": 0.087,
+          "treatment": {
+            "count": 34,
+            "of": 52
+          },
+          "baseline": {
+            "count": 34,
+            "of": 60
+          }
+        }
+      }
+    },
+    "comparison": {
+      "runs": [
+        "run4"
+      ],
+      "arms": [
+        "docs",
+        "help-only"
+      ],
+      "targets": {
+        "schema": "first-use-targets.v1",
+        "bone": "bn-1tzg (W17.03)",
+        "preregistered": "2026-11-23, committed before any docs or help-only run",
+        "arms": [
+          "docs",
+          "help-only"
+        ],
+        "baseline": "docs",
+        "treatment": "help-only",
+        "assignments_per_arm": 12,
+        "rule": "The help-only arm meets the W17.03 target when every target below is met. Counts are assignments out of 12 per arm, matched by case, model and seed.",
+        "targets": {
+          "receipt": {
+            "measure": "receipt_within_three_after_contact",
+            "margin": 2,
+            "min": 6,
+            "text": "Persisted Source and Case within three calls after first CLI contact: help-only >= docs - 2, and help-only >= 6/12."
+          },
+          "handoff": {
+            "measure": "source_linked_handoff",
+            "margin": 2,
+            "text": "Source-linked handoff (persisted record, answer cites a decisive line and states the limitation): help-only >= docs - 2."
+          },
+          "unsupported_claims": {
+            "measure": "unwarranted_claims",
+            "max": 0,
+            "text": "Assignments whose successor answer matches a false-promotion pattern: help-only = 0/12."
+          },
+          "refused_share": {
+            "measure": "refused_call_share",
+            "max_increase": 0.1,
+            "text": "Friction budget 1: refused investigator CLI calls / investigator CLI calls, help-only <= docs + 0.10."
+          },
+          "recovery": {
+            "measure": "refused_unstuck",
+            "max_decrease": 0.1,
+            "text": "Friction budget 2: share of refused CLI calls (both phases) after which a later call of the same command succeeds, help-only >= docs - 0.10."
+          }
+        }
+      }
+    }
+  }
+}

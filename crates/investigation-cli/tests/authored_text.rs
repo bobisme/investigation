@@ -81,6 +81,9 @@ const DATA_KEYS: &[&str] = &[
     "outcome",
     "recorded_caveats",
     "quote",
+    // A brief's cite line: a source title and a verified quote, labelled
+    // untrusted_evidence beside it.
+    "cite",
 ];
 /// Containers whose whole content is the recorded record or labelled quotes.
 const DATA_CONTAINERS: &[&str] = &[

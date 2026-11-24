@@ -1,4 +1,4 @@
-<!-- inv.agent-instructions.v4 -->
+<!-- inv.agent-instructions.v5 -->
 # Investigation workflow: use it when uncertainty accumulates
 
 Use `investigation` when a question needs several observations, the
@@ -14,14 +14,22 @@ With no workspace yet, run
 Pass `--workspace ./casework` to later commands unless you run them inside
 that directory. Writes need `--actor`, the AGENT variable, or the actor that
 `init --actor` recorded on this machine; a receipt says when it used that one. Resume with
-`investigation brief`. Skim with `investigation show ID --depth summary`; use
-`--depth full` or read a source only when needed:
+`investigation brief`: read the case through brief and show, not the event
+files under the workspace's `state/` folder, which are the raw history. Skim
+with `investigation show ID --depth summary`; use `--depth full` or read a
+source only when needed:
 `investigation evidence read ARTIFACT --whole` prints a source of up to 32 KiB;
 read a larger one in line ranges with
 `investigation evidence read ARTIFACT --lines 1:200`, and an exact span with
 `investigation evidence read ARTIFACT --selector-file FILE`. Every read checks
 the bytes against their digest. A synopsis never replaces its sources. If several cases
 exist, select one with `--case ID`; never guess a case from its title.
+
+Citing: brief lists one cite line per verified quote, `FILE line N "QUOTE"`,
+before the evidence. Cite each quote on its own, exactly as its cite line
+prints it, with the file and line repeated for every quote:
+`source.txt line 7 "..."; source.txt line 9 "..."`. Never merge lines into a
+range or a list, such as lines 7-10 or lines 7, 9.
 
 Core model:
 - Source/artifact: where original evidence came from, with its exact bytes.
@@ -90,6 +98,7 @@ releases a live one.
 
 If stuck: `investigation guide stalled` and `investigation frontier`. If
 auditing: `investigation blindspots`, then `investigation guide blindspot`.
-If taking over: `investigation brief`, then `investigation next`. Summaries
+If taking over: `investigation brief`, then `investigation next`; cite from
+brief's cite lines. Summaries
 and retrospectives can contain opinions; only linked evidence and accepted
 assessments justify claims. No lesson silently changes a method pack.
