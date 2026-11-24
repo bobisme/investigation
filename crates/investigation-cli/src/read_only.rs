@@ -76,6 +76,8 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     // Runs artifact.expire against an in-memory copy of the state and reads
     // obligations under the commit lock; writes nothing.
     ("retention preview", Effect::Read),
+    // Removes stored blobs nothing holds; records and journals are unchanged.
+    ("retention reclaim", Effect::Write),
     ("repair index", Effect::Write),
     // A dry run by default; --apply writes a backup archive under exports/
     // (or --backup), the marker's format section and derived state.

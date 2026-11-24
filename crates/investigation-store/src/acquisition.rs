@@ -308,6 +308,9 @@ pub(super) fn resolve(
                     })
                     .map(|(record, _)| *record),
             );
+            if item.retained && artifact.is_none() {
+                refuse_withdrawn(item, &originals)?;
+            }
             let derivative = artifact.and_then(|artifact_id| {
                 latest(
                     &mut artifacts
@@ -353,6 +356,44 @@ pub(super) fn resolve(
             })
         })
         .collect()
+}
+
+/// A reimport of an acquisition item whose bytes were withdrawn
+/// (`artifact.expire`) does not retain them again: retention applies to the
+/// reference, and the same acquisition is the same reference. Bytes that
+/// must be retained again are imported as a new acquisition (another
+/// external ID, or none), which keeps its own availability.
+fn refuse_withdrawn(
+    item: &ItemFacts<'_>,
+    originals: &[&(&Record, ArtifactBody)],
+) -> Result<(), Failure> {
+    let Some((record, body)) = originals
+        .iter()
+        .filter(|(_, artifact)| {
+            artifact.digest.as_ref() == Some(item.digest)
+                && artifact.availability
+                    == investigation_core::evidence::ArtifactAvailability::IntentionallyRemoved
+        })
+        .max_by_key(|(record, _)| (record.header.acceptance_sequence, record.header.id))
+    else {
+        return Ok(());
+    };
+    let mut failure = Failure::new(
+        ErrorCode::GateFailed,
+        "These bytes were imported before under this acquisition and its reference's \
+         availability was withdrawn (artifact.expire). A reimport does not retain them again. \
+         Import them as a new acquisition, with another external ID or none, if they must be \
+         retained again.",
+    );
+    failure.error.path = Some("/acquisition".to_owned());
+    failure.error.actual = Some(serde_json::json!({
+        "item": item.label,
+        "digest": item.digest,
+        "artifact_ref": record.reference(),
+        "availability": "intentionally_removed",
+        "availability_change": body.availability_change,
+    }));
+    Err(failure)
 }
 
 /// The attempt is recorded in another case than the one this manifest targets.

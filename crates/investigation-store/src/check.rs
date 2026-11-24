@@ -29,6 +29,10 @@ pub struct CheckReport {
     pub heads: Vec<CaseHead>,
     pub structurally_valid: bool,
     pub verified_blobs: usize,
+    /// Recorded blobs that are absent because no record holds them any
+    /// more: only withdrawn references (`artifact.expire`) record them and
+    /// a reclamation removed the bytes. Not an issue.
+    pub reclaimed_blobs: usize,
     pub unavailable_artifacts: usize,
     /// Of `unavailable_artifacts`, those recorded as references to bytes held
     /// elsewhere. They are never counted as verified blobs: `check` reads
@@ -65,6 +69,7 @@ impl<F: DurableFs> Store<F> {
             heads: Vec::new(),
             structurally_valid: false,
             verified_blobs: 0,
+            reclaimed_blobs: 0,
             unavailable_artifacts: 0,
             reference_only_artifacts: 0,
             source_authenticated: None,
@@ -211,6 +216,20 @@ impl<F: DurableFs> Store<F> {
     }
 
     fn check_blobs(&self, workspace: &WorkspaceReplay, report: &mut CheckReport) {
+        // Bytes only withdrawn references record are not demanded; when the
+        // holders cannot be read, every recorded blob is.
+        let held = super::retention::record_holders(
+            workspace.cases.iter().map(|(id, replay)| (*id, replay)),
+            &BTreeSet::new(),
+        )
+        .ok()
+        .map(|holders| {
+            holders
+                .into_iter()
+                .filter(|(_, holders)| holders.holds())
+                .map(|(digest, _)| digest)
+                .collect::<BTreeSet<Digest>>()
+        });
         let mut blobs = BTreeMap::<Digest, BlobClaims>::new();
         for case in workspace.cases.values() {
             for verified in &case.events {
@@ -274,6 +293,13 @@ impl<F: DurableFs> Store<F> {
                     "BLOB_MISMATCH",
                     "Stored bytes differ from their recorded digest or size.",
                 ),
+                Err(error)
+                    if error.kind() == io::ErrorKind::NotFound
+                        && held.as_ref().is_some_and(|held| !held.contains(&digest)) =>
+                {
+                    report.reclaimed_blobs += 1;
+                    continue;
+                }
                 Err(error) if error.kind() == io::ErrorKind::NotFound => (
                     "BLOB_MISSING",
                     "A recorded blob is absent from canonical storage.",

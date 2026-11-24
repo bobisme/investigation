@@ -11,6 +11,10 @@
 //! - Unique bytes become reclaimable only once every reference is withdrawn.
 //! - An adopted method pack's bytes cannot be withdrawn.
 //! - An export pinned before the withdrawal copies no bytes through it.
+//! - `retention reclaim` (W11.19) refuses a reference whose availability is
+//!   not withdrawn, keeps bytes another case or finalized capture staging
+//!   still holds, removes them once nothing does, reports a retry as
+//!   already absent, and leaves `check` passing.
 
 use std::{
     collections::BTreeSet,
@@ -587,4 +591,243 @@ fn an_export_pinned_before_the_withdrawal_copies_no_bytes_through_it() {
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
         .collect::<Vec<_>>();
     assert!(!copied.contains(&"files".to_owned()), "{copied:?}");
+}
+
+/// The current Artifacts of `case` recording the digest of `original`:
+/// the original and, for text, its decoded derivative.
+fn same_digest(root: &Path, case: &str, original: &str) -> Vec<Value> {
+    let previewed = preview(root, case, &[original]);
+    let mut refs = vec![previewed["references"][0]["artifact_ref"].clone()];
+    for held in previewed["held_for_others"]["digests"].as_array().unwrap() {
+        refs.extend(held["references"].as_array().unwrap().iter().cloned());
+    }
+    refs
+}
+
+fn reclaim(root: &Path, case: &str, artifacts: &[&str], exit: i32) -> Value {
+    let mut args = vec!["--case", case, "retention", "reclaim"];
+    args.extend(artifacts);
+    run(root, &args, None, exit)
+}
+
+fn digests(group: &Value) -> Vec<String> {
+    group["digests"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["digest"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn reclamation_removes_shared_bytes_only_after_the_last_reference_is_withdrawn() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+    fs::write(root.join("shared.txt"), SHARED).unwrap();
+    let (case_a, art_a, digest) = start(root, "start-a", "shared.txt");
+    let (case_b, art_b, _) = start(root, "start-b", "shared.txt");
+    let a_refs = same_digest(root, &case_a, &art_a);
+    let b_refs = same_digest(root, &case_b, &art_b);
+    let ids = |refs: &[Value]| -> Vec<String> {
+        refs.iter()
+            .map(|r| r["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let (a_ids, b_ids) = (ids(&a_refs), ids(&b_refs));
+    let a_args: Vec<&str> = a_ids.iter().map(String::as_str).collect();
+    let b_args: Vec<&str> = b_ids.iter().map(String::as_str).collect();
+
+    // Nothing is removed before the loss of availability is committed.
+    let refused = reclaim(root, &case_a, &a_args, 5);
+    assert_eq!(refused["error"]["code"], "GATE_FAILED");
+    assert_eq!(refused["error"]["path"], "/artifacts/0");
+    assert!(blob(root, &digest).is_file());
+
+    let operations: Vec<Value> = a_refs.iter().map(expire).collect();
+    record(root, &case_a, "expire-a", Value::Array(operations), 0);
+    let held = reclaim(root, &case_a, &a_args, 0);
+    assert_eq!(held["result"], "retention_reclaimed");
+    assert_eq!(digests(&held["held_for_others"]), [digest.as_str()]);
+    assert!(
+        held["held_for_others"]["digests"][0]["other_cases"]["references"]
+            .as_u64()
+            .unwrap()
+            >= 1
+    );
+    assert!(
+        !held.to_string().contains(&case_b),
+        "the other case is never named"
+    );
+    assert_eq!(held["reclaimed"]["digests"], json!([]));
+    assert!(blob(root, &digest).is_file());
+    let sel = selector(root, &digest);
+    let read = run(
+        root,
+        &[
+            "--case",
+            &case_b,
+            "evidence",
+            "read",
+            &art_b,
+            "--selector-file",
+            &sel,
+        ],
+        None,
+        0,
+    );
+    assert_eq!(read["excerpt"]["text"], SHARED);
+
+    let operations: Vec<Value> = b_refs.iter().map(expire).collect();
+    record(root, &case_b, "expire-b", Value::Array(operations), 0);
+    let done = reclaim(root, &case_b, &b_args, 0);
+    assert_eq!(digests(&done["reclaimed"]), [digest.as_str()]);
+    assert_eq!(done["reclaimed"]["bytes"], SHARED.len());
+    assert_eq!(done["next"][0]["argv"][1], "check");
+    assert!(!blob(root, &digest).exists());
+    // A retry, from either case, finds the bytes already removed.
+    let again = reclaim(root, &case_a, &a_args, 0);
+    assert_eq!(digests(&again["already_absent"]), [digest.as_str()]);
+    assert_eq!(again["reclaimed"]["digests"], json!([]));
+
+    let check = run(root, &["check"], None, 0);
+    assert_eq!(check["issues"], json!([]), "{check}");
+    assert!(check["reclaimed_blobs"].as_u64().unwrap() >= 1);
+    // The records keep their digest and size; reads stay refused.
+    let shown = run(
+        root,
+        &["--case", &case_b, "show", &art_b, "--depth", "full"],
+        None,
+        0,
+    );
+    assert_eq!(shown["record"]["body"]["digest"], digest.as_str());
+    assert_eq!(shown["record"]["body"]["size_bytes"], SHARED.len());
+    let refused = run(
+        root,
+        &[
+            "--case",
+            &case_b,
+            "evidence",
+            "read",
+            &art_b,
+            "--selector-file",
+            &sel,
+        ],
+        None,
+        5,
+    );
+    assert_eq!(
+        refused["error"]["actual"]["availability"],
+        "intentionally_removed"
+    );
+    // A read-only invocation never reclaims.
+    let read_only = run(
+        root,
+        &[
+            "--read-only",
+            "--case",
+            &case_b,
+            "retention",
+            "reclaim",
+            b_args[0],
+        ],
+        None,
+        2,
+    );
+    assert!(read_only["error"]["code"].is_string(), "{read_only}");
+}
+
+#[test]
+fn finalized_capture_staging_holds_withdrawn_bytes_until_it_is_retired() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+    fs::write(
+        root.join("bench.json"),
+        "{\"metric\":\"p99\",\"value\":18.7}\n",
+    )
+    .unwrap();
+    let begun = run(
+        root,
+        &["capture", "begin", "--input", "-"],
+        Some(&json!({
+            "key": "run-1/begin", "actor": ACTOR,
+            "producer": {"name": "example-benchmark", "version": "0.1.0"},
+            "external_run_id": "run-1", "intent": {"label": "baseline"},
+            "case": {"kind": "new_record_case", "title": "Bench"},
+        })),
+        0,
+    );
+    let handle = begun["handle"].clone();
+    run(
+        root,
+        &["capture", "append", "--input", "-"],
+        Some(
+            &json!({"handle": handle, "key": "started", "position": 1, "fact": {"kind": "started"}}),
+        ),
+        0,
+    );
+    let attached = run(
+        root,
+        &["capture", "attach", "--input", "-"],
+        Some(
+            &json!({"handle": handle, "key": "bench.json", "position": 2,
+            "role": "original-output", "source": {"kind": "file", "path": "bench.json"}}),
+        ),
+        0,
+    );
+    let digest = attached["digest"].as_str().unwrap().to_owned();
+    let finalized = run(
+        root,
+        &["capture", "finalize", "--input", "-"],
+        Some(
+            &json!({"handle": handle, "key": "run-1/finalize", "expected_last_position": 2,
+            "completion": "complete", "execution": {"state": "completed", "exit_code": 0},
+            "declared_artifacts": ["bench.json"]}),
+        ),
+        0,
+    );
+    let case = finalized["case_id"].as_str().unwrap().to_owned();
+    // The Artifact that retained the attachment, found by its digest.
+    let mut artifact = None;
+    for entry in fs::read_dir(root.join("state/cases").join(&case).join("events")).unwrap() {
+        let text = fs::read_to_string(entry.unwrap().path()).unwrap();
+        for (index, _) in text.match_indices("art_") {
+            let id = &text[index..index + 40];
+            let shown = run(
+                root,
+                &["--case", &case, "show", id, "--depth", "full"],
+                None,
+                0,
+            );
+            if shown["record"]["body"]["digest"] == digest.as_str() {
+                artifact = Some((id.to_owned(), shown["record"]["header"]["revision"].clone()));
+            }
+        }
+    }
+    let (artifact, revision) = artifact.unwrap();
+    record(
+        root,
+        &case,
+        "expire-bench",
+        json!([expire(&json!({"id": artifact, "revision": revision}))]),
+        0,
+    );
+    let waiting = reclaim(root, &case, &[&artifact], 0);
+    assert_eq!(digests(&waiting["waiting"]), [digest.as_str()]);
+    let staged = waiting["waiting"]["digests"][0]["staged_copies"]
+        .as_array()
+        .unwrap();
+    assert_eq!(staged.len(), 1);
+    assert!(staged[0].as_str().unwrap().starts_with("state/staging/"));
+    assert_eq!(waiting["next"][0]["argv"][1], "repair");
+    assert_eq!(waiting["next"][1]["argv"][3], "retention");
+    assert!(blob(root, &digest).is_file());
+
+    run(root, &["repair", "staging"], None, 0);
+    let done = reclaim(root, &case, &[&artifact], 0);
+    assert_eq!(digests(&done["reclaimed"]), [digest.as_str()]);
+    assert!(!blob(root, &digest).exists());
+    let check = run(root, &["check"], None, 0);
+    assert_eq!(check["issues"], json!([]), "{check}");
 }

@@ -1,4 +1,4 @@
-<!-- inv.exposure-guidance.v1 -->
+<!-- inv.exposure-guidance.v2 -->
 # A secret reached the workspace: diagnosis and manual remediation
 
 Read this when a secret (a password, token, key or personal data) reached a workspace: in event text such as an observation statement or quote, in a retained file, or in a vault note.
@@ -7,6 +7,7 @@ What this build can do and what it cannot:
 
 - It can list every local place that holds the text: `investigation exposure ID --format json`.
 - It cannot remove the text. There is no purge command. The journal is append-only and hash-chained. A withdrawal (`artifact.withdraw`, `source.withdraw`), a retraction (`observation.retract`) or a classification change (`classification.raise`) adds an event. That event changes how the record is used and shown. The earlier bytes stay in the journal, in the retained blobs and in every copy made before.
+- It can remove a retained file from canonical storage in one case only: every Artifact that records its digest, in any case, has its availability withdrawn with `artifact.expire`, and no archive pin or capture staging holds it. Then `investigation retention reclaim ARTIFACT --format json` unlinks the blob. Records, digests, quoted text and the journal stay, and so do backups and copies made before.
 - It cannot recall copies outside the workspace. Distributed copies cannot be recalled automatically.
 
 Never call a withdrawal, retraction, redaction or classification change an erasure, and never report the text as gone because one of them was recorded.
@@ -46,7 +47,7 @@ What each area is and what removing the text from it takes:
 | Area | Canonical | Removing the text |
 |---|---|---|
 | `journal_event`, `case_genesis` | yes | Only by restore (4B) or fork (4C). Editing or deleting the file fails `investigation check`. |
-| `blob` | yes | Only by restore or fork. The file is shared by every Artifact with the same digest, in any case. |
+| `blob` | yes | By restore or fork, or with `investigation retention reclaim ARTIFACT --format json` once every Artifact recording the digest, in any case, is expired with `artifact.expire` and nothing else holds it; `investigation retention preview ARTIFACT --format json` lists the holders first. The file is shared by every Artifact with the same digest, in any case. |
 | `staging` | recovery material | Treat it as canonical: finalizing the capture commits staged items to the journal, and `investigation repair staging --format json` retires staging only after that. |
 | `index` | no | Delete `cache/index.sqlite` and its `-wal` and `-shm` files, then run `investigation repair index --format json`. The rebuild puts back any text the journal still holds. |
 | `blob_verdict` | no | Delete the entry; the next read hashes the blob again. |

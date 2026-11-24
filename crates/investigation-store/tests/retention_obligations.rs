@@ -1,7 +1,8 @@
-//! Retention obligations (W11.11): which live holders keep a stored blob
-//! once references give up their availability. A planned withdrawal
-//! (`released`) gives the same answer as the committed one; a live archive
-//! pin holds the digest until it ends; nothing here removes a blob.
+//! Retention obligations (W11.11) and reclamation (W11.19): which live
+//! holders keep a stored blob once references give up their availability.
+//! A planned withdrawal (`released`) gives the same answer as the committed
+//! one; a live archive pin holds the digest until it ends; only reclamation
+//! removes a blob, and `check` then accepts it as reclaimed.
 
 use std::{collections::BTreeSet, fs, path::Path};
 
@@ -10,7 +11,10 @@ use investigation_core::{
     identity::{Id, Kind},
     wire::Digest,
 };
-use investigation_store::{Store, Workspace, store::retention::DigestObligations};
+use investigation_store::{
+    Store, Workspace,
+    store::retention::{DigestObligations, ReclaimOutcome},
+};
 use serde_json::json;
 
 const ACTOR: &str = "agent:retention-test";
@@ -107,14 +111,45 @@ fn a_planned_withdrawal_and_the_committed_one_leave_the_same_obligations() {
         .record(&serde_json::to_vec(&request).unwrap())
         .unwrap();
     let committed = obligations(&mut store, &digest, &[]);
-    assert_eq!(committed, planned);
+    // The same references, now at their withdrawn revisions.
+    let withdrawn = |found: &DigestObligations| -> Vec<Id> {
+        found
+            .withdrawn
+            .iter()
+            .map(|holder| holder.artifact_ref.id)
+            .collect()
+    };
+    assert_eq!(withdrawn(&committed), withdrawn(&planned));
+    assert!(
+        committed
+            .withdrawn
+            .iter()
+            .all(|holder| holder.artifact_ref.revision == 2)
+    );
+    let (mut now, mut then) = (committed.clone(), planned.clone());
+    now.withdrawn.clear();
+    then.withdrawn.clear();
+    assert_eq!(now, then);
     // Nothing removed the bytes: reclamation is a separate step.
     let hex = digest.as_str().strip_prefix("sha256:").unwrap();
+    let blob = root.join("state/blobs/sha256").join(&hex[..2]).join(hex);
+    assert!(blob.is_file());
+    assert_eq!(store.check().unwrap().reclaimed_blobs, 0);
+
+    let digests = BTreeSet::from([digest.clone()]);
+    let done = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(done[0].outcome, ReclaimOutcome::Reclaimed);
+    assert!(!blob.exists());
+    let again = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(again[0].outcome, ReclaimOutcome::AlreadyAbsent);
+    let report = store.check().unwrap();
+    assert!(report.integrity_ok(), "{:?}", report.issues);
+    assert_eq!(report.reclaimed_blobs, 1);
+    // The record keeps its digest and size.
     assert!(
-        root.join("state/blobs/sha256")
-            .join(&hex[..2])
-            .join(hex)
-            .is_file()
+        references(&mut store, case, &digest)
+            .iter()
+            .all(|reference| reference.revision == 2)
     );
 }
 
@@ -138,4 +173,54 @@ fn a_live_archive_pin_holds_an_otherwise_reclaimable_digest_until_it_ends() {
 
     archiver.release_pin(pin).unwrap();
     assert!(obligations(&mut store, &digest, &ids).reclaimable());
+    // Nothing was withdrawn yet: reclamation refuses the bytes.
+    let digests = BTreeSet::from([digest.clone()]);
+    let refused = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(refused[0].outcome, ReclaimOutcome::NotWithdrawn);
+}
+
+#[test]
+fn reclamation_is_refused_while_the_format_on_disk_forbids_writes() {
+    let temporary = tempfile::tempdir().unwrap();
+    let (root, case, digest) = workspace(&temporary);
+    let mut store = open(&root);
+    let operations: Vec<_> = references(&mut store, case, &digest)
+        .iter()
+        .map(|holder| {
+            json!({"op":"artifact.expire","payload":{
+                "artifact_ref": holder, "reason":"owner_request",
+                "rationale":"The owner asked for the capture to be dropped."
+            }})
+        })
+        .collect();
+    let request = json!({
+        "schema_version":"inv.command.v1", "command_id":"expire-all", "actor":ACTOR,
+        "case_id":case, "preconditions":[], "operations":operations,
+    });
+    store
+        .record(&serde_json::to_vec(&request).unwrap())
+        .unwrap();
+    // A newer program, or a migration in progress, changes the marker after
+    // this store was opened: the removal reads it under the lock.
+    let marker = root.join("state/workspace.json");
+    let original = fs::read(&marker).unwrap();
+    let mut value: serde_json::Value = serde_json::from_slice(&original).unwrap();
+    value["format"] = json!({"version": 2, "read_requires": 1, "write_requires": 2});
+    fs::write(&marker, serde_json::to_vec_pretty(&value).unwrap()).unwrap();
+    let digests = BTreeSet::from([digest.clone()]);
+    let refused = store.reclaim_blobs(&digests).unwrap_err();
+    assert_eq!(
+        refused.error.code,
+        investigation_core::wire::ErrorCode::InvalidInput
+    );
+    let hex = digest.as_str().strip_prefix("sha256:").unwrap();
+    assert!(
+        root.join("state/blobs/sha256")
+            .join(&hex[..2])
+            .join(hex)
+            .is_file()
+    );
+    fs::write(&marker, original).unwrap();
+    let done = store.reclaim_blobs(&digests).unwrap();
+    assert_eq!(done[0].outcome, ReclaimOutcome::Reclaimed);
 }

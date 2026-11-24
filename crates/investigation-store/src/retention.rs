@@ -1,28 +1,40 @@
-//! Retention obligations: what still holds a stored blob once some
-//! references give up their availability (plan §16.5; W11.11).
+//! Retention obligations and physical reclamation (plan §16.5; W11.11,
+//! W11.19).
 //!
 //! Retention applies to references, never to digests (`artifact.expire`).
 //! A blob may be reclaimed only when nothing live holds its digest any more.
-//! [`Store::retention_obligations`] lists, for each digest, every holder the
-//! workspace knows of:
+//! [`record_holders`] is the one rule for which records still hold stored
+//! bytes. `check`, the workspace archive and reclamation all use it, so a
+//! blob that only withdrawn references record is neither demanded by `check`
+//! nor copied into a new archive, and every other blob is:
 //!
 //! - the Artifacts in any case whose current availability is `retained`;
 //! - the method packs any case has adopted with those bytes;
-//! - journal events that attached the bytes while no Artifact of their case
-//!   records the digest (bytes kept for a record of another kind);
-//! - live archive pins (W11.09), which hold until the archive ends;
-//! - unsettled capture staging, which may still finalize into a reference
-//!   to the same bytes, so it holds every digest until it is settled.
+//! - journal events that attached the bytes, unless every Artifact of their
+//!   case recording the digest is `retained` or `intentionally_removed` (the
+//!   attachment then follows those Artifacts' availability). An attachment no
+//!   Artifact records, or one recorded by an Artifact of another
+//!   availability, always holds.
 //!
-//! A digest with no holder is *reclaimable*. This module never removes a
-//! blob. Physical reclamation (W11.19) recomputes the obligations with
-//! [`Store::retention_obligations_locked`] under the same coordination hold
-//! in which it calls the removal, so an import, a pin or a capture cannot
-//! slip in between. Until then a withdrawn reference is reported truthfully
-//! as unavailable while its bytes stay stored.
+//! [`Store::retention_obligations`] adds the live holders outside the
+//! journal: live archive pins (W11.09), unsettled capture staging (which may
+//! still finalize into a reference to the same bytes, so it holds every
+//! digest) and copies of the bytes in capture staging that is finalized but
+//! not yet retired (retirement verifies them against the canonical blob).
+//!
+//! [`Store::reclaim_blobs`] removes a blob only when, under one hold of the
+//! coordination lock, nothing holds it and at least one reference to it was
+//! explicitly withdrawn. Imports, archive pins, capture begin and
+//! finalization and every commit take the same lock, so none can slip in
+//! between the recheck and the removal; a commit after it publishes the
+//! bytes again from its own staged copy. Each removal is one unlink followed
+//! by a sync of the shard directory, so an interruption at any step leaves
+//! the blob either present (a retry removes it) or absent (a retry reports
+//! it already absent); the journal is never touched.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
+    io,
     path::Path,
 };
 
@@ -35,9 +47,13 @@ use investigation_core::{
 };
 use serde::Serialize;
 
-use super::{DurableFs, Store, archive::blob_path};
+use super::{
+    BLOBS, DurableFs, Store, archive::blob_path, capture::STAGING_ROOT, durability_failure,
+    io_failure, sync_directory,
+};
+use crate::journal::CaseReplay;
 
-/// An Artifact that keeps the bytes retained.
+/// An Artifact that records the bytes.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ReferenceHolder {
     pub case_id: Id,
@@ -53,11 +69,141 @@ pub struct MethodPackHolder {
 }
 
 /// A journal event that attached the bytes while no Artifact of its case
-/// records their digest.
+/// accounts for their availability.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct AttachmentHolder {
     pub case_id: Id,
     pub sequence: u64,
+}
+
+/// What the journals record about one digest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RecordHolders {
+    /// Sizes recorded by retained Artifacts.
+    pub retained_sizes: BTreeSet<u64>,
+    /// The first size any Artifact revision records.
+    pub size_bytes: Option<u64>,
+    pub references: Vec<ReferenceHolder>,
+    pub method_packs: Vec<MethodPackHolder>,
+    pub attachments: Vec<AttachmentHolder>,
+    /// Current Artifacts recording the digest whose availability was
+    /// withdrawn (or is planned to be, through `released`).
+    pub withdrawn: Vec<ReferenceHolder>,
+}
+
+impl RecordHolders {
+    /// Whether a record still needs the stored bytes.
+    pub fn holds(&self) -> bool {
+        !(self.references.is_empty() && self.method_packs.is_empty() && self.attachments.is_empty())
+    }
+}
+
+/// Every digest the verified journals record (attached by an event or
+/// named by an Artifact), with the records that still hold its bytes.
+/// Artifacts in `released` count as withdrawn: a planned `artifact.expire`.
+/// Fails only when a case's adopted method packs cannot be read; a caller
+/// that must not fail then treats every recorded digest as held.
+pub fn record_holders<'a>(
+    replays: impl IntoIterator<Item = (Id, &'a CaseReplay)>,
+    released: &BTreeSet<Id>,
+) -> Result<BTreeMap<Digest, RecordHolders>, Failure> {
+    let mut found = BTreeMap::<Digest, RecordHolders>::new();
+    for (case_id, replay) in replays {
+        let state = &replay.state;
+        // Per digest, the availability of every current Artifact of this
+        // case whose history records it.
+        let mut recording = BTreeMap::<Digest, Vec<ArtifactAvailability>>::new();
+        for current in state.records_of_kind(Kind::Artifact) {
+            let mut digests = BTreeSet::new();
+            for record in state.history(current.header.id) {
+                let Ok(body) = input::decode::<ArtifactBody>(&record.body) else {
+                    continue;
+                };
+                if let Some(digest) = body.digest {
+                    let entry = found.entry(digest.clone()).or_default();
+                    entry.size_bytes = entry.size_bytes.or(body.size_bytes);
+                    digests.insert(digest);
+                }
+            }
+            let availability = match input::decode::<ArtifactBody>(&current.body) {
+                Ok(body) => {
+                    let holder = ReferenceHolder {
+                        case_id,
+                        artifact_ref: current.reference(),
+                    };
+                    match (body.availability, body.digest) {
+                        (ArtifactAvailability::Retained, Some(digest))
+                            if !released.contains(&current.header.id) =>
+                        {
+                            let entry = found.entry(digest).or_default();
+                            entry.references.push(holder);
+                            entry.retained_sizes.extend(body.size_bytes);
+                            ArtifactAvailability::Retained
+                        }
+                        (
+                            ArtifactAvailability::Retained
+                            | ArtifactAvailability::IntentionallyRemoved,
+                            Some(digest),
+                        ) => {
+                            found.entry(digest).or_default().withdrawn.push(holder);
+                            ArtifactAvailability::IntentionallyRemoved
+                        }
+                        (availability, _) => availability,
+                    }
+                }
+                // Unreadable metadata accounts for nothing: attachments hold.
+                Err(_) => ArtifactAvailability::Missing,
+            };
+            for digest in digests {
+                recording.entry(digest).or_default().push(availability);
+            }
+        }
+        for pin in method_pack_ops::adopted_packs(state, case_id, None)? {
+            found
+                .entry(pin.digest)
+                .or_default()
+                .method_packs
+                .push(MethodPackHolder {
+                    case_id,
+                    pack_id: pin.pack_id,
+                    version: pin.version,
+                });
+        }
+        for verified in &replay.events {
+            let event = &verified.event;
+            for digest in event
+                .request
+                .attachments
+                .iter()
+                .chain(event.manifest_digest.iter())
+            {
+                let accounted = recording.get(digest).is_some_and(|availability| {
+                    availability.iter().all(|availability| {
+                        matches!(
+                            availability,
+                            ArtifactAvailability::Retained
+                                | ArtifactAvailability::IntentionallyRemoved
+                        )
+                    })
+                });
+                let entry = found.entry(digest.clone()).or_default();
+                if !accounted {
+                    entry.attachments.push(AttachmentHolder {
+                        case_id,
+                        sequence: event.sequence,
+                    });
+                }
+            }
+        }
+    }
+    for entry in found.values_mut() {
+        entry.references.sort();
+        entry.method_packs.sort();
+        entry.attachments.sort();
+        entry.attachments.dedup();
+        entry.withdrawn.sort();
+    }
+    Ok(found)
 }
 
 /// Every known obligation on one digest.
@@ -71,10 +217,17 @@ pub struct DigestObligations {
     pub references: Vec<ReferenceHolder>,
     pub method_packs: Vec<MethodPackHolder>,
     pub attachments: Vec<AttachmentHolder>,
+    /// Current Artifacts recording the digest whose availability was
+    /// withdrawn. Reclamation removes only bytes with at least one.
+    pub withdrawn: Vec<ReferenceHolder>,
     /// Names of the live archive pins that hold the digest.
     pub archive_pins: Vec<String>,
     /// Capture staging that is not settled holds every digest.
     pub unsettled_staging: bool,
+    /// Copies in finalized capture staging that is not retired yet,
+    /// relative to the workspace root. Retirement verifies them against the
+    /// canonical blob, so they hold it until the staging is retired.
+    pub staged_copies: Vec<String>,
 }
 
 impl DigestObligations {
@@ -84,14 +237,42 @@ impl DigestObligations {
         !(self.references.is_empty() && self.method_packs.is_empty() && self.attachments.is_empty())
     }
 
-    /// Whether nothing holds the stored bytes: a later reclamation could
-    /// remove them. Never true for a blob that is not stored.
-    pub fn reclaimable(&self) -> bool {
-        self.stored
-            && !self.held_by_records()
-            && self.archive_pins.is_empty()
-            && !self.unsettled_staging
+    /// Whether something outside the journal holds the bytes for now: a live
+    /// archive pin, unsettled staging or an unretired staged copy.
+    pub fn waiting(&self) -> bool {
+        !self.archive_pins.is_empty() || self.unsettled_staging || !self.staged_copies.is_empty()
     }
+
+    /// Whether nothing holds the stored bytes: a reclamation could remove
+    /// them. Never true for a blob that is not stored.
+    pub fn reclaimable(&self) -> bool {
+        self.stored && !self.held_by_records() && !self.waiting()
+    }
+}
+
+/// What a reclamation did with one digest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReclaimOutcome {
+    /// The blob was removed and its shard directory synced.
+    Reclaimed,
+    /// Nothing holds the digest and no blob is stored: an earlier
+    /// reclamation removed it.
+    AlreadyAbsent,
+    /// A retained reference, adopted pack or attachment still holds it.
+    HeldByRecords,
+    /// A live pin or capture staging holds it; retry when it ends.
+    Waiting,
+    /// No reference to these bytes was withdrawn: reclamation never removes
+    /// bytes whose loss of availability is not committed.
+    NotWithdrawn,
+}
+
+/// One digest's outcome, with the obligations rechecked under the lock.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Reclamation {
+    pub outcome: ReclaimOutcome,
+    pub obligations: DigestObligations,
 }
 
 impl<F: DurableFs> Store<F> {
@@ -109,8 +290,7 @@ impl<F: DurableFs> Store<F> {
     }
 
     /// [`Self::retention_obligations`] for a caller that already holds the
-    /// coordination lock: physical reclamation must recheck and remove
-    /// under one hold.
+    /// coordination lock: reclamation rechecks and removes under one hold.
     pub(crate) fn retention_obligations_locked(
         &mut self,
         digests: &BTreeSet<Digest>,
@@ -119,99 +299,121 @@ impl<F: DurableFs> Store<F> {
         let verified = self.load_verified()?;
         let unsettled_staging = self.refuse_unsettled_staging(&verified).is_err();
         let pins = self.live_pins()?;
-        let mut found: BTreeMap<Digest, DigestObligations> = digests
+        let staging = self.staging_directories()?;
+        let records = record_holders(
+            verified.cases.iter().map(|(id, replay)| (*id, replay)),
+            released,
+        )?;
+        digests
             .iter()
             .map(|digest| {
-                (
-                    digest.clone(),
-                    DigestObligations {
-                        digest: digest.clone(),
-                        size_bytes: None,
-                        stored: self.fs.identity(Path::new(&blob_path(digest))).is_ok(),
-                        references: Vec::new(),
-                        method_packs: Vec::new(),
-                        attachments: Vec::new(),
-                        archive_pins: pins
-                            .iter()
-                            .filter(|(_, held)| {
-                                held.as_ref().is_none_or(|held| held.contains(digest))
-                            })
-                            .map(|(name, _)| name.clone())
-                            .collect(),
-                        unsettled_staging,
-                    },
-                )
+                let holders = records.get(digest).cloned().unwrap_or_default();
+                let hex = digest.as_str().trim_start_matches("sha256:");
+                let mut staged_copies = Vec::new();
+                for directory in &staging {
+                    let copy = directory.join("blobs").join(hex);
+                    // A copy that cannot be looked at holds the bytes too.
+                    if self.blob_file_present(&copy).unwrap_or(true) {
+                        staged_copies.push(copy.to_string_lossy().into_owned());
+                    }
+                }
+                Ok(DigestObligations {
+                    digest: digest.clone(),
+                    size_bytes: holders.size_bytes,
+                    stored: self.blob_file_present(Path::new(&blob_path(digest)))?,
+                    references: holders.references,
+                    method_packs: holders.method_packs,
+                    attachments: holders.attachments,
+                    withdrawn: holders.withdrawn,
+                    archive_pins: pins
+                        .iter()
+                        .filter(|(_, held)| held.as_ref().is_none_or(|held| held.contains(digest)))
+                        .map(|(name, _)| name.clone())
+                        .collect(),
+                    unsettled_staging,
+                    staged_copies,
+                })
             })
-            .collect();
-        for (case_id, replay) in &verified.cases {
-            let state = &replay.state;
-            // Every digest any Artifact revision of this case records: an
-            // attachment of such bytes follows that Artifact's availability.
-            let mut recorded = BTreeSet::new();
-            for current in state.records_of_kind(Kind::Artifact) {
-                for record in state.history(current.header.id) {
-                    let Ok(body) = input::decode::<ArtifactBody>(&record.body) else {
-                        continue;
-                    };
-                    let Some(digest) = body.digest else {
-                        continue;
-                    };
-                    if let Some(entry) = found.get_mut(&digest) {
-                        entry.size_bytes = entry.size_bytes.or(body.size_bytes);
-                    }
-                    recorded.insert(digest);
-                }
-                let Ok(body) = input::decode::<ArtifactBody>(&current.body) else {
-                    continue;
-                };
-                if body.availability != ArtifactAvailability::Retained
-                    || released.contains(&current.header.id)
-                {
-                    continue;
-                }
-                if let Some(entry) = body.digest.and_then(|digest| found.get_mut(&digest)) {
-                    entry.references.push(ReferenceHolder {
-                        case_id: *case_id,
-                        artifact_ref: current.reference(),
-                    });
-                }
-            }
-            for pin in method_pack_ops::adopted_packs(state, *case_id, None)? {
-                if let Some(entry) = found.get_mut(&pin.digest) {
-                    entry.method_packs.push(MethodPackHolder {
-                        case_id: *case_id,
-                        pack_id: pin.pack_id,
-                        version: pin.version,
-                    });
-                }
-            }
-            for verified in &replay.events {
-                let event = &verified.event;
-                for digest in event
-                    .request
-                    .attachments
-                    .iter()
-                    .chain(event.manifest_digest.iter())
-                    .filter(|digest| !recorded.contains(*digest))
-                {
-                    if let Some(entry) = found.get_mut(digest) {
-                        entry.attachments.push(AttachmentHolder {
-                            case_id: *case_id,
-                            sequence: event.sequence,
-                        });
-                    }
-                }
-            }
+            .collect()
+    }
+
+    /// Whether a file is present. Only `NotFound` means absent: any other
+    /// error fails, so an unreadable blob is never reported as removed.
+    fn blob_file_present(&self, path: &Path) -> Result<bool, Failure> {
+        match self.fs.identity(path) {
+            Ok(_) => Ok(true),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(io_failure(error)),
         }
-        Ok(found
-            .into_values()
-            .map(|mut entry| {
-                entry.references.sort();
-                entry.method_packs.sort();
-                entry.attachments.sort();
-                entry.attachments.dedup();
-                entry
-            })
-            .collect())
+    }
+
+    /// Remove the stored blob of each of `digests` that nothing holds and
+    /// that at least one withdrawn reference records. The obligations are
+    /// rechecked and every removal made under one hold of the coordination
+    /// lock. Each removal is synced before the next; a retry after any
+    /// interruption is safe and reports what an earlier attempt removed as
+    /// `already_absent`. Records, journals and digests are never changed.
+    pub fn reclaim_blobs(
+        &mut self,
+        digests: &BTreeSet<Digest>,
+    ) -> Result<Vec<Reclamation>, Failure> {
+        let _lock = self.coordinate()?;
+        // A removal is a write: refused while a migration is in progress or
+        // the format on disk is newer than this program writes.
+        self.refuse_unwritable_format()?;
+        let found = self.retention_obligations_locked(digests, &BTreeSet::new())?;
+        let mut done = Vec::with_capacity(found.len());
+        for obligations in found {
+            let outcome = if obligations.withdrawn.is_empty() {
+                ReclaimOutcome::NotWithdrawn
+            } else if obligations.held_by_records() {
+                ReclaimOutcome::HeldByRecords
+            } else if !obligations.stored {
+                self.forget_verdict(&obligations.digest);
+                ReclaimOutcome::AlreadyAbsent
+            } else if obligations.waiting() {
+                ReclaimOutcome::Waiting
+            } else {
+                self.remove_blob(&obligations.digest)?;
+                self.forget_verdict(&obligations.digest);
+                ReclaimOutcome::Reclaimed
+            };
+            done.push(Reclamation {
+                outcome,
+                obligations,
+            });
+        }
+        Ok(done)
+    }
+
+    /// Unlink one blob and sync its shard directory, so the removal is
+    /// durable before it is reported.
+    fn remove_blob(&mut self, digest: &Digest) -> Result<(), Failure> {
+        self.gate.check().map_err(durability_failure)?;
+        let path = blob_path(digest);
+        match self.fs.remove(Path::new(&path)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(io_failure(error)),
+        }
+        let hex = digest.as_str().trim_start_matches("sha256:");
+        sync_directory(&mut self.fs, &Path::new(BLOBS).join(&hex[..2]), &self.gate)
+            .map_err(durability_failure)
+    }
+
+    /// Drop the disposable verdict that names the digest, best effort: it
+    /// holds no bytes, and a stale entry only ever means "hash again".
+    fn forget_verdict(&mut self, digest: &Digest) {
+        let hex = digest.as_str().trim_start_matches("sha256:");
+        let _ = self.fs.remove(&Path::new("cache/blob-verdicts").join(hex));
+    }
+
+    /// The capture staging directories present now.
+    fn staging_directories(&self) -> Result<Vec<std::path::PathBuf>, Failure> {
+        match self.fs.list(Path::new(STAGING_ROOT)) {
+            Ok(entries) => Ok(entries),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(io_failure(error)),
+        }
     }
 }

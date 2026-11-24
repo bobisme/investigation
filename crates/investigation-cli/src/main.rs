@@ -326,7 +326,7 @@ enum Commands {
     /// Diagnose where exposed text lives in this workspace; removes nothing.
     #[command(after_help = exposure::AFTER_HELP)]
     Exposure(exposure::Args),
-    /// Preview withdrawing Artifact availability before anything changes; writes nothing.
+    /// Preview withdrawing Artifact availability, or reclaim bytes nothing holds any more.
     #[command(subcommand, after_help = retention::AFTER_HELP)]
     Retention(retention::RetentionCommand),
     /// Verify the journal, blobs, and index without repairing them.
@@ -1209,6 +1209,12 @@ fn check(store: &mut Store) -> Result<Output, Failure> {
         text.push_str(&format!(
             "  {} reference-only artifact(s) not retained or checked",
             report.reference_only_artifacts
+        ));
+    }
+    if report.reclaimed_blobs > 0 {
+        text.push_str(&format!(
+            "  {} reclaimed blob(s) that only withdrawn references record",
+            report.reclaimed_blobs
         ));
     }
     for issue in &mut report.issues {

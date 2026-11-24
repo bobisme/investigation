@@ -97,7 +97,8 @@ impl CaseJournal {
 }
 
 /// A blob some journal requires: cited by an event (attachments, a manifest)
-/// or held by a retained Artifact, with every size recorded for it.
+/// or held by a retained Artifact, with every size recorded for it. Bytes
+/// only withdrawn references record are not required.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequiredBlob {
     pub digest: Digest,
@@ -277,6 +278,7 @@ impl<F: DurableFs> Store<F> {
             heads: Vec::new(),
             structurally_valid: true,
             verified_blobs: 0,
+            reclaimed_blobs: 0,
             unavailable_artifacts: 0,
             reference_only_artifacts: 0,
             source_authenticated: None,
@@ -346,10 +348,26 @@ const MAX_LISTED_HANDLES: usize = 50;
 
 /// The blobs these verified journals require, and the Artifacts that hold
 /// no bytes. The rule is `check`'s: event attachments and manifests, and
-/// every retained Artifact's recorded digest and size.
+/// every retained Artifact's recorded digest and size, except bytes that
+/// only withdrawn references record (see [`super::retention`]). Those are
+/// neither required nor copied, whatever the withdrawal's reason: no
+/// reference of the archived state can read them, so a copy would only be
+/// one more place the bytes survive. When the holders cannot be read every
+/// recorded blob is required.
 pub fn required_blobs<'a>(
     replays: impl IntoIterator<Item = (Id, &'a CaseReplay)>,
 ) -> (Vec<RequiredBlob>, Vec<NotRetained>) {
+    let replays: Vec<(Id, &CaseReplay)> = replays.into_iter().collect();
+    let held: Option<BTreeSet<Digest>> =
+        super::retention::record_holders(replays.iter().copied(), &BTreeSet::new())
+            .ok()
+            .map(|holders| {
+                holders
+                    .into_iter()
+                    .filter(|(_, holders)| holders.holds())
+                    .map(|(digest, _)| digest)
+                    .collect()
+            });
     let mut blobs = BTreeMap::<Digest, BTreeSet<u64>>::new();
     let mut not_retained = Vec::new();
     for (case_id, replay) in replays {
@@ -390,6 +408,7 @@ pub fn required_blobs<'a>(
     not_retained.sort_by_key(|entry| (entry.case_id, entry.artifact));
     let blobs = blobs
         .into_iter()
+        .filter(|(digest, _)| held.as_ref().is_none_or(|held| held.contains(digest)))
         .map(|(digest, sizes)| RequiredBlob { digest, sizes })
         .collect();
     (blobs, not_retained)
