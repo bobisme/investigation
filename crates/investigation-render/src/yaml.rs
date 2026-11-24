@@ -61,7 +61,13 @@ impl Frontmatter {
     /// A date-time property. Plain when the text is a strict UTC timestamp,
     /// so Obsidian can type it as a date; quoted otherwise.
     pub fn timestamp(&mut self, key: &'static str, value: &UtcTimestamp) -> &mut Self {
-        let text = value.to_string();
+        self.time_text(key, &value.to_string())
+    }
+
+    /// A date or date-time property from its text: plain when it is a strict
+    /// UTC timestamp or a `YYYY-MM-DD` date, so Obsidian can type it;
+    /// quoted otherwise.
+    pub fn time_text(&mut self, key: &'static str, text: &str) -> &mut Self {
         if !text.is_empty()
             && text
                 .bytes()
@@ -71,7 +77,7 @@ impl Frontmatter {
             let _ = writeln!(self.out, " {text}");
             self
         } else {
-            self.text(key, &text)
+            self.text(key, text)
         }
     }
 

@@ -41,6 +41,19 @@
 //!   32-digit form may remain. A kind that prints a journal sequence must
 //!   take it from [`super::ExportInput::snapshot`], which is 0 when
 //!   remapped; numbers cannot be checked generically.
+//! - Revision numbers stay as recorded (bn-18la): a manifest `RevisionRef`
+//!   pairs the remapped ID with the record's own revision, public exports
+//!   included. Every kind's files cite records as "revision N" too, where
+//!   the cited and the current revision tell a reader that a citation went
+//!   stale, so a number dropped from the manifest alone would hide nothing
+//!   and leave the manifest disagreeing with the files it lists; and v1
+//!   requires `revision` ≥ 1, so no value could mean "not disclosed" as
+//!   `sequence` 0 does. A revision number counts revisions of the shown
+//!   record itself, never of another record: adding records that bear on
+//!   nothing shown moves no shown number (the count-inference test covers
+//!   remapped exports).
+//! - Times the workspace stamped on records follow [`super::RecordTimes`]:
+//!   the day only when remapped, none for public.
 //! - A remapped export is a review product: it cannot restore canonical
 //!   state, so a resumable kind refuses it.
 
@@ -345,6 +358,8 @@ impl Remapper {
         Ok(exported)
     }
 
+    /// The reference the manifest shows: the remapped ID at the record's own
+    /// revision, which is kept (see the module documentation).
     pub(super) fn reference(&mut self, reference: RevisionRef) -> Result<RevisionRef, ExportError> {
         Ok(RevisionRef {
             id: self.id(reference.id)?,

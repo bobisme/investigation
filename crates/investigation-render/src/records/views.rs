@@ -1640,12 +1640,10 @@ impl<'n, 'a> Views<'n, 'a> {
                     && self.notes.may_show(current, Field::Content);
                 cells.extend([
                     self.change(*previous, revision, content)?,
-                    claimed_time(revision),
-                    if positions {
-                        table_code(&revision.header.recorded_at.to_string())
-                    } else {
-                        NOT_SHOWN_CELL.to_owned()
-                    },
+                    claimed_time(self.notes, revision),
+                    self.notes
+                        .record_time(&revision.header.recorded_at.to_string())
+                        .map_or_else(|| NOT_SHOWN_CELL.to_owned(), |time| table_code(&time)),
                     table_code(&revision.header.recorded_by.to_string()),
                 ]);
             } else {
@@ -1673,12 +1671,13 @@ impl<'n, 'a> Views<'n, 'a> {
             |_| true,
             &["Record", "Kind", "Revision", "Recorded"],
             |record| {
-                let recorded = if !self.notes.shows_positions() {
-                    NOT_SHOWN_CELL.to_owned()
-                } else if self.notes.visible(record) {
-                    table_code(&record.header.recorded_at.to_string())
-                } else {
-                    "withheld".to_owned()
+                let recorded = match self
+                    .notes
+                    .record_time(&record.header.recorded_at.to_string())
+                {
+                    None => NOT_SHOWN_CELL.to_owned(),
+                    Some(time) if self.notes.visible(record) => table_code(&time),
+                    Some(_) => "withheld".to_owned(),
                 };
                 vec![
                     layout::kind_name(record.header.id.kind()).to_owned(),
@@ -1860,8 +1859,9 @@ fn is_measurement(record: &Record) -> bool {
 }
 
 /// The time a revision's source or recorder claims, or a statement that
-/// none is claimed.
-fn claimed_time(record: &Record) -> String {
+/// none is claimed. An acquisition time is the one ingest stamped, a record
+/// time, so it shows as the export's record-time policy allows.
+fn claimed_time(notes: &NoteContext<'_>, record: &Record) -> String {
     let shown = |label: &str, time: &SourceTime| -> String {
         match &time.timestamp {
             Knowledge::Known(timestamp) => format!(
@@ -1892,7 +1892,19 @@ fn claimed_time(record: &Record) -> String {
         return shown("started", &time);
     }
     if let Some(time) = &record.header.acquired_at {
-        return shown("acquired", time);
+        let Knowledge::Known(stamped) = &time.timestamp else {
+            return shown("acquired", time);
+        };
+        return match notes.record_time(stamped) {
+            Some(text) => shown(
+                "acquired",
+                &SourceTime {
+                    timestamp: Knowledge::Known(text),
+                    ..time.clone()
+                },
+            ),
+            None => format!("acquired ({NOT_SHOWN_CELL})"),
+        };
     }
     "none claimed".to_owned()
 }

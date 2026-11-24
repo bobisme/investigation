@@ -329,7 +329,7 @@
       "$ref": "#/$defs/Statements"
     },
     "supersession": {
-      "description": "Supersession links between included records, so a superseded record\nis marked rather than rewritten.",
+      "description": "Supersession links between included records, so a superseded record\nis marked rather than rewritten. When `identifiers` is `remapped`,\neach reference here and in `sources` names the remapped ID at the\nrecord's own revision, as the export's files cite it.",
       "items": {
         "$ref": "#/$defs/Supersession"
       },

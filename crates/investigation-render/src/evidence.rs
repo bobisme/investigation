@@ -160,6 +160,27 @@ fn knowledge(value: &Knowledge<String>) -> String {
     }
 }
 
+/// An acquisition time ingest stamped, a record time: shown as the
+/// context's record-time policy allows (bn-18la), otherwise like
+/// [`source_time`].
+fn stamped_time(notes: &NoteContext<'_>, time: Option<&SourceTime>) -> String {
+    let Some(time) = time else {
+        return source_time(None);
+    };
+    let Knowledge::Known(stamped) = &time.timestamp else {
+        return source_time(Some(time));
+    };
+    notes.record_time(stamped).map_or_else(
+        || "not shown in this export".to_owned(),
+        |text| {
+            source_time(Some(&SourceTime {
+                timestamp: Knowledge::Known(text),
+                ..time.clone()
+            }))
+        },
+    )
+}
+
 /// A source-claimed time with its offset and the clock quality as claimed.
 pub(crate) fn source_time(time: Option<&SourceTime>) -> String {
     time.map_or_else(
@@ -258,7 +279,7 @@ fn source_sections(
         (
             "Acquired at",
             // Code spans in a table cell need their pipes escaped.
-            source_time(acquisition.acquired_at.as_ref()).replace('|', "\\|"),
+            stamped_time(notes, acquisition.acquired_at.as_ref()).replace('|', "\\|"),
         ),
         ("Method", or_not_recorded(acquisition.method.as_deref())),
         ("Context", or_not_recorded(acquisition.context.as_deref())),

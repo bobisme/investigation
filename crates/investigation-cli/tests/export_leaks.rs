@@ -35,6 +35,10 @@
 //!   checked), and no digest of a withheld artifact;
 //! - no absolute path of the machine the export was made on;
 //! - a remapped export holds no canonical ID, head hash or creation time;
+//! - every time the workspace stamped on a record (recorded, created,
+//!   acquired) shows only as the export's record-time policy allows:
+//!   exactly when canonical, the day when remapped, not at all for public
+//!   (bn-18la);
 //! - every copied byte (human notes, attachments, run files) is exactly a
 //!   retained blob, so a remap never altered one (W11.14);
 //! - each caveated record carries every policy caveat verbatim in every file
@@ -60,7 +64,9 @@ use investigation_core::{
 };
 use investigation_render::{
     Audience,
-    export::{Caveat, ExportSnapshot, KINDS, Pin, Scope, kind, plan_export},
+    export::{
+        Caveat, ExportSnapshot, IdentifierMode, KINDS, Pin, RecordTimes, Scope, kind, plan_export,
+    },
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -1333,6 +1339,9 @@ struct Truth {
     records: Vec<Id>,
     /// Every verified head hash of the case, hex.
     heads: Vec<String>,
+    /// Every time the workspace stamped on a revision of the case:
+    /// recorded, created and acquired (bn-18la).
+    times: BTreeSet<String>,
 }
 
 fn truth(planted: &Planted, audience: Audience, pin: Option<u64>) -> Truth {
@@ -1391,6 +1400,27 @@ fn truth(planted: &Planted, audience: Audience, pin: Option<u64>) -> Truth {
             .map(|record| record.header.id)
             .collect(),
         heads,
+        times: replay
+            .state
+            .records()
+            .flat_map(|record| replay.state.history(record.header.id))
+            .flat_map(|revision| {
+                let header = &revision.header;
+                let acquired = header
+                    .acquired_at
+                    .as_ref()
+                    .and_then(|time| match &time.timestamp {
+                        investigation_core::header::Knowledge::Known(text) => Some(text.clone()),
+                        investigation_core::header::Knowledge::Unknown => None,
+                    });
+                [
+                    Some(header.recorded_at.to_string()),
+                    Some(header.created_at.to_string()),
+                    acquired,
+                ]
+            })
+            .flatten()
+            .collect(),
     }
 }
 
@@ -1598,6 +1628,36 @@ fn assert_review_export(
                 "{label}: head hash {head}"
             );
         }
+    }
+    // Record times follow the export's policy (bn-18la): under the day
+    // policy no record time shows to the hour or finer, and when omitted
+    // not even its day shows. Copied evidence bytes are checked as exact
+    // copies instead.
+    let mode = if exported.remapped() {
+        IdentifierMode::Remapped
+    } else {
+        IdentifierMode::Canonical
+    };
+    let policy = RecordTimes::for_export(audience, mode);
+    let rendered = |needle: &str| -> Vec<String> {
+        exported
+            .find(needle)
+            .into_iter()
+            .filter(|found| !copied(found.split(':').next().unwrap_or_default()))
+            .collect()
+    };
+    for time in &truth.times {
+        let shown = match policy {
+            RecordTimes::Exact => continue,
+            RecordTimes::Day => rendered(&time[..13]),
+            RecordTimes::Omitted => rendered(&time[..10]),
+        };
+        expect!(
+            problems,
+            shown.is_empty(),
+            "{label}: record time {time} shown beyond the {} policy: {shown:#?}",
+            policy.as_str()
+        );
     }
     // Caveats: verbatim beside every caveated record wherever it is shown;
     // none at all for the public, which gets no caveated record.
@@ -2081,10 +2141,21 @@ fn normalized(exported: &Exported, sequences: &[u64]) -> BTreeMap<String, String
 /// shown changes no byte an internal or public audience reads, other than
 /// the snapshot the export names; no count, list, completeness or summary
 /// moves.
+///
+/// Remapped exports (public, and internal with `--remap-ids`) are held to
+/// more (bn-18la): their remapped values are keyed by the case head, so
+/// every one changes with the snapshot and is compared through the
+/// publisher's mapping; and they show no journal position at all, so no
+/// sequence is masked before they are compared. Only a canonical export's
+/// lines keep their order: a remapped one orders records by remapped ID.
 #[test]
 fn adding_a_restricted_record_changes_no_count_a_lower_audience_sees() {
     let planted = planted("hostile");
-    let audiences = [(Audience::Internal, false), (Audience::Public, false)];
+    let audiences = [
+        (Audience::Internal, false),
+        (Audience::Internal, true),
+        (Audience::Public, false),
+    ];
     let mut before = Vec::new();
     let head = |planted: &Planted| -> u64 {
         let mut store = Store::open(Workspace::open(&planted.workspace).unwrap());
@@ -2134,21 +2205,46 @@ fn adding_a_restricted_record_changes_no_count_a_lower_audience_sees() {
     for name in case_kinds() {
         for (audience, remap) in audiences {
             let after = export(&planted, name, audience, remap, None).unwrap();
-            let label = format!("{name} {}", audience.as_str());
-            let old = normalized(&before[index], &[first, second]);
-            let new = normalized(&after, &[first, second]);
+            let label = format!("{name} {} remap={remap}", audience.as_str());
+            let remapped = after.remapped();
+            assert_eq!(before[index].remapped(), remapped, "{label}");
+            assert_eq!(remapped, remap || audience == Audience::Public, "{label}");
+            // A remapped export shows no sequence, so none is masked.
+            let sequences: &[u64] = if remapped { &[] } else { &[first, second] };
+            let old = normalized(&before[index], sequences);
+            let new = normalized(&after, sequences);
+            if remapped {
+                // Not vacuous: every remapped value moved with the head, and
+                // the comparison goes through the mapping.
+                let values = |exported: &Exported| -> BTreeSet<String> {
+                    exported
+                        .pairs()
+                        .into_iter()
+                        .map(|(_, shown)| shown)
+                        .collect()
+                };
+                let (was, is) = (values(&before[index]), values(&after));
+                assert!(!was.is_empty(), "{label}: nothing remapped");
+                assert!(
+                    was.is_disjoint(&is),
+                    "{label}: a remapped value survived the head"
+                );
+            }
             index += 1;
             assert_eq!(
                 old.keys().collect::<Vec<_>>(),
                 new.keys().collect::<Vec<_>>(),
                 "{label}: the file list changed"
             );
-            // Lines are compared as sorted lists: a remapped export orders
-            // records by their remapped IDs, which differ per snapshot.
+            // A remapped export's lines are compared as sorted lists: it
+            // orders records by their remapped IDs, which differ per
+            // snapshot. A canonical export's must keep their order.
             for (path, text) in &old {
                 let sorted = |text: &str| {
                     let mut lines: Vec<String> = text.lines().map(str::to_owned).collect();
-                    lines.sort();
+                    if remapped {
+                        lines.sort();
+                    }
                     lines
                 };
                 let (was, is) = (sorted(text), sorted(&new[path]));
@@ -2161,6 +2257,57 @@ fn adding_a_restricted_record_changes_no_count_a_lower_audience_sees() {
             }
         }
     }
+}
+
+/// bn-18la: the record-time policy is not vacuous. A canonical review copy
+/// shows record times exactly, a remapped one shows their day and says so in
+/// its manifest, and a public one shows neither; the matrix checks that no
+/// export of any kind shows more.
+#[test]
+fn record_times_show_exactly_to_the_day_or_not_at_all_as_the_policy_says() {
+    let planted = planted("scenario-a");
+    let times = truth(&planted, Audience::Restricted, None).times;
+    let days: BTreeSet<&str> = times.iter().map(|time| &time[..10]).collect();
+    let statement = |exported: &Exported| -> String {
+        let manifest: Value =
+            serde_json::from_slice(&exported.files["export-manifest.json"]).unwrap();
+        manifest["statements"]["identifiers"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+
+    let exact = export(&planted, "review-vault", Audience::Internal, false, None).unwrap();
+    assert!(
+        times.iter().any(|time| !exact.find(time).is_empty()),
+        "a canonical copy shows no record time"
+    );
+    assert!(!statement(&exact).contains("stamped on records"));
+
+    let day = export(&planted, "review-vault", Audience::Internal, true, None).unwrap();
+    let recorded: Vec<String> = day.find("| Recorded | ");
+    assert!(
+        recorded.iter().any(|line| days
+            .iter()
+            .any(|day| line.contains(&format!("| recorded | {day} by")))),
+        "{recorded:#?}"
+    );
+    let acquired = day.find("| Acquired at | `");
+    assert!(!acquired.is_empty());
+    for line in &acquired {
+        assert!(
+            days.iter()
+                .any(|day| line.contains(&format!("`{day}` (offset"))),
+            "{line}"
+        );
+    }
+    assert!(statement(&day).ends_with(RecordTimes::Day.statement().unwrap()));
+
+    let none = export(&planted, "review-vault", Audience::Public, false, None).unwrap();
+    for day in &days {
+        assert!(none.find(day).is_empty(), "{day}");
+    }
+    assert!(statement(&none).ends_with(RecordTimes::Omitted.statement().unwrap()));
 }
 
 /// Filtering must not strengthen a recommendation (§16.3), here in the

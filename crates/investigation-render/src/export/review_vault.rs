@@ -70,8 +70,12 @@
 //!
 //! **Identifiers.** The notes name canonical IDs and the framework remaps
 //! them for an export whose identifiers are remapped (W11.13). Such an
-//! export also shows no journal position: no acceptance sequence, record
-//! time, or earlier snapshot's sequence and head in any note or view.
+//! export also shows no journal position: no acceptance sequence, or earlier
+//! snapshot's sequence and head in any note or view.
+//!
+//! **Record times.** Times the workspace stamped on records (recorded,
+//! acquired) follow [`super::RecordTimes`]: exact when canonical, the UTC
+//! day when remapped, none for public (bn-18la).
 //!
 //! The vault's optional viewer features (Bases, Canvas) are never planned:
 //! the review vault is plain Markdown with static tables, readable on a
@@ -116,7 +120,10 @@ use crate::{
 /// v5 (bn-48uc): selected human-note snapshots (`Human Files.md` and their
 /// captured bytes under `human/sha256/`), and an `Audience caveat` column in
 /// view tables whose rows include a caveated record.
-pub const VERSION: &str = "inv.export.review-vault.v5";
+/// v6 (bn-18la): record times (recorded, acquired) follow the export's
+/// record-time policy: exact when canonical, the UTC day when remapped, none
+/// for public; acquisition times were shown exactly before.
+pub const VERSION: &str = "inv.export.review-vault.v6";
 
 /// The vault renderer version whose templates this kind plans.
 pub const TEMPLATES: &str = crate::plan::RENDERER_VERSION;
@@ -187,6 +194,7 @@ impl ExportRenderer for ReviewVault {
                 shows: &shows,
                 caveats: &caveats,
                 positions: !input.remapped(),
+                times: input.record_times(),
                 omit: &omit,
             },
             &policy,

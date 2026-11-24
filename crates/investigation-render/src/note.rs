@@ -249,11 +249,14 @@ pub(crate) struct ReviewScope<'a> {
     pub shows: &'a dyn Fn(&Record, Field) -> bool,
     /// The audience policy's fixed caveat texts for a shown record.
     pub caveats: &'a dyn Fn(&Record) -> Vec<&'static str>,
-    /// Whether journal positions may show: acceptance sequences, record
-    /// times and the sequences and head hashes of earlier snapshots. Off for
-    /// an export whose identifiers are remapped, which names a bundle
-    /// rather than the case journal.
+    /// Whether journal positions may show: acceptance sequences and the
+    /// sequences and head hashes of earlier snapshots. Off for an export
+    /// whose identifiers are remapped, which names a bundle rather than the
+    /// case journal.
     pub positions: bool,
+    /// How precisely times the workspace stamped on records show
+    /// (bn-18la): the export's [`crate::export::RecordTimes`].
+    pub times: crate::export::RecordTimes,
     /// Reports content the export leaves out because it rests on records
     /// it does not show: what, the record it is about, which part, and the
     /// records it rests on (bn-1vg8).
@@ -609,10 +612,21 @@ impl<'a> NoteContext<'a> {
         }
     }
 
-    /// Whether journal positions (acceptance sequences, record times and
-    /// earlier snapshots' sequences and head hashes) may show.
+    /// Whether journal positions (acceptance sequences and earlier
+    /// snapshots' sequences and head hashes) may show.
     pub(crate) fn shows_positions(&self) -> bool {
         self.review.is_none_or(|review| review.positions)
+    }
+
+    /// The text to show for a time the workspace stamped on a record
+    /// (`recorded_at`, a stamped `acquired_at`): exact in the working vault,
+    /// and as the export's record-time policy allows in a review export;
+    /// `None` when it may not show.
+    pub(crate) fn record_time(&self, time: &str) -> Option<String> {
+        match self.review {
+            None => Some(time.to_owned()),
+            Some(review) => review.times.show(time),
+        }
     }
 
     /// Whether this context plans a review export.
@@ -831,8 +845,8 @@ impl<'a> NoteContext<'a> {
             .text(marker::SNAPSHOT_KEY, head.head_hash.as_str())
             .text("inv_schema", VAULT_SCHEMA);
         if visible {
-            if self.shows_positions() {
-                front.timestamp("inv_updated", &header.recorded_at);
+            if let Some(time) = self.record_time(&header.recorded_at.to_string()) {
+                front.time_text("inv_updated", &time);
             }
         } else {
             front.boolean("inv_withheld", true);
@@ -891,11 +905,10 @@ impl<'a> NoteContext<'a> {
             );
         }
         if self.visible(record) {
-            if self.shows_positions() {
+            if let Some(time) = self.record_time(&header.recorded_at.to_string()) {
                 let _ = writeln!(
                     out,
-                    "| Recorded | {} by {} |",
-                    header.recorded_at,
+                    "| Recorded | {time} by {} |",
                     table_code(&header.recorded_by.to_string())
                 );
             } else {

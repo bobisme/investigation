@@ -11,7 +11,10 @@
 use std::{
     env,
     fmt::Write as _,
-    path::{Path, PathBuf},
+    fs,
+    io::{self, Write as _},
+    os::unix::fs::OpenOptionsExt,
+    path::{Component, Path, PathBuf},
 };
 
 use clap::builder::PossibleValuesParser;
@@ -74,6 +77,9 @@ pub(crate) struct Args {
     /// Replace record IDs and the snapshot with opaque ones for this export; always on for public.
     #[arg(long)]
     remap_ids: bool,
+    /// Also write the canonical-to-exported ID map of a remapped export to FILE: a new owner-only file outside the export directory.
+    #[arg(long, value_name = "FILE")]
+    id_map: Option<PathBuf>,
     #[command(flatten)]
     snapshot: SnapshotArgs,
 }
@@ -99,7 +105,13 @@ sequence tells how many events a case holds. A public export, and any export
 with --remap-ids, replaces every UUIDv7 value with an opaque one for this
 export only, and its manifest names the bundle (sequence 0, a bundle digest)
 instead of the case snapshot. The mapping back is listed only in this
-command's output. A remapped export cannot restore canonical state.
+command's output, and with --id-map FILE also in FILE: created new and
+owner-only (0600), never overwritten, never inside the export directory or
+among the workspace's state, vault or configuration (local/ and exports/ are
+allowed), and refused for an export that is not remapped. A remapped export
+cannot restore canonical state. Record times (recorded, acquired) show
+exactly in a canonical export, to the UTC day in a remapped one, and not at
+all in a public one.
 
 --kind review-vault writes a browsable copy of the case for the audience:
 the vault's notes and plain Markdown table views planned from the records
@@ -146,6 +158,7 @@ Examples:
   investigation export --kind case-report --audience internal --case <ID> --format json
   investigation export --kind case-report --audience public --case <ID> --snapshot 12 --out ./report-12 --format json
   investigation export --kind case-report --audience internal --remap-ids --case <ID> --format json
+  investigation export --kind case-report --audience public --case <ID> --out ./report --id-map ./report-ids.json --format json
   investigation export --kind review-vault --audience internal --case <ID> --out ./review --format json
   investigation export --kind workspace-archive --audience restricted --out ./backup --format json
   investigation export --kind producer-bundle --audience internal --case <ID> --out ./runs --format json
@@ -191,6 +204,13 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         sequence: args.snapshot.snapshot,
         head_hash,
     };
+    if args.id_map.is_some()
+        && IdentifierMode::for_audience(audience, args.remap_ids) == IdentifierMode::Canonical
+    {
+        let mut repair = retry.clone();
+        repair.push("--remap-ids".into());
+        return Err(id_map_canonical().with_argv(repair));
+    }
     let snapshot = ExportSnapshot::read(store, case, &pin)
         .map_err(|failure| failure.with_argv(retry.clone()))?;
     // The captured bytes of the human files records rely on (W11.14), for a
@@ -236,7 +256,24 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         return Err(failure);
     }
     let (out, shown) = destination(store, &args, &plan);
-    let written = write(store, &plan, &out, &shown)?;
+    let id_map = args
+        .id_map
+        .as_deref()
+        .map(|file| {
+            check_id_map(store.workspace().root(), file, &out)
+                .map_err(|failure| failure.with_argv(retry.clone()))
+        })
+        .transpose()?;
+    // The map is created first, so an existing file refuses the export
+    // before anything is written; it is removed again if the export fails.
+    if let Some(file) = &id_map {
+        write_id_map(file, &plan, audience)?;
+    }
+    let written = write(store, &plan, &out, &shown).inspect_err(|_| {
+        if let Some(file) = &id_map {
+            let _ = fs::remove_file(file);
+        }
+    })?;
 
     let manifest = plan.manifest();
     let mut next_argv = prefix;
@@ -267,6 +304,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         "historical": snapshot.historical(),
         "latest_snapshot": snapshot.latest(),
         "publisher_receipt": receipt_json(&plan),
+        "id_map": args.id_map.as_deref().map(|file| file.to_string_lossy().into_owned()),
         "next": [{"kind": "local_read", "argv": next_argv}],
     });
     let canonical = plan.identifiers().canonical_snapshot();
@@ -286,6 +324,13 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             plan.identifiers().len(),
             manifest.snapshot.case_id
         );
+        if let Some(file) = &args.id_map {
+            let _ = write!(
+                text,
+                ", and in {} (owner-only; keep it private)",
+                file.to_string_lossy()
+            );
+        }
     }
     if !plan.exclusions().is_empty() {
         let _ = write!(
@@ -380,6 +425,9 @@ fn run_archive(
         return Err(ExportError::RemapResumable { kind: spec.name }
             .to_failure()
             .at("--remap-ids"));
+    }
+    if args.id_map.is_some() {
+        return Err(id_map_canonical());
     }
     let audience = args.audience.audience();
     if audience != ARCHIVE_AUDIENCE {
@@ -595,6 +643,133 @@ fn refuse_workspace_internals(root: &Path, out: &Path) -> Result<(), Failure> {
         return Err(failure);
     }
     Ok(())
+}
+
+/// `--id-map` given for an export that keeps canonical IDs, so has no map.
+fn id_map_canonical() -> Failure {
+    Failure::new(
+        ErrorCode::InvalidInput,
+        "--id-map is written only for a remapped export (--audience public, or --remap-ids); \
+         this export keeps canonical IDs and has no map.",
+    )
+    .at("--id-map")
+}
+
+/// Where `--id-map FILE` may go: a new file in an existing directory, not
+/// inside the export directory `out`, and inside the workspace only under
+/// `local/` or `exports/`, never among its state, vault (which is synced
+/// and archived) or configuration. Returns the absolute path to create.
+fn check_id_map(root: &Path, file: &Path, out: &Path) -> Result<PathBuf, Failure> {
+    let refuse = |message: &str| {
+        let mut failure = Failure::new(ErrorCode::InvalidInput, message.to_owned()).at("--id-map");
+        failure.error.actual = Some(json!({"id_map": file.to_string_lossy()}));
+        failure
+    };
+    let absolute = |path: &Path| -> Result<PathBuf, Failure> {
+        if path.is_absolute() {
+            return Ok(path.to_path_buf());
+        }
+        env::current_dir()
+            .map(|cwd| cwd.join(path))
+            .map_err(|error| Failure::new(ErrorCode::IoFailure, error.to_string()))
+    };
+    let absolute_file = absolute(file)?;
+    let (Some(parent), Some(Component::Normal(name))) = (
+        absolute_file.parent(),
+        absolute_file.components().next_back(),
+    ) else {
+        return Err(refuse("--id-map names a file, not a directory or `..`."));
+    };
+    let Ok(parent) = parent.canonicalize() else {
+        return Err(refuse(
+            "The --id-map file's directory does not exist; create it first.",
+        ));
+    };
+    let target = parent.join(name);
+    if fs::symlink_metadata(&target).is_ok() {
+        return Err(refuse(
+            "The --id-map file already exists. The map is never overwritten; name a new file.",
+        ));
+    }
+    if target.starts_with(resolved(&absolute(out)?)) {
+        return Err(refuse(
+            "The --id-map file may not be inside the export directory: the map is for the \
+             publisher only, and the export is shared.",
+        ));
+    }
+    if let Ok(root) = root.canonicalize()
+        && target.starts_with(&root)
+        && !target.starts_with(root.join("local"))
+        && !target.starts_with(root.join("exports"))
+    {
+        let mut failure = refuse(
+            "Inside the workspace the --id-map file may go only under local/ or exports/, \
+             never among its state, vault or configuration.",
+        );
+        failure.error.expected = Some(json!({"under": ["local/", "exports/"]}));
+        return Err(failure);
+    }
+    Ok(target)
+}
+
+/// `path` with its longest existing ancestor resolved through links, so a
+/// containment check sees through them; the rest is kept as written.
+fn resolved(path: &Path) -> PathBuf {
+    let mut existing = path;
+    let mut rest = Vec::new();
+    loop {
+        if let Ok(real) = existing.canonicalize() {
+            return rest.into_iter().rev().fold(real, |at, part| at.join(part));
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                rest.push(name.to_owned());
+                existing = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// Create `file` new and owner-only (0600) and write the export's ID map
+/// into it: the publisher receipt's `identifiers` object with the export it
+/// belongs to.
+fn write_id_map(file: &Path, plan: &ExportPlan, audience: Audience) -> Result<(), Failure> {
+    let mut map = identifiers_json(plan);
+    map["note"] = json!(
+        "For the publisher only: the canonical snapshot and record IDs behind this remapped \
+         export. Keep it private: with it the export's IDs, and the creation times they embed, \
+         can be read back."
+    );
+    map["export_id"] = json!(plan.manifest().export_id);
+    map["kind"] = json!(plan.manifest().kind);
+    map["audience"] = json!(audience.as_str());
+    let mut bytes = serde_json::to_vec_pretty(&map).expect("the ID map serializes");
+    bytes.push(b'\n');
+    let failed = |error: io::Error| {
+        let code = match error.kind() {
+            io::ErrorKind::AlreadyExists | io::ErrorKind::NotFound => ErrorCode::InvalidInput,
+            _ => ErrorCode::IoFailure,
+        };
+        let mut failure =
+            Failure::new(code, format!("Could not create the --id-map file: {error}"))
+                .at("--id-map");
+        failure.error.actual = Some(json!({"id_map": file.to_string_lossy()}));
+        failure
+    };
+    let mut handle = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(file)
+        .map_err(failed)?;
+    handle
+        .write_all(&bytes)
+        .and_then(|()| handle.sync_all())
+        .inspect_err(|_| {
+            let _ = fs::remove_file(file);
+        })
+        .map_err(failed)
 }
 
 /// The digests of the human-file snapshots of the pinned case whose bytes

@@ -11,7 +11,7 @@ use investigation_core::{command::RevisionRef, identity::Id, wire::Digest};
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::{Deserialize, Serialize};
 
-use super::{IdentifierMode, Product, Shortfall, dependent_rule};
+use super::{IdentifierMode, Product, RecordTimes, Shortfall, dependent_rule};
 use crate::Audience;
 
 /// Schema version of [`ExportManifest`].
@@ -58,7 +58,9 @@ pub struct ExportManifest {
     /// Digests of the retained artifacts the export includes.
     pub sources: Vec<SourceDigest>,
     /// Supersession links between included records, so a superseded record
-    /// is marked rather than rewritten.
+    /// is marked rather than rewritten. When `identifiers` is `remapped`,
+    /// each reference here and in `sources` names the remapped ID at the
+    /// record's own revision, as the export's files cite it.
     pub supersession: Vec<Supersession>,
     /// Every file of the export except this manifest, in publish order.
     pub files: Vec<FileDigest>,
@@ -196,7 +198,11 @@ impl Statements {
                 IdentifierMode::Canonical => "Record IDs are UUIDv7 values and embed their creation time to the millisecond.",
                 IdentifierMode::Remapped => "Record IDs were remapped for this export only: every UUIDv7 value in it, file names included, is an opaque value whose time field carries no creation time, and one record has one value throughout. The snapshot names this bundle, not the case journal, and discloses no event count; the publisher keeps the mapping. A remapped export is a review product and cannot restore canonical state.",
             }
-            .to_owned(),
+            .to_owned()
+                + &RecordTimes::for_export(audience, mode)
+                    .statement()
+                    .map(|sentence| format!(" {sentence}"))
+                    .unwrap_or_default(),
             distribution: "Written to a local directory only. Publishing, sending or uploading it is a separate action.".to_owned(),
         }
     }

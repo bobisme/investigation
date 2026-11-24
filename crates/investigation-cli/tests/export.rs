@@ -1161,3 +1161,202 @@ fn a_workspace_archive_stays_canonical_and_refuses_remapping() {
             .contains("embed their creation time")
     );
 }
+
+/// bn-18la: `--id-map FILE` writes a remapped export's canonical-to-exported
+/// map to a new owner-only file, the receipt's mapping exactly. It is
+/// refused, with nothing written, for an export that keeps canonical IDs,
+/// for a file that exists, inside the export directory (also through a
+/// link), and among the workspace's state or vault; `local/` is allowed.
+#[test]
+fn an_id_map_is_written_new_and_private_and_only_for_a_remapped_export() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path();
+    let workspace = fixtures::workspace("scenario-a", &root.join("ws"), false);
+    let case = cases(&workspace).remove(0);
+    let path = |name: &str| root.join(name).to_str().unwrap().to_owned();
+    let refused = |extra: &[&str], out: &Path, map: &Path, why: &str| {
+        let (exit, value) = export(root, &workspace, &case, extra);
+        assert_eq!(exit, 2, "{why}: {value}");
+        assert_eq!(value["error"]["path"], "--id-map", "{why}: {value}");
+        let left = fs::read_dir(out).map_or(0, Iterator::count);
+        assert_eq!(left, 0, "{why}: the export was written");
+        assert!(!map.exists() || map == root.join("map.json"), "{why}");
+        value
+    };
+
+    // Canonical: no map to write.
+    let out = root.join("canonical");
+    let map = root.join("canonical-map.json");
+    let value = refused(
+        &[
+            "--audience",
+            "internal",
+            "--out",
+            &path("canonical"),
+            "--id-map",
+            &path("canonical-map.json"),
+        ],
+        &out,
+        &map,
+        "canonical",
+    );
+    assert!(!out.exists() && !map.exists());
+    let repair = value["error"]["repair"]["argv"].as_array().unwrap();
+    assert!(repair.iter().any(|arg| arg == "--remap-ids"), "{value}");
+
+    // Remapped: written new, owner-only, and the receipt's mapping.
+    let out = root.join("remapped");
+    let map = root.join("map.json");
+    let (exit, value) = export(
+        root,
+        &workspace,
+        &case,
+        &[
+            "--audience",
+            "internal",
+            "--remap-ids",
+            "--out",
+            &path("remapped"),
+            "--id-map",
+            &path("map.json"),
+        ],
+    );
+    assert_eq!(exit, 0, "{value}");
+    assert_eq!(value["id_map"], path("map.json"));
+    let mode = fs::metadata(&map).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o600);
+    let written: Value = serde_json::from_slice(&fs::read(&map).unwrap()).unwrap();
+    let receipt = &value["publisher_receipt"]["identifiers"];
+    assert!(receipt["id_count"].as_u64().unwrap() > 0);
+    for field in [
+        "ids",
+        "id_count",
+        "exported_snapshot",
+        "canonical_snapshot",
+        "remap",
+    ] {
+        assert_eq!(written[field], receipt[field], "{field}");
+    }
+    assert_eq!(written["export_id"], manifest(&out)["export_id"]);
+    assert_eq!(written["audience"], "internal");
+    assert!(!files(&out).keys().any(|name| name.contains("map")));
+    let first = fs::read(&map).unwrap();
+
+    // Never overwritten.
+    let again = root.join("again");
+    let value = refused(
+        &[
+            "--audience",
+            "public",
+            "--out",
+            &path("again"),
+            "--id-map",
+            &path("map.json"),
+        ],
+        &again,
+        &map,
+        "existing",
+    );
+    assert!(
+        value["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("exists")
+    );
+    assert_eq!(fs::read(&map).unwrap(), first);
+
+    // Never inside the export directory, also through a link to it.
+    let inside = root.join("inside");
+    fs::create_dir(&inside).unwrap();
+    symlink(&inside, root.join("alias")).unwrap();
+    for map_path in [path("inside/ids.json"), path("alias/ids.json")] {
+        refused(
+            &[
+                "--audience",
+                "public",
+                "--out",
+                &path("inside"),
+                "--id-map",
+                &map_path,
+            ],
+            &inside,
+            Path::new(&map_path),
+            "inside the export",
+        );
+    }
+
+    // An export refused after the map was created leaves no map behind.
+    let full = root.join("full");
+    fs::create_dir(&full).unwrap();
+    fs::write(full.join("keep.txt"), b"kept\n").unwrap();
+    let (exit, value) = export(
+        root,
+        &workspace,
+        &case,
+        &[
+            "--audience",
+            "public",
+            "--out",
+            &path("full"),
+            "--id-map",
+            &path("full-map.json"),
+        ],
+    );
+    assert_eq!(exit, 2, "{value}");
+    assert_eq!(value["error"]["path"], "--out");
+    assert!(!root.join("full-map.json").exists());
+    assert_eq!(fs::read(full.join("keep.txt")).unwrap(), b"kept\n");
+
+    // Not among the workspace's state or vault; local/ is private.
+    for (name, allowed) in [
+        ("ws/vault/Notes/ids.json", false),
+        ("ws/state/ids.json", false),
+        ("ws/local/ids.json", true),
+    ] {
+        let out = root.join(format!("public-{allowed}-{}", name.len()));
+        let (exit, value) = export(
+            root,
+            &workspace,
+            &case,
+            &[
+                "--audience",
+                "public",
+                "--out",
+                out.to_str().unwrap(),
+                "--id-map",
+                &path(name),
+            ],
+        );
+        if allowed {
+            assert_eq!(exit, 0, "{name}: {value}");
+            assert!(root.join(name).exists());
+        } else {
+            assert_eq!(exit, 2, "{name}: {value}");
+            assert_eq!(value["error"]["path"], "--id-map");
+            assert!(!root.join(name).exists() && !out.exists(), "{name}");
+        }
+    }
+
+    // A workspace archive keeps canonical IDs: no map.
+    let (exit, value) = run(
+        root,
+        &[
+            "--workspace",
+            workspace.to_str().unwrap(),
+            "export",
+            "--kind",
+            "workspace-archive",
+            "--audience",
+            "restricted",
+            "--out",
+            &path("archive"),
+            "--id-map",
+            &path("archive-map.json"),
+        ],
+    );
+    assert_eq!(exit, 2, "{value}");
+    assert_eq!(value["error"]["path"], "--id-map");
+    assert!(!root.join("archive").exists() && !root.join("archive-map.json").exists());
+}

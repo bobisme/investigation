@@ -89,8 +89,11 @@
 //!   framework remaps them when the export is remapped. Take the snapshot
 //!   to show from [`ExportInput::snapshot`] (never `case.head()`): its
 //!   sequence is 0 when remapped, and [`ExportInput::remapped`] says so. Do
-//!   not show other journal sequences, head hashes or record times in a
-//!   remapped export; a leftover head hash or canonical ID refuses the plan.
+//!   not show other journal sequences or head hashes in a remapped export;
+//!   a leftover head hash or canonical ID refuses the plan. Show a time the
+//!   workspace stamped on a record only through
+//!   [`ExportInput::record_time`] ([`RecordTimes`]: exact, the day, or not
+//!   at all, by audience and identifier mode).
 //!
 //! Kinds that need more than records (retained bytes for attachments or an
 //! archive, selected human notes) take them as explicit, digest-checked
@@ -118,6 +121,7 @@ mod manifest;
 mod method_retrospective;
 mod omission;
 pub mod producer_bundle;
+mod record_times;
 mod report_blocks;
 pub mod restore;
 mod retained;
@@ -152,6 +156,7 @@ pub use manifest::{
     ManifestVersions, SourceDigest, Statements, Supersession, manifest_schema,
 };
 pub use omission::{Omission, OmissionReason, Omissions, Omitted, Shortfall};
+pub use record_times::RecordTimes;
 pub use retained::{DigestMismatch, Retained};
 pub use snapshot::{ExportSnapshot, Pin};
 pub use write::{Written, write_export};
@@ -486,9 +491,24 @@ impl ExportInput<'_> {
     }
 
     /// Whether this export's IDs and snapshot are remapped. A remapped export
-    /// must not show journal sequences, head hashes or record times.
+    /// must not show journal sequences or head hashes, and shows record
+    /// times only as [`Self::record_times`] allows.
     pub fn remapped(&self) -> bool {
         self.identity.mode == IdentifierMode::Remapped
+    }
+
+    /// How precisely this export shows the times the workspace stamped on
+    /// records (bn-18la): exact when canonical, the day when remapped,
+    /// none for public.
+    pub const fn record_times(&self) -> RecordTimes {
+        RecordTimes::for_export(self.audience, self.identity.mode)
+    }
+
+    /// The text to show for a record time (`recorded_at`, `created_at`, a
+    /// stamped `acquired_at`), or `None` when it may not show. Every kind
+    /// that shows one takes its text from here.
+    pub fn record_time(&self, time: &str) -> Option<String> {
+        self.record_times().show(time)
     }
 
     /// The record's safe display title when it is included. A title derived
