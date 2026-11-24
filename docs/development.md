@@ -11,6 +11,15 @@ fetches the current RustSec database. For a cached check, run
 `CARGO_NET_OFFLINE=true just check-offline` after fetching dependencies and
 running the audit once.
 
+`just test` uses [cargo-nextest](https://nexte.st) when it is installed, which
+runs every test binary in parallel, and runs the doctests with `cargo test
+--doc` after it. Without nextest it runs `cargo test`, as CI does. The crash
+and recovery tests spend nearly all their time in `fsync`, so a run with
+`TMPDIR` on a tmpfs (for example `TMPDIR=/dev/shm/inv-tests just check`) is
+much faster. Their faults are injected through the store's filesystem seam,
+so a tmpfs does not weaken what they check. Real power-loss behaviour is the
+LazyFS job's concern (`scripts/qualify-lazyfs.sh`).
+
 The Linux offline job fetches locked dependencies first, then runs the full
 Rust suite with an isolated network namespace, a clean environment, and a
 PATH containing the pinned toolchain and the native linker tools. Tests should

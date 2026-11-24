@@ -8,8 +8,19 @@ format:
 lint:
     cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 
+# Runs every test binary in parallel with cargo-nextest when it is installed
+# (doctests separately, since nextest does not run them); otherwise falls back
+# to `cargo test`. Point TMPDIR at a tmpfs for a much faster run: the crash and
+# recovery tests are bound by fsync, not by CPU.
 test:
-    cargo test --locked --workspace --all-features
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if cargo nextest --version >/dev/null 2>&1; then
+        cargo nextest run --locked --workspace --all-features --no-fail-fast
+        cargo test --locked --workspace --all-features --doc
+    else
+        cargo test --locked --workspace --all-features
+    fi
 
 boundaries:
     python3 scripts/check-boundaries.py
