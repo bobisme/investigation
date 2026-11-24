@@ -81,7 +81,10 @@ use crate::{
 /// Output format of this kind.
 /// v2 (bn-91gz): a proposed lesson citing a record not shown is left out
 /// and reported.
-pub const VERSION: &str = "inv.export.handoff.v2";
+/// v3 (bn-1i89): the frontier, next and retrospective commands are pinned to
+/// the export's snapshot like every other case read, and no longer say they
+/// read the current head.
+pub const VERSION: &str = "inv.export.handoff.v3";
 
 /// The compact agent brief.
 pub const BRIEF_FILE: &str = "handoff-brief.md";
@@ -1166,8 +1169,8 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
             let _ = writeln!(self.out, "  - … and {} more", gaps.len() - MAX_HIGHLIGHTS);
         }
         self.line(&format!(
-            "Every gap, at the current head rather than this snapshot: {}",
-            story.command("frontier --format json")
+            "Every gap at this snapshot: {}",
+            story.command(&format!("frontier {} --format json", story.pin()))
         ));
     }
 
@@ -1311,8 +1314,8 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
             }
         }
         self.line(&format!(
-            "Lessons and the process digest, at the current head: {}",
-            story.command("retrospective --format json")
+            "Lessons and the process digest at this snapshot: {}",
+            story.command(&format!("retrospective {} --format json", story.pin()))
         ));
     }
 
@@ -1340,8 +1343,8 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
             self.line(&format!("Then: {line}"));
         }
         self.line(&format!(
-            "Ranked again at the current head: {}",
-            story.command("next --format json")
+            "Ranked again at this snapshot: {}",
+            story.command(&format!("next {} --format json", story.pin()))
         ));
     }
 
@@ -1482,7 +1485,8 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
         let story = self.story;
         self.out.push_str(
             "Run these in the workspace that holds the case. Reads pinned with --snapshot see \
-             exactly this snapshot; the others read the current head and say which.\n\n",
+             exactly this snapshot; disclosure and the original bytes follow the workspace's \
+             audience, withdrawal and retention state today.\n\n",
         );
         let pin = story.pin();
         for (what, tail) in [
@@ -1500,8 +1504,8 @@ impl<'s, 'i, 'a> Writer<'s, 'i, 'a> {
                 "evidence read <ARTIFACT_ID> --selector-file selector.json".to_owned(),
             ),
             ("Structural checks", format!("blindspots {pin}")),
-            ("Every gap", "frontier".to_owned()),
-            ("Ranked next steps", "next".to_owned()),
+            ("Every gap", format!("frontier {pin}")),
+            ("Ranked next steps", format!("next {pin}")),
         ] {
             self.line(&format!("{what}: {}", story.command(&tail)));
         }

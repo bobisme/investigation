@@ -787,6 +787,19 @@ pub fn process_digest(
     snapshot: &Snapshot,
     case: Id,
 ) -> Result<ProcessDigest, Failure> {
+    process_digest_disclosed(state, snapshot, case, state)
+}
+
+/// [`process_digest`] of a `state` pinned before the current head, whose
+/// free text is shown or withheld by the classification in `disclosure`
+/// (today's state), so a historical read never discloses what today's
+/// audience policy withholds.
+pub fn process_digest_disclosed(
+    state: &State,
+    snapshot: &Snapshot,
+    case: Id,
+    disclosure: &State,
+) -> Result<ProcessDigest, Failure> {
     if snapshot.sequence != state.sequence()
         || state.verified_snapshot(snapshot.sequence) != Some(&snapshot.head_hash)
     {
@@ -817,7 +830,7 @@ pub fn process_digest(
     let sequence_span = span(state, &records, sequence)?;
     let expectations = Expectations {
         state,
-        classifier: Classifier::new(state),
+        classifier: Classifier::new(disclosure),
         policy: AudiencePolicy::default(),
         records: &records,
         sequence,

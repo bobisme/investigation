@@ -11,13 +11,42 @@ use crate::{
     Global, Output, display_argv,
     frontier::snapshot_argv,
     selection::{select_case, workspace_argv},
+    snapshot::{self, SnapshotArgs},
 };
 use investigation_core::catalog::standard_catalog;
 use investigation_core::wire::Failure;
 
-pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Output, Failure> {
+pub(crate) const AFTER_HELP: &str = "\
+Ranks up to three open gaps by ordinal factors read from recorded structure and
+shows each factor with its source. It is a heuristic, not a probability or score.
+Every frontier route it prints reads the same snapshot, even after new writes.
+
+--snapshot SEQUENCE [--head-hash DIGEST] ranks the case as known at that head and
+labels the output historical; a wrong head hash is refused. Method pack
+availability follows today's workspace.
+
+Examples:
+  investigation --workspace ./casework next --format json
+  investigation --workspace ./casework --case <ID> next --snapshot 12 --head-hash <DIGEST> --format json";
+
+pub(crate) fn run(
+    store: &mut Store,
+    global: &Global,
+    limit: usize,
+    pin: &SnapshotArgs,
+) -> Result<Output, Failure> {
     let case_id = select_case(store, global.case.as_deref())?;
-    let replay = store.case(case_id)?;
+    let mut retry = workspace_argv(store.workspace());
+    retry.extend(["--case".into(), case_id.to_string(), "next".into()]);
+    retry.extend(["--limit".into(), limit.to_string()]);
+    retry.extend(["--format".into(), "json".into()]);
+    let pinned = snapshot::resolve(store.case(case_id)?, pin, retry)?;
+    let replay = pinned.read();
+    // A stall's raw-data read stays on this snapshot when it is pinned.
+    let stall_pin = pinned
+        .label()
+        .map(|_| snapshot::pin_argv(&replay.snapshot))
+        .unwrap_or_default();
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case_id)?;
     let response = rank_next(&replay.state, &inventory, limit.min(3));
     let mut value = serde_json::to_value(&response).expect("next response serializes");
@@ -41,8 +70,7 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
     // Guidance comes from the built-in pack and the case's available pins only.
     let packs = store.method_packs(&replay.state, case_id, None)?;
     let mode = TriggerContext::evaluate(&replay.state, case_id, &inventory).mode;
-    // The verified case is no longer read; the answer does not wait on freeing it.
-    investigation_store::store::free_later(replay);
+    snapshot::label_output(&mut value, &pinned);
     value["guidance_rule_version"] = json!(GUIDANCE_RULE_VERSION);
     let unavailable: Vec<_> = packs.iter().filter(|pack| !pack.is_available()).collect();
     if !unavailable.is_empty() {
@@ -126,7 +154,9 @@ pub(crate) fn run(store: &mut Store, global: &Global, limit: usize) -> Result<Ou
                 && let Some(target) = stall_move["target_refs"][0]["id"].as_str()
             {
                 argv.extend(["show".into(), target.into(), "--case".into()]);
-                argv.extend([case_id.to_string(), "--format".into(), "json".into()]);
+                argv.push(case_id.to_string());
+                argv.extend(stall_pin.iter().cloned());
+                argv.extend(["--format".into(), "json".into()]);
                 stall_move["inspect_argv"] = json!(argv);
             }
         }
@@ -173,6 +203,7 @@ fn render_text(value: &Value, response: &NextResponse) -> String {
         "case {}  snapshot {}  rules {}\n",
         response.case_id, response.snapshot.sequence, response.rule_version
     );
+    text.push_str(&snapshot::label_text(value));
     for recommendation in &response.recommendations {
         text.push_str(&format!(
             "{}. {}\n   {}\n   unresolved inputs: {}\n",

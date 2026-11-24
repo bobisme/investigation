@@ -43,6 +43,12 @@ impl Pinned {
         self.pinned.as_ref().map(|_| &self.head.state)
     }
 
+    /// The current head's snapshot, newer than [`Self::read`]'s when the read
+    /// is historical.
+    pub(crate) fn latest(&self) -> &Snapshot {
+        &self.head.snapshot
+    }
+
     /// The label a historical read carries; `None` for a read of the head.
     pub(crate) fn label(&self) -> Option<Value> {
         let pinned = self.pinned.as_ref()?;
@@ -51,6 +57,29 @@ impl Pinned {
             "latest_snapshot": self.head.snapshot,
             "policy": HISTORICAL_POLICY,
         }))
+    }
+}
+
+/// Mark `value` as a read of `pinned`: `historical` always, and the
+/// `historical_read` label when the read is pinned before the head.
+pub(crate) fn label_output(value: &mut Value, pinned: &Pinned) {
+    let label = pinned.label();
+    value["historical"] = json!(label.is_some());
+    if let Some(label) = label {
+        value["historical_read"] = label;
+    }
+}
+
+/// The text line a historical read prints under its header, or nothing for
+/// a read of the head.
+pub(crate) fn label_text(value: &Value) -> String {
+    let label = &value["historical_read"];
+    match label["policy"].as_str() {
+        Some(policy) => format!(
+            "historical_read  snapshot {}  latest {}\n{policy}\n",
+            label["snapshot"]["sequence"], label["latest_snapshot"]["sequence"]
+        ),
+        None => String::new(),
     }
 }
 

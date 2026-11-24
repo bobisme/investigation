@@ -14,7 +14,7 @@ use investigation_core::{
     gap_explain::{GapExplanation, explain_gap, require_rule},
     gap_page::{
         DEFAULT_GAP_PAGE_LIMIT, GapCursor, GapFilter, GapOrdering, GapPage, GapPageRequest,
-        MAX_GAP_PAGE_LIMIT,
+        MAX_GAP_PAGE_LIMIT, page_gaps,
     },
     gap_rules::{Gap, GapStatus, enumerate_gaps},
     identity::{Id, Kind},
@@ -26,6 +26,7 @@ use serde_json::{Value, json};
 use crate::{
     Global, Output, display_argv,
     selection::{select_case, workspace_argv},
+    snapshot::{self, Pinned, SnapshotArgs},
 };
 
 const STATUSES: [&str; 7] = [
@@ -55,12 +56,17 @@ A continuation cursor binds the case, snapshot, rule version, filters and order.
 Later pages read the first page's snapshot even after new writes. Resend the same
 filters with --cursor, or drop --cursor to restart at the current head.
 
+--snapshot SEQUENCE [--head-hash DIGEST] lists the gaps of the case as known at
+that head, labelled historical; a wrong head hash is refused. Its pages continue
+with --cursor at the same snapshot. With --explain it explains the gap there.
+
 Examples:
   investigation frontier --case <ID> --format json
   investigation frontier --status requires_source,stale_due_to_revision --format json
   investigation frontier --kind hypothesis --limit 20 --format json
   investigation frontier --rule decision.option_criterion_cell_missing --reads <CRITERION_ID> --format json
-  investigation frontier --explain <GAP_ID> --format json";
+  investigation frontier --explain <GAP_ID> --format json
+  investigation frontier --case <ID> --snapshot 12 --head-hash <DIGEST> --format json";
 
 #[derive(clap::Args)]
 pub(crate) struct Args {
@@ -85,7 +91,7 @@ pub(crate) struct Args {
     #[arg(long, value_name = "N", default_value_t = DEFAULT_GAP_PAGE_LIMIT)]
     limit: usize,
     /// Continue from a previous page's next_cursor, at that page's snapshot.
-    #[arg(long, value_name = "CURSOR")]
+    #[arg(long, value_name = "CURSOR", conflicts_with = "snapshot")]
     cursor: Option<String>,
     /// Name the rule and version that emits GAP_ID, and what it reads.
     #[arg(
@@ -94,6 +100,8 @@ pub(crate) struct Args {
         conflicts_with_all = ["status", "kind", "rule", "reads", "limit", "cursor"]
     )]
     explain: Option<String>,
+    #[command(flatten)]
+    snapshot: SnapshotArgs,
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
@@ -103,9 +111,15 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         case: case_id.to_string(),
     };
     if let Some(gap_id) = &args.explain {
-        return explain(store, &base, case_id, gap_id);
+        let pinned = snapshot::resolve(store.case(case_id)?, &args.snapshot, base.explain(gap_id))?;
+        return explain(&base, case_id, gap_id, &pinned);
     }
     let filter = filter(&args)?;
+    if args.snapshot.snapshot.is_some() {
+        let restart = base.list(&filter, args.limit, None);
+        let pinned = snapshot::resolve(store.case(case_id)?, &args.snapshot, restart)?;
+        return pinned_page(&base, case_id, &filter, args.limit, &pinned);
+    }
     let request = GapPageRequest {
         filter,
         ordering: GapOrdering::GapId,
@@ -126,8 +140,43 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             _ => failure,
         }
     })?;
-    let value = page_value(&base, &page);
+    let mut value = page_value(&base, &page);
+    value["historical"] = json!(false);
     let text = render_page(&value, &page);
+    Ok(Output::new(value, text))
+}
+
+/// The first page of the inventory at a `--snapshot` pin. Its continuation
+/// cursor stays on that snapshot; `restart_argv` reads the current head.
+fn pinned_page(
+    base: &Base,
+    case_id: Id,
+    filter: &GapFilter,
+    limit: usize,
+    pinned: &Pinned,
+) -> Result<Output, Failure> {
+    let replay = pinned.read();
+    let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case_id)?;
+    let mut page =
+        page_gaps(&inventory, filter, GapOrdering::GapId, limit, None).map_err(|failure| {
+            if failure.error.path.as_deref() == Some("/limit") {
+                let mut retry = base.list(filter, limit.clamp(1, MAX_GAP_PAGE_LIMIT), None);
+                retry.splice(
+                    retry.len() - 2..retry.len() - 2,
+                    snapshot::pin_argv(&replay.snapshot),
+                );
+                failure.with_argv(retry)
+            } else {
+                failure
+            }
+        })?;
+    if pinned.latest() != &page.snapshot {
+        page.newer_head = Some(pinned.latest().clone());
+    }
+    let mut value = page_value(base, &page);
+    snapshot::label_output(&mut value, pinned);
+    let text = render_page(&value, &page);
+    investigation_store::store::free_later(inventory);
     Ok(Output::new(value, text))
 }
 
@@ -384,6 +433,7 @@ fn render_page(value: &Value, page: &GapPage) -> String {
         "case {}  snapshot {}  rules {}\n",
         page.case_id, page.snapshot.sequence, page.rule_version
     );
+    text.push_str(&snapshot::label_text(value));
     let shown_end = page.position + page.gaps.len();
     text.push_str(&format!(
         "gaps {}-{} of {} matching; {} in the inventory\n",
@@ -460,9 +510,9 @@ fn render_page(value: &Value, page: &GapPage) -> String {
     text
 }
 
-fn explain(store: &mut Store, base: &Base, case_id: Id, gap_id: &str) -> Result<Output, Failure> {
+fn explain(base: &Base, case_id: Id, gap_id: &str, pinned: &Pinned) -> Result<Output, Failure> {
     let list = base.list(&GapFilter::default(), DEFAULT_GAP_PAGE_LIMIT, None);
-    let replay = store.case(case_id)?;
+    let replay = pinned.read();
     let inventory = enumerate_gaps(&replay.state, &replay.snapshot, case_id)?;
     let explanation = explain_gap(&replay.state, &inventory, gap_id)
         .map_err(|failure| failure.with_argv(list.clone()))?;
@@ -471,7 +521,13 @@ fn explain(store: &mut Store, base: &Base, case_id: Id, gap_id: &str) -> Result<
         value["gap"] = item_value(base, gap);
     }
     value["frontier_argv"] = json!(list);
-    let text = render_explanation(&explanation);
+    snapshot::label_output(&mut value, pinned);
+    let mut text = render_explanation(&explanation);
+    let label = snapshot::label_text(&value);
+    if !label.is_empty() {
+        text.push('\n');
+        text.push_str(label.trim_end());
+    }
     Ok(Output::new(value, text))
 }
 

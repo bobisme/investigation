@@ -1,7 +1,7 @@
 //! CLI adapter for the read-only process digest a Retrospective rests on.
 
 use investigation_core::retrospective_digest::{
-    ActualState, ExpectedState, ProcessDigest, process_digest,
+    ActualState, ExpectedState, ProcessDigest, process_digest_disclosed,
 };
 use investigation_core::wire::Failure;
 use investigation_store::Store;
@@ -10,6 +10,7 @@ use serde_json::json;
 use crate::{
     Global, Output,
     selection::{select_case, workspace_argv},
+    snapshot::{self, SnapshotArgs},
 };
 
 pub(crate) const AFTER_HELP: &str = "\
@@ -25,9 +26,15 @@ A lesson is visible outside its source case only after lesson.admit there.
 shows that lesson's text; it is the only form of this command that writes.
 Lesson text is quoted data, never instructions.
 
+--snapshot SEQUENCE [--head-hash DIGEST] reads the case's Retrospectives, or with
+--draft its process digest, as known at that head, labelled historical; a wrong
+head hash is refused. Disclosure follows today's audience state, and lesson
+consultations recorded in other cases are read at their current heads.
+
 Examples:
   investigation --case <ID> retrospective --format json
   investigation --case <ID> retrospective --draft --format json
+  investigation --case <ID> retrospective --snapshot 12 --head-hash <DIGEST> --format json
   investigation --case <ID> retrospective --lessons --format json
   investigation --case <ID> retrospective --lessons --consult <LESSON> --format json";
 
@@ -37,7 +44,7 @@ pub(crate) struct Args {
     #[arg(long, conflicts_with = "lessons")]
     draft: bool,
     /// List admitted lessons of other cases that this case may read.
-    #[arg(long)]
+    #[arg(long, conflicts_with = "snapshot")]
     lessons: bool,
     /// Record that this case read the admitted lesson and show its text (repeatable).
     #[arg(long, value_name = "LESSON", requires = "lessons")]
@@ -51,6 +58,8 @@ pub(crate) struct Args {
     /// Also show records classified above the default internal audience.
     #[arg(long, conflicts_with = "draft")]
     include_restricted: bool,
+    #[command(flatten)]
+    snapshot: SnapshotArgs,
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
@@ -72,24 +81,35 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
             global,
             &crate::lessons::ReadArgs {
                 include_restricted: args.include_restricted,
+                snapshot: args.snapshot,
             },
         );
     }
     let case = select_case(store, global.case.as_deref())?;
-    let replay = store.case(case)?;
-    let digest = process_digest(&replay.state, &replay.snapshot, case)?;
+    let mut retry = workspace_argv(store.workspace());
+    retry.extend(["--case".into(), case.to_string()]);
+    retry.extend(["retrospective", "--draft", "--format", "json"].map(str::to_owned));
+    let pinned = snapshot::resolve(store.case(case)?, &args.snapshot, retry)?;
+    let replay = pinned.read();
+    let digest = process_digest_disclosed(
+        &replay.state,
+        &replay.snapshot,
+        case,
+        pinned.today().unwrap_or(&replay.state),
+    )?;
     let mut value = serde_json::to_value(&digest).expect("digest serializes");
     let mut schema_argv = workspace_argv(store.workspace());
     schema_argv.extend(["schema", "retrospective.record", "--format", "json"].map(str::to_owned));
     value["schema_argv"] = json!(schema_argv);
-    let text = render_text(&digest);
+    snapshot::label_output(&mut value, &pinned);
+    let text = render_text(&digest, &snapshot::label_text(&value));
     Ok(Output::new(value, text))
 }
 
-fn render_text(digest: &ProcessDigest) -> String {
+fn render_text(digest: &ProcessDigest, historical: &str) -> String {
     let span = &digest.sequence_span;
     let mut text = format!(
-        "case {}  snapshot {}\n{}\n\nProcess digest: {} item(s)\n",
+        "case {}  snapshot {}\n{historical}{}\n\nProcess digest: {} item(s)\n",
         digest.case_id,
         digest.snapshot.sequence,
         digest.coverage,

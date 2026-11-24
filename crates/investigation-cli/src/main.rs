@@ -268,10 +268,13 @@ enum Commands {
     #[command(after_help = docs::AFTER_HELP)]
     Docs(docs::Args),
     /// Rank up to three snapshot-bound investigative gaps.
+    #[command(after_help = next::AFTER_HELP)]
     Next {
         /// Most gaps to return, from 1 to 3.
         #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u8).range(1..=3))]
         limit: u8,
+        #[command(flatten)]
+        snapshot: snapshot::SnapshotArgs,
     },
     /// List every snapshot-bound gap with filters, paging and rule explanations.
     #[command(after_help = frontier::AFTER_HELP)]
@@ -508,7 +511,9 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 } => show(&mut store, &global, &id, depth, at, &snapshot),
                 Commands::Brief(args) => brief(&mut store, &global, args),
                 Commands::Explain(args) => explain::run(&mut store, &global, args),
-                Commands::Next { limit } => next::run(&mut store, &global, usize::from(limit)),
+                Commands::Next { limit, snapshot } => {
+                    next::run(&mut store, &global, usize::from(limit), &snapshot)
+                }
                 Commands::Frontier(args) => frontier::run(&mut store, &global, args),
                 Commands::Blindspots(args) => blindspots::run(&mut store, &global, args),
                 Commands::Search(args) => search::run(&mut store, &global, args),

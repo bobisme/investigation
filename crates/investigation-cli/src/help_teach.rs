@@ -44,7 +44,7 @@ const TEACH: &[Teach] = &[
     t!(&["schema"], [], "investigation --workspace ./casework record --input case.json --format json"),
     t!(&["onboard"], ["investigation --workspace ./casework onboard --format json"], "investigation --workspace ./casework next --format json"),
     t!(&["docs"], [], "investigation onboard --format json"),
-    t!(&["next"], ["investigation --workspace ./casework next --format json"], "investigation --workspace ./casework show <ID> --depth full --format json"),
+    t!(&["next"], [], "investigation --workspace ./casework show <ID> --depth full --format json"),
     t!(&["frontier"], [], "investigation --workspace ./casework next --format json"),
     t!(&["blindspots"], [], "investigation guide blindspot --format json"),
     t!(&["guide"], [], "investigation schema --list --format json"),

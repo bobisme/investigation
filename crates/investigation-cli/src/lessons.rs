@@ -43,6 +43,8 @@ const USEFULNESS_RULE: &str = "usefulness reports what consulting cases recorded
 
 pub(crate) struct ReadArgs {
     pub(crate) include_restricted: bool,
+    /// The snapshot the case's own records are read at.
+    pub(crate) snapshot: crate::snapshot::SnapshotArgs,
 }
 
 pub(crate) struct LessonArgs {
@@ -165,16 +167,27 @@ pub(crate) fn read_case(
     args: &ReadArgs,
 ) -> Result<Output, Failure> {
     let case = select_case(store, global.case.as_deref())?;
-    let cases = store.cases()?;
-    let replay = cases
-        .get(&case)
-        .ok_or_else(|| Failure::new(ErrorCode::UnknownReference, "The case does not exist."))?;
+    let mut cases = store.cases()?;
     let policy = AudiencePolicy {
         audience: audience(args.include_restricted),
         placeholders: true,
     };
-    let classifier = Classifier::new(&replay.state);
+    // Consultations are recorded in the consulting cases, at their heads.
     let usage = usage(&cases, &policy);
+    let head = cases
+        .remove(&case)
+        .ok_or_else(|| Failure::new(ErrorCode::UnknownReference, "The case does not exist."))?;
+    investigation_store::store::free_later(cases);
+    let mut retry = workspace_argv(store.workspace());
+    retry.extend(["--case".into(), case.to_string(), "retrospective".into()]);
+    if args.include_restricted {
+        retry.push("--include-restricted".into());
+    }
+    retry.extend(["--format".into(), "json".into()]);
+    let pinned = crate::snapshot::resolve(head, &args.snapshot, retry)?;
+    let replay = pinned.read();
+    // Disclosure follows today's classification, also for a historical read.
+    let classifier = Classifier::new(pinned.today().unwrap_or(&replay.state));
     let admitted = admissions(&replay.state, case);
     let mut records: Vec<&Record> = replay
         .state
@@ -291,18 +304,12 @@ pub(crate) fn read_case(
         .map(|record| record.header.id)
         .collect();
     let mut draft = workspace_argv(store.workspace());
-    draft.extend(
-        [
-            "--case",
-            &case.to_string(),
-            "retrospective",
-            "--draft",
-            "--format",
-            "json",
-        ]
-        .map(str::to_owned),
-    );
-    let value = json!({
+    draft.extend(["--case", &case.to_string(), "retrospective", "--draft"].map(str::to_owned));
+    if pinned.label().is_some() {
+        draft.extend(crate::snapshot::pin_argv(&replay.snapshot));
+    }
+    draft.extend(["--format".into(), "json".into()]);
+    let mut value = json!({
         "read_version":"inv.retrospective-read.v1",
         "rules":LESSON_RULES_VERSION,
         "case_id":case,
@@ -315,6 +322,7 @@ pub(crate) fn read_case(
         "side_effects":NO_SIDE_EFFECTS,
         "next":[{"kind":"local_read","argv":draft}],
     });
+    crate::snapshot::label_output(&mut value, &pinned);
     let text = render_case(&value);
     Ok(Output::success("retrospective_read", value, text))
 }
@@ -325,6 +333,7 @@ fn render_case(value: &Value) -> String {
         value["case_id"].as_str().unwrap_or(""),
         value["snapshot"]["sequence"]
     );
+    text.push_str(&crate::snapshot::label_text(value));
     let retrospectives = value["retrospectives"]
         .as_array()
         .map_or(&[][..], Vec::as_slice);
