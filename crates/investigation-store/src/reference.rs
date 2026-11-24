@@ -606,6 +606,7 @@ fn record_verification(
             sensitivity: sensitivity(classification),
             status: None,
             withdrawals: Vec::new(),
+            availability_change: None,
             role: Some(ArtifactRole::Manifest),
             derivation: None,
             external: None,

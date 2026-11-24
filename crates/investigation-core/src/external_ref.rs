@@ -141,6 +141,10 @@ pub struct Retention {
     /// satisfy an offline-completeness guarantee.
     pub offline_complete: bool,
     pub reason: String,
+    /// The attributed withdrawal of this reference's availability, when its
+    /// bytes are `intentionally_removed` by `artifact.expire`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_change: Option<crate::retention_ops::AvailabilityChange>,
 }
 
 fn artifact_body(record: &Record) -> Option<ArtifactBody> {
@@ -187,6 +191,9 @@ pub fn artifact_retention(record: &Record) -> Option<Retention> {
         (false, Some(VerificationState::Verified)) => {
             "The bytes are not retained. They matched the recorded digest when last read, but may have changed since. Reverify before relying on them."
         }
+        (false, _) if body.availability == ArtifactAvailability::IntentionallyRemoved => {
+            "This reference's availability was withdrawn: nothing can be read or verified through it, at any snapshot. Its digest, size and provenance stay recorded; another reference to the same bytes keeps its own availability."
+        }
         (false, _) if external.is_some() => {
             "The bytes are not retained, and no supplied bytes have been checked against the declared digest. Reverify before relying on them."
         }
@@ -211,6 +218,7 @@ pub fn artifact_retention(record: &Record) -> Option<Retention> {
         verification_count: external.map_or(0, |external| external.verifications.len()),
         offline_complete: retained,
         reason: reason.to_owned(),
+        availability_change: body.availability_change.clone(),
     })
 }
 

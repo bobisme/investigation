@@ -81,6 +81,9 @@ use scope::Reads;
 #[path = "pins.rs"]
 pub mod pins;
 
+#[path = "retention.rs"]
+pub mod retention;
+
 #[cfg(test)]
 #[path = "closure_drill_tests.rs"]
 mod closure_drill_tests;

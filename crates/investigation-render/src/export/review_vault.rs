@@ -257,6 +257,7 @@ pub fn attachment_digests(snapshot: &ExportSnapshot, audience: Audience) -> Vec<
     let inclusion = Inclusion::new(state, snapshot.today(), audience);
     let mut digests: Vec<Digest> = state
         .records_of_kind(Kind::Artifact)
+        .filter(|record| !inclusion.availability_withdrawn(record.header.id))
         .filter_map(|record| candidate(state, &inclusion, record))
         .collect();
     digests.sort();
@@ -308,6 +309,14 @@ fn attachments(input: &ExportInput<'_>, shown: &State) -> Attachments {
             continue;
         };
         let id = record.header.id;
+        if input.inclusion.availability_withdrawn(id) {
+            found.skipped.push((
+                id,
+                "its availability was withdrawn (artifact.expire), so no bytes are read or \
+                 copied through it",
+            ));
+            continue;
+        }
         let Some(bytes) = input.retained.get(&digest) else {
             found
                 .skipped

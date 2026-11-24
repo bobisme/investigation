@@ -796,6 +796,7 @@ impl RunContext<'_> {
                 sensitivity: sensitivity(level),
                 status: None,
                 withdrawals: Vec::new(),
+                availability_change: None,
                 // The envelope is acquired source content, not an import request.
                 role: Some(ArtifactRole::Original),
                 derivation: None,
@@ -862,6 +863,7 @@ impl RunContext<'_> {
                             sensitivity: sensitivity(artifact.classification),
                             status: None,
                             withdrawals: Vec::new(),
+                            availability_change: None,
                             role: Some(ArtifactRole::Original),
                             derivation: None,
                             external: None,

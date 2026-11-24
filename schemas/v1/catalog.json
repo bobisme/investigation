@@ -1,6 +1,7 @@
 {
   "operations": {
     "annotation.add": "operations/annotation.add.schema.json",
+    "artifact.expire": "operations/artifact.expire.schema.json",
     "artifact.withdraw": "operations/artifact.withdraw.schema.json",
     "assessment.add": "operations/assessment.add.schema.json",
     "assessment.retract": "operations/assessment.retract.schema.json",
@@ -156,6 +157,7 @@
     },
     {
       "operations": [
+        "artifact.expire",
         "artifact.withdraw",
         "observation.add",
         "observation.correct",

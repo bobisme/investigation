@@ -446,6 +446,11 @@ pub struct ArtifactBody {
     /// after supplied bytes matched. See [`crate::external_ref`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external: Option<crate::external_ref::ExternalReference>,
+    /// The attributed withdrawal of this reference's availability
+    /// (`artifact.expire`), present once `availability` is
+    /// `intentionally_removed` that way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_change: Option<crate::retention_ops::AvailabilityChange>,
 }
 
 impl ArtifactBody {

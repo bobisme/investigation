@@ -269,7 +269,10 @@ impl<F: DurableFs> Store<F> {
         Ok(journal)
     }
 
-    fn refuse_unsettled_staging(&self, verified: &super::WorkspaceReplay) -> Result<(), Failure> {
+    pub(super) fn refuse_unsettled_staging(
+        &self,
+        verified: &super::WorkspaceReplay,
+    ) -> Result<(), Failure> {
         let mut report = CheckReport {
             heads: Vec::new(),
             structurally_valid: true,

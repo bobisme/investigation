@@ -212,7 +212,7 @@ impl Journal {
 
 /// The rendered vault as the render record knows it.
 #[derive(Default)]
-struct Vault {
+pub(crate) struct Vault {
     /// Workspace-relative note path → the record it projects.
     notes: BTreeMap<PathBuf, Option<Id>>,
     /// Record → its workspace-relative note paths.
@@ -222,7 +222,7 @@ struct Vault {
 }
 
 impl Vault {
-    fn load(store: &Store) -> Self {
+    pub(crate) fn load(store: &Store) -> Self {
         let mut vault = Self::default();
         let Ok(loaded) = Manifest::read(store.workspace()) else {
             return vault;
@@ -268,7 +268,7 @@ impl Vault {
     }
 
     /// Every vault location of `id`'s generated notes, as recorded.
-    fn of(&self, id: Id) -> Vec<(PathBuf, Area, &'static str)> {
+    pub(crate) fn of(&self, id: Id) -> Vec<(PathBuf, Area, &'static str)> {
         let mut out = Vec::new();
         for note in self.by_record.get(&id).into_iter().flatten() {
             out.push((
@@ -436,7 +436,7 @@ fn expand(state: &State, id: Id) -> BTreeSet<Id> {
     }
 }
 
-fn index_files(root: &Path) -> Vec<PathBuf> {
+pub(crate) fn index_files(root: &Path) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = std::fs::read_dir(root.join("cache"))
         .into_iter()
         .flatten()
@@ -861,7 +861,7 @@ fn display_path(path: &Path, forms: &[Form]) -> String {
 }
 
 /// Places beyond this workspace the tool knows of, which it never searches.
-fn outside(store: &Store) -> Value {
+pub(crate) fn outside(store: &Store) -> Value {
     let mut items: Vec<Value> = store
         .workspace()
         .config()

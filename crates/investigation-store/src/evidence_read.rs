@@ -113,8 +113,13 @@ impl PromotionBlobs {
 }
 
 /// Where the retained bytes of `reference` are, or `None` when the state
-/// expects none that can be verified.
-fn retained_blob(state: &State, reference: RevisionRef) -> Option<RetainedBlob> {
+/// expects none that can be verified. A reference whose availability was
+/// withdrawn in `state` or in `today` (`artifact.expire`) has none, at
+/// whichever revision or snapshot it is cited.
+fn retained_blob(state: &State, today: &State, reference: RevisionRef) -> Option<RetainedBlob> {
+    if investigation_core::retention_ops::bytes_withdrawn(state, Some(today), reference.id) {
+        return None;
+    }
     let body = artifact_body(state.revision(reference)?).ok()?;
     if body.availability != ArtifactAvailability::Retained {
         return None;
@@ -159,7 +164,7 @@ impl<F: DurableFs> Store<F> {
                 if reference.id.kind() != Kind::Artifact {
                     return false;
                 }
-                let Some(blob) = retained_blob(state, *reference) else {
+                let Some(blob) = retained_blob(state, classification, *reference) else {
                     return true;
                 };
                 let restricted = state
@@ -254,7 +259,7 @@ impl<F: DurableFs> Store<F> {
                 .into_iter()
                 .filter(|reference| reference.id.kind() == Kind::Artifact)
             {
-                let available = match retained_blob(state, reference) {
+                let available = match retained_blob(state, state, reference) {
                     None => false,
                     Some(blob) => match self.locked_intact(&blob, promotion) {
                         Some(intact) => intact,
@@ -302,6 +307,15 @@ impl<F: DurableFs> Store<F> {
             .at("/artifact"));
         }
         let body = artifact_body(artifact)?;
+        if body.availability == ArtifactAvailability::IntentionallyRemoved
+            || investigation_core::retention_ops::bytes_withdrawn(
+                &replay.state,
+                None,
+                artifact.header.id,
+            )
+        {
+            return Err(availability_withdrawn(&replay.state, artifact));
+        }
         if body.availability != ArtifactAvailability::Retained {
             // Nothing is substituted for bytes the workspace does not hold.
             let mut failure = Failure::new(
@@ -399,9 +413,15 @@ impl<F: DurableFs> Store<F> {
                     Err(error) => return Some((index, Err(error.clone()))),
                 };
                 let record = replay.state.revision(reference)?;
+                // A read follows the reference's current availability.
+                let withdrawn = investigation_core::retention_ops::bytes_withdrawn(
+                    &replay.state,
+                    None,
+                    reference.id,
+                );
                 Some((
                     index,
-                    self.verify_observation(record, &selector, quote.as_ref()),
+                    self.verify_observation(record, &selector, quote.as_ref(), withdrawn),
                 ))
             })
             .collect()
@@ -412,6 +432,7 @@ impl<F: DurableFs> Store<F> {
         artifact: &Record,
         selector: &SelectorRequest,
         quote: Option<&TextQuoteRequest>,
+        withdrawn: bool,
     ) -> Result<ObservationProof, Failure> {
         let body = artifact_body(artifact)?;
         let mut proof = ObservationProof {
@@ -420,7 +441,7 @@ impl<F: DurableFs> Store<F> {
             selector_validation: SelectorValidation::Unavailable,
             quote_validation: quote.map(|_| SelectorValidation::Unavailable),
         };
-        if body.availability != ArtifactAvailability::Retained {
+        if withdrawn || body.availability != ArtifactAvailability::Retained {
             return Ok(proof);
         }
         let bytes = self.read_artifact(&body, selector)?;
@@ -534,6 +555,25 @@ impl<F: DurableFs> Store<F> {
         }
         Ok(bytes)
     }
+}
+
+/// The refusal of a read through a reference whose availability was
+/// withdrawn. It names the withdrawal and suggests nothing that would put
+/// the bytes back: another reference keeps its own availability.
+fn availability_withdrawn(state: &State, artifact: &Record) -> Failure {
+    let current = state.current(artifact.header.id).unwrap_or(artifact);
+    let mut failure = Failure::new(
+        ErrorCode::GateFailed,
+        "This Artifact's availability was withdrawn (artifact.expire), so nothing can be read or verified through it, at any snapshot. Its digest, size and provenance stay recorded. Other references to the same bytes keep their own availability.",
+    )
+    .at("/artifact");
+    failure.error.actual = Some(json!({
+        "state": "source_unavailable",
+        "availability": ArtifactAvailability::IntentionallyRemoved,
+        "artifact_ref": current.reference(),
+        "availability_change": investigation_core::retention_ops::availability_change(current),
+    }));
+    failure
 }
 
 fn artifact_body(artifact: &Record) -> Result<ArtifactBody, Failure> {

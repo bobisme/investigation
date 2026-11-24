@@ -73,6 +73,9 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("check", Effect::Read),
     // Reads every workspace file; writes nothing, not even cache entries.
     ("exposure", Effect::Read),
+    // Runs artifact.expire against an in-memory copy of the state and reads
+    // obligations under the commit lock; writes nothing.
+    ("retention preview", Effect::Read),
     ("repair index", Effect::Write),
     ("repair staging", Effect::Write),
     (

@@ -201,7 +201,10 @@ pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Outp
         digests.extend(review_vault::attachment_digests(&snapshot, audience));
     }
     if spec.name == producer_bundle::KIND {
-        digests.extend(producer_bundle::required_digests(snapshot.case().state()));
+        digests.extend(producer_bundle::required_digests(
+            snapshot.case().state(),
+            snapshot.today(),
+        ));
     }
     digests.sort();
     digests.dedup();
@@ -583,6 +586,13 @@ fn snapshot_digests(snapshot: &ExportSnapshot) -> Vec<Digest> {
     let state = snapshot.case().state();
     let mut digests: Vec<Digest> = NoteSnapshot::all(state)
         .into_iter()
+        .filter(|note| {
+            !investigation_core::retention_ops::bytes_withdrawn(
+                state,
+                snapshot.today(),
+                note.artifact.id,
+            )
+        })
         .filter(|note| {
             state.current(note.artifact.id).is_some_and(|current| {
                 artifact_body(state, current.reference()).is_some_and(|body| {

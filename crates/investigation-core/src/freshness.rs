@@ -135,6 +135,10 @@ pub enum Trigger {
         from: MeasurementValidity,
         to: MeasurementValidity,
     },
+    /// A cited Artifact's availability was withdrawn (`artifact.expire`):
+    /// its bytes can no longer be read or verified through it. Digest, size
+    /// and provenance stay recorded.
+    AvailabilityRemoved,
     /// Bytes supplied to reverify a cited reference-only Artifact differ
     /// from its recorded digest or size. The recorded digest is unchanged.
     ExternalMismatch,
@@ -696,12 +700,9 @@ fn end_state(record: &Record) -> Option<Trigger> {
     };
     if body["retracted"] == true || either(&["retracted"]) {
         Some(Trigger::Retracted)
-    } else if either(&["withdrawn"])
-        || matches!(
-            text(&body["availability"]),
-            Some("missing" | "intentionally_removed")
-        )
-    {
+    } else if text(&body["availability"]) == Some("intentionally_removed") {
+        Some(Trigger::AvailabilityRemoved)
+    } else if either(&["withdrawn"]) || text(&body["availability"]) == Some("missing") {
         Some(Trigger::Withdrawn)
     } else if either(&["retired"]) {
         Some(Trigger::Retired)
@@ -1736,6 +1737,7 @@ impl FreshnessIndex {
 
 #[cfg(test)]
 mod tests {
+    mod availability;
     mod blindspot_review;
     mod judgments;
     mod promotion_agreement;

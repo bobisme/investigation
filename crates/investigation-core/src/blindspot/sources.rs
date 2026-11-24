@@ -593,6 +593,7 @@ fn source_trigger(trigger: &Trigger) -> bool {
     matches!(
         trigger,
         Trigger::Withdrawn
+            | Trigger::AvailabilityRemoved
             | Trigger::Retracted
             | Trigger::SourceConcern { .. }
             | Trigger::ExternalMismatch

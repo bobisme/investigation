@@ -89,6 +89,10 @@ impl std::fmt::Debug for ArchivePin {
     }
 }
 
+/// A live pin's name and the digests it holds; `None` when its record
+/// cannot be read, so it holds every blob.
+pub(crate) type LivePin = (String, Option<BTreeSet<Digest>>);
+
 impl ArchivePin {
     /// The pin's name (`archive-0001`), or `None` in a dry run, which writes
     /// nothing and so pins nothing.
@@ -329,6 +333,23 @@ impl<F: DurableFs> Store<F> {
         serde_json::from_slice::<PinRecord>(&bytes)
             .ok()
             .filter(|record| record.schema == RECORD_SCHEMA)
+    }
+
+    /// Every live pin by name with the digests it holds; `None` for a pin
+    /// whose record cannot be read, which holds every blob. The caller
+    /// holds the coordination lock.
+    pub(crate) fn live_pins(&mut self) -> Result<Vec<LivePin>, Failure> {
+        let mut live = Vec::new();
+        for (id, path) in self.pin_files()? {
+            if !self.pin_is_live(&path)? {
+                continue;
+            }
+            let held = self
+                .read_record(&path)
+                .map(|record| record.blobs.into_iter().collect());
+            live.push((id, held));
+        }
+        Ok(live)
     }
 
     fn live_pinned_digests(&mut self) -> Result<Option<BTreeSet<Digest>>, Failure> {

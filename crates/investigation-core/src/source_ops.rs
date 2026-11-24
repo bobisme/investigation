@@ -463,7 +463,7 @@ fn validate_artifact_withdraw(payload: &ArtifactWithdraw) -> Result<(), Failure>
 }
 
 /// Same-case current record at the exact cited revision.
-fn exact_current<'a>(
+pub(crate) fn exact_current<'a>(
     ctx: &'a OperationContext<'_>,
     reference: RevisionRef,
     path: &str,

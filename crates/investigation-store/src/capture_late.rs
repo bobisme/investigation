@@ -188,6 +188,12 @@ impl<F: DurableFs> Store<F> {
                     .then_some((reference, body.size_bytes?))
             })
             .ok_or_else(missing)?;
+        if investigation_core::retention_ops::bytes_withdrawn(state, None, artifact_ref.id) {
+            return Err(Failure::new(
+                ErrorCode::GateFailed,
+                "The availability of this Run's capture manifest was withdrawn (artifact.expire), so it is not read.",
+            ));
+        }
         let hex = digest
             .as_str()
             .strip_prefix("sha256:")

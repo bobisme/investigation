@@ -33,6 +33,7 @@ mod obsidian_setup;
 mod onboard;
 mod quote_hint;
 mod read_only;
+mod retention;
 mod retrospective;
 mod review_packet;
 mod schema;
@@ -324,6 +325,9 @@ enum Commands {
     /// Diagnose where exposed text lives in this workspace; removes nothing.
     #[command(after_help = exposure::AFTER_HELP)]
     Exposure(exposure::Args),
+    /// Preview withdrawing Artifact availability before anything changes; writes nothing.
+    #[command(subcommand, after_help = retention::AFTER_HELP)]
+    Retention(retention::RetentionCommand),
     /// Verify the journal, blobs, and index without repairing them.
     #[command(after_help = "Example: investigation check --format json")]
     Check,
@@ -507,6 +511,7 @@ fn dispatch(cli: Cli) -> Result<Output, Failure> {
                 Commands::ReviewPacket(args) => review_packet::run(&mut store, &global, args),
                 Commands::Check => check(&mut store),
                 Commands::Exposure(args) => exposure::run(&mut store, &global, args),
+                Commands::Retention(command) => retention::run(&mut store, &global, command),
                 Commands::Vault(command) => vault::run(&mut store, &global, command),
                 Commands::Export(args) => export::run(&mut store, &global, args),
                 Commands::Repair(RepairCommand::Staging { handle }) => {

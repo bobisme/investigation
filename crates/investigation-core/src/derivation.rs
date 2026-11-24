@@ -293,6 +293,7 @@ mod tests {
             external: None,
             status: None,
             withdrawals: Vec::new(),
+            availability_change: None,
         })
         .unwrap()
     }

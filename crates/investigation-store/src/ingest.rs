@@ -959,6 +959,7 @@ fn create_records(
                 external: None,
                 status: None,
                 withdrawals: Vec::new(),
+                availability_change: None,
             };
             body.validate_shape()
                 .and_then(|()| body.validate_references())
@@ -1067,6 +1068,7 @@ fn create_records(
             sensitivity: sensitivity(manifest.classification),
             status: None,
             withdrawals: Vec::new(),
+            availability_change: None,
             role: Some(ArtifactRole::Original),
             derivation: None,
             external: item.reference.as_ref().map(|reference| {
@@ -1116,6 +1118,7 @@ fn create_records(
             sensitivity: sensitivity(manifest.classification),
             status: None,
             withdrawals: Vec::new(),
+            availability_change: None,
             role: Some(ArtifactRole::Manifest),
             derivation: None,
             external: None,

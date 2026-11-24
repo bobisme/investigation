@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "ExpiryReason": {
+      "description": "Why a reference's availability is withdrawn.",
+      "oneOf": [
+        {
+          "enum": [
+            "other"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "retention_period_ended",
+          "description": "The case's retention period for these bytes has ended.",
+          "type": "string"
+        },
+        {
+          "const": "sensitive_content",
+          "description": "The bytes must stop being readable here, for example a secret or personal data.",
+          "type": "string"
+        },
+        {
+          "const": "owner_request",
+          "description": "The owner or originator of the material asked for its removal.",
+          "type": "string"
+        },
+        {
+          "const": "collected_in_error",
+          "description": "The bytes were imported by mistake.",
+          "type": "string"
+        }
+      ]
+    },
+    "Id": {
+      "pattern": "^(case|q|src|art|obs|hyp|asm|opt|crit|cmp|assess|concl|dec|rev|obj|ann|retro|inq|run|tx|handle|checkpoint|import|ws)_[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+      "type": "string"
+    },
+    "RevisionRef": {
+      "additionalProperties": false,
+      "description": "An exact revision already issued by the store.",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "revision": {
+          "format": "uint64",
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "revision"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "urn:investigation:schema:v1:operation:artifact.expire",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "artifact_ref": {
+      "$ref": "#/$defs/RevisionRef",
+      "description": "Exact current Artifact revision whose availability is withdrawn."
+    },
+    "rationale": {
+      "type": "string"
+    },
+    "reason": {
+      "$ref": "#/$defs/ExpiryReason"
+    }
+  },
+  "required": [
+    "artifact_ref",
+    "reason",
+    "rationale"
+  ],
+  "title": "ArtifactExpire",
+  "type": "object"
+}

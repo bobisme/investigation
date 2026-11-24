@@ -404,12 +404,16 @@ impl ExportRenderer for ProducerBundleRenderer {
 }
 
 /// Every retained digest a bundle of `state` may copy: the artifacts each
-/// Run names. The caller reads them with
-/// [`super::source::read_retained`] before planning.
-pub fn required_digests(state: &State) -> Vec<Digest> {
+/// Run names, except those whose availability was withdrawn at `state` or
+/// since (`today`, for a pinned earlier snapshot). The caller reads them
+/// with [`super::source::read_retained`] before planning.
+pub fn required_digests(state: &State, today: Option<&State>) -> Vec<Digest> {
     let mut digests = BTreeSet::new();
     for run in state.records_of_kind(Kind::Run) {
         for (_, reference) in named_artifacts(&run.body) {
+            if investigation_core::retention_ops::bytes_withdrawn(state, today, reference.id) {
+                continue;
+            }
             if let Some(body) = current_artifact(state, reference)
                 && body.availability == ArtifactAvailability::Retained
                 && let Some(digest) = body.digest
@@ -515,6 +519,9 @@ impl Shown<'_> {
     /// Retention now: an artifact recorded as retained whose bytes are no
     /// longer held says how they are held instead.
     fn availability(&self, reference: RevisionRef) -> String {
+        if self.input.inclusion.availability_withdrawn(reference.id) {
+            return text_of(&ArtifactAvailability::IntentionallyRemoved);
+        }
         current_artifact(self.state, reference)
             .map(|body| text_of(&body.availability))
             .unwrap_or_else(|| "missing".to_owned())
@@ -523,7 +530,7 @@ impl Shown<'_> {
     /// The bytes of an included, retained artifact.
     /// None when IDs are remapped, which would rewrite them.
     fn bytes(&self, reference: RevisionRef) -> Result<Option<(Digest, &[u8])>, RenderError> {
-        if self.input.remapped() {
+        if self.input.remapped() || self.input.inclusion.availability_withdrawn(reference.id) {
             return Ok(None);
         }
         let Some(body) = current_artifact(self.state, reference) else {

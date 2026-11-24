@@ -512,6 +512,7 @@ pub fn standard_catalog() -> Catalog {
         .chain(crate::measurement_ops::operations())
         .chain(crate::classification_ops::operations())
         .chain(crate::source_ops::operations())
+        .chain(crate::retention_ops::operations())
         .chain(crate::origin_ops::operations())
         .chain(crate::likelihood::operations())
         .chain(crate::coverage_ops::operations())

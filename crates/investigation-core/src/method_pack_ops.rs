@@ -300,7 +300,11 @@ fn adopt(payload: MethodPackAdopt, context: &mut OperationContext<'_>) -> Result
             "Stored artifact body has an invalid shape.",
         )
     })?;
-    if artifact.availability != ArtifactAvailability::Retained {
+    // A read follows the reference's current availability, also when an
+    // earlier revision is cited.
+    if artifact.availability != ArtifactAvailability::Retained
+        || crate::retention_ops::availability_withdrawn(context.state(), payload.artifact_ref.id)
+    {
         return Err(gate("The cited Artifact does not retain its bytes.").at("/artifact_ref"));
     }
     if artifact.digest.as_ref() != Some(&payload.digest) {

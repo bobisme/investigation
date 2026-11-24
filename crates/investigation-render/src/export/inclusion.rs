@@ -154,6 +154,8 @@ pub struct Inclusion<'a> {
     pinned: Classifier<'a>,
     /// Today's state when the export pins an earlier snapshot.
     today: Option<Classifier<'a>>,
+    /// The pinned and today's states, for byte availability.
+    states: (&'a State, Option<&'a State>),
     /// Every withheld record of the pinned state with its reason.
     withheld: BTreeMap<Id, &'static str>,
     /// Caveats of shown records that have any.
@@ -172,6 +174,7 @@ impl<'a> Inclusion<'a> {
             policy: AudiencePolicy::strict(level),
             pinned: Classifier::new(pinned),
             today: today.map(Classifier::new),
+            states: (pinned, today),
             withheld: BTreeMap::new(),
             caveats: BTreeMap::new(),
         };
@@ -192,6 +195,14 @@ impl<'a> Inclusion<'a> {
             inclusion.decide_dependents(pinned, caveats_approved(audience));
         }
         inclusion
+    }
+
+    /// Whether bytes may no longer be read through Artifact `id`: its
+    /// availability was withdrawn at the pinned snapshot or since. An export
+    /// copies no bytes through such a reference and reports its retention as
+    /// `intentionally_removed`.
+    pub fn availability_withdrawn(&self, id: Id) -> bool {
+        investigation_core::retention_ops::bytes_withdrawn(self.states.0, self.states.1, id)
     }
 
     /// The dependent-record layer, iterated until no further record is

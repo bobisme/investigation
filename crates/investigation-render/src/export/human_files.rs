@@ -31,6 +31,8 @@ use crate::{Phase, PlanBuilder, PlanPath, RenderError, text::inline_code};
 
 /// Why a shown snapshot's bytes are not copied.
 const NOT_RETAINED: &str = "bytes not retained";
+/// The captured bytes' Artifact had its availability withdrawn.
+const WITHDRAWN: &str = "availability withdrawn: no bytes are copied through this reference";
 /// A remapped export rewrites every identifier in every file body, so a copy
 /// of bytes holding one would differ from the captured bytes it claims to be.
 const HOLDS_IDENTIFIERS: &str =
@@ -74,7 +76,9 @@ pub(crate) fn plan(
         {
             continue;
         }
+        let withdrawn = input.inclusion.availability_withdrawn(snapshot.artifact.id);
         let member = match input.retained.get(&snapshot.sha256) {
+            _ if withdrawn => Err(WITHDRAWN),
             Some(bytes) if input.remapped() && may_hold_identifier(bytes) => Err(HOLDS_IDENTIFIERS),
             Some(bytes) => {
                 let member = human_member(&snapshot.sha256);

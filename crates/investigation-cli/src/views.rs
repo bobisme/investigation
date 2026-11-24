@@ -225,9 +225,22 @@ pub fn effective_state_disclosed_by(
         ));
         freshness["overview"] = json!(overview);
     }
-    let caveat = if !withdrawn_since.is_empty() {
+    // References whose availability was withdrawn (artifact.expire), now or
+    // since this snapshot: lost inspectability, not missing bytes.
+    let availability_withdrawn: Vec<RevisionRef> = unavailable
+        .iter()
+        .filter(|reference| {
+            investigation_core::retention_ops::bytes_withdrawn(&replay.state, today, reference.id)
+        })
+        .copied()
+        .collect();
+    let mut caveat = if !withdrawn_since.is_empty() {
         Some(
             json!({"state":"known","reason":"Material this record relies on was withdrawn from evidentiary use after this snapshot, or its retained bytes are missing.","unavailable_artifacts":unavailable,"withdrawn_since_snapshot":withdrawn_since}),
+        )
+    } else if !unavailable.is_empty() && availability_withdrawn.len() == unavailable.len() {
+        Some(
+            json!({"state":"known","reason":"The availability of the cited bytes was withdrawn (artifact.expire): nothing can be read or verified through these references, at any snapshot. Digest, size and provenance stay recorded.","unavailable_artifacts":unavailable}),
         )
     } else if !unavailable.is_empty() {
         // A reference was never retained: say so rather than call it missing.
@@ -276,6 +289,12 @@ pub fn effective_state_disclosed_by(
                 .map(|first| json!({"state":"known","value":first})),
         }
     };
+    if let Some(caveat) = caveat
+        .as_mut()
+        .filter(|_| !availability_withdrawn.is_empty())
+    {
+        caveat["availability_withdrawn"] = json!(availability_withdrawn);
+    }
     let contradiction = if state == "disputed" {
         Some(
             json!({"state":"known","reason":"An open critical objection applies to the record or its basis, or an objection was raised after its review.","open_objections":open_objections}),
