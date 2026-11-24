@@ -1,0 +1,21 @@
+{
+  "shipped_crates": [
+    "investigation-core",
+    "investigation-store",
+    "investigation-recording",
+    "investigation-render",
+    "investigation-cli"
+  ],
+  "producer_crates": [
+    "example-rust-producer"
+  ],
+  "linked_packages": 111,
+  "source_files": 319,
+  "named_tools": 32,
+  "binary_scanned_for": [
+    "sapper",
+    "nvwabase"
+  ],
+  "failures": [],
+  "passed": true
+}

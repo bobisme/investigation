@@ -1,0 +1,2699 @@
+{
+  "schema": "inv.release-gap-audit.v1",
+  "bone": "bn-p766 (REL.01a)",
+  "date": "2026-11-24",
+  "verdict": "not approved",
+  "plan": "notes/plan.md §20.1-§20.7, build rules, binding decisions (revision 4)",
+  "build": {
+    "commit": "8093f95fcd2832ecbbb95a308d5354fc1fab5bf6",
+    "debug_binary_sha256": "fea40da14ea27596c2e335d492284bf39205f4c8764a3aa4d0c5b5a2fe3193fb",
+    "release_candidate_binary_sha256": "5fa9e0a6d3fd7df8f8fce0e565ec69dff7b88b42766e30bb98f804f679826f51",
+    "release_candidate_archive_sha256": "4951d96b3c3d89b8fcb9d3a24143a64a4248edc7b9f7dfbcf3f2700ce1c82ab4",
+    "rustc": "1.100.0",
+    "python": "3.14.5"
+  },
+  "statuses": [
+    "demonstrated",
+    "limited",
+    "open",
+    "deferred"
+  ],
+  "runs": [
+    {
+      "id": "R1",
+      "command": "python3 scripts/prove_milestone_b.py target/debug/investigation",
+      "result": "FAILED in 229.8 s. 13 of 16 steps passed: neutrality guards (check-boundaries.py), scenarios A-D, final audits, conformance (reference, Python and Rust producers 20/20 each, 40/40 equal to the reference), four producer kinds, vault (four renders complete, goldens match), scripted first use. Red: test suite (173 executables, 1,464 passed, 2 failed, 4 ignored; cleared environment, PATH holding only python3, no network), drills (drill 2 explanatory), neutrality scan of the binary (2 hits). See F1 and F2.",
+      "record": "2026-11-24-gap-audit/milestone-b-proof.json"
+    },
+    {
+      "id": "R2",
+      "command": "bash ci-extra.sh: the CI `check` job's extra steps (fixture families, scenario D fixture, A-gate runner, grader and fixtures, check-v1-schemas.py --against main, check-v1-legacy.py, check-cli-goldens.py, check-readme-quickstart.py, prove_milestone_a.py, scenario_b_proof.py, check-diagnostic-logs.py)",
+      "result": "Passed (CI-EXTRA-OK).",
+      "record": null
+    },
+    {
+      "id": "R3",
+      "command": "python3 scripts/acceptance-measures.py (`just acceptance`)",
+      "result": "Passed and complete in 54 s: 124 tests over 7 deterministic measures, none skipped.",
+      "record": "2026-11-24-gap-audit/acceptance-report.json"
+    },
+    {
+      "id": "R4",
+      "command": "python3 scripts/check-producer-imports.py target/debug/investigation (new in this bone)",
+      "result": "Passed: 5 shipped crates, 111 linked packages, 319 source files, 32 named tools. Negative control: a planted source file importing the example producer and a named tool and starting a process, and a probe binary holding a reference-project name, gave 4 failures and exit 1.",
+      "record": "2026-11-24-gap-audit/producer-imports.json"
+    },
+    {
+      "id": "R5",
+      "command": "python3 scripts/package-release.py && python3 scripts/smoke-release.py (`just package`, `just smoke-package`)",
+      "result": "Passed. Two release builds from `git archive` of 8093f95f are byte-identical; binary SHA-256 5fa9e0a6d3fd7df8f8fce0e565ec69dff7b88b42766e30bb98f804f679826f51, archive SHA-256 4951d96b3c3d89b8fcb9d3a24143a64a4248edc7b9f7dfbcf3f2700ce1c82ab4. Smoke: three isolated installs (an unrelated `inv` kept), 14 documented commands in a bubblewrap clean root without network, 6 returned IDs followed.",
+      "record": "2026-11-24-gap-audit/package-report.json, smoke-report.json, smoke-transcript.json"
+    },
+    {
+      "id": "R6",
+      "command": "cargo nextest run of the two R1 failures, then the drill under a cleared environment and TMPDIR of each length",
+      "result": "Both pass under nextest. drill_2 explanatory fails 3/3 whenever TMPDIR is 38 bytes or longer and passes at 31-33 bytes; release_trial fails only without `openssl` on PATH.",
+      "record": null
+    },
+    {
+      "id": "R7",
+      "command": "mise exec cargo:cargo-deny@0.20.2 -- just check (format, clippy, every test with nextest, doctests, boundaries, cargo-deny)",
+      "result": "Passed: format, clippy, 1,469 nextest tests passed and 4 skipped (drill 2 included: the test temporary root here was 24 bytes), doctests, boundaries, cargo-deny advisories, licenses and sources ok.",
+      "record": null
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "bone": "bn-1wre",
+      "text": "drill_2 explanatory depends on the workspace path length. The default brief is 16,051 B of its 16,384 B budget, and with a TMPDIR of 38 bytes or more the conclusion that went `needs_review` after the source withdrawal is dropped from `brief.outcomes`. Path bytes count toward the brief, and the item pushed out is the drill's own stale subject. bn-5h3z (commit ed472bae in its workspace, not yet on main) adds a margin check at a 24-byte reference path, which makes the failure clearer but does not remove the dependence."
+    },
+    {
+      "id": "F2",
+      "bone": "bn-1znz",
+      "text": "The Milestone B proof is red at main for three more reasons that `just check` and CI do not see: root help lists the `obsidian` subcommand (W12.09, after the proof; the plan's catalog names `obsidian setup`, but the proof allows no named tool), `schemas/v1/export-manifest.schema.json` says \"security guarantees\", and `release_trial_harness_dry_runs_every_task_type_in_both_arms` needs `openssl`, which the proof's PATH lacks. docs/milestone-b.md row X3 (\"allows no exception, and finds none\") no longer holds at main."
+    }
+  ],
+  "counts": {
+    "20.1": {
+      "demonstrated": 58,
+      "open": 1,
+      "limited": 2
+    },
+    "20.3": {
+      "demonstrated": 13,
+      "limited": 1
+    },
+    "20.2": {
+      "limited": 5,
+      "demonstrated": 14
+    },
+    "20.4": {
+      "limited": 6,
+      "demonstrated": 8,
+      "open": 1
+    },
+    "20.5": {
+      "open": 4,
+      "limited": 6,
+      "demonstrated": 3
+    },
+    "20.6": {
+      "open": 10
+    },
+    "20.7": {
+      "limited": 3,
+      "demonstrated": 4,
+      "deferred": 1,
+      "open": 4
+    },
+    "invariants": {
+      "demonstrated": 6
+    },
+    "binding": {
+      "limited": 5,
+      "demonstrated": 12,
+      "open": 1
+    }
+  },
+  "rows": [
+    {
+      "section": "20.1",
+      "id": "X1",
+      "item": "Case mode `explore` supports raw observations before hypotheses, inquiry plans or options exist.",
+      "evidence": "cli/scenario_d.rs walk (explore case, observations before question); cli/claim_origin.rs::show_reports_claim_origins_and_unknown_dependence",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X2",
+      "item": "Case mode `evaluate` supports options/criteria/comparisons/decision with zero hypotheses, zero tests and zero conclusions.",
+      "evidence": "scripts/scenario_c_proof.py (no hyp_/inq_/concl_; decision accepted; mode evaluate)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X3",
+      "item": "Nothing in default `investigation` help, on-disk default workspace, schema or binary requires a named external tool, target, permission, principal …",
+      "evidence": "scripts/check-boundaries.py (help, schemas, general pack, docs, fresh workspace); cli/research_packs.rs::an_unpinned_case_shows_no_example_pack_content",
+      "status": "open",
+      "limit": "The Milestone B neutrality scan of this binary finds `obsidian` in root help and `security` in a v1 schema description (F2). `check-boundaries.py` (reviewed deny-list) passes.",
+      "bones": [
+        {
+          "id": "bn-1znz",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X4",
+      "item": "Three separately collected documents quoting the same specification keep three acquisition records and one known origin for that claim, not three …",
+      "evidence": "cli/scenario_d.rs baseline (3 acquisitions, 1 origin, 0 independent pairs; bench distinct origin); cli/claim_origin.rs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X5",
+      "item": "A text Observation whose `text_quote` is `not_found` is rejected; `ambiguous` is reported; a verified quote is labeled as presence, not support.",
+      "evidence": "cli/cli.rs::ingest_and_read_verify_original_bytes_before_accepting_an_observation (QUOTE_NOT_FOUND); core/observation_ops.rs::text_quote_not_found_is_rejected_and_ambiguous_is_preserved",
+      "status": "demonstrated",
+      "limit": "MB note: ambiguous unit-only; presence label asserted in vault render only",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X6",
+      "item": "Two distinct acquisitions with identical bytes remain distinct provenance identities while blob bytes deduplicate.",
+      "evidence": "investigation-store/tests/acquisition.rs::identical_bytes_from_distinct_acquisitions_share_one_blob",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X7",
+      "item": "A producer's claimed result remains attributed source data, never auto-promoted to validated Conclusion.",
+      "evidence": "investigation-store/tests/producer_run.rs::exit_code_zero_and_a_reported_pass_set_no_validity_and_promote_nothing; cli/cli.rs::producer_run_envelope_ingests_against_its_fixture_directory",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X8",
+      "item": "Retraction of original source propagates effective freshness to observations, assessments, comparisons, conclusions, decisions, reports and case …",
+      "evidence": "cli/freshness.rs::a_real_source_withdrawal_shows_needs_review_with_a_reason_chain_at_every_layer; core/freshness/tests/source_use.rs::real_source_withdrawal_reaches_every_dependent_layer_without_erasure",
+      "status": "demonstrated",
+      "limit": "MB note: comparison/decision layers unit-only",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X9",
+      "item": "A source excerpt containing instructions cannot alter trusted onboarding, tool schemas, execution or pack loading.",
+      "evidence": "cli/scenario_d.rs::scenario_d_injected_instructions_stay_inert_and_the_result_equals_the_baseline",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X10",
+      "item": "A synopsis is always labeled as projection/editorial material, and index matches in synopsis text are not counted as independent source corroboration.",
+      "evidence": "cli/synopsis.rs::a_real_synopsis_is_editorial_in_search_and_turns_stale_after_a_source_withdrawal",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X11",
+      "item": "Source timestamps without attestation never become trusted sequence guarantees.",
+      "evidence": "cli/milestone_b_gaps_explanatory.rs::x11_claimed_source_times_are_kept_as_claims_and_never_order_or_attest (envelope `started_at`/`ended_at` on a claimed `attested` clock and an `observed_at` stay verbatim claims; both Runs stay …",
+      "status": "demonstrated",
+      "limit": "MB note: MB.02 fixed a vault gap: run notes dropped started/finished times; renderer v19",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X12",
+      "item": "Hypotheses can overlap; no enforced mutually exclusive/exhaustive probabilities.",
+      "evidence": "scenario_b/scenario_a overlapping hypotheses recorded; cli/milestone_b_gaps_probability.rs::overlapping_hypotheses_are_accepted_and_no_probability_is_required_or_emitted",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X13",
+      "item": "A valid control under the wrong build does not qualify the target treatment measurement.",
+      "evidence": "scripts/scenario_b_proof.py (CONTROL_ENVIRONMENT_MISMATCH); core/measurement_ops.rs::a_valid_control_under_the_wrong_environment_does_not_qualify_the_target",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X14",
+      "item": "A failed or blocked external Run cannot be interpreted as negative evidence of the question without a separate valid observation.",
+      "evidence": "cli/milestone_b_gaps_explanatory.rs::x14_a_failed_or_blocked_run_is_not_negative_evidence_through_the_cli (`conclusion.request_review` refused with `absence.opportunity_run_not_usable` naming the failed and then the blocked Run, …",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X15",
+      "item": "A frozen predicted outcome cannot be silently amended after results to claim prospective success.",
+      "evidence": "core/explain_ops.rs::confirmation_freeze_pins_rivals_and_preserves_the_frozen_plan; core/retrospective_digest.rs::digest_lists_recorded_process_facts_and_compares_recorded_expectations",
+      "status": "demonstrated",
+      "limit": "Unit-level witness only.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X16",
+      "item": "A credible counterhypothesis and material objection are visible before conclusion promotion.",
+      "evidence": "cli/objections.rs::critical_objections_block_validation_and_material_ones_stay_visible; cli/drills_3_4.rs::drill_4_explanatory_*",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X17",
+      "item": "Correction of an instrument invalidates affected interpretations without deleting historical observations.",
+      "evidence": "core/freshness/tests/judgments.rs::a_verification_going_stale_reaches_dependents_incrementally; scenario_b",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X18",
+      "item": "Observations/Runs record `evidence_kind` (`observational`/`interventional`), variables changed, and whether instrumentation changed. A causal …",
+      "evidence": "core/blindspot/causal/tests.rs::a_causal_conclusion_with_only_observational_support_stays_candidate; …",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X19",
+      "item": "A confirmatory plan with identical predicted outcomes for two live rivals is flagged before any run.",
+      "evidence": "scenario_b inquiry.non_discriminating_plan; core/explain_ops.rs freeze warning",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X20",
+      "item": "An executor-bound reanalysis of an already-inspected trace keeps its strong chronology *and* its known-outcome reuse; a renamed derivative counts as …",
+      "evidence": "cli/evidence_reuse.rs::show_reports_reuse_deviations_and_chronology_as_separate_axes; core/evidence_reuse/tests.rs::executor_bound_reanalysis_of_an_inspected_trace_keeps_chronology_and_reuse",
+      "status": "demonstrated",
+      "limit": "MB note: executor_bound/held-out unit-only",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X21",
+      "item": "A truly inconclusive case can close with a precise reopen condition.",
+      "evidence": "cli/milestone_b_gaps_explanatory.rs::x21_an_inconclusive_close_keeps_a_readable_reopen_condition (`show`, `brief` and the vault Overview `## Closure` read the condition back; a blank or over-2,048-character one is refused with …",
+      "status": "demonstrated",
+      "limit": "MB note: MB.02 added the vault section and the warning, renderer v19. Precision of non-blank text is not judged: no rule can tell a vague condition from a …",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X22",
+      "item": "Measurement includes units, workload identity, observation window, sample count or explicit unknown, environment/tool identity and limitations.",
+      "evidence": "core/measurement_fields.rs::observation_and_run_fields_round_trip_through_their_operations; scenario_b",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X23",
+      "item": "Raw samples carry their repetition level (build, process, iteration) and order; a flat array is accepted but flagged as unable to support a variance …",
+      "evidence": "core/measurement_flags/tests.rs::flat_samples_averaged_quantiles_and_changed_instrumentation_are_flagged; scenario_b",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X24",
+      "item": "Trial order is recorded (`interleaved`, `randomized`, `sequential`); a comparison built on A-then-B sequential runs is flagged.",
+      "evidence": "scenario_b sequential_trial_order; cli/measurement_flags.rs::flags_are_advisory_on_receipts_and_shown_in_every_read",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X25",
+      "item": "Latency measurements record the load model (open/closed loop) and whether time is measured from intended send time; a tail claim from a closed-loop …",
+      "evidence": "cli/measurement_flags.rs; core/measurement_flags/tests.rs::scenario_b_sequential_and_closed_loop_seeds_are_flagged_without_blocking",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X26",
+      "item": "A percentile claim carries its sample count. The core flags a p99 claim with n < 299 (or p99.9 with n < 2,995) as unable to support a …",
+      "evidence": "core/measurement_flags/tests.rs::a_quantile_needs_a_known_count_at_the_order_statistic_bound; cli/measurement_flags.rs (n=120)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X27",
+      "item": "Percentiles from separate runs are never averaged; combining needs raw samples or mergeable histograms.",
+      "evidence": "core/measurement_flags/tests.rs (averaged_run_values flag); cli/milestone_b_gaps_measurement.rs::x27_pooled_samples_and_merged_histograms_pass_while_averaged_run_percentiles_are_flagged (pooled, merged and single-run p99 carry …",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X28",
+      "item": "Started, observed, timed-out, excluded and unknown counts are preserved with their definitions; an all-attempt criterion cannot be satisfied from a …",
+      "evidence": "scenario_b denominators + refused accept; core/measurement_flags/tests.rs::missing_outcome_variant_flags_meets_with_the_denominators",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X29",
+      "item": "Warmup, trial order, varying instrumentation or changed request mix are visible as possible confounders.",
+      "evidence": "scenario_b warmup/instrumentation/order/mix; core/measurement_flags/tests.rs::compared_measurements_show_differing_conditions_as_possible_confounders",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X30",
+      "item": "Two reported percentiles with different load distributions are not silently treated as comparable.",
+      "evidence": "core/measurement_flags/tests.rs; cli/milestone_b_gaps_measurement.rs::x30_percentiles_under_different_load_models_are_not_silently_compared (open- against closed-loop p99: `measurement.compared_load_model_differs` on the …",
+      "status": "limited",
+      "limit": "Only open/closed loop and intended-send timing are compared; other load-distribution differences show only through workload identity.",
+      "bones": [],
+      "work": "disposition",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X31",
+      "item": "Zero detected difference under broken instrumentation is inconclusive, not evidence of performance equality.",
+      "evidence": "scenario_b gated absence; core/absence_gate/tests.rs::zero_difference_under_broken_instrumentation_is_inconclusive_not_equality",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X32",
+      "item": "Repeating a benchmark creates a distinct Run with an explicit acquisition identity and shared setup dependencies.",
+      "evidence": "core/measurement_fields.rs::a_repeat_is_a_distinct_run_with_its_own_acquisition_and_shared_setup",
+      "status": "demonstrated",
+      "limit": "Unit-level witness only.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "X33",
+      "item": "No p-value, confidence interval, causal claim or numeric accuracy score is invented by the core.",
+      "evidence": "scenario_b no_invented_numbers; cli/confidence.rs::promotion_requires_named_reasons_and_summary_shows_concerns_without_numbers",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y1",
+      "item": "A `hard` Criterion with an unknown result cannot be treated as satisfied, nor traded against arbitrary soft-score weights.",
+      "evidence": "scripts/scenario_c_proof.py (weighted excluded hard_unresolved); core/weighting/tests.rs::a_hard_failure_or_unknown_is_excluded_and_never_traded_against_soft_weights",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y2",
+      "item": "Criteria and choice alternatives are separate from empirical hypotheses.",
+      "evidence": "scripts/scenario_c_proof.py (no hyp_/inq_/concl_ created)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y3",
+      "item": "Missing cells in option × criterion table remain `unknown` with useful next-step guidance.",
+      "evidence": "cli/next_rank.rs::next_groups_repeated_cells_and_every_query_path_stays_on_its_snapshot; scenario_c hard_unmeasured suggested comparison.add",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y4",
+      "item": "Changing criterion threshold/weight/units forces affected Comparisons and Decisions into `needs_review` (unless demonstrably irrelevant per …",
+      "evidence": "scenario_c threshold change -> needs_review; core/freshness.rs::criterion_threshold_weight_and_unit_changes_require_review (units/weight/irrelevance unit-level)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y5",
+      "item": "A source-authored subjective preference stays labeled preference rather than measured fact.",
+      "evidence": "core/weighting/tests.rs::preferences_stay_labelled_preferences_and_never_score; render/comparison_matrix.rs::every_cell_is_stated_and_a_missing_cell_is_labelled",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y6",
+      "item": "A decision may be rational, conditional and accepted while one comparison remains uncertain; report explicitly preserves that condition.",
+      "evidence": "scenario_c accepted conditional decision + scenario_c_successor.py",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y7",
+      "item": "An accepted Decision is superseded by a new Decision, not overwritten historically.",
+      "evidence": "scenario_c decision.supersede; cli/vault_scenarios.rs::scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y8",
+      "item": "A sensitivity result documents which uncertain assumption could plausibly reverse an option choice, without claiming a computed probability.",
+      "evidence": "vault_scenarios reversal conditions; core/weighting/tests.rs::sensitivity_reports_whether_an_order_holds_across_stated_weight_uncertainty",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y9",
+      "item": "Pareto status never prunes an option on the strength of an `unknown`, `stale` or unranked-subjective cell; `next` does not suggest soft-criterion …",
+      "evidence": "core/decision_ops.rs::generated_pareto_proofs_require_current_ranked_cells; core/next_rank.rs::soft_cells_on_a_hard_disqualified_option_are_withheld_not_suggested (unit level)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y10",
+      "item": "A weight without a stated range never enters a score; adding a duplicate option does not reorder the others.",
+      "evidence": "core/weighting/tests.rs::a_weight_without_a_range_never_enters_a_score, ::utilities_use_the_stated_range_so_added_or_duplicate_options_never_reorder_the_others; scenario_c enters_score",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y11",
+      "item": "Quotations, extraction, screenshots and summary notes of one document do not count as independent corroboration.",
+      "evidence": "cli/scenario_d.rs baseline; core/origin_ops/tests.rs::views_and_notes_of_one_document_do_not_count_as_independent",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y12",
+      "item": "Primary-source erratum/source currency can invalidate a prior judgment without deleting its original record.",
+      "evidence": "cli/scenario_d.rs baseline (erratum -> needs_review, rev 1 kept)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y13",
+      "item": "An unavailable external artifact produces `source_unavailable`, not fabricated verified bytes.",
+      "evidence": "cli/reference_only.rs::a_reference_only_source_reports_source_unavailable_everywhere_it_is_read",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y14",
+      "item": "A source-based conclusion can be reviewed without requiring a physically executable experiment.",
+      "evidence": "cli/scenario_d.rs (no inq_, only search runs)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y15",
+      "item": "Every supported record type yields stable `title`, `summary` and `full` views; evidence is separately opt-in. Full does not implicitly load a …",
+      "evidence": "cli/milestone_b_gaps_layered.rs::every_record_type_has_stable_layered_views_and_evidence_stays_opt_in (all 19 case-record kinds, derived from `Kind`; each depth deterministic, contract-schema-valid, nested title ⊂ summary ⊂ …",
+      "status": "demonstrated",
+      "limit": "MB note: MB.06: read paths never open a restricted blob and reuse a disposable verdict keyed by file identity instead of re-hashing; promotion gates and …",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y16",
+      "item": "A 40-record fixture produces a significantly smaller useful compact brief than reading all full records; measure emitted bytes and task correctness, …",
+      "evidence": "cli/adversarial_drills.rs::drill_1_title_only_cold_start_explanatory, ::drill_1_title_only_cold_start_evaluative; cli/brief.rs::a_compact_brief_of_a_forty_record_case_halves_a_full_traversal_and_keeps_every_caveat",
+      "status": "demonstrated",
+      "limit": "MB note: the compact brief is at most a fifth of the full traversal (14,574 vs 191,818 B; 15,557 vs 160,330 B), and the cold path finds the open gap and its …",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y17",
+      "item": "Every compact current Conclusion or Decision exposes material caveats and effective freshness independently of optional authored synopsis text.",
+      "evidence": "cli/adversarial_drills.rs::drill_1_* (every current Conclusion and Decision, with and without synopses); cli/brief.rs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y18",
+      "item": "A source retraction/criterion revision marks affected synopsis bound to the old subject revision `stale`; default brief never represents the old …",
+      "evidence": "cli/adversarial_drills.rs::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory, ::drill_2_stale_synopsis_after_a_threshold_change_evaluative; cli/synopsis.rs",
+      "status": "limited",
+      "limit": "Both drill 2 variants pass under nextest; the explanatory variant fails in the proof's environment because the stale conclusion is dropped from a path-length-dependent brief (F1). The evaluative variant and synopsis.rs pass.",
+      "bones": [
+        {
+          "id": "bn-1wre",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y19",
+      "item": "An `annotation.add(role=synopsis)` is attributed, source/subject-revision-bound, separately editable by new annotation and never counted as …",
+      "evidence": "cli/synopsis.rs::a_real_synopsis_is_editorial_in_search_and_turns_stale_after_a_source_withdrawal",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y20",
+      "item": "`investigation frontier` returns the same snapshot-bound missing/blocked/stale items as the complete unranked inventory behind `investigation next`, …",
+      "evidence": "cli/frontier.rs::frontier_is_the_complete_unranked_inventory_behind_next; ::explain_names_the_rule_and_version_for_any_gap_id",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y21",
+      "item": "`investigation blindspots` discovers a missing control, a shared-origin source pair, an untested material assumption, an unknown hard criterion and …",
+      "evidence": "scenario_d blindspots_reported (shared origin, invalidated source); scenario_c (assumption, hard)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y22",
+      "item": "An audited case with no detected issue displays \"no structural gap identified under checks X\", never \"all blindspots resolved\" or \"verified correct\".",
+      "evidence": "cli/blindspots.rs::audits_are_bounded_deterministic_pinned_and_schema_valid; core/blindspot/tests.rs::a_clean_case_reports_no_gap_under_the_named_checks_and_no_completeness",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y23",
+      "item": "`review.submit(kind=blindspot)` can record zero/one/many specific gaps, scope, inspected snapshot, uncertainty and exact related IDs; it never …",
+      "evidence": "cli/drills_3_4.rs::drill_3_*; scenario A/C/D blindspot reviews (decision/conclusion unchanged)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y24",
+      "item": "When sources/evidence change, previously recorded challenge reviews become stale where relevant; unconnected case mutations do not needlessly …",
+      "evidence": "core/freshness/tests/blindspot_review.rs::withdrawing_a_source_the_review_read_makes_it_stale_and_an_unrelated_write_does_not; scenario_c stale blindspot review",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y25",
+      "item": "A semantic blindspot outside the finite rules can be added as a Question/Assumption/Objection; no rule engine claims it should already have found it.",
+      "evidence": "cli/drills_3_4.rs::drill_4_*; scenario A/C/D novel gaps as Questions",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y26",
+      "item": "`retrospective.record` accepts useful lessons from failed, inconclusive or successful inquiries with transfer limits; allows explicit \"no observed …",
+      "evidence": "cli/drill_lesson_transfer.rs; core/retrospective_digest.rs::lessons_from_failed_inconclusive_or_successful_work_and_explicit_none_observed",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y27",
+      "item": "Closing a material case without a Retrospective fails with an actionable repair, while a non-material case may close with `retrospective_waived` and …",
+      "evidence": "cli/drill_closure.rs::a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch, ::a_nonmaterial_case_waives_and_a_record_case_holding_data_needs_neither; investigation-store/src/closure_drill_tests.rs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.1",
+      "id": "Y28",
+      "item": "Lessons do not silently modify method packs, prompts, agent settings, or canonical policy; restricted lessons cannot leak into public review exports.",
+      "evidence": "cli/drill_lesson_transfer.rs; cli/lessons.rs::lessons_cross_cases_only_by_admission_and_explicit_consultation, ::a_restricted_lesson_is_not_revealed_to_another_case",
+      "status": "demonstrated",
+      "limit": "MB note: the no-silent-modification half is met. Export half (MB.08, W11.16): no text, title or digest of a lesson raised to restricted reaches any planned …",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N1",
+      "item": "The exact same `producer-run.v1` schema records a synthetic benchmark, file-analysis report, simulation, and trace-capture session without core code …",
+      "evidence": "producer_kinds.rs::four_producer_kinds_record_through_one_envelope_and_differ_only_in_data (L96); ::the_crates_hold_no_branch_on_a_fixture_producer_or_its_assertion_kinds (L377)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N2",
+      "item": "A standalone producer can record one Run in `record` mode with no hypotheses, Obsidian or model installed.",
+      "evidence": "examples/rust-producer/tests/adapter.rs::run_finalizes_a_record_mode_run_offline (L104); investigation-recording/tests/begin.rs::begin_declares_one_run_and_returns_its_handle_protocol_limits_and_staging (L49)",
+      "status": "demonstrated",
+      "limit": "MB note: \"no Obsidian/model\" rests on offline env",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N3",
+      "item": "Rust and Python/JSON producer conformance yield equivalent canonical envelopes and stable source mappings.",
+      "evidence": "conformance.rs::reference_and_both_examples_pass_and_record_equal_state (L127); cases baseline/partial-evidence -> exact-acquisition-mapping, equivalent-hashes-ids",
+      "status": "demonstrated",
+      "limit": "MB note: 40 comparisons equal",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N4",
+      "item": "Begin/append/attach/finalize accept idempotent retries and recover from lost acknowledgement without duplicate runs or original acquisitions.",
+      "evidence": "conformance lost-response-{begin,append,attach,finalize}, rerun-identical; conformance.rs::non_idempotent_producer_fails_the_suite (L155)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N5",
+      "item": "An interrupted producer returns partial/incomplete artifacts and `unknown` external effect status, never schedules rerun on recovery.",
+      "evidence": "investigation-recording/tests/recover.rs::an_interrupted_producer_recovers_partial_outputs_with_unknown_execution_and_no_rerun (L179); conformance interrupted-run",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N6",
+      "item": "Capture finalization after process failure preserves exact original error and valid partial observations; no invented overall verdict.",
+      "evidence": "investigation-recording/tests/finalize.rs::a_failed_process_is_finalized_with_its_exact_error_and_what_survived (L341)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N7",
+      "item": "Historical or external manifest reimport is idempotent; manifest revision isn't a new trial.",
+      "evidence": "investigation-store/tests/producer_run.rs::identical_content_is_one_attempt_and_a_changed_envelope_revises_it (L242); investigation-recording/tests/attempt_identity.rs::a_changed_envelope_keeps_a_terminal_status (L226)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N8",
+      "item": "Send position 3 when 2 is missing, retry an accepted item with changed bytes, race the last attachment with sealing, and interrupt between seal and …",
+      "evidence": "investigation-recording/tests/late.rs::after_staging_is_retired_an_identical_retry_recovers_its_receipt_and_a_late_item_changes_nothing (L248); …",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N9",
+      "item": "Unknown source schema or namespaced metadata stays opaque with usable diagnostic; unsupported source data never silently maps to false facts.",
+      "evidence": "investigation-store/tests/ingest.rs::unknown_envelope_version_is_retained_opaque_with_a_diagnostic (L147); conformance partial-evidence -> namespaced-metadata",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N10",
+      "item": "Core compilation/run tests pass with zero installed producers, executors, task trackers, or environment credentials.",
+      "evidence": ".github/workflows/check.yml offline job L45-64 (unshare --net, env -i, minimal PATH); local just check does not enforce. (MB proof suite step also enforces)",
+      "status": "limited",
+      "limit": "R1 ran 173 test executables with a cleared environment and PATH holding only python3: 1,464 passed, 2 failed. One needs `openssl` on PATH (F2); the other depends on the path length (F1).",
+      "bones": [
+        {
+          "id": "bn-1znz",
+          "owner": false
+        },
+        {
+          "id": "bn-1wre",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N11",
+      "item": "A new declarative method pack can add a guidance card and custom optional fields without modifying core code.",
+      "evidence": "pack_extensions.rs::a_third_party_pack_adds_a_card_and_typed_fields_that_survive_its_removal (L161); research_packs.rs::all_three_packs_load_with_the_unchanged_core_and_none_is_a_default (L189)",
+      "status": "demonstrated",
+      "limit": "MB note: no source-scan guard for \"no core change\"",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N12",
+      "item": "A method pack can *advise* a blindspot review or require one at a declared consequential gate only through versioned schema-bound policy; no pack …",
+      "evidence": "pack_policy.rs::a_pinned_pack_gates_decision_acceptance_and_every_gate_records_its_policy (L297); …",
+      "status": "demonstrated",
+      "limit": "MB note: advise only via guidance card",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N13",
+      "item": "Method pack cannot create executable hooks, replace core provenance rules, grant execution permission or alter historical case policy by updating on …",
+      "evidence": "cli method_pack_safety.rs::hostile_packs_are_refused_at_adoption_and_change_nothing (L330); ::updating_a_pack_file_on_disk_never_changes_an_adopted_pack_or_its_policy (L473)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.3",
+      "id": "N14",
+      "item": "An uninstalled/unknown method pack does not prevent valid generic recording, inspection or export.",
+      "evidence": "cli method_pack_safety.rs::an_unknown_or_missing_pack_never_blocks_generic_recording_inspection_or_guidance (L521); investigation-render/tests/method_packs.rs::a_case_with_an_unavailable_pinned_pack_still_renders (L14)",
+      "status": "demonstrated",
+      "limit": "MB note: export only as vault render",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P1",
+      "item": "Kill the writer at every publication boundary in §10.4 and recover honestly.",
+      "evidence": "store crash_tests.rs::seeded_failure_schedules_preserve_idempotency_and_atomic_publication; real_crash_tests.rs::local_filesystem_publication_boundaries_and_retry; render generations.rs::killing_a_render_at_each_file_leaves_a_state_the_next_render_completes",
+      "status": "limited",
+      "limit": "Every writer crash is simulated (MemoryFs crash model or an injected error); no test SIGKILLs a committing process. The real-filesystem test covers 3 points; its LazyFS variant is #[ignore]. The \"before index\" row is an index error, not a crash; the export boundary has no crash witness.",
+      "bones": [
+        {
+          "id": "bn-f97f",
+          "owner": false
+        },
+        {
+          "id": "bn-1i3a",
+          "owner": false
+        }
+      ],
+      "work": "code or disposition",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P2",
+      "item": "Lose the response after commit; identical retry returns the original IDs exactly once.",
+      "evidence": "cli acceptance_measures.rs::every_write_command_retried_after_a_lost_response_is_recorded_exactly_once; store production.rs::processes_serialize_additions_and_recover_the_original_receipt",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P3",
+      "item": "Same command ID with changed payload is rejected, including after index rebuild.",
+      "evidence": "cli cli.rs::start_receipt_survives_process_exit_and_reindex_without_the_original_input (IDEMPOTENCY_KEY_REUSED after `repair index`)",
+      "status": "demonstrated",
+      "limit": "After-rebuild shown for `start` only.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P4",
+      "item": "Concurrent independent additions succeed; competing substantive updates produce a clear CAS conflict.",
+      "evidence": "store production.rs::processes_serialize_additions_and_recover_the_original_receipt, ::competing_processes_return_the_winning_revision_and_bounded_diff (two processes)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P5",
+      "item": "A promotion or acceptance racing retraction or a criterion change cannot validate against a stale read-set.",
+      "evidence": "core freshness/tests/promotion_agreement.rs::a_lowering_or_invalidating_judgment_blocks_promotion_naming_the_observation; review_ops.rs::lifecycle_only_validation_stays_current_and_retraction_invalidates_it",
+      "status": "limited",
+      "limit": "Core level and sequential: no concurrent race of a promotion with a retraction or criterion change; the store race test races an unrelated writer only.",
+      "bones": [],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P6",
+      "item": "A late hard criterion or material Objection conflicts before promotion and marks an accepted basis needs_review; membership changes update the set; full and indexed results agree.",
+      "evidence": "core decision_ops.rs::final_batch_detects_late_hard_criterion_but_ignores_other_question; basis.rs::scoped_membership_tracks_phantoms_and_not_unrelated_questions; store freshness_oracle.rs::incremental_freshness_matches_an_independent_recomputation_over_generated_histories",
+      "status": "limited",
+      "limit": "Conflict and other-question cases are unit level; generated histories never add a criterion after acceptance; no end-to-end test of a new criterion turning an accepted basis needs_review.",
+      "bones": [],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P7",
+      "item": "Pipe the first source into `start`, lose the response, discard the input; `receipt KEY` after restart or reindex returns the same IDs; a changed stream is rejected; a failed ingest creates no case.",
+      "evidence": "cli cli.rs::start_receipt_survives_process_exit_and_reindex_without_the_original_input; store ingest.rs::failed_path_leaves_no_case_and_binary_stdin_keeps_its_bytes",
+      "status": "demonstrated",
+      "limit": "The no-empty-case half is shown at store ingest, not through CLI `start`.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P8",
+      "item": "An injected fsync error stops writes with `commit_status: unknown`, never retried into success; restart re-verifies the tail.",
+      "evidence": "store crash_tests.rs::seeded_failure_schedules_preserve_idempotency_and_atomic_publication; real_crash_tests.rs::local_filesystem_publication_boundaries_and_retry",
+      "status": "demonstrated",
+      "limit": "Simulated I/O error, not a kernel EIO.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P9",
+      "item": "Identical bytes in cases A and B, expire A during B's archive; read, restore, reindex; reclamation waits for the last obligation and survives interruption.",
+      "evidence": "render reclamation.rs::expiry_during_an_archive_keeps_the_survivor_and_reclamation_waits_for_the_last_obligation; store retention_tests.rs::an_interrupted_reclamation_removes_each_blob_once_on_retry_at_every_step",
+      "status": "demonstrated",
+      "limit": "Interruption is the in-memory crash model.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P10",
+      "item": "A malformed operation in a batch commits none of the batch.",
+      "evidence": "core state.rs::failed_batches_identify_alias_and_cross_case_errors; cli quote_hint.rs::a_raw_record_quote_names_the_nearest_line_and_the_pointer_to_change (not_committed)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P11",
+      "item": "Duplicate keys, unknown required fields, overlarge input and invalid references return bounded field errors.",
+      "evidence": "core input.rs::rejects_invalid_json_at_the_failing_field, ::enforces_size_and_depth_and_preserves_decimal_spelling; cli cli.rs::record_retries_and_rejects_input_without_changing_the_case",
+      "status": "limited",
+      "limit": "Duplicate keys and overlarge input are unit level; no test asserts the error itself is size-bounded.",
+      "bones": [],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P12",
+      "item": "Missing or corrupt event, duplicate sequence, mismatched parent/hash and future schema are diagnosed without invented repair.",
+      "evidence": "store production.rs::replay_reports_duplicate_sequences_and_unknown_versions_in_place; canonical_journal.rs::without_a_witness_the_repair_names_the_file_and_writes_nothing",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P13",
+      "item": "Deleting the derived database and rebuilding produces identical accepted state and receipts.",
+      "evidence": "cli cli.rs::check_and_index_repair_preserve_receipts; search.rs::matches_are_labelled_and_only_recorded_evidence_counts_as_a_source_hit (index removed and rebuilt); store production.rs::index_failure_after_publication_preserves_the_commit",
+      "status": "demonstrated",
+      "limit": "Piecewise comparisons; no single whole-state comparison.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P14",
+      "item": "External artifact mutation is detected; a digest never describes different retained bytes.",
+      "evidence": "store read_path_hash_tests.rs::an_overwrite_in_place_is_caught_on_the_next_read; reference_only.rs::a_changed_local_file_fails_reverification_and_marks_dependents",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P15",
+      "item": "Large capture ingestion has bounded memory and preserves exact bytes.",
+      "evidence": "store streaming_ingest.rs::a_file_past_the_old_limit_streams_in_bounded_memory_and_keeps_exact_bytes (72 MiB, 2 MiB peak heap); cli streaming_ingest.rs::a_large_piped_capture_is_retained_exactly_with_progress_on_stderr_only",
+      "status": "demonstrated",
+      "limit": "Multi-GiB runs are gated on INV_LARGE_INGEST_GIB and did not run here.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P16",
+      "item": "Symlink, traversal and archive-expansion fixtures do not escape the intended roots.",
+      "evidence": "store raw_file_hardening.rs::ingest_paths_cannot_leave_the_import_root, ::an_archive_with_traversal_absolute_and_link_entries_is_never_extracted; cli archive_restore.rs::an_occupied_or_unsafe_destination_is_refused_and_left_as_found",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P17",
+      "item": "Missing expected artifacts remain missing/incomplete, not replaced by empty files.",
+      "evidence": "store capture_attach_tests.rs::missing_artifacts_stay_missing_and_are_never_replaced_by_empty_files; recording attach.rs::missing_artifacts_are_recorded_as_missing_with_no_bytes",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P18",
+      "item": "A full archive restored on a clean machine yields the same case state and retained evidence digests.",
+      "evidence": "cli clean_restore.rs::a_full_archive_restored_in_a_clean_root_has_the_same_state_digests_and_vault; archive_restore.rs::every_scenario_restores_and_forks_to_the_same_heads_states_and_receipts",
+      "status": "demonstrated",
+      "limit": "Linux only (support matrix); falls back to a cleared environment where bubblewrap cannot run.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.2",
+      "id": "P19",
+      "item": "Killing a process between a Retrospective and its same-batch `case.close` never leaves a closed case without it, nor a half transaction.",
+      "evidence": "store closure_drill_tests.rs::every_crash_point_of_the_closure_batch_leaves_both_or_neither_and_the_retry_keeps_the_ids; crash_tests.rs::closure_with_retrospective_is_atomic_over_the_commit_crash_window",
+      "status": "limited",
+      "limit": "Every crash point of the batch on the MemoryFs crash model; no real process kill.",
+      "bones": [
+        {
+          "id": "bn-f97f",
+          "owner": false
+        }
+      ],
+      "work": "code or disposition",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V1",
+      "item": "Fresh vault is useful with community plugins disabled.",
+      "evidence": "cli vault_fixtures.rs::scenario_vaults_need_no_community_plugin, ::every_conclusion_and_decision_has_a_ladder_from_overview_to_evidence_selector",
+      "status": "limited",
+      "limit": "File-level checks only. No vault was opened with plugins disabled and nobody judged it useful; that judgement is the human gate.",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V2",
+      "item": "Native casebook exposes summaries, source links, frontier, challenge reviews and retrospectives without a community plugin.",
+      "evidence": "cli vault_scenarios.rs::scenario_a_renders_every_record_type_with_links_both_ways; vault_views.rs::every_case_has_its_views_linked_from_the_overview_and_each_reads_only_its_case",
+      "status": "demonstrated",
+      "limit": "File level.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V3",
+      "item": "Core CLI/rendering works without Obsidian installed.",
+      "evidence": "cli vault_fixtures.rs::identical_snapshots_publish_identical_bytes_across_runs_environments_and_file_order (empty PATH); clean_restore.rs renders in a clean root; R1 renders with no viewer on PATH",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V4",
+      "item": "Supported-version Bases and Canvas open correctly; links/aliases/excerpt blocks resolve.",
+      "evidence": "cli vault_fixtures.rs::every_link_alias_and_excerpt_anchor_resolves, ::each_base_lists_the_rows_of_its_static_table_and_only_its_case; vault_map.rs::every_case_map_is_json_canvas_whose_nodes_resolve",
+      "status": "limited",
+      "limit": "Links, aliases and excerpts are demonstrated. Bases and Canvas get syntax and filter checks only and were never opened in the pinned viewer release (obsidian/README.md: \"verified against documentation only\").",
+      "bones": [
+        {
+          "id": "bn-3d9f",
+          "owner": false
+        }
+      ],
+      "work": "code (needs a viewer install)",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V5",
+      "item": "Identical snapshot renders produce identical owned bytes, excluding explicitly local view state.",
+      "evidence": "cli vault_fixtures.rs::identical_snapshots_publish_identical_bytes_across_runs_environments_and_file_order, ::golden_vaults_match_their_checked_in_workspaces; render render.rs::same_snapshot_and_policy_yield_a_byte_identical_plan",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V6",
+      "item": "Title changes do not rename identity-based files or break links.",
+      "evidence": "cli vault_fixtures.rs::title_changes_keep_file_names_anchors_and_links; render render.rs::recorded_title_changes_keep_identity_files_and_links",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V7",
+      "item": "Human Notes/Boards/Inbox remain byte-identical through render and migration.",
+      "evidence": "cli vault_fixtures.rs::human_folders_keep_their_bytes_through_scenario_renders; migration.rs::a_migration_runs_its_dry_run_plan_after_a_verified_backup_and_reverses_exactly; render human_areas.rs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V8",
+      "item": "Generated note edits, Base property edits, deletes, renames and conflict copies are diagnosed as drift.",
+      "evidence": "render drift.rs (one test per kind); bases.rs::an_edited_base_or_a_cell_edit_is_drift_and_switching_off_retires_the_bases; cli vault_commands.rs::render_succeeds_with_drift_present_and_lists_it",
+      "status": "demonstrated",
+      "limit": "Edits are simulated as file writes, not made in the viewer.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V9",
+      "item": "Render failure advertises partial/stale state; the CLI still reports current canonical state.",
+      "evidence": "render generations.rs::a_failed_render_advertises_partial_while_canonical_reads_continue; cli vault_commands.rs::a_render_that_stops_reports_partial_and_the_next_render_completes_it",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V10",
+      "item": "Fresh canonical read-sets drive companion validation, never mixed-generation Markdown.",
+      "evidence": "render generations.rs::every_note_names_its_snapshot_and_other_cases_never_churn; cli vault_reconcile.rs::propose_change_records_the_stated_title_and_clears_the_drift",
+      "status": "limited",
+      "limit": "No companion exists in this release (W15, Milestone D). No test shows a proposal built from a stale note being checked against fresh canonical state; the reconcile test asserts only that a revision precondition is sent.",
+      "bones": [],
+      "work": "code (reconcile test) + release-note disclosure",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V11",
+      "item": "Hostile HTML, remote embeds, plugin fences, YAML values and URI text stay inert in previews.",
+      "evidence": "render safe_markdown.rs::display_text_is_inert_as_heading_link_label_table_cell_and_alias, ::frontmatter_values_never_add_keys_or_end_the_block, ::hostile_code_text_never_starts_a_dataview_inline_query",
+      "status": "limited",
+      "limit": "Inertness is judged by a CommonMark parse; no viewer preview was observed.",
+      "bones": [
+        {
+          "id": "bn-3d9f",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V12",
+      "item": "Review export excludes raw journal/secrets and checks labels, filenames, Canvas and annotations as well as artifact bodies.",
+      "evidence": "cli export_leaks.rs::scenario_a_leaks_nothing_through_any_kind_audience_or_identifier_mode (and b, c, d, hostile text); export_review_vault.rs::nothing_from_the_working_vault_reaches_the_copy",
+      "status": "demonstrated",
+      "limit": "The review copy holds no Canvas; journal absence follows from written files equalling the planned list.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V13",
+      "item": "A restricted decisive objection is withheld or caveated in every public channel; names, counts, hashes, cursors, stale files and the omission manifest leak nothing; re-export of an old snapshot follows today's policy.",
+      "evidence": "render export_policy.rs::re_exporting_an_old_snapshot_follows_todays_policy; audience_policy.rs::a_conclusion_whose_decisive_objection_is_hidden_is_never_shown_clean; cli export_leaks.rs::adding_a_restricted_record_changes_no_count_a_lower_audience_sees",
+      "status": "open",
+      "limit": "Tests pass, but a title leak through derived decision and comparison titles is an open defect (bn-31an, in progress), and whether public copies may show revision counts and supersession by a withheld decision awaits the owner (bn-3aa9, bn-266b). The CLI leak matrix runs at head only.",
+      "bones": [
+        {
+          "id": "bn-31an",
+          "owner": false
+        },
+        {
+          "id": "bn-3aa9",
+          "owner": true
+        },
+        {
+          "id": "bn-266b",
+          "owner": true
+        }
+      ],
+      "work": "code + owner",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V14",
+      "item": "A mobile/offline reader can understand the exported case without shell or community plugins.",
+      "evidence": "render export_review_vault.rs::internal_shows_standing_from_the_full_case_with_fixed_caveats_and_no_leak (plain Markdown only); cli export_review_vault.rs::every_link_of_every_audience_copy_resolves_inside_it",
+      "status": "limited",
+      "limit": "The copy is self-contained; no plugin-syntax scan runs on review copies, and nobody read one on a phone or offline. \"Understand\" needs the human gate.",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "code (scan) + owner",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.4",
+      "id": "V15",
+      "item": "Plugin setup/uninstall preserves unrelated configuration and custom configuration-directory settings.",
+      "evidence": "cli obsidian_setup.rs::apply_changes_only_the_previewed_keys_and_nothing_else, ::a_custom_configuration_folder_is_detected_or_named; src obsidian_setup.rs::splice_keeps_every_other_byte",
+      "status": "limited",
+      "limit": "There is no plugin to install (W15, Milestone D). `obsidian setup` splices two native keys; it has no uninstall or revert, and an apply into a custom configuration folder is untested (preview only).",
+      "bones": [],
+      "work": "code (custom-folder apply test) + release-note disclosure",
+      "runs": [
+        "R1",
+        "R7"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C0",
+      "item": "Release gate: the controlled, sealed, paired comparison (two agent families, both arms, held-out sealed families, paired twins, preregistered decision rule).",
+      "evidence": "Preregistration docs/release-trial.md; harness crates/investigation-cli/tests/release_trial.rs (dry run of every task type in both arms); families training/release/families/",
+      "status": "open",
+      "limit": "No sealed run exists. Task 5-10 instances must be authored by a non-builder and sealed with the owner's passphrase (bn-1jpq); the run (bn-1ktn) and the analysis under the preregistered rule (bn-2lvt) follow.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        },
+        {
+          "id": "bn-2lvt",
+          "owner": false
+        },
+        {
+          "id": "bn-1jpq",
+          "owner": true
+        }
+      ],
+      "work": "owner, then code/run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C1",
+      "item": "Scenarios 1-10 (bug, p99, source research, architecture, stale resume, lost response and conflict, two-stage injection, 40-record layered reads, blindspots plus a novel risk, bounded retrospective).",
+      "evidence": "R1 scenarios A-D; cli trial_tasks.rs (5-7) and trial_tasks_8_10.rs (8-10) scripted rehearsals; drills in R1",
+      "status": "limited",
+      "limit": "Scripted rehearsals on this binary only; no agent has run them in the sealed trial.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        },
+        {
+          "id": "bn-2lvt",
+          "owner": false
+        },
+        {
+          "id": "bn-1jpq",
+          "owner": true
+        }
+      ],
+      "work": "owner, then run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C2",
+      "item": "Measure: correct case/object targeting, no cross-case writes.",
+      "evidence": "R3 targeting (14 tests)",
+      "status": "limited",
+      "limit": "Deterministic part demonstrated; agent-trial counts open.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C3",
+      "item": "Measure: first useful receipt within three calls after onboarding; total burden in both arms.",
+      "evidence": "training/first-use/rerun-6vlm (8/12 within three calls); docs/first-use.md help-only arm (W17.03)",
+      "status": "open",
+      "limit": "W17.03 help-only missed preregistered target 1 (4/12 and 5/12 against >= 6); the re-measure is in progress (bn-gef3), and its worker has asked the owner whether the three-call window is fair to the help-only arm. Burden in both arms comes from the release trial.",
+      "bones": [
+        {
+          "id": "bn-gef3",
+          "owner": false
+        },
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run + owner question",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C4",
+      "item": "Measure: task success under the preregistered rule on sealed cases.",
+      "evidence": "none yet",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        },
+        {
+          "id": "bn-2lvt",
+          "owner": false
+        },
+        {
+          "id": "bn-1jpq",
+          "owner": true
+        }
+      ],
+      "work": "owner, then run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C5",
+      "item": "Measure: false promotion zero in deterministic invalid-control and stale-basis fixtures; agent counts with denominators and bounds.",
+      "evidence": "R3 false_promotion (15 tests)",
+      "status": "limited",
+      "limit": "Deterministic part demonstrated; agent-trial counts open.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C6",
+      "item": "Measure: zero lost/duplicate writes with injected response loss, retries and termination.",
+      "evidence": "R3 lost_duplicate_writes (33 tests)",
+      "status": "demonstrated",
+      "limit": "Termination is simulated (see P1).",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C7",
+      "item": "Measure: ordinary schema/CAS errors resolved without bespoke intervention.",
+      "evidence": "R3 repairability (7 tests)",
+      "status": "limited",
+      "limit": "Printed repairs run as printed; agent resolution rates come from the trial.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C8",
+      "item": "Measure: a fresh agent states the current answer, strongest caveat and next observation.",
+      "evidence": "docs/milestone-b.md first-use re-run (successors 10/12); docs/a-gate.md",
+      "status": "open",
+      "limit": "Release claim needs the trial.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C9",
+      "item": "Measure: context efficiency (compact 40-record brief at least 50% smaller without worse answers; product claim against the notes arm).",
+      "evidence": "R3 context_efficiency (4 tests); drill 1 in R1 passed",
+      "status": "limited",
+      "limit": "Compression regression check demonstrated; the product claim needs the trial.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C10",
+      "item": "Measure: blindspot calibration (all seeded structural gaps found; no completeness claim).",
+      "evidence": "R3 blindspot_calibration (49 tests)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C11",
+      "item": "Measure: learning discipline (linked useful Retrospective, no invented failures or auto-adopted method changes).",
+      "evidence": "R1 scenarios A-D closures; cli gate_content.rs; scripts/grade-gate-content.py",
+      "status": "limited",
+      "limit": "Deterministic and graded-rehearsal parts only.",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        }
+      ],
+      "work": "run",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.5",
+      "id": "C12",
+      "item": "Measure: domain neutrality for architecture and research tasks.",
+      "evidence": "R3 domain_neutrality (2 tests)",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "20.6",
+      "id": "H1",
+      "item": "Find the current bounded conclusion.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "Needs a human reviewer who did not create the case.",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H2",
+      "item": "Follow it to original evidence and its exact selector.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H3",
+      "item": "Identify the strongest contradiction or limitation.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H4",
+      "item": "Tell a failed test from a valid negative result.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H5",
+      "item": "Add a note without corrupting generated state.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H6",
+      "item": "Resume work using the suggested command.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H7",
+      "item": "Switch between synopsis, full reasoning and an exact excerpt; tell whether the synopsis is stale.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H8",
+      "item": "Locate the latest blindspot challenge and Retrospective; tell speculative from supported lessons.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H9",
+      "item": "Decide whether a suggested measurement would change the choice, defer a source, find the visible blocker.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.6",
+      "id": "H10",
+      "item": "Follow evidence to caveat by keyboard and in linear plain text, narrow viewport, colour off.",
+      "evidence": "none: no reviewer session is recorded",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": []
+    },
+    {
+      "section": "20.7",
+      "id": "G1",
+      "item": "All normative implemented commands/examples work against the shipped binary.",
+      "evidence": "R5 smoke of the reproducible package (14 documented commands, 6 IDs followed); R2 check-readme-quickstart.py and check-cli-goldens.py; cli docs.rs (src)::every_document_names_only_what_the_binary_has; help_examples.rs::the_core_examples_in_help_run_in_a_fixture_workspace",
+      "status": "limited",
+      "limit": "Most documented commands are parsed against the command tree, not executed; only the quickstarts, walkthroughs, agent page, help examples and the smoke run execute. The document check flaked once under load (bn-3dy5).",
+      "bones": [
+        {
+          "id": "bn-3dy5",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G2",
+      "item": "Executable examples run in fresh fixture workspaces with actual returned IDs; schematic examples are labelled; rejection examples assert the repair and no mutation.",
+      "evidence": "cli walkthroughs.rs (4 walkthroughs from a fresh demo workspace; every refusal prints its quoted repair and leaves the journal byte-identical; unrun blocks must be labelled schematic); docs.rs::a_cold_reader_can_run_every_command_of_the_agent_instructions_in_order; demo.rs",
+      "status": "demonstrated",
+      "limit": "The no-mutation assertion covers the walkthroughs and tutorial, not README snippets.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G3",
+      "item": "When MCP is included in the release, CLI and MCP walkthroughs reach the same state.",
+      "evidence": "Plan §19.3 and the W13 row of §19.2: MCP moved out of every milestone on 2026-11-23 (owner decision); no `mcp` command in this binary (`investigation --help`); crates/investigation-mcp holds a README only and is not a workspace member",
+      "status": "deferred",
+      "limit": "Recorded deferral, not a pass. docs/deferred.md does not list MCP yet, and its daemon row still says \"CLI and optional stdio MCP suffice initially\"; the release notes must disclose the deferral.",
+      "bones": [
+        {
+          "id": "bn-3kac",
+          "owner": false
+        }
+      ],
+      "work": "release-note disclosure",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G4",
+      "item": "The implemented version clearly lists deferred commands/features; no fake success stubs.",
+      "evidence": "docs/deferred.md (plan §22 register); `git grep` finds no todo!/unimplemented! in the shipped crates' sources; R4 (no process or socket API)",
+      "status": "limited",
+      "limit": "The register omits the MCP frontend (W13), the companion plugin (W15) and the W16 items; the public list is REL.03's job.",
+      "bones": [
+        {
+          "id": "bn-3kac",
+          "owner": false
+        }
+      ],
+      "work": "docs",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G5",
+      "item": "Milestone C gates pass, including independent neutral producer integration and restore.",
+      "evidence": "R1 conformance 20/20 for reference, Python and Rust producers (40/40 equal); clean_restore.rs passed in R1; this audit",
+      "status": "open",
+      "limit": "Every open row of this audit; the Milestone C goal bn-3q2 and its packages W11 (bn-65s), W12 (bn-1q7), W14 (bn-1e7), W17 (bn-3hdd) and REL (bn-3ob) are open.",
+      "bones": [
+        {
+          "id": "bn-3q2",
+          "owner": false
+        }
+      ],
+      "work": "code + owner",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G6",
+      "item": "Source/schema/toolchain versions and supported OS/filesystem are documented.",
+      "evidence": "docs/support-matrix.md (versions, platforms and filesystems, tested configurations); tests/docs.rs::the_documented_versions_are_this_builds (passed in R1); R5 package-report.json (toolchain, glibc 2.34)",
+      "status": "demonstrated",
+      "limit": "Documented, and qualified on Linux only; macOS and Windows are listed as unqualified.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G7",
+      "item": "The published core has zero named-producer imports and is demonstrated with an independent generic producer conformance fixture.",
+      "evidence": "R4 scripts/check-producer-imports.py; R1 neutrality guards (check-boundaries.py crate direction); R1 conformance (reference, Python and Rust producers)",
+      "status": "demonstrated",
+      "limit": "The generic producers are the project's own examples, in another language and crate; no third-party producer was integrated.",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G8",
+      "item": "Fresh-agent and human-review evidence is retained with known limitations.",
+      "evidence": "training/a-gate/archive, training/first-use (results, rerun-mb, rerun-6vlm, help-only run1-3 with SHA256SUMS); docs/a-gate.md, docs/first-use.md",
+      "status": "open",
+      "limit": "Fresh-agent evidence is retained (help-only raw archives are kept outside the repository by design). No human-review evidence exists.",
+      "bones": [
+        {
+          "id": "bn-3ijp",
+          "owner": true
+        }
+      ],
+      "work": "owner (human reviewer)",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G9",
+      "item": "Layered retrieval, rule-versioned blindspot audits, challenge Reviews and closure-linked Retrospectives pass the adversarial cases of §17.7/§20.",
+      "evidence": "R1 suite: adversarial_drills.rs (drills 1-2), drills_3_4.rs, drill_lesson_transfer.rs, drill_closure.rs and closure_drill_tests; R3 blindspot_calibration",
+      "status": "limited",
+      "limit": "Drill 2 explanatory fails in the proof's environment (F1); all other drills pass.",
+      "bones": [
+        {
+          "id": "bn-1wre",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G10",
+      "item": "A real investigation has been dogfooded, with its sensitive data kept out of public fixtures.",
+      "evidence": "none",
+      "status": "open",
+      "limit": "Needs a real question the project or its owner has, from first source to closure and export.",
+      "bones": [
+        {
+          "id": "bn-6n1p",
+          "owner": false
+        }
+      ],
+      "work": "owner input + run",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G11",
+      "item": "Quickstart, embedded guide, examples and optional skill agree with the binary.",
+      "evidence": "R2 check-readme-quickstart.py (README and docs/quickstart.md from an empty directory); tests/docs.rs::the_producer_page_names_everything_the_python_example_uses, ::every_json_example_in_the_documents_validates_against_its_schema; R5 smoke",
+      "status": "demonstrated",
+      "limit": "bn-3dy5: the document check flaked once under load.",
+      "bones": [
+        {
+          "id": "bn-3dy5",
+          "owner": false
+        }
+      ],
+      "work": "",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "20.7",
+      "id": "G12",
+      "item": "Release notes distinguish demonstrated guarantees from planned work.",
+      "evidence": "none: no release notes exist",
+      "status": "open",
+      "limit": "",
+      "bones": [
+        {
+          "id": "bn-3kac",
+          "owner": false
+        }
+      ],
+      "work": "docs",
+      "runs": [
+        "R1",
+        "R2",
+        "R4",
+        "R5"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I1",
+      "item": "Evidence is not a verdict.",
+      "evidence": "R1 scenarios A, C and D (blindspot reviews leave the reviewed record byte-identical); store producer_run.rs::exit_code_zero_and_a_reported_pass_set_no_validity_and_promote_nothing; R3 false_promotion",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I2",
+      "item": "An invalid experiment is not a negative result.",
+      "evidence": "R1 scenario A (incompatible build refused), scenario B (zero difference under a broken instrument is inconclusive); milestone_b_gaps_explanatory.rs::x14_a_failed_or_blocked_run_is_not_negative_evidence_through_the_cli",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I3",
+      "item": "A late revision must invalidate stale reviews.",
+      "evidence": "R1 scenario C (criterion change leaves validation and blindspot reviews stale), scenario D (erratum); freshness.rs::a_real_source_withdrawal_shows_needs_review_with_a_reason_chain_at_every_layer",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I4",
+      "item": "Repeated formatting of one source does not create independent confirmation.",
+      "evidence": "R1 scenario D (three acquisitions, one origin, zero independent pairs); origin_ops tests",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I5",
+      "item": "Losing a response must not duplicate a committed update.",
+      "evidence": "R1 conformance lost-response cases for three producers; R3 lost_duplicate_writes (33 tests); closure drill retries keep IDs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "invariants",
+      "id": "I6",
+      "item": "Missing bytes remain missing.",
+      "evidence": "reference_only.rs (source_unavailable everywhere); recover.rs and finalize.rs; capture_attach_tests.rs::missing_artifacts_stay_missing_and_are_never_replaced_by_empty_files",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1",
+        "R3"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B1",
+      "item": "Domain: general-purpose",
+      "evidence": "R1 neutrality guards; R3 domain_neutrality; scenarios in four domains",
+      "status": "limited",
+      "limit": "The proof's named-tool scan is red at main (F2).",
+      "bones": [
+        {
+          "id": "bn-1znz",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B2",
+      "item": "Runtime: standalone, offline Rust CLI and library",
+      "evidence": "R1 suite without network or tools on PATH; R4 (no process or socket API in the shipped crates); CI offline job",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B3",
+      "item": "Inversion of dependencies: Investigation never imports or invokes producer APIs",
+      "evidence": "R4; check-boundaries.py crate direction",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B4",
+      "item": "Reasoning stays with the agent/human; core gives typed records and deterministic guidance",
+      "evidence": "X33, Y22, X12 rows above",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B5",
+      "item": "Layered retrieval",
+      "evidence": "Y15-Y19 rows above",
+      "status": "limited",
+      "limit": "See Y18 and F1.",
+      "bones": [
+        {
+          "id": "bn-1wre",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B6",
+      "item": "Blindspot review: deterministic audit plus optional recorded review; no completeness claim",
+      "evidence": "Y21-Y25 rows above; R3 blindspot_calibration",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B7",
+      "item": "Retrospectives: attributed, lessons are proposals",
+      "evidence": "Y26-Y28 rows above",
+      "status": "limited",
+      "limit": "Record-mode closure exemption: the stricter behaviour is kept pending the owner's reading of §10 against §17.7 (docs/milestone-b.md dispositions).",
+      "bones": [],
+      "work": "owner decision",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B8",
+      "item": "Cases: explanatory, empirical, exploratory and evaluative",
+      "evidence": "X1, X2 rows; R1 scenarios A-D",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B9",
+      "item": "First-class evaluation: Option, Criterion, Comparison",
+      "evidence": "Y1-Y10 rows above; R1 scenario C",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B10",
+      "item": "Canonical storage: append-only events, immutable artifacts, rebuildable index and vault",
+      "evidence": "P12, P13 rows; ADR 0001, 0016; R1 vault renders",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B11",
+      "item": "Agent writes: transactional, schema-validated, receipts, idempotency, CAS",
+      "evidence": "P2-P4, P10, P11 rows",
+      "status": "limited",
+      "limit": "See P11.",
+      "bones": [],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B12",
+      "item": "Provenance layers kept distinct",
+      "evidence": "X4, X6, Y11 rows; R1 scenario D",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B13",
+      "item": "Consumer API: generic recording with streaming and partial recovery",
+      "evidence": "N1-N9 rows; R1 conformance",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B14",
+      "item": "Methodologies: declarative, versioned packs, no executable hooks",
+      "evidence": "N11-N14 rows",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B15",
+      "item": "Vault: managed casebook, safe human areas, optional companion, no required community plugins",
+      "evidence": "V1-V15 rows",
+      "status": "limited",
+      "limit": "No viewer-run check (bn-3d9f); companion is Milestone D.",
+      "bones": [
+        {
+          "id": "bn-3d9f",
+          "owner": false
+        }
+      ],
+      "work": "code",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B16",
+      "item": "Collaboration: local writer lock, CAS, idempotency",
+      "evidence": "P4 row",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B17",
+      "item": "First release: the same core on four domains, each with layered reads, gap review and a retrospective",
+      "evidence": "R1 scenarios A-D and final audits; cli walkthroughs.rs",
+      "status": "demonstrated",
+      "limit": "",
+      "bones": [],
+      "work": "",
+      "runs": [
+        "R1"
+      ]
+    },
+    {
+      "section": "binding",
+      "id": "B18",
+      "item": "Product hypothesis tested against a plain-notes arm",
+      "evidence": "docs/a-gate.md (Milestone A pilot)",
+      "status": "open",
+      "limit": "The release claim rests on the sealed trial (C0).",
+      "bones": [
+        {
+          "id": "bn-1ktn",
+          "owner": false
+        },
+        {
+          "id": "bn-2lvt",
+          "owner": false
+        },
+        {
+          "id": "bn-1jpq",
+          "owner": true
+        }
+      ],
+      "work": "owner, then run",
+      "runs": [
+        "R1"
+      ]
+    }
+  ],
+  "remaining": {
+    "code": [
+      {
+        "bones": "bn-1wre",
+        "text": "drill 2 explanatory depends on the workspace path length; decide whether paths belong in the brief and whether a stale outcome may be dropped first (Y18, G9, B5)"
+      },
+      {
+        "bones": "bn-1znz",
+        "text": "make the Milestone B proof green at main: allow or rename the `obsidian` subcommand with its reason, reword the schema description, give the proof `openssl` or skip sealing without it (X3, B1)"
+      },
+      {
+        "bones": "bn-31an",
+        "text": "withheld title leaking through a derived decision or comparison title (V13)"
+      },
+      {
+        "bones": "bn-3d9f",
+        "text": "open the Bases, Canvas and hostile-text previews in the pinned viewer release (V4, V11, B15)"
+      },
+      {
+        "bones": "bn-3kac",
+        "text": "release notes and the public deferred list, including MCP, the companion and W16 (G3, G4, G12)"
+      },
+      {
+        "bones": "bn-3dy5",
+        "text": "the document check flaked once under load (G1, G11)"
+      },
+      {
+        "bones": "new tests or dispositions",
+        "text": "P1 and P19 (real process kill or a recorded disposition, bn-f97f), P5 (a real promotion race), P6 (end-to-end late criterion), P11 (bounded error size), V10 (stale-note proposal checked against fresh state), V14 (plugin-syntax scan of review copies), V15 (apply into a custom config folder)"
+      },
+      {
+        "bones": "bn-gef3",
+        "text": "re-measure the help-only arm against the same targets (C3)"
+      }
+    ],
+    "owner": [
+      {
+        "bones": "bn-1jpq",
+        "text": "OWNER: author (non-builder) and seal release-trial task 5-10 instances; this gates bn-1ktn and bn-2lvt (C0, C1, C4, B18)"
+      },
+      {
+        "bones": "bn-3ijp",
+        "text": "human experience gate with a reviewer who did not create the case (H1-H10, V1, V14, G8)"
+      },
+      {
+        "bones": "bn-6n1p",
+        "text": "a real question to dogfood, from first source to closure and export (G10)"
+      },
+      {
+        "bones": "bn-3aa9, bn-266b",
+        "text": "OWNER: export policy for revision counts, supersession by a withheld decision, public Overview focus and consultation pointers (V13)"
+      },
+      {
+        "bones": "dispositions",
+        "text": "the W05b.17 first-use miss, the record-mode closure exemption (B7), and whether the three-call receipt window is fair to the help-only arm (C3, bn-gef3)"
+      }
+    ]
+  }
+}

@@ -1,0 +1,559 @@
+{
+  "schema": "milestone-b-proof.v1",
+  "versions": {
+    "git": {
+      "commit": "8093f95fcd2832ecbbb95a308d5354fc1fab5bf6",
+      "subject": "perf: an unchanged render plans and reads cases on parallel threads, from 5.2 s / 0.95 GiB to 2 s / 0.73 GiB at 650 cases, and a power-loss model checks batched publish recovery (PERF.10)",
+      "uncommitted_changes_excluded": false
+    },
+    "binary": {
+      "path": "<workspace>/target/debug/investigation",
+      "sha256": "fea40da14ea27596c2e335d492284bf39205f4c8764a3aa4d0c5b5a2fe3193fb",
+      "version": "investigation 0.1.0"
+    },
+    "toolchain": {
+      "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+      "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+      "python": "3.14.5"
+    },
+    "host": {
+      "kernel": "7.2.8-arch1-2",
+      "machine": "x86_64"
+    },
+    "doctor": {
+      "binary": "0.1.0",
+      "capture_capabilities": "inv.capture-capabilities.v1",
+      "catalog": {
+        "command": "inv.command.v1",
+        "operations_available": 68,
+        "operations_reserved": 0,
+        "operations_total": 68
+      },
+      "command": "inv.command.v1",
+      "freshness_rules": 7,
+      "gap_rules": "slice-gaps.v1",
+      "index_schema": 6,
+      "journal_event": "inv.event.v0-alpha.2",
+      "method_pack": "inv.method-pack.v1",
+      "next_rules": "slice-next.v2",
+      "program": "investigation",
+      "record_family": "inv.record.v0-alpha",
+      "render_manifest": "inv.render-manifest.v0",
+      "response": "inv.response.v1",
+      "vault_renderer": "inv.vault-renderer.v26",
+      "workspace_marker": "inv.workspace.v1"
+    }
+  },
+  "started_at": "2026-11-24T19:35:50+00:00",
+  "environment": {
+    "network": "none (bubblewrap --unshare-net)",
+    "path": "python3 only",
+    "env": "cleared"
+  },
+  "test_suite": {
+    "executables": 173,
+    "passed": 1464,
+    "failed": 2,
+    "ignored": 4,
+    "failures": [
+      "investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory",
+      "investigation-cli/release_trial::release_trial_harness_dry_runs_every_task_type_in_both_arms"
+    ],
+    "doctests": "not run: they need the toolchain at run time",
+    "environment": {
+      "PATH": "python3 only",
+      "network": "none",
+      "producers_installed": 0,
+      "viewer_on_path": false
+    }
+  },
+  "test_suite_summary": {
+    "error": "AssertionError: ['investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory', 'investigation-cli/release_trial::release_trial_harness_dry_runs_every_task_type_in_both_arms']\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 240, in suite\n    assert not failures, failures\n           ^^^^^^^^^^^^\nAssertionError: ['investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory', 'investigation-cli/release_trial::release_trial_harness_dry_runs_every_task_type_in_both_arms']\n"
+  },
+  "scenario_a": {
+    "command": "scripts/scenario_a_proof.py",
+    "seconds": 2.05,
+    "case": "case_01a20f11-bab7-7b02-9acc-80ee868419dc",
+    "validated": {
+      "id": "concl_01a20f11-bea2-71e0-a863-ca7d44566578",
+      "revision": 3
+    },
+    "w10": {
+      "blindspots": "comparability.environment_differs on the refused candidate",
+      "blindspot_review": "rev_01a20f11-c006-74b3-95c0-c3aaf6d4c32f",
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    },
+    "successor": {
+      "outcome": {
+        "id": "concl_01a20f11-bea2-71e0-a863-ca7d44566578",
+        "revision": 3
+      },
+      "evidence": {
+        "id": "obs_01a20f11-bc52-7813-ab56-96b66127a2ac",
+        "revision": 1
+      }
+    }
+  },
+  "scenario_b": {
+    "command": "scripts/scenario_b_proof.py",
+    "seconds": 10.43,
+    "case": "case_01a20f11-c2c0-76d1-b120-78ff83a6fa08",
+    "properties": 37,
+    "decimals_checked": 220,
+    "case_outcome": "inconclusive",
+    "w10": {
+      "blindspots": "before and after the blindspot review",
+      "blindspot_review": "rev_01a20f11-dca3-7fc2-a9d2-48035822a3d2",
+      "retrospective": "retro_01a20f11-de90-7220-89bc-8a6ae4d2219d"
+    }
+  },
+  "scenario_c": {
+    "command": "scripts/scenario_c_proof.py",
+    "seconds": 3.08,
+    "case": "case_01a20f11-eb84-77a3-9c2d-52ed0e31a6a6",
+    "decision": "dec_01a20f11-f02b-7070-aab6-425bab8d9517",
+    "case_outcome": "inconclusive",
+    "w10": {
+      "blindspots": "criterion.hard_unmeasured before and after the threshold change",
+      "blindspot_review": "rev_01a20f11-f4b8-7fb1-a656-1ff7b200101e",
+      "stale_reviews": [
+        "review.stale/rev_01a20f11-f072-7b83-b687-1bd5a8c01609",
+        "review.stale/rev_01a20f11-f0e3-7a00-83ab-5d12f3adacb6",
+        "review.stale/rev_01a20f11-f4b8-7fb1-a656-1ff7b200101e"
+      ],
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    }
+  },
+  "scenario_d": {
+    "target": "investigation-cli/scenario_d",
+    "tests": [
+      "scenario_d_baseline_conditional_conclusion_from_sources_alone",
+      "scenario_d_injected_instructions_stay_inert_and_the_result_equals_the_baseline",
+      "scenario_d_later_edition_twin_erratum_does_not_apply_to_the_named_build"
+    ],
+    "w10": {
+      "blindspots": "duplicate-origin trap and empty-search absence",
+      "blindspot_review": "every gap dispositioned; one reviewer gap recorded as a Question",
+      "retrospective": "from retrospective --draft, recorded with case.close"
+    }
+  },
+  "final_audits": {
+    "scenario-a/case_01a20f11-bab7-7b02-9acc-80ee868419dc": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 5,
+      "lifecycle": "closed",
+      "closure_outcome": "answered",
+      "retrospective": {
+        "id": "retro_01a20f11-c15f-70d1-8c09-28ac46641924",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-a/case_01a20f11-c1f9-7da2-a34f-15a95366d9e4": {
+      "outcome": "no_structural_gap_identified_under_checks",
+      "findings": 0,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": null,
+      "retrospective_waived": true
+    },
+    "scenario-b/case_01a20f11-c2c0-76d1-b120-78ff83a6fa08": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 21,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": {
+        "id": "retro_01a20f11-de90-7220-89bc-8a6ae4d2219d",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-c/case_01a20f11-eb84-77a3-9c2d-52ed0e31a6a6": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 3,
+      "lifecycle": "closed",
+      "closure_outcome": "inconclusive",
+      "retrospective": {
+        "id": "retro_01a20f11-f6d6-7de0-a5e9-710619eac0b3",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    },
+    "scenario-d/case_01a20f11-744c-73f0-9a43-d9d28d689767": {
+      "outcome": "gaps_identified_in_recorded_structure",
+      "findings": 5,
+      "lifecycle": "closed",
+      "closure_outcome": "answered",
+      "retrospective": {
+        "id": "retro_01a20f11-8696-78e1-a275-47b5144d21ff",
+        "revision": 1
+      },
+      "retrospective_waived": false
+    }
+  },
+  "conformance": {
+    "command": "scripts/run-conformance.py with the reference, Python and Rust producers",
+    "seconds": 7.78,
+    "producers": {
+      "reference": {
+        "cases_passed": 20,
+        "cases": 20
+      },
+      "python": {
+        "cases_passed": 20,
+        "cases": 20
+      },
+      "rust": {
+        "cases_passed": 20,
+        "cases": 20
+      }
+    },
+    "equivalent_to_reference": "40/40",
+    "rust_test": {
+      "target": "investigation-cli/conformance",
+      "tests": [
+        "every_case_round_trips_through_a_producer_bundle",
+        "non_idempotent_producer_fails_the_suite",
+        "reference_and_both_examples_pass_and_record_equal_state",
+        "suite_maps_every_plan_item_to_a_case",
+        "two_producers_are_compared_case_by_case"
+      ]
+    }
+  },
+  "producer_kinds": {
+    "target": "investigation-cli/producer_kinds",
+    "tests": [
+      "four_producer_kinds_record_through_one_envelope_and_differ_only_in_data",
+      "the_crates_hold_no_branch_on_a_fixture_producer_or_its_assertion_kinds",
+      "the_same_capture_lifecycle_records_all_four_kinds_and_names_what_is_missing"
+    ]
+  },
+  "vault": {
+    "renders": {
+      "scenario-a": {
+        "state": "complete",
+        "notes": 64,
+        "seconds": 0.27
+      },
+      "scenario-b": {
+        "state": "complete",
+        "notes": 119,
+        "seconds": 0.83
+      },
+      "scenario-c": {
+        "state": "complete",
+        "notes": 60,
+        "seconds": 0.28
+      },
+      "scenario-d": {
+        "state": "complete",
+        "notes": 69,
+        "seconds": 0.21
+      }
+    },
+    "goldens": "Golden vaults match.",
+    "fixtures": {
+      "target": "investigation-cli/vault_fixtures",
+      "tests": [
+        "each_base_lists_the_rows_of_its_static_table_and_only_its_case",
+        "every_conclusion_and_decision_has_a_ladder_from_overview_to_evidence_selector",
+        "every_link_alias_and_excerpt_anchor_resolves",
+        "golden_vaults_match_their_checked_in_workspaces",
+        "human_folders_keep_their_bytes_through_scenario_renders",
+        "identical_snapshots_publish_identical_bytes_across_runs_environments_and_file_order",
+        "no_golden_note_shows_an_unreadable_record_fallback",
+        "scenario_vaults_need_no_community_plugin",
+        "scenario_vaults_use_only_features_the_compatibility_profile_lists",
+        "title_changes_keep_file_names_anchors_and_links",
+        "unrelated_changes_keep_every_note_path_and_anchor"
+      ]
+    },
+    "scenario_vaults": {
+      "target": "investigation-cli/vault_scenarios",
+      "tests": [
+        "scenario_a_renders_every_record_type_with_links_both_ways",
+        "scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision"
+      ]
+    },
+    "commands": {
+      "target": "investigation-cli/vault_commands",
+      "tests": [
+        "a_render_that_stops_reports_partial_and_the_next_render_completes_it",
+        "a_workspace_without_a_vault_reports_it_and_refuses_to_render",
+        "read_only_rejects_render_and_allows_status_and_conflicts",
+        "render_succeeds_with_drift_present_and_lists_it",
+        "status_is_stale_after_a_commit_and_current_after_a_render"
+      ]
+    }
+  },
+  "drills": {
+    "error": "AssertionError: ['drill_2_stale_synopsis_after_a_source_withdrawal_explanatory']\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 377, in drills\n    detail[\"1-2\"] = self.target_results(\"investigation-cli\", landed[0])\n                    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 251, in target_results\n    assert not failed, failed\n           ^^^^^^^^^^\nAssertionError: ['drill_2_stale_synopsis_after_a_source_withdrawal_explanatory']\n"
+  },
+  "neutrality": {
+    "error": "AssertionError: [{'category': 'named tool', 'term': 'obsidian', 'where': 'investigation --help:40', 'line': 'obsidian       Preview or apply a few named native viewer settings in a vault you name'}, {'category': 'security concept', 'term': 'security', 'where': 'schemas/v1/export-manifest.schema.json:137', 'line': '\"description\": \"What an export is for. Review exports and recovery archives have\\\\ndifferent completeness and security guarantees (§16.3).\",'}]\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 440, in neutrality\n    assert not blocking, blocking\n           ^^^^^^^^^^^^\nAssertionError: [{'category': 'named tool', 'term': 'obsidian', 'where': 'investigation --help:40', 'line': 'obsidian       Preview or apply a few named native viewer settings in a vault you name'}, {'category': 'security concept', 'term': 'security', 'where': 'schemas/v1/export-manifest.schema.json:137', 'line': '\"description\": \"What an export is for. Review exports and recovery archives have\\\\ndifferent completeness and security guarantees (§16.3).\",'}]\n"
+  },
+  "first_use": {
+    "family": "kiln-thermocouple-offset",
+    "calls": [
+      {
+        "argv": [
+          "investigation",
+          "--help"
+        ],
+        "exit": 0,
+        "seconds": 0.02
+      },
+      {
+        "argv": [
+          "investigation",
+          "init",
+          "./casework",
+          "--no-vault",
+          "--import-root",
+          ".",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--actor",
+          "agent:investigator",
+          "start",
+          "Does the kiln controller read low?",
+          "--attach",
+          "./source.txt",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.04
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "receipt",
+          "tx_01a20f12-3106-7840-9d41-08384bf0c74e",
+          "--actor",
+          "agent:investigator",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "<scratch>/out/first-use/casework",
+          "--actor",
+          "agent:investigator",
+          "--case",
+          "case_01a20f12-3107-7732-ab45-d4fa2809d092",
+          "observe",
+          "The cones show the controller read about 18 C low or more in firing 112.",
+          "--source",
+          "src_01a20f12-3107-7732-ab45-d504f9f6d878",
+          "--quote",
+          "the controller read about 18 C low or more",
+          "--limitations",
+          "[\"Only firing 112 had witness cones. One firing.\"]",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.06
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "brief",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--case",
+          "case_01a20f12-3107-7732-ab45-d4fa2809d092",
+          "show",
+          "obs_01a20f12-3167-7880-acea-c3a23112d5ce",
+          "--depth",
+          "full",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.04
+      },
+      {
+        "argv": [
+          "investigation",
+          "--workspace",
+          "./casework",
+          "--case",
+          "case_01a20f12-3107-7732-ab45-d4fa2809d092",
+          "evidence",
+          "read",
+          "art_01a20f12-3107-7732-ab45-d52099457995",
+          "--selector-file",
+          "-",
+          "--format",
+          "json"
+        ],
+        "exit": 0,
+        "seconds": 0.03
+      }
+    ],
+    "receipt": {
+      "case": "case_01a20f12-3107-7732-ab45-d4fa2809d092",
+      "source": "src_01a20f12-3107-7732-ab45-d504f9f6d878",
+      "artifact": "art_01a20f12-3107-7732-ab45-d5101da177cf",
+      "digest": "sha256:6ea03e5095f34168dcb07480a6d6b553a24249a2a82bf42b796bec5b7e547bd0",
+      "command_id": "tx_01a20f12-3106-7840-9d41-08384bf0c74e",
+      "receipt_call": 3,
+      "within_three_calls_of_first_contact": true,
+      "receipt_lookup_matches": true
+    },
+    "successor_recovery": {
+      "observation": "obs_01a20f12-3167-7880-acea-c3a23112d5ce",
+      "artifact": "art_01a20f12-3107-7732-ab45-d52099457995",
+      "selector": {
+        "type": "whole"
+      },
+      "text_quote": {
+        "exact": "the controller read about 18 C low or more",
+        "prefix": null,
+        "state": "verified",
+        "suffix": null
+      },
+      "retained_text_equals_source": true,
+      "content_trust": "untrusted_evidence",
+      "cited_lines": [
+        12
+      ],
+      "decisive_line": true,
+      "limitation": [
+        "Only firing 112 had witness cones. One firing."
+      ],
+      "limitation_matches_key": true
+    },
+    "seconds": {
+      "investigator": 0.19,
+      "successor": 0.1,
+      "total": 0.29
+    },
+    "first_use_test": {
+      "target": "investigation-cli/first_use",
+      "tests": [
+        "a_missing_relative_attachment_names_the_resolved_path_and_import_roots",
+        "an_existing_workspace_gains_an_import_root_through_the_repair",
+        "onboarding_reaches_a_source_and_case_receipt_in_two_further_calls",
+        "paths_outside_import_roots_explain_the_repair"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "name": "export clean copy",
+      "ok": true,
+      "seconds": 0.49
+    },
+    {
+      "name": "build test executables",
+      "ok": true,
+      "seconds": 68.02
+    },
+    {
+      "name": "neutrality guards (W00.10)",
+      "ok": true,
+      "seconds": 71.63
+    },
+    {
+      "name": "install BIN",
+      "ok": true,
+      "seconds": 0.85
+    },
+    {
+      "name": "test suite",
+      "ok": false,
+      "error": "AssertionError: ['investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory', 'investigation-cli/release_trial::release_trial_harness_dry_runs_every_task_type_in_both_arms']\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 240, in suite\n    assert not failures, failures\n           ^^^^^^^^^^^^\nAssertionError: ['investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory', 'investigation-cli/release_trial::release_trial_harness_dry_runs_every_task_type_in_both_arms']\n",
+      "seconds": 57.74
+    },
+    {
+      "name": "scenario A",
+      "ok": true,
+      "seconds": 2.05
+    },
+    {
+      "name": "scenario B",
+      "ok": true,
+      "seconds": 10.43
+    },
+    {
+      "name": "scenario C",
+      "ok": true,
+      "seconds": 3.08
+    },
+    {
+      "name": "scenario D",
+      "ok": true,
+      "seconds": 0.0
+    },
+    {
+      "name": "final audits",
+      "ok": true,
+      "seconds": 0.77
+    },
+    {
+      "name": "conformance",
+      "ok": true,
+      "seconds": 7.78
+    },
+    {
+      "name": "four producer kinds",
+      "ok": true,
+      "seconds": 0.0
+    },
+    {
+      "name": "vault",
+      "ok": true,
+      "seconds": 2.57
+    },
+    {
+      "name": "drills",
+      "ok": false,
+      "error": "AssertionError: ['drill_2_stale_synopsis_after_a_source_withdrawal_explanatory']\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 377, in drills\n    detail[\"1-2\"] = self.target_results(\"investigation-cli\", landed[0])\n                    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 251, in target_results\n    assert not failed, failed\n           ^^^^^^^^^^\nAssertionError: ['drill_2_stale_synopsis_after_a_source_withdrawal_explanatory']\n",
+      "seconds": 0.0
+    },
+    {
+      "name": "neutrality",
+      "ok": false,
+      "error": "AssertionError: [{'category': 'named tool', 'term': 'obsidian', 'where': 'investigation --help:40', 'line': 'obsidian       Preview or apply a few named native viewer settings in a vault you name'}, {'category': 'security concept', 'term': 'security', 'where': 'schemas/v1/export-manifest.schema.json:137', 'line': '\"description\": \"What an export is for. Review exports and recovery archives have\\\\ndifferent completeness and security guarantees (§16.3).\",'}]\nTraceback (most recent call last):\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 118, in step\n    detail = function()\n  File \"<workspace>/scripts/prove_milestone_b.py\", line 440, in neutrality\n    assert not blocking, blocking\n           ^^^^^^^^^^^^\nAssertionError: [{'category': 'named tool', 'term': 'obsidian', 'where': 'investigation --help:40', 'line': 'obsidian       Preview or apply a few named native viewer settings in a vault you name'}, {'category': 'security concept', 'term': 'security', 'where': 'schemas/v1/export-manifest.schema.json:137', 'line': '\"description\": \"What an export is for. Review exports and recovery archives have\\\\ndifferent completeness and security guarantees (§16.3).\",'}]\n",
+      "seconds": 3.6
+    },
+    {
+      "name": "first use",
+      "ok": true,
+      "seconds": 0.29
+    }
+  ],
+  "ok": false,
+  "complete": false,
+  "wall_seconds": 229.8
+}

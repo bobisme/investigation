@@ -1,0 +1,40 @@
+{
+  "archive": "investigation-0.1.0-x86_64-unknown-linux-gnu.tar.gz",
+  "archive_sha256": "4951d96b3c3d89b8fcb9d3a24143a64a4248edc7b9f7dfbcf3f2700ce1c82ab4",
+  "binary_sha256": "5fa9e0a6d3fd7df8f8fce0e565ec69dff7b88b42766e30bb98f804f679826f51",
+  "builds": [
+    {
+      "archive_sha256": "4951d96b3c3d89b8fcb9d3a24143a64a4248edc7b9f7dfbcf3f2700ce1c82ab4",
+      "binary_sha256": "5fa9e0a6d3fd7df8f8fce0e565ec69dff7b88b42766e30bb98f804f679826f51",
+      "label": "first"
+    },
+    {
+      "archive_sha256": "4951d96b3c3d89b8fcb9d3a24143a64a4248edc7b9f7dfbcf3f2700ce1c82ab4",
+      "binary_sha256": "5fa9e0a6d3fd7df8f8fce0e565ec69dff7b88b42766e30bb98f804f679826f51",
+      "label": "second"
+    }
+  ],
+  "first_difference": {
+    "archive": null,
+    "binary": null
+  },
+  "glibc_required": "GLIBC_2.34",
+  "reproducible": true,
+  "source_commit": "8093f95fcd2832ecbbb95a308d5354fc1fab5bf6",
+  "source_tree": "f772997dc336f7ccd550162276b284bac8212c12",
+  "toolchain": {
+    "cargo": "cargo 1.100.0 (3acc79c0c 2026-11-05)",
+    "cc": "cc (GCC) 16.2.1 20260810",
+    "python_zlib": "1.3.1",
+    "rustc": [
+      "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+      "binary: rustc",
+      "commit-hash: 0ef1bc386059596dada8fb65b50425aab2ea637a",
+      "commit-date: 2026-11-09",
+      "host: x86_64-unknown-linux-gnu",
+      "release: 1.100.0",
+      "LLVM version: 23.1.5"
+    ]
+  },
+  "uncommitted_changes_left_out": false
+}

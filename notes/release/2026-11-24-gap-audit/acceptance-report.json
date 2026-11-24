@@ -1,0 +1,1122 @@
+{
+  "complete": true,
+  "generated_by": "scripts/acceptance-measures.py",
+  "kind": "deterministic_checks",
+  "measures": {
+    "blindspot_calibration": {
+      "measure": "Blindspot calibration",
+      "observed": {
+        "also_checked": "each registered check against its matched fixture (core blindspot tests), task 9 seeded gaps reported once (trial-tasks-8-10 self-check), and reviewer-added gaps outside the checks (drill 4)",
+        "completeness_claims": 0,
+        "detected": 26,
+        "pinned_audits": 8,
+        "seeded_gaps": 26
+      },
+      "pass": true,
+      "problems": [],
+      "target": "All seeded structural gaps detected in matched fixtures; no claim of completeness for unknown semantic gaps; a reviewer can record additional gaps safely.",
+      "tests": [
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::completeness_language_is_detected_as_a_word",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::drill_3_evaluative_queue_choice_ignores_an_unmeasured_recovery_guarantee",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::drill_3_explanatory_root_cause_ignores_a_corrupted_clock",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::drill_4_evaluative_reviewer_adds_a_rival_option_no_check_names",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::drill_4_explanatory_reviewer_adds_a_rival_explanation_no_check_names",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::every_drill_fixture_is_replayed_by_a_test",
+          "why": "drills 3-4: pinned seeded gaps, completeness language, reviewer-added gaps"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::a_causal_conclusion_with_only_observational_support_stays_candidate",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::a_confirmatory_plan_with_a_shared_prediction_is_flagged_before_any_run",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::a_confirmatory_test_on_known_data_is_not_presented_as_prospective",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::a_control_recorded_under_another_build_is_reported_on_the_measurement",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::a_rival_ruled_out_leaves_no_shared_live_prediction",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::an_interventional_support_clears_the_observational_check",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::failure_filtered_support_without_a_baseline_is_flagged",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::identity_differences_named_as_the_changed_variable_are_not_confounders",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::run_environment_entries_named_as_the_changed_variable_are_not_confounders",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::scenario_a_refutation_on_a_different_build_yields_the_comparability_gap",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::support_equally_expected_under_a_rival_is_reported",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::a_benign_criterion_revision_keeps_its_cells_measured",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::a_changed_criterion_unit_is_a_gap_never_a_conversion",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::a_decided_material_case_needs_a_current_retrospective_before_closure",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::decisions_show_preferences_unsupported_assumptions_and_later_material_objections",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::hard_cells_that_cite_a_materially_superseded_criterion_revision_are_unmeasured",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::registered_conditions_match_their_constants",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::scenario_c_a_weight_without_a_range_is_reported_and_never_scored",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::scenario_c_before_the_recovery_measurement_reports_each_unmeasured_hard_criterion",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::evaluative::tests::stalled_collection_cites_the_transactions_it_counted",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::a_conclusion_reviewed_only_by_same_session_self_review_is_low_independence",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::a_non_diagnostic_reading_of_one_origin_is_not_corroboration_and_is_not_reported",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::a_promoted_record_on_unverified_quotes_unsourced_claims_or_unverified_references_is_reported",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::a_withdrawn_source_reports_the_unpromoted_judgment_and_the_review_that_read_it",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::absence_claims_report_a_missing_search_log_and_other_unmet_requirements_separately",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::sources::tests::three_citations_of_one_origin_are_reported_and_the_bench_test_is_not",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::tests::a_clean_case_reports_no_gap_under_the_named_checks_and_no_completeness",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::tests::every_registered_check_is_well_formed_and_unique",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::tests::identical_snapshots_give_identical_audits_with_stable_gap_ids",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::tests::subject_narrowing_accepts_only_conclusions_comparisons_and_decisions",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::tests::the_check_set_digest_changes_with_any_check_version",
+          "why": "every registered check against its matched fixtures, and no completeness claim on a clean case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::a_disposition_must_name_a_gap_the_reviewed_audit_reported",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::a_review_without_the_new_fields_keeps_its_stored_shape_and_warns_on_an_unverified_snapshot",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::audit_gaps_and_novel_gaps_are_recorded_with_exact_ids_and_same_batch_promotion",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::check_set_change_applies_only_to_submitted_blindspot_reviews_of_an_audit",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::no_field_can_assert_exhaustive_coverage",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::related_records_must_be_current_and_in_the_read_set",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::verdicts_follow_the_recorded_gaps",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot_review::tests::zero_gaps_record_the_audited_scope_and_snapshot_with_a_bounded_reason",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::freshness::tests::blindspot_review::a_changed_check_set_makes_an_audit_review_stale",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::freshness::tests::blindspot_review::withdrawing_a_source_the_review_read_makes_it_stale_and_an_unrelated_write_does_not",
+          "why": "reviews record novel gaps and can never assert exhaustive coverage"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/blindspots::audits_are_bounded_deterministic_pinned_and_schema_valid",
+          "why": "the blindspots command through the binary"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/trial_tasks_8_10::every_release_task_instance_has_a_passing_path_and_caught_faults",
+          "why": "trial task 9 rehearsal: every seeded gap reported once"
+        }
+      ]
+    },
+    "context_efficiency": {
+      "measure": "Context efficiency (compression regression check)",
+      "observed": {
+        "byte_reduction": 0.9025,
+        "caveats_retained": "drill 1 asserts the compact path shows every live Conclusion and Decision with its material caveat and names the open gap",
+        "fixtures": {
+          "drill-1-evaluative": {
+            "cold_path_bytes": 25726,
+            "compact_brief_bytes": 15626,
+            "compact_to_full_ratio": 0.09746148568577309,
+            "full_traversal_bytes": 160330,
+            "records": 43,
+            "standard_brief_bytes": 15139,
+            "title_sweep_bytes": 58333
+          },
+          "drill-1-explanatory": {
+            "cold_path_bytes": 22197,
+            "compact_brief_bytes": 14643,
+            "compact_to_full_ratio": 0.0763379870502247,
+            "full_traversal_bytes": 191818,
+            "records": 47,
+            "standard_brief_bytes": 16091,
+            "title_sweep_bytes": 69319
+          }
+        },
+        "largest_compact_to_full_ratio": 0.0975,
+        "smallest_fixture_records": 43
+      },
+      "pass": true,
+      "problems": [],
+      "target": "A compact 40-record fixture emits at least 50% fewer bytes than a full-record traversal, keeping the necessary caveats.",
+      "tests": [
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/adversarial_drills::drill_1_title_only_cold_start_evaluative",
+          "why": "drill 1: compact brief, frontier and title reads against a full traversal of 40+ records"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/adversarial_drills::drill_1_title_only_cold_start_explanatory",
+          "why": "drill 1: compact brief, frontier and title reads against a full traversal of 40+ records"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/brief::the_default_brief_of_a_large_stale_case_stays_within_budget_and_reports_omissions",
+          "why": "the default brief stays in budget and reports omissions"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/trial_tasks_8_10::every_release_task_instance_has_a_passing_path_and_caught_faults",
+          "why": "trial task 8 rehearsal: reference bytes and the read budget"
+        }
+      ]
+    },
+    "domain_neutrality": {
+      "measure": "Domain neutrality",
+      "observed": {
+        "default_surfaces": "scripts/check-boundaries.py scans help, schemas, the general pack, agent docs and a fresh workspace for scripts/neutrality-denylist.txt",
+        "findings": [],
+        "terms_scanned": 28,
+        "walkthroughs": {
+          "architecture": {
+            "operations": {
+              "assumption.create": 1,
+              "case.close": 1,
+              "case.create": 1,
+              "comparison.add": 15,
+              "criterion.amend": 1,
+              "criterion.create": 6,
+              "criterion.retire": 1,
+              "decision.accept": 1,
+              "decision.propose": 2,
+              "decision.supersede": 1,
+              "observation.add": 4,
+              "option.create": 3,
+              "option.disposition": 3,
+              "question.create": 1,
+              "retrospective.record": 1,
+              "review.submit": 2
+            },
+            "runs": 0,
+            "scenario": "scenario-c",
+            "texts_scanned": 3870
+          },
+          "research": {
+            "operations": {
+              "assessment.add": 3,
+              "conclusion.create": 2,
+              "conclusion.request_review": 1,
+              "conclusion.validate": 1,
+              "hypothesis.create": 3,
+              "observation.add": 15,
+              "origin.judge_dependence": 1,
+              "origin.trace": 5,
+              "question.create": 1,
+              "question.resolve": 1,
+              "review.submit": 1,
+              "run.record": 5,
+              "source.assess": 4,
+              "source.withdraw": 1
+            },
+            "runs": 5,
+            "scenario": "scenario-d",
+            "texts_scanned": 3312
+          }
+        }
+      },
+      "pass": true,
+      "problems": [],
+      "target": "Architecture and research tasks need no security abstractions or unrelated test-run ceremony.",
+      "tests": [
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::architecture_and_research_walkthroughs_need_no_security_abstraction_or_test_run_ceremony",
+          "why": "Scenario C and D journals and their first reads"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "python3 scripts/check-boundaries.py",
+          "why": "deny-listed terms absent from the default surfaces"
+        }
+      ]
+    },
+    "false_promotion": {
+      "measure": "False promotion and unnecessary abstention (deterministic fixtures)",
+      "observed": {
+        "derivation": "each fixture test fails on any promotion of an invalid control or a stale basis, so the count of failed fixture tests bounds false promotions from above; warranted controls in the same tests still promote",
+        "false_promotions": 0,
+        "fixture_tests": 15,
+        "fixture_tests_failed": 0
+      },
+      "pass": true,
+      "problems": [],
+      "target": "Zero in deterministic invalid-control and stale-basis fixtures.",
+      "tests": [
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/cli::measurement_validity_is_attributed_gates_support_and_is_shown_beside_each_use",
+          "why": "invalid-control: unknown or invalid measurements cannot support review; a valid one can"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/producer_run::exit_code_zero_and_a_reported_pass_set_no_validity_and_promote_nothing",
+          "why": "invalid-control: a passing exit code promotes nothing"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::blindspot::causal::tests::scenario_a_refutation_on_a_different_build_yields_the_comparability_gap",
+          "why": "invalid-control: a refutation on a different build is a gap, not evidence"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drills_3_4::drill_3_explanatory_root_cause_ignores_a_corrupted_clock",
+          "why": "invalid-control: a corrupted clock trace stays a visible gap"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/objections::critical_objections_block_validation_and_material_ones_stay_visible",
+          "why": "a critical objection blocks validation"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/guardrails::the_session_that_read_untrusted_evidence_cannot_validate_and_solo_work_is_unchanged",
+          "why": "untrusted evidence cannot validate its own reader's claim"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::evaluate_ops::tests::commits_exact_comparison_and_rejects_mismatch_and_stale",
+          "why": "stale-basis: a stale comparison is refused"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-core/investigation_core::decision_ops::tests::generated_unknown_tables_never_prove_dominance_and_threshold_changes_stale_basis",
+          "why": "stale-basis: a threshold change stales the decision basis"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/freshness_oracle::a_rejected_stale_edit_changes_nothing",
+          "why": "stale-basis: a stale edit is refused and changes nothing"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::closure_drill_tests::a_batch_that_never_committed_cannot_be_retried_past_a_concurrent_revision_or_new_evidence",
+          "why": "stale-basis: a retry cannot pass a newer revision"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_source_withdrawal_explanatory",
+          "why": "stale-basis: a stale synopsis is never the current answer"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/adversarial_drills::drill_2_stale_synopsis_after_a_threshold_change_evaluative",
+          "why": "stale-basis: a stale synopsis is never the current answer"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/freshness::a_real_source_withdrawal_shows_needs_review_with_a_reason_chain_at_every_layer",
+          "why": "stale-basis: a withdrawn source turns dependents to needs_review"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-render/export_reports::a_stale_reviewed_conclusion_is_never_printed_as_simply_validated",
+          "why": "stale-basis: exports never print a stale review as validated"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/vault_scenarios::scenario_c_marks_its_stale_review_on_the_review_and_on_the_decision",
+          "why": "stale-basis: Scenario C's changed criterion marks the decision"
+        }
+      ]
+    },
+    "lost_duplicate_writes": {
+      "measure": "Lost/duplicate writes",
+      "observed": {
+        "changed_requests_under_a_reused_key_not_refused": 0,
+        "duplicated": 0,
+        "lost": 0,
+        "per_command": {
+          "capture append": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-append",
+            "recorded": 1,
+            "retry": "already_accepted",
+            "retry_code": ""
+          },
+          "capture attach": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-attach",
+            "recorded": 1,
+            "retry": "already_accepted",
+            "retry_code": ""
+          },
+          "capture begin": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-begin/begin",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "capture finalize": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-finalize",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "case new": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-case",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "ingest": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-ingest",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "note": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-note",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "observe": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-observe",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "record": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-record",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "source add": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-source",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "start": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-start",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "vault reconcile": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-reconcile",
+            "recorded": 1,
+            "retry": "already_committed",
+            "retry_code": ""
+          },
+          "vault snapshot-note": {
+            "changed_retry_code": "IDEMPOTENCY_KEY_REUSED",
+            "key": "retry-snapshot",
+            "recorded": 2,
+            "retry": "note_snapshot_recorded",
+            "retry_code": ""
+          }
+        },
+        "process_termination": "crash schedules at every filesystem call of the commit, capture and closure paths (store crash, closure-drill and capture qualification tests)",
+        "write_commands_retried": 13
+      },
+      "pass": true,
+      "problems": [],
+      "target": "Zero with injected response loss, retries and process termination.",
+      "tests": [
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::every_write_command_retried_after_a_lost_response_is_recorded_exactly_once",
+          "why": "every write command: response dropped, identical retry, changed retry"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::crash_tests::closure_with_retrospective_is_atomic_over_the_commit_crash_window",
+          "why": "seeded crash schedules over the commit path keep idempotency and atomic publication"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::crash_tests::committed_attachment_is_durable_before_its_event",
+          "why": "seeded crash schedules over the commit path keep idempotency and atomic publication"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::crash_tests::seeded_failure_schedules_preserve_idempotency_and_atomic_publication",
+          "why": "seeded crash schedules over the commit path keep idempotency and atomic publication"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::closure_drill_tests::a_batch_that_never_committed_cannot_be_retried_past_a_concurrent_revision_or_new_evidence",
+          "why": "a crash at every filesystem call of a closure batch, then retry"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::closure_drill_tests::every_crash_point_of_the_closure_batch_leaves_both_or_neither_and_the_retry_keeps_the_ids",
+          "why": "a crash at every filesystem call of a closure batch, then retry"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::committed_capture_interleaving_regressions_still_pass",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::every_crash_point_of_a_begin_is_settled_by_the_identical_retry_with_one_run",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::every_finalize_crash_window_recovers_without_a_second_finalization",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::random_interleavings_with_crashes_keep_every_acknowledged_item",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::the_commit_lock_is_never_held_across_producer_work",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::qualification_tests::the_last_item_and_the_seal_are_serialized_by_the_handle_lock",
+          "why": "capture protocol under crash, retry and interleaving"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::finalize::tests::every_crash_point_of_a_finalization_is_completed_by_the_identical_retry",
+          "why": "finalize crash points"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::items::tests::every_acknowledged_item_survives_a_crash_at_its_position",
+          "why": "acknowledged items survive a crash"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::attach::tests::every_acknowledged_attachment_survives_a_crash_with_its_bytes",
+          "why": "acknowledged attachments survive a crash"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::real_crash_tests::local_filesystem_publication_boundaries_and_retry",
+          "why": "publication boundaries on the local filesystem"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::durable::tests::crash_boundaries_preserve_only_complete_published_bytes",
+          "why": "only complete bytes are published"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/vault_reconcile::a_retry_under_the_same_command_id_returns_the_original_receipt",
+          "why": "a reconcile retry after a stop before the render, and after a lost response"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drill_closure::a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch",
+          "why": "closure kill-and-retry drill through the binary"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drill_closure::a_nonmaterial_case_waives_and_a_record_case_holding_data_needs_neither",
+          "why": "closure kill-and-retry drill through the binary"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drill_closure::new_material_evidence_after_the_account_requires_an_updated_one",
+          "why": "closure kill-and-retry drill through the binary"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/trial_tasks::trial_task_check_reads_sources_and_keys_from_the_given_roots",
+          "why": "trial task 6 rehearsal: an injected lost response is retried without a duplicate"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/trial_tasks::trial_tasks_5_to_7_set_up_inject_and_grade_on_this_binary",
+          "why": "trial task 6 rehearsal: an injected lost response is retried without a duplicate"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/conformance::every_case_round_trips_through_a_producer_bundle",
+          "why": "a producer that re-records after a lost response fails conformance"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/conformance::non_idempotent_producer_fails_the_suite",
+          "why": "a producer that re-records after a lost response fails conformance"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/conformance::reference_and_both_examples_pass_and_record_equal_state",
+          "why": "a producer that re-records after a lost response fails conformance"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/conformance::suite_maps_every_plan_item_to_a_case",
+          "why": "a producer that re-records after a lost response fails conformance"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/conformance::two_producers_are_compared_case_by_case",
+          "why": "a producer that re-records after a lost response fails conformance"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-recording/append::appended_facts_take_consecutive_positions_with_distinct_reported_and_accepted_times",
+          "why": "a resent append after a lost response returns the original receipt"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-recording/append::concurrent_producers_racing_for_one_position_get_exactly_one_acceptance",
+          "why": "a resent append after a lost response returns the original receipt"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-recording/append::invalid_facts_and_unknown_handles_name_their_field_and_stage_nothing",
+          "why": "a resent append after a lost response returns the original receipt"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-recording/append::retrying_an_accepted_item_returns_its_receipt_and_changed_bytes_conflict",
+          "why": "a resent append after a lost response returns the original receipt"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-recording/append::sending_position_three_when_two_is_missing_is_rejected_with_the_expected_position",
+          "why": "a resent append after a lost response returns the original receipt"
+        }
+      ]
+    },
+    "repairability": {
+      "measure": "Repairability",
+      "observed": {
+        "codes_published": 17,
+        "not_ordinary": {
+          "DURABILITY_UNKNOWN": "the commit outcome is unknown; the identical retry returns the original receipt, as the lost-response test checks, and receipt KEY looks it up",
+          "INTEGRITY_FAILURE": "canonical bytes failed verification; check and doctor report it",
+          "IO_FAILURE": "the filesystem failed the call",
+          "WORKSPACE_BUSY": "another writer holds the lock; the identical retry later is the repair"
+        },
+        "resolved_by_following_the_repair": {
+          "AMBIGUOUS_REFERENCE": "a listed full ID selected (the error lists the matches)",
+          "BUDGET_TOO_SMALL": "the repair argv returned a bounded brief",
+          "CASE_REQUIRED": "a listed case selected",
+          "EMPTY_TRANSACTION": "envelope schema followed; one operation committed",
+          "GATE_FAILED": "the named support assessed; the same request passed",
+          "IDEMPOTENCY_KEY_REUSED": "receipt read; a new key committed",
+          "INVALID_INPUT": "schema example payload committed",
+          "REVISION_CONFLICT": "current revision read; reassessed request committed",
+          "UNKNOWN_REFERENCE": "a listed candidate cited and committed",
+          "WORKSPACE_REQUIRED": "onboard then its init step; the workspace is found"
+        },
+        "resolved_in_other_tests": {
+          "OBJECT_REQUIRED": "investigation_store store::capture::tests::a_retry_allocates_staging_that_a_crash_left_unallocated (only a crash inside begin produces it)",
+          "RETROSPECTIVE_REQUIRED": "drill_closure::a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch",
+          "RETROSPECTIVE_STALE": "drill_closure::new_material_evidence_after_the_account_requires_an_updated_one"
+        },
+        "unresolved": 0
+      },
+      "pass": true,
+      "problems": [],
+      "target": "Ordinary schema/CAS error resolved without bespoke intervention.",
+      "tests": [
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::each_ordinary_error_is_resolved_by_following_the_repair_it_returns",
+          "why": "every published error code: produced, unchanged workspace, repair followed, resolved"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/cli::onboarding_and_budget_repairs_follow_the_public_cli_contract",
+          "why": "workspace, case and budget repairs"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/cli_conventions::an_unknown_record_id_repairs_to_the_case_brief",
+          "why": "unknown record repair"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drill_closure::a_material_close_is_refused_with_a_repair_that_leads_to_one_idempotent_batch",
+          "why": "RETROSPECTIVE_REQUIRED repair"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/drill_closure::new_material_evidence_after_the_account_requires_an_updated_one",
+          "why": "RETROSPECTIVE_STALE repair"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::capture::tests::a_retry_allocates_staging_that_a_crash_left_unallocated",
+          "why": "OBJECT_REQUIRED repair"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/doctor::a_stale_index_is_a_specific_finding_whose_repair_restores_health",
+          "why": "a stale index repairs"
+        }
+      ]
+    },
+    "targeting": {
+      "measure": "Correct case/object targeting",
+      "observed": {
+        "accepted": 52,
+        "commands_fuzzed": [
+          "observe",
+          "note",
+          "record",
+          "ingest",
+          "source add",
+          "start",
+          "case new",
+          "capture begin",
+          "capture append",
+          "capture attach",
+          "capture finalize",
+          "vault snapshot-note",
+          "vault reconcile"
+        ],
+        "commands_not_case_targeted": {
+          "archive fork": "publishes a verified archive as a new workspace",
+          "archive pins release": "removes stale archive pin records below local/pins, machine-local bookkeeping; it records nothing and names no case",
+          "archive restore": "publishes a verified archive as a new workspace",
+          "demo": "replays a fixture into a new workspace at an empty path",
+          "export": "writes files outside canonical state and records nothing",
+          "init": "creates a new workspace, which holds no case yet",
+          "integration apply": "changes one file the user names outside any workspace",
+          "integration remove": "changes one file the user names outside any workspace",
+          "migrate": "--apply changes the workspace format; case journals, blobs and IDs are never changed",
+          "obsidian setup": "--apply changes the viewer configuration folder and records nothing",
+          "repair index": "rebuilds the disposable index and records nothing; the fuzz runs it and checks every journal is unchanged",
+          "repair journal": "restores the witnessed bytes of reformatted journal files across every case and records nothing; it takes no case and changes no content (canonical_journal.rs)",
+          "repair staging": "retires finalized capture staging and records nothing",
+          "retrospective": "--consult records a consultation of another case's admitted lesson in --case; lessons::lessons_cross_cases_only_by_admission_and_explicit_consultation covers it",
+          "vault copy-map": "creates one human-owned board file and records nothing",
+          "vault remove": "deletes generated vault files and records nothing",
+          "vault render": "regenerates the vault projection and records nothing; the fuzz runs it and checks every journal is unchanged"
+        },
+        "commands_probed_without_a_journal": [
+          "retention reclaim"
+        ],
+        "correct_targeting_rate": 1.0,
+        "cross_case_citations": 0,
+        "cross_case_writes": 0,
+        "misdirected": 0,
+        "probes": 198,
+        "refusals_that_wrote": 0,
+        "refused": 146,
+        "seeds": [
+          35347868442349
+        ]
+      },
+      "pass": true,
+      "problems": [],
+      "target": "100%; no cross-case writes.",
+      "tests": [
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::targeting_fuzz_shard_0_lands_every_write_in_its_named_case_or_refuses_it",
+          "why": "seeded fuzz of every case-targeting write command against a journal oracle"
+        },
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::targeting_fuzz_shard_1_lands_every_write_in_its_named_case_or_refuses_it",
+          "why": "seeded fuzz of every case-targeting write command against a journal oracle"
+        },
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::targeting_fuzz_shard_2_lands_every_write_in_its_named_case_or_refuses_it",
+          "why": "seeded fuzz of every case-targeting write command against a journal oracle"
+        },
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::retention_reclaim_removes_only_bytes_of_the_case_it_names",
+          "why": "retention reclaim, which records nothing, removes only bytes of the case it names"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/retention::a_workspace_sweep_is_a_dry_run_until_applied_and_names_no_record",
+          "why": "retention reclaim --all names no case: it refuses --case, is a dry run until --apply and names no record"
+        },
+        {
+          "origin": "new",
+          "outcome": "ok",
+          "test": "investigation-cli/acceptance_measures::every_write_command_is_fuzzed_for_targeting_or_names_no_case",
+          "why": "every write command in read_only::EFFECTS is fuzzed or names no case"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/cli::record_retries_and_rejects_input_without_changing_the_case",
+          "why": "a --case that disagrees with the request is refused"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/note_on_case::a_lone_unknown_option_is_refused_rather_than_noted",
+          "why": "notes land on the selected case or the named record"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/note_on_case::an_explicit_on_still_names_the_subject_and_says_nothing_about_the_case",
+          "why": "notes land on the selected case or the named record"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/note_on_case::the_first_note_on_a_one_case_workspace_is_on_that_case",
+          "why": "notes land on the selected case or the named record"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/note_on_case::with_several_cases_case_selects_the_subject",
+          "why": "notes land on the selected case or the named record"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-cli/lessons::lessons_cross_cases_only_by_admission_and_explicit_consultation",
+          "why": "retrospective --consult crosses cases only through admitted lessons"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::scope::tests::an_id_recorded_in_an_unloaded_case_is_refused",
+          "why": "an ID of another case is refused"
+        },
+        {
+          "origin": "existing",
+          "outcome": "ok",
+          "test": "investigation-store/investigation_store::store::scope::tests::a_key_recorded_in_another_case_is_found_and_verified_through_the_index",
+          "why": "a command ID is unique across cases"
+        }
+      ]
+    }
+  },
+  "passed": true,
+  "plan": "notes/plan.md \u00a720.5",
+  "schema": "inv.acceptance.deterministic-report.v1",
+  "seconds": 54.0,
+  "skipped": [],
+  "statement": "Deterministic acceptance checks of plan \u00a720.5: scripted, offline checks of fixed fixtures against fixed targets, through the tests named under each measure. They are not release-trial results. A zero here is a count over fixed fixtures; an agent trial's 'zero observed' is a sample, reported by scripts/release-trial.py with its upper bound.",
+  "test_seconds": {
+    "investigation-cli/acceptance_measures": 7.04,
+    "investigation-cli/adversarial_drills": 7.56,
+    "investigation-cli/blindspots": 4.67,
+    "investigation-cli/brief": 5.63,
+    "investigation-cli/cli": 1.87,
+    "investigation-cli/cli_conventions": 0.66,
+    "investigation-cli/conformance": 10.53,
+    "investigation-cli/doctor": 0.57,
+    "investigation-cli/drill_closure": 2.25,
+    "investigation-cli/drills_3_4": 3.92,
+    "investigation-cli/freshness": 4.09,
+    "investigation-cli/guardrails": 4.22,
+    "investigation-cli/lessons": 4.53,
+    "investigation-cli/note_on_case": 1.21,
+    "investigation-cli/objections": 3.68,
+    "investigation-cli/retention": 2.53,
+    "investigation-cli/trial_tasks": 9.63,
+    "investigation-cli/trial_tasks_8_10": 16.84,
+    "investigation-cli/vault_reconcile": 1.6,
+    "investigation-cli/vault_scenarios": 8.03,
+    "investigation-core/investigation_core": 1.23,
+    "investigation-recording/append": 1.55,
+    "investigation-render/export_reports": 1.36,
+    "investigation-store/freshness_oracle": 1.85,
+    "investigation-store/investigation_store": 8.87,
+    "investigation-store/producer_run": 0.97
+  },
+  "trial_measures_not_covered": {
+    "Context efficiency (product claim)": "release trial selective reads and tokens against the notes arm",
+    "Continuation": "release trial successor answers",
+    "False promotion and unnecessary abstention (agent trials)": "release trial counts with denominators and upper bounds",
+    "First use and total burden": "release trial cost records (scripts/release-trial.py)",
+    "Learning discipline": "release trial retrospectives (graded by scripts/grade-gate-content.py)",
+    "Task success": "release trial, sealed cases, preregistered decision rule"
+  },
+  "versions": {
+    "commit": "8093f95fcd2832ecbbb95a308d5354fc1fab5bf6",
+    "python": "3.14.5",
+    "rustc": "rustc 1.100.0 (0ef1bc386 2026-11-09)",
+    "uncommitted_changes": false
+  }
+}
