@@ -43,6 +43,33 @@ pub fn outcomes(state: &State) -> Vec<&Record> {
     live
 }
 
+/// [`outcomes`] with each live outcome that `flagged` marks moved up to
+/// just behind the leading one, keeping their order. A brief flags an
+/// outcome whose effective freshness is not current, so a budget cuts
+/// current outcomes before one a change has made stale (bn-1wre).
+pub fn outcomes_flagged_first(state: &State, flagged: impl Fn(&Record) -> bool) -> Vec<&Record> {
+    flagged_first(
+        outcomes(state),
+        |record| is_live(record),
+        |record| flagged(record),
+    )
+}
+
+/// `ordered` with its first item kept first, then every later item that is
+/// both `live` and `flagged`, then the rest, each group in its order.
+fn flagged_first<T>(
+    ordered: Vec<T>,
+    live: impl Fn(&T) -> bool,
+    flagged: impl Fn(&T) -> bool,
+) -> Vec<T> {
+    let mut items = ordered.into_iter();
+    let Some(first) = items.next() else {
+        return Vec::new();
+    };
+    let (raised, rest): (Vec<T>, Vec<T>) = items.partition(|item| live(item) && flagged(item));
+    std::iter::once(first).chain(raised).chain(rest).collect()
+}
+
 /// The outcome whose answer, caveat and contradiction lead the case: the
 /// newest Conclusion or Decision that is not superseded.
 pub fn primary_outcome(state: &State) -> Option<&Record> {
@@ -90,4 +117,27 @@ pub fn active_inquiries(state: &State) -> Vec<&Record> {
             record.header.id.kind() == Kind::Inquiry && record.body["lifecycle"] != "retired"
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::flagged_first;
+
+    #[test]
+    fn flagged_live_items_follow_the_first_and_keep_their_order() {
+        // 0 leads; odd items are flagged; items from 6 on are past.
+        let ordered: Vec<u32> = (0..9).collect();
+        let ranked = flagged_first(ordered, |item| *item < 6, |item| item % 2 == 1);
+        assert_eq!(ranked, vec![0, 1, 3, 5, 2, 4, 6, 7, 8]);
+        // The leading item stays first even when it is not flagged, and a
+        // flagged leading item is not repeated.
+        assert_eq!(
+            flagged_first(vec![1, 2, 3], |_| true, |item| item % 2 == 1),
+            [1, 3, 2]
+        );
+        assert_eq!(
+            flagged_first(Vec::<u32>::new(), |_| true, |_| true),
+            Vec::<u32>::new()
+        );
+    }
 }

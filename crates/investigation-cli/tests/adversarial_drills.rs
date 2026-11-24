@@ -1085,22 +1085,18 @@ fn brief_margin(drill: &Drill, brief: &Value, read: &[&str], variant: &str) {
         })
     };
     let root = drill.root.to_str().unwrap();
-    assert!(
-        holds(brief),
-        "drill 2 {variant}: the default {DEFAULT_BRIEF_BUDGET}-byte brief already cut an \
-         outcome the drill reads ({read:?}). The brief prints the {}-byte workspace path {root} \
-         in its commands; with a path this long, run the tests with a shorter TMPDIR.",
-        root.len()
-    );
+    assert!(holds(brief) || !brief["omitted_items"]["outcomes"].is_null());
     let keeps = |budget: usize| -> Option<Value> {
         let budget = budget.to_string();
         let (code, output, _, _) =
             drill.run_in(&drill.root, &["brief", "--max-bytes", &budget], None);
         (code == Some(0) && holds(&output)).then_some(output)
     };
-    // The smallest budget whose brief still holds the outcomes the drill reads.
-    let (mut low, mut high) = (0, DEFAULT_BRIEF_BUDGET);
-    let mut needed = keeps(high).expect("the default budget keeps its own outcomes");
+    // The smallest budget whose brief still holds the outcomes the drill
+    // reads, at this workspace path; measured from there with the reference
+    // path, so a long TMPDIR does not change it.
+    let (mut low, mut high) = (0, 1_000_000);
+    let mut needed = keeps(high).expect("an unbounded brief keeps every outcome");
     while high - low > 1 {
         let middle = low + (high - low) / 2;
         match keeps(middle) {
@@ -1127,6 +1123,123 @@ fn brief_margin(drill: &Drill, brief: &Value, read: &[&str], variant: &str) {
          the default budget, or lower BRIEF_MARGIN_BYTES after checking that the outcomes \
          the drill asserts still fit."
     );
+}
+
+/// What drill 2 needs of a default brief at any workspace path: the outcome
+/// the change made stale is kept, needs review and leads, and the untouched
+/// outcome is current. The untouched one is current, so a budget may cut it
+/// (it ranks behind the stale one, bn-1wre); then it is counted as cut for
+/// budget, and the unbounded brief shows it current.
+fn stale_kept_at(
+    drill: &Drill,
+    root: &Path,
+    brief: &Value,
+    subject: &str,
+    untouched: &str,
+    variant: &str,
+) {
+    let at = format!(
+        "{variant} at a {}-byte workspace path",
+        root.to_str().unwrap().len()
+    );
+    let lead = &brief["outcomes"][0];
+    assert_eq!(lead["id"], subject, "{at}");
+    assert_eq!(lead["freshness"]["effective"], "needs_review", "{at}");
+    assert_eq!(brief["freshness"]["effective"], "needs_review", "{at}");
+    let shown = brief["outcomes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|outcome| outcome["id"] == untouched);
+    match shown {
+        Some(outcome) => assert_eq!(outcome["freshness"]["state"], "current", "{at}"),
+        None => {
+            let cut = brief["omitted"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["section"] == "outcomes")
+                .unwrap_or_else(|| panic!("{at}: {untouched} is neither shown nor omitted"));
+            assert_eq!(cut["cause"], "budget", "{at}");
+            let (code, unbounded, _, stderr) =
+                drill.run_in(root, &["brief", "--max-bytes", "1000000"], None);
+            assert_eq!(code, Some(0), "{at}: {stderr}");
+            assert_eq!(
+                entry(&unbounded, untouched)["freshness"]["state"],
+                "current",
+                "{at}"
+            );
+        }
+    }
+}
+
+/// The workspace path lengths drill 2 is proven at: 20 bytes through 141,
+/// a 120-byte TMPDIR plus `/.tmpXXXXXX/casework`, every 4 bytes and the
+/// longest. Only the header and the deeper-read command come before the
+/// stale outcome, and both grow with the path, so a path that keeps it at
+/// one length keeps it at every shorter one.
+const PATH_LENGTHS: std::ops::RangeInclusive<usize> = 20..=141;
+const PATH_STEP: usize = 4;
+
+/// Drill 2 at every workspace path length in [`PATH_LENGTHS`] that the
+/// temporary directory allows (finding F1 of the 2026-11-24 gap audit: the
+/// stale outcome was cut once TMPDIR reached 38 bytes). One copy of the
+/// workspace is renamed to each length; the brief prints the path it reads.
+fn across_path_lengths(drill: &Drill, subject: &str, untouched: &str, variant: &str) {
+    // A short name, so a short TMPDIR reaches the shortest length.
+    let base = tempfile::Builder::new()
+        .prefix("")
+        .rand_bytes(4)
+        .tempdir()
+        .unwrap();
+    let shortest = base.path().to_str().unwrap().len() + 2;
+    let mut root = base.path().join("w");
+    copy_tree(&drill.root, &root);
+    let mut proven = Vec::new();
+    let lengths = PATH_LENGTHS
+        .step_by(PATH_STEP)
+        .chain([*PATH_LENGTHS.end()])
+        .filter(|length| *length >= shortest);
+    for length in lengths {
+        let padding = length - base.path().to_str().unwrap().len() - 1;
+        let next = base.path().join("w".repeat(padding));
+        fs::rename(&root, &next).unwrap();
+        root = next;
+        assert_eq!(root.to_str().unwrap().len(), length);
+        let (code, brief, bytes, stderr) = drill.run_in(&root, &["brief"], None);
+        assert_eq!(code, Some(0), "{stderr}");
+        assert!(bytes <= DEFAULT_BRIEF_BUDGET, "{variant} {length}: {bytes}");
+        assert!(brief.to_string().contains(root.to_str().unwrap()));
+        stale_kept_at(drill, &root, &brief, subject, untouched, variant);
+        proven.push(length);
+    }
+    println!(
+        "drill 2 {variant}: proven at workspace paths of {:?} to {:?} bytes ({} lengths)",
+        proven.first(),
+        proven.last(),
+        proven.len()
+    );
+    assert_eq!(
+        proven.last(),
+        Some(PATH_LENGTHS.end()),
+        "{variant}: a temporary directory of {} bytes reaches no length in {PATH_LENGTHS:?}",
+        base.path().to_str().unwrap().len()
+    );
+}
+
+/// Copy the directory tree `from` to the new directory `to`, file modes
+/// included.
+fn copy_tree(from: &Path, to: &Path) {
+    fs::create_dir(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        let target = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_tree(&entry.path(), &target);
+        } else {
+            fs::copy(entry.path(), &target).unwrap();
+        }
+    }
 }
 
 fn stale_synopsis(mut built: Built, variant: &str, change: Change) {
@@ -1238,11 +1351,8 @@ fn stale_synopsis(mut built: Built, variant: &str, change: Change) {
         (json!(texts.len() - 1), json!(1)),
         "{variant}"
     );
-    assert_eq!(
-        entry(&brief, &untouched)["freshness"]["state"],
-        "current",
-        "{variant}"
-    );
+    stale_kept_at(drill, &drill.root, &brief, &subject, &untouched, variant);
+    across_path_lengths(drill, &subject, &untouched, variant);
     for level in ["compact", "standard", "deep"] {
         let (output, _) = drill.brief(&["--level", level, "--max-bytes", "1000000"]);
         absent(level, &output.to_string());

@@ -814,3 +814,68 @@ fn a_historical_read_of_a_since_withdrawn_artifact_reports_it_unavailable() {
     assert_eq!(mismatch["error"]["code"], "UNKNOWN_REFERENCE");
     assert!(mismatch["error"]["repair"]["argv"].is_array());
 }
+
+/// bn-1wre: an older outcome that a change made stale ranks just behind the
+/// leading one, so a budget cuts current outcomes first and keeps it.
+#[test]
+fn a_budget_cuts_current_outcomes_before_an_older_stale_one() {
+    let mut work = Casework::start();
+    let observations = work.observations(3);
+    // One transaction each, so the newest is the last and leads the brief.
+    let conclusions: Vec<String> = (0..3)
+        .map(|index| {
+            ids(&work.record(vec![(
+                "conclusion.create",
+                Casework::conclusion(
+                    &format!("Finding {index}: the queue met the latency limit."),
+                    &observations[index..=index],
+                    &format!("Caveat {index}: one benchmark run."),
+                ),
+            )]))[0]
+                .clone()
+        })
+        .collect();
+    let order = |brief: &Value| -> Vec<String> {
+        brief["outcomes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|outcome| outcome["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let (oldest, middle, newest) = (
+        conclusions[0].as_str(),
+        conclusions[1].as_str(),
+        conclusions[2].as_str(),
+    );
+    let unbounded = ["--max-bytes", "1000000"];
+    assert_eq!(order(&work.brief(&unbounded).0), [newest, middle, oldest]);
+
+    // The oldest conclusion's only support is retracted.
+    work.record(vec![(
+        "observation.retract",
+        json!({"observation_ref":exact(&observations[0], 1),
+            "revision_reason":"The benchmark host was outside the declared scope."}),
+    )]);
+    let (brief, _) = work.brief(&unbounded);
+    assert_eq!(order(&brief), [newest, oldest, middle]);
+    assert_ne!(brief["outcomes"][1]["freshness"]["effective"], "current");
+    assert_eq!(brief["outcomes"][2]["freshness"]["effective"], "current");
+
+    // The smallest budget that keeps two outcomes keeps the stale one.
+    let minimum = run(work.root(), &["brief", "--max-bytes", "1", "--json"], 2)["error"]["expected"]
+        ["minimum_bytes"]
+        .as_u64()
+        .unwrap() as usize;
+    let at = |budget: usize| order(&work.brief(&["--max-bytes", &budget.to_string()]).0);
+    let (mut low, mut high) = (minimum, 1_000_000);
+    while high - low > 1 {
+        let middle = low + (high - low) / 2;
+        if at(middle).len() >= 2 {
+            high = middle;
+        } else {
+            low = middle;
+        }
+    }
+    assert_eq!(at(high), [newest, oldest]);
+}

@@ -194,8 +194,19 @@ pub fn brief(
     let case = brief_select::in_acceptance_order(state)
         .into_iter()
         .find(|r| r.header.id.kind() == Kind::Case);
+    // An outcome whose effective freshness is not current ranks just behind
+    // the leading outcome, so a budget cuts current outcomes first and the
+    // brief keeps the outcome a change made stale (bn-1wre).
+    let needs_review = |record: &Record| {
+        inputs
+            .record_effective
+            .get(&record.header.id)
+            .and_then(|effective| effective.freshness.as_ref())
+            .and_then(|freshness| freshness["effective"].as_str())
+            .is_some_and(|effective| effective != "current")
+    };
     let selected: Vec<&Record> = if inputs.selected_outcomes.is_empty() {
-        brief_select::outcomes(state)
+        brief_select::outcomes_flagged_first(state, needs_review)
     } else {
         inputs
             .selected_outcomes
