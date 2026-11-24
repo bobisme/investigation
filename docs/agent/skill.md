@@ -2,7 +2,7 @@
 name: investigation
 description: Record evidence, rival explanations, options and decisions with the local investigation CLI. Use when a question needs several observations, the explanation of a failure, controlled measurements, a comparison of sources or options, or a handoff to another agent. Skip it for one-shot lookups and ordinary coding tasks.
 ---
-<!-- inv.agent-instructions.v3 -->
+<!-- inv.agent-instructions.v4 -->
 # Investigation
 
 The full instructions are in the binary and work offline:
@@ -12,8 +12,8 @@ The full instructions are in the binary and work offline:
    valid command. Resume with `investigation brief --format json`.
 2. Preserve each source, then record narrow, attributed observations. Keep
    hypotheses (possible explanations) apart from options (possible choices).
-   Read a source with `investigation evidence read ARTIFACT --whole --format json`;
-   over 32 KiB, read its text derivative (`derivative_id`) with `--lines START:END`.
+   Read a source with `investigation evidence read ARTIFACT --whole --format json`,
+   or in line ranges with `--lines START:END` when it is over 32 KiB.
 3. Find the payload for a write with `investigation schema OP --format json`
    and submit it with `investigation record --input FILE --format json`.
    Read every receipt. After a lost response, reuse the same command ID.

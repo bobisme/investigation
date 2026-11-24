@@ -19,7 +19,7 @@ use investigation_core::{
 
 use crate::selectors::{self, QuoteResult, Selection};
 
-use super::evidence_read::{MAX_SELECTOR_ARTIFACT_BYTES, derivative};
+use super::evidence_read::{MAX_SELECTOR_ARTIFACT_BYTES, text_reading};
 
 /// One recorded citation to locate: the artifact revision an Observation
 /// cites, its accepted selector and its recorded quote.
@@ -129,7 +129,15 @@ impl<F: DurableFs> Store<F> {
         let bytes = self
             .read_artifact(&body, &request)
             .map_err(|_| "the retained bytes are missing or do not match their digest")?;
-        Ok((bytes, derivative(&body)))
+        // A line or quote citation of an original reads its recorded text
+        // derivative, which must be shown to this audience as well.
+        let (text, through) = text_reading(state, record, &body, &selector.selector);
+        if through
+            .is_some_and(|derivative| !classifier.may_show(derivative, Field::Content, policy))
+        {
+            return Err("the cited bytes are restricted");
+        }
+        Ok((bytes, text))
     }
 }
 

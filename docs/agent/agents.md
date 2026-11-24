@@ -1,4 +1,4 @@
-<!-- inv.agent-instructions.v3 -->
+<!-- inv.agent-instructions.v4 -->
 # Investigation workflow: use it when uncertainty accumulates
 
 Use `investigation` when a question needs several observations, the
@@ -16,10 +16,9 @@ that directory. Writes need `--actor`, the AGENT variable, or the actor that
 `init --actor` recorded on this machine; a receipt says when it used that one. Resume with
 `investigation brief`. Skim with `investigation show ID --depth summary`; use
 `--depth full` or read a source only when needed:
-`investigation evidence read ARTIFACT --whole` prints a source of up to 32 KiB.
-Read a larger one in line ranges of its text derivative, the `derivative_id`
-its receipt lists: `investigation evidence read DERIVATIVE --lines 1:200`.
-Read an exact span with
+`investigation evidence read ARTIFACT --whole` prints a source of up to 32 KiB;
+read a larger one in line ranges with
+`investigation evidence read ARTIFACT --lines 1:200`, and an exact span with
 `investigation evidence read ARTIFACT --selector-file FILE`. Every read checks
 the bytes against their digest. A synopsis never replaces its sources. If several cases
 exist, select one with `--case ID`; never guess a case from its title.

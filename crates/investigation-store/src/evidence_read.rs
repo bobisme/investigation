@@ -54,7 +54,74 @@ pub struct EvidenceRead {
     /// Withdrawn bytes stay readable and are labeled here; withdrawal is not erasure.
     pub evidentiary_use: investigation_core::source_ops::EvidentiaryUse,
     pub excerpt: Excerpt,
+    /// The recorded text derivative a line or quote selection of an original
+    /// Artifact was read through: the same digest-checked bytes, decoded as
+    /// that derivative records. Absent when the Artifact was read as itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_derivative: Option<RevisionRef>,
 }
+
+/// The recorded text derivative of an original Artifact: a current Artifact
+/// of `state` whose `decode_utf8` transform, at this parser version, takes
+/// that original as its input and records the same digest, so it decodes
+/// exactly the original's bytes. The latest accepted one when several do.
+/// `None` for an Artifact that is itself decoded text, or has no such
+/// derivative (its bytes were not decoded as UTF-8 text at import).
+pub fn recorded_text_derivative<'a>(state: &'a State, original: &Record) -> Option<&'a Record> {
+    let body = artifact_body(original).ok()?;
+    if derivative(&body).is_some() {
+        return None;
+    }
+    let digest = body.digest?;
+    state
+        .records_of_kind(Kind::Artifact)
+        .filter(|candidate| {
+            artifact_body(candidate).is_ok_and(|candidate| {
+                candidate.digest.as_ref() == Some(&digest)
+                    && candidate.transforms.first().is_some_and(|transform| {
+                        transform.input.id == original.header.id
+                            && transform.transformation == "decode_utf8"
+                            && transform.version == ingest::TEXT_PARSER_VERSION
+                    })
+            })
+        })
+        .max_by_key(|candidate| (candidate.header.acceptance_sequence, candidate.header.id))
+}
+
+/// Whether a selector reads decoded text rather than bytes.
+fn reads_text(selector: &SelectorKind) -> bool {
+    matches!(
+        selector,
+        SelectorKind::TextLines { .. } | SelectorKind::TextQuote { .. }
+    )
+}
+
+/// The text metadata a selection over `artifact` reads with: the Artifact's
+/// own, or for a text selector over an original, its recorded derivative's,
+/// with that derivative.
+pub(super) fn text_reading<'a>(
+    state: &'a State,
+    artifact: &Record,
+    body: &ArtifactBody,
+    selector: &SelectorKind,
+) -> (Option<TextDerivative>, Option<&'a Record>) {
+    if let Some(own) = derivative(body) {
+        return (Some(own), None);
+    }
+    if !reads_text(selector) {
+        return (None, None);
+    }
+    let Some(record) = recorded_text_derivative(state, artifact) else {
+        return (None, None);
+    };
+    let text = artifact_body(record)
+        .ok()
+        .and_then(|body| derivative(&body));
+    (text, Some(record))
+}
+
+/// Refusal of a text selector over an Artifact with no decoded text.
+const NO_TEXT_DERIVATIVE: &str = "This Artifact has no recorded UTF-8 text derivative: its bytes were not decoded as text at import, so line and quote selectors cannot read them. Read it whole or by byte_range instead.";
 
 /// How many commit attempts may end to hash promotion evidence outside the
 /// commit lock. Each needs another writer to change the evidence a promotion
@@ -294,6 +361,112 @@ impl<F: DurableFs> Store<F> {
         artifact: &Record,
         selector: SelectorRequest,
     ) -> Result<EvidenceRead, Failure> {
+        let body = self.readable_body(replay, artifact)?;
+        let bytes = self.read_artifact(&body, &selector)?;
+        let (text, through) = text_reading(&replay.state, artifact, &body, &selector.selector);
+        // The derivative passes every gate the Artifact did: restriction,
+        // withdrawal and retention are recorded per reference.
+        if let Some(record) = through {
+            self.readable_body(replay, record)?;
+        }
+        if text.is_none() && reads_text(&selector.selector) {
+            return Err(selection_failure(SelectorError::Unavailable(
+                NO_TEXT_DERIVATIVE,
+            )));
+        }
+        let selection = selectors::resolve(
+            Some(&bytes),
+            &selector.selector,
+            text.as_ref(),
+            MAX_EXCERPT_BYTES,
+        )
+        .map_err(selection_failure)?;
+        let excerpt = match selection {
+            Selection::Bytes { start, end } => match std::str::from_utf8(&bytes[start..end]) {
+                Ok(text) if !text.contains('\0') => Excerpt::Text {
+                    start,
+                    end,
+                    text: text.into(),
+                },
+                _ => Excerpt::Binary {
+                    start,
+                    end,
+                    bytes_base64: STANDARD.encode(&bytes[start..end]),
+                },
+            },
+            Selection::Json(value) => Excerpt::JsonValue { value },
+        };
+        Ok(EvidenceRead {
+            artifact: artifact.reference(),
+            source: body.source,
+            snapshot: replay.snapshot.clone(),
+            selector,
+            content_trust: "untrusted_evidence",
+            evidentiary_use: investigation_core::source_ops::evidentiary_use(
+                &replay.state,
+                artifact,
+            ),
+            excerpt,
+            text_derivative: through.map(Record::reference),
+        })
+    }
+
+    /// The decoded text of a retained Artifact, through the same gates and
+    /// digest check as [`Self::evidence_read`]: its own text, or its recorded
+    /// text derivative's for an original. Each entry of the second value is
+    /// the byte offset where a line ends, line end included, so its length
+    /// is the line count. With the derivative read through, if any.
+    pub fn text_lines_of(
+        &self,
+        replay: &CaseReplay,
+        artifact: &Record,
+    ) -> Result<(Vec<usize>, Option<RevisionRef>), Failure> {
+        let body = self.readable_body(replay, artifact)?;
+        let Some(digest) = body.digest.clone() else {
+            return Err(integrity("Retained artifact has no digest."));
+        };
+        let probe = SelectorKind::TextLines {
+            start_line: 1,
+            end_line: 1,
+            encoding: "utf-8".into(),
+            parser_version: ingest::TEXT_PARSER_VERSION.into(),
+        };
+        let request = SelectorRequest {
+            schema_version: investigation_core::evidence::SelectorVersion::V1,
+            artifact_digest: digest,
+            selector: probe.clone(),
+        };
+        let bytes = self.read_artifact(&body, &request)?;
+        let (text, through) = text_reading(&replay.state, artifact, &body, &probe);
+        if let Some(record) = through {
+            self.readable_body(replay, record)?;
+        }
+        if text.is_none() {
+            return Err(selection_failure(SelectorError::Unavailable(
+                NO_TEXT_DERIVATIVE,
+            )));
+        }
+        let text = std::str::from_utf8(&bytes).map_err(|_| {
+            selection_failure(SelectorError::Invalid(
+                "text derivative is not valid UTF-8".into(),
+            ))
+        })?;
+        let mut ends = Vec::new();
+        let mut offset = 0;
+        for line in text.split_inclusive('\n') {
+            offset += line.len();
+            ends.push(offset);
+        }
+        Ok((ends, through.map(Record::reference)))
+    }
+
+    /// The body of `artifact` when its bytes may be read here: not
+    /// restricted, not withdrawn and retained.
+    fn readable_body(
+        &self,
+        replay: &CaseReplay,
+        artifact: &Record,
+    ) -> Result<ArtifactBody, Failure> {
         // Effective level: a derivative of restricted bytes is restricted too.
         if !Classifier::new(&replay.state).may_show(
             artifact,
@@ -330,42 +503,7 @@ impl<F: DurableFs> Store<F> {
             }));
             return Err(failure);
         }
-        let bytes = self.read_artifact(&body, &selector)?;
-        let text = derivative(&body);
-        let selection = selectors::resolve(
-            Some(&bytes),
-            &selector.selector,
-            text.as_ref(),
-            MAX_EXCERPT_BYTES,
-        )
-        .map_err(selection_failure)?;
-        let excerpt = match selection {
-            Selection::Bytes { start, end } => match std::str::from_utf8(&bytes[start..end]) {
-                Ok(text) if !text.contains('\0') => Excerpt::Text {
-                    start,
-                    end,
-                    text: text.into(),
-                },
-                _ => Excerpt::Binary {
-                    start,
-                    end,
-                    bytes_base64: STANDARD.encode(&bytes[start..end]),
-                },
-            },
-            Selection::Json(value) => Excerpt::JsonValue { value },
-        };
-        Ok(EvidenceRead {
-            artifact: artifact.reference(),
-            source: body.source,
-            snapshot: replay.snapshot.clone(),
-            selector,
-            content_trust: "untrusted_evidence",
-            evidentiary_use: investigation_core::source_ops::evidentiary_use(
-                &replay.state,
-                artifact,
-            ),
-            excerpt,
-        })
+        Ok(body)
     }
 
     pub(super) fn prepare_observations(
@@ -421,7 +559,13 @@ impl<F: DurableFs> Store<F> {
                 );
                 Some((
                     index,
-                    self.verify_observation(record, &selector, quote.as_ref(), withdrawn),
+                    self.verify_observation(
+                        &replay.state,
+                        record,
+                        &selector,
+                        quote.as_ref(),
+                        withdrawn,
+                    ),
                 ))
             })
             .collect()
@@ -429,6 +573,7 @@ impl<F: DurableFs> Store<F> {
 
     fn verify_observation(
         &self,
+        state: &State,
         artifact: &Record,
         selector: &SelectorRequest,
         quote: Option<&TextQuoteRequest>,
@@ -445,7 +590,16 @@ impl<F: DurableFs> Store<F> {
             return Ok(proof);
         }
         let bytes = self.read_artifact(&body, selector)?;
-        let text = derivative(&body);
+        // A line or quote selector over an original reads its recorded text
+        // derivative, when that reference is retained and not withdrawn.
+        let (text, through) = text_reading(state, artifact, &body, &selector.selector);
+        let text = text.filter(|_| {
+            through.is_none_or(|record| {
+                !investigation_core::retention_ops::bytes_withdrawn(state, None, record.header.id)
+                    && artifact_body(record)
+                        .is_ok_and(|body| body.availability == ArtifactAvailability::Retained)
+            })
+        });
         let selection = match selectors::resolve(
             Some(&bytes),
             &selector.selector,

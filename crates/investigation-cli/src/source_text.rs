@@ -61,7 +61,8 @@ fn request(artifact_digest: Digest, selector: SelectorKind) -> SelectorRequest {
     }
 }
 
-/// A `text_lines` selector over the Artifact's own text derivative.
+/// A `text_lines` selector over the Artifact's text: its own, or for an
+/// original its recorded text derivative's, which `evidence_read` resolves.
 pub(crate) fn lines(record: &Record, start_line: u64, end_line: u64) -> SelectorRequest {
     let parser_version = artifact_body(record)
         .and_then(|body| {
@@ -199,6 +200,27 @@ pub(crate) fn read_argv(
         let lines = lines_in_first_excerpt(store, replay, record)?;
         vec!["--lines".to_owned(), format!("1:{lines}")]
     };
+    Some(scoped_read(store, case, record, range))
+}
+
+/// The `evidence read --lines START:END` call for `record`, scoped to the
+/// workspace and case.
+pub(crate) fn lines_argv(
+    store: &Store,
+    case: Id,
+    record: &Record,
+    start: u64,
+    end: u64,
+) -> Vec<String> {
+    scoped_read(
+        store,
+        case,
+        record,
+        vec!["--lines".to_owned(), format!("{start}:{end}")],
+    )
+}
+
+fn scoped_read(store: &Store, case: Id, record: &Record, range: Vec<String>) -> Vec<String> {
     let mut argv = vec![
         PROGRAM_NAME.to_owned(),
         "--case".to_owned(),
@@ -210,5 +232,5 @@ pub(crate) fn read_argv(
     argv.extend(range);
     argv.extend(["--format".to_owned(), "json".to_owned()]);
     crate::scope_argv(store.workspace(), &mut argv);
-    Some(argv)
+    argv
 }

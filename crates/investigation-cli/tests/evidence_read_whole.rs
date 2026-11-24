@@ -141,15 +141,21 @@ fn a_bad_range_or_selection_choice_is_refused_at_the_flag() {
     let cwd = temporary.path();
     let artifact = workspace(cwd, SOURCE);
 
-    let beyond = json(cwd, &["evidence", "read", &artifact, "--lines", "2:9"], 2);
-    assert_eq!(beyond["error"]["path"], "--lines");
-    assert!(
-        beyond["error"]["message"]
-            .as_str()
-            .unwrap()
-            .contains("line range must be 1..=3"),
-        "{beyond}"
+    // An end past the last line reads to the last line, and says so.
+    let clamped = json(cwd, &["evidence", "read", &artifact, "--lines", "2:9"], 0);
+    assert_eq!(clamped["lines"]["read"], "2:3", "{clamped}");
+    assert_eq!(clamped["lines"]["line_count"], 3);
+    assert_eq!(clamped["lines"]["clamped"], true);
+    assert!(clamped["note"].as_str().unwrap().contains("has 3 line(s)"));
+    assert_eq!(
+        clamped["excerpt"]["text"],
+        "  1998 gauge installed at north pier\n  2022 gauge relocated to the weir footbridge\n"
     );
+    // A start past it is refused with the line count and an exact retry.
+    let beyond = json(cwd, &["evidence", "read", &artifact, "--lines", "5:9"], 2);
+    assert_eq!(beyond["error"]["path"], "--lines");
+    assert_eq!(beyond["error"]["actual"]["line_count"], 3, "{beyond}");
+    assert_eq!(beyond["error"]["expected"]["lines"], "1:3", "{beyond}");
     for args in [
         vec!["--lines", "0:2"],
         vec!["--lines", "3:2"],

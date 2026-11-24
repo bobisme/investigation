@@ -398,14 +398,25 @@ impl Caps {
     }
 }
 
+/// Whether `key` holds a command line: one command, not a list, which runs
+/// only whole.
+fn is_argv(key: &str) -> bool {
+    key == "argv" || key.ends_with("_argv")
+}
+
 /// Truncate every array longer than `LIST_CAP` in `value`, recording the
-/// remainder beside it as `<key>_omitted`. Returns the total omitted.
+/// remainder beside it as `<key>_omitted`. Returns the total omitted. A
+/// command line (`argv`, `*_argv`) is never cut: a truncated argv would
+/// print a command that does not run.
 fn cap_lists(value: &mut Value) -> usize {
     let mut omitted = 0;
     match value {
         Value::Object(object) => {
             let keys: Vec<String> = object.keys().cloned().collect();
             for key in keys {
+                if is_argv(&key) {
+                    continue;
+                }
                 if let Some(Value::Array(items)) = object.get_mut(&key)
                     && items.len() > LIST_CAP
                 {
@@ -573,6 +584,16 @@ mod tests {
         );
         assert_eq!(value["overview"]["affected_omitted"], 12);
         assert_eq!(value["short"], json!([1, 2]));
+    }
+
+    #[test]
+    fn caps_never_cut_a_command_line() {
+        let argv: Vec<String> = (0..12).map(|part| part.to_string()).collect();
+        let mut value = json!({"node":{"read":{"argv":argv},"complete_read_argv":argv}});
+        assert_eq!(cap_lists(&mut value), 0);
+        assert_eq!(value["node"]["read"]["argv"], json!(argv));
+        assert_eq!(value["node"]["complete_read_argv"], json!(argv));
+        assert!(value["node"]["read"].get("argv_omitted").is_none());
     }
 
     #[test]

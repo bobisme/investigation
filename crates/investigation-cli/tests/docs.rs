@@ -141,7 +141,6 @@ fn a_cold_reader_can_run_every_command_of_the_agent_instructions_in_order() {
     let mut case = String::new();
     let mut source = String::new();
     let mut artifact = String::new();
-    let mut derivative = String::new();
     let mut key = String::new();
     let mut ran = Vec::new();
     let mut skipped = Vec::new();
@@ -165,9 +164,6 @@ fn a_cold_reader_can_run_every_command_of_the_agent_instructions_in_order() {
                 (_, "QUESTION") => "Why did requests time out?".to_owned(),
                 (Some("--source"), "ID") => source.clone(),
                 (_, "ARTIFACT") => artifact.clone(),
-                (_, "DERIVATIVE") => derivative.clone(),
-                // The reader's file has one line.
-                (Some("--lines"), _) => "1:1".to_owned(),
                 (_, "ID") => case.clone(),
                 (_, "OP") => "observation.add".to_owned(),
                 (_, "TEXT") => "waited 28 seconds".to_owned(),
@@ -190,10 +186,6 @@ fn a_cold_reader_can_run_every_command_of_the_agent_instructions_in_order() {
         if argv.iter().any(|w| w == "start") {
             case = value["created"][0]["id"].as_str().unwrap().to_owned();
             source = value["items"][0]["source_id"].as_str().unwrap().to_owned();
-            derivative = value["items"][0]["derivative_id"]
-                .as_str()
-                .unwrap()
-                .to_owned();
             artifact = value["items"][0]["artifact_id"]
                 .as_str()
                 .unwrap()
