@@ -49,7 +49,7 @@ use investigation_core::{identity::Id, wire::Snapshot};
 use investigation_store::journal::hash_bytes;
 
 use crate::{
-    CaseSnapshot, Manifest, NoteMarker, PlanBuilder, PlanPath, Publisher, RenderError, RenderPlan,
+    CaseSnapshot, Manifest, NoteMarker, PlanPath, Publisher, RenderError, RenderPlan,
     VerifiedSnapshot, drift::read_regular, layout, note::snapshot_row, publish::Walk,
 };
 
@@ -137,8 +137,9 @@ fn earlier_head(case: &CaseSnapshot, basis: &Snapshot) -> bool {
 }
 
 /// `plan` with every case note that may keep its earlier basis restamped to
-/// it (see the module documentation). The generation, order, phases and
-/// every other entry are unchanged.
+/// it (see the module documentation), or `None` when no note keeps one and
+/// `plan` stands as it is. The generation, order, phases and every other
+/// entry are unchanged.
 ///
 /// A planned case note the manifest does not own is read from the vault
 /// with `read`. When its bytes are the plan restamped to an earlier head of
@@ -151,7 +152,7 @@ pub(crate) fn carry(
     snapshot: &VerifiedSnapshot,
     manifest: &Manifest,
     read: &mut ReadNote<'_>,
-) -> Result<RenderPlan, RenderError> {
+) -> Result<Option<RenderPlan>, RenderError> {
     let generation = plan.generation();
     let same_rules = manifest.last_complete().is_some_and(|last| {
         last.renderer == generation.renderer()
@@ -197,23 +198,13 @@ pub(crate) fn carry(
         }
     }
     if kept.is_empty() {
-        return Ok(plan.clone());
+        return Ok(None);
     }
-    let mut builder = PlanBuilder::new(generation.clone());
-    let mut kept = kept.into_iter().peekable();
-    for (index, entry) in plan.entries().iter().enumerate() {
-        let content = match kept.next_if(|(at, _)| *at == index) {
-            Some((_, rebased)) => rebased,
-            None => entry.content().to_vec(),
-        };
-        builder.add(
-            entry.phase(),
-            entry.path().clone(),
-            content,
-            entry.projects(),
-        )?;
+    let mut carried = plan.clone();
+    for (index, rebased) in kept {
+        carried.replace_content(index, rebased);
     }
-    Ok(builder.finish())
+    Ok(Some(carried))
 }
 
 #[cfg(test)]

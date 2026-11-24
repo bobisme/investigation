@@ -20,9 +20,10 @@ use std::{
 use investigation_core::identity::Id;
 use investigation_render::{
     Action, CaseRenderer, EntryHealth, Generation, Manifest, NoteMarker, Phase, PlanBuilder,
-    PlanPath, PublishMode, RENDERER_VERSION, Refusal, RenderError, RenderLock, RenderPlan,
-    RenderReport, RenderState, SweptAction, VaultRenderer, VaultState, VerifiedSnapshot,
-    ViewPolicy, incremental::rebase, layout, render_vault, render_vault_with, vault_status,
+    PlanPath, PublishMode, Publisher, RENDERER_VERSION, Refusal, RenderError, RenderLock,
+    RenderPlan, RenderReport, RenderState, SweptAction, VaultRenderer, VaultState,
+    VerifiedSnapshot, ViewPolicy, incremental::rebase, layout, render_vault, render_vault_with,
+    vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -692,4 +693,122 @@ fn leftovers_of_a_killed_render_are_swept_safely() {
             .sha256,
         hash_bytes(&written)
     );
+}
+
+/// A render killed after its last vault write, before the manifest records
+/// the outcome, is completed by the next one. Two points: inside the
+/// publication, right after the last rename and before the final durability
+/// barrier; and after the publication returned (every write durable) but
+/// before the manifest commit. Either way the manifest still reads
+/// `updating`, claims nothing it did not claim before, and the next render
+/// converges without adopting anything or touching a human-owned file.
+#[test]
+fn a_render_killed_between_its_writes_and_the_manifest_commit_is_completed_next_time() {
+    for after_barrier in [false, true] {
+        let directory = tempfile::tempdir().unwrap();
+        let (mut store, case_id) = workspace(directory.path());
+        human::seed(&vault(&store));
+        let seen = human::fingerprint(&vault(&store));
+        let first = render(&mut store, true).unwrap();
+        let before = manifest(&store);
+        question(&mut store, "q3", case_id);
+        let plan = current_plan(&mut store);
+        if after_barrier {
+            let lock = RenderLock::acquire(store.workspace(), Duration::ZERO).unwrap();
+            let loaded = Manifest::load(store.workspace(), &lock).unwrap().manifest;
+            loaded.begin(&plan).store(store.workspace(), &lock).unwrap();
+            let report = Publisher::open(store.workspace(), &lock)
+                .unwrap()
+                .publish(&plan, &loaded, &mut |_| {})
+                .unwrap();
+            assert!(report.written() > 0);
+            // Killed here: the manifest commit never happens.
+        } else {
+            let total = plan.entries().len() + 1; // one retired path
+            assert!(render_killed_after(&mut store, total - 1));
+        }
+        // Every planned file is on disk, and the record owns only what the
+        // completed render owned, at the same hashes: whatever the killed
+        // render wrote is accepted through its write-ahead intent only.
+        let killed = manifest(&store);
+        assert!(matches!(killed.state(), RenderState::Updating { .. }));
+        assert_eq!(
+            killed.owned().collect::<Vec<_>>(),
+            before.owned().collect::<Vec<_>>()
+        );
+        assert_eq!(killed.last_complete(), before.last_complete());
+        let mut written = 0;
+        for entry in plan.entries() {
+            let bytes = fs::read(vault(&store).join(entry.path().as_str())).unwrap();
+            let sha256 = hash_bytes(&bytes);
+            assert!(killed.accepts(entry.path(), &sha256), "{}", entry.path());
+            if before
+                .get(entry.path())
+                .is_none_or(|record| record.sha256 != sha256)
+            {
+                written += 1;
+            }
+        }
+        assert!(written > 0, "the killed render wrote files");
+        assert_eq!(
+            vault_status(store.workspace()).unwrap().state,
+            VaultState::Partial {
+                last_complete: Some(first.publish.generation.id().to_owned()),
+                generation: plan.generation().id().to_owned(),
+                reason: "the render was interrupted before it recorded its outcome".to_owned(),
+                interrupted: true,
+            }
+        );
+
+        let report = render(&mut store, false).unwrap();
+        assert_complete(&mut store, &report);
+        assert!(
+            report.adopted.is_empty(),
+            "recovered files are not adoptions"
+        );
+        assert!(report.drift.is_empty(), "{:?}", report.drift);
+        assert_eq!(human::fingerprint(&vault(&store)), seen);
+    }
+}
+
+/// Writes are staged in batches: a render killed right after its first
+/// rename leaves the rest of its batch as hidden temporaries, never as
+/// half-written notes. Each path holds its earlier bytes or the planned
+/// ones, and the next render sweeps the temporaries and completes.
+#[test]
+fn a_render_killed_mid_batch_leaves_only_temporaries_the_next_render_sweeps() {
+    let directory = tempfile::tempdir().unwrap();
+    let (mut store, case_id) = workspace(directory.path());
+    let earlier = current_plan(&mut store);
+    render(&mut store, false).unwrap();
+    question(&mut store, "q3", case_id);
+    let plan = current_plan(&mut store);
+    assert!(render_killed_after(&mut store, 0));
+    let temporaries: Vec<PathBuf> = files(&vault(&store))
+        .into_iter()
+        .filter(|path| path.to_string_lossy().ends_with(".inv-tmp"))
+        .collect();
+    assert!(!temporaries.is_empty(), "the rest of the batch was staged");
+    for entry in plan.entries() {
+        let Ok(bytes) = fs::read(vault(&store).join(entry.path().as_str())) else {
+            continue;
+        };
+        let earlier = earlier
+            .entry(entry.path().as_str())
+            .map(|earlier| earlier.content());
+        assert!(
+            bytes == entry.content() || Some(bytes.as_slice()) == earlier,
+            "{} holds neither its earlier nor its planned bytes",
+            entry.path()
+        );
+    }
+    let report = render(&mut store, false).unwrap();
+    assert_eq!(report.swept.len(), temporaries.len(), "{:?}", report.swept);
+    assert!(
+        report
+            .swept
+            .iter()
+            .all(|swept| swept.action == SweptAction::Removed)
+    );
+    assert_complete(&mut store, &report);
 }

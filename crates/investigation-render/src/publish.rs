@@ -14,9 +14,28 @@
 //! 3. Inspect the current file without following links and hash its bytes.
 //! 4. Ask [`Ownership`] for a [`Decision`].
 //! 5. On [`Decision::Write`], write a private temporary file in the same
-//!    directory, sync it, rename it into place, and sync the directory. A path
-//!    that was absent at inspection is created with a no-replace rename, so a
-//!    file that appears meanwhile is refused rather than overwritten.
+//!    directory. Once its batch is staged and durable, inspect the path and
+//!    decide again, then rename the temporary into place. A path that was
+//!    absent at inspection is created with a no-replace rename, so a file
+//!    that appears meanwhile is refused rather than overwritten.
+//!
+//! ## Durability in batches
+//!
+//! [`Publisher::publish`] does not sync each file and its directory, which
+//! cost two `fsync` calls per note and nearly all of a full render's time.
+//! It stages up to [`STAGE_BATCH`] plan entries as temporaries, makes them
+//! durable with one barrier ([`Publisher::barrier`]: `syncfs` of the
+//! projection's filesystem), and only then renames them into place. So a
+//! crash at any moment leaves every path with either its earlier bytes or
+//! the complete planned bytes, never a torn file, as per-file syncs did.
+//! Each barrier also makes the renames and removals before it durable, and
+//! a last barrier follows the final rename or removal. An outcome counts as
+//! durable once a barrier has followed it; only durable outcomes are handed
+//! back when the publication fails ([`Publisher::publish_durably`]), so the
+//! manifest never records a write or a removal that a crash could still
+//! undo. Paths written but not yet durable keep their write-ahead intent
+//! ([`crate::Manifest::begin`]). Where `syncfs` does not exist, every file
+//! and directory is synced as it is written, and the barrier does nothing.
 //!
 //! Removal goes through the same inspect-then-decide step. [`Ownership::retired`]
 //! names the paths it proved generated that the plan no longer contains, and
@@ -51,7 +70,10 @@ use rustix::{
 };
 
 use crate::{
-    Generation, PlanEntry, PlanPath, RenderError, RenderLock, RenderPlan, layout, lock::Probe,
+    Generation, PlanEntry, PlanPath, RenderError, RenderLock, RenderPlan,
+    fingerprint::{self, Fingerprint},
+    layout,
+    lock::Probe,
 };
 
 const DIRECTORY: OFlags = OFlags::DIRECTORY
@@ -59,6 +81,14 @@ const DIRECTORY: OFlags = OFlags::DIRECTORY
     .union(OFlags::NOFOLLOW)
     .union(OFlags::CLOEXEC);
 pub(crate) const TEMP_ATTEMPTS: usize = 8;
+
+/// Plan entries staged as temporaries before one durability barrier. A
+/// batch holds no open descriptors; its cost is temporaries on disk.
+pub const STAGE_BATCH: usize = 2048;
+
+/// Whether a filesystem-wide barrier (`syncfs`) replaces per-file syncs.
+/// Elsewhere each file and directory is synced as it changes.
+pub(crate) const BATCHED: bool = cfg!(any(target_os = "linux", target_os = "android"));
 
 /// Called by [`Publisher::visit`] with a vault-relative path, its directory,
 /// its name and its type.
@@ -135,6 +165,14 @@ pub trait Ownership {
     fn approves_attachment(&self, _entry: &PlanEntry) -> bool {
         false
     }
+
+    /// The bytes recorded as last generated at `path`, with the fingerprint
+    /// of the file they were last observed in, when one was recorded
+    /// ([`crate::fingerprint`]). A file found with that fingerprint is taken
+    /// to hold those bytes without being read. The default records nothing.
+    fn recorded(&self, _path: &PlanPath) -> Option<(&Digest, Option<Fingerprint>)> {
+        None
+    }
 }
 
 /// Conservative rules for a vault with no ownership record: create absent
@@ -172,6 +210,10 @@ pub struct Outcome {
     /// What was found before acting; `None` when the path was not inspected.
     pub previous: Option<OnDisk>,
     pub action: Action,
+    /// For a planned file found [`Action::Unchanged`], the fingerprint that
+    /// proves those bytes at the next inspection, when it may be recorded
+    /// ([`crate::fingerprint`]).
+    pub stat: Option<Fingerprint>,
 }
 
 /// Passed to the observer after each step, in publish order: every plan
@@ -217,6 +259,41 @@ impl PublishReport {
     }
 }
 
+/// A publication stopped by an I/O failure ([`Publisher::publish_durably`]).
+#[derive(Debug)]
+pub struct Interrupted {
+    pub error: RenderError,
+    /// The outcomes reached and known durable, in publish order: a prefix
+    /// of what the observer saw.
+    pub durable: Vec<Outcome>,
+}
+
+impl Interrupted {
+    fn new(error: RenderError, mut outcomes: Vec<Outcome>, durable: usize) -> Self {
+        outcomes.truncate(durable);
+        Self {
+            error,
+            durable: outcomes,
+        }
+    }
+}
+
+/// One plan entry of a batch, before its commit.
+enum Staged {
+    /// Decided without writing: refused, or already holding the bytes.
+    Done(Outcome),
+    /// The planned bytes are in `temp` beside the target, in the folder
+    /// with this (device, inode).
+    Written { temp: String, directory: (u64, u64) },
+}
+
+/// The (device, inode) of an open folder.
+fn identity(directory: &OwnedFd, label: &str) -> Result<(u64, u64), RenderError> {
+    let stat = fstat(directory).map_err(|error| RenderError::io(label, error))?;
+    #[allow(clippy::useless_conversion, clippy::unnecessary_cast)]
+    Ok((stat.st_dev as u64, stat.st_ino as u64))
+}
+
 /// Applies plans to one workspace's vault. Holding a [`RenderLock`] is
 /// required to construct it, so no publication can run unserialized.
 pub struct Publisher<'lock> {
@@ -227,6 +304,11 @@ pub struct Publisher<'lock> {
     /// prefix of an existing vault. `None` only for [`Self::inspect`] before
     /// the first render created the prefix; it then reads as empty.
     vault: Option<OwnedFd>,
+    /// When the root's filesystem is trusted for fingerprints
+    /// ([`fingerprint::trusted`]), the time the publisher was opened, in
+    /// nanoseconds since the epoch: only files last changed well before it
+    /// get a fingerprint.
+    opened: Option<i64>,
 }
 
 pub(crate) enum Walk {
@@ -240,9 +322,15 @@ impl<'lock> Publisher<'lock> {
         if lock.workspace_root() != workspace.root() {
             return Err(RenderError::WrongWorkspace);
         }
+        let vault = crate::projection::open_root(workspace, true)?;
+        let opened = vault
+            .as_ref()
+            .filter(|root| fingerprint::trusted(*root))
+            .and_then(|_| fingerprint::now());
         Ok(Self {
             _serialized: PhantomData,
-            vault: crate::projection::open_root(workspace, true)?,
+            vault,
+            opened,
         })
     }
 
@@ -259,6 +347,7 @@ impl<'lock> Publisher<'lock> {
             Probe::Idle { .. } => Ok(Some(Self {
                 _serialized: PhantomData,
                 vault: crate::projection::open_root(workspace, false)?,
+                opened: None,
             })),
         }
     }
@@ -266,12 +355,30 @@ impl<'lock> Publisher<'lock> {
     /// Apply every entry in plan order, then remove retired paths. A refused
     /// entry does not stop the rest; an I/O failure stops the render and is
     /// returned (the observer has seen every outcome reached before it).
+    /// Every outcome in the report is durable when it returns. See
+    /// [`Self::publish_durably`].
     pub fn publish(
         &self,
         plan: &RenderPlan,
         ownership: &dyn Ownership,
         observe: &mut dyn FnMut(&PublishStep<'_>),
     ) -> Result<PublishReport, RenderError> {
+        self.publish_durably(plan, ownership, observe)
+            .map_err(|interrupted| interrupted.error)
+    }
+
+    /// [`Self::publish`] in durability batches (see the module
+    /// documentation). The observer sees each outcome as soon as it is
+    /// reached, in plan order, then each retired path; a write is reached
+    /// when its temporary is renamed into place. On an I/O failure the
+    /// outcomes known durable are returned with the error: those a barrier
+    /// followed. A failed barrier is never retried here.
+    pub fn publish_durably(
+        &self,
+        plan: &RenderPlan,
+        ownership: &dyn Ownership,
+        observe: &mut dyn FnMut(&PublishStep<'_>),
+    ) -> Result<PublishReport, Interrupted> {
         // A retired path that folds to a planned one may be the same file on a
         // case-insensitive filesystem; it is never a removal candidate.
         let planned: BTreeSet<String> = plan
@@ -285,19 +392,69 @@ impl<'lock> Publisher<'lock> {
             .filter(|path| !planned.contains(&path.as_str().to_lowercase()))
             .collect();
         let total = plan.entries().len() + retired.len();
+        let generation = plan.generation();
         let mut outcomes = Vec::with_capacity(total);
-        for (index, entry) in plan.entries().iter().enumerate() {
-            let outcome = self.apply(plan.generation(), entry, ownership)?;
-            observe(&PublishStep {
-                index,
-                total,
-                entry: Some(entry),
-                outcome: &outcome,
-            });
-            outcomes.push(outcome);
+        // `outcomes[..durable]` are known durable: a barrier followed them.
+        let mut durable = 0;
+        for batch in plan.entries().chunks(STAGE_BATCH) {
+            // An entry that fails to stage stops the publication there, as
+            // an unbatched write would: the entries staged before it are
+            // still committed, and the error is returned after them.
+            let mut staged = Vec::with_capacity(batch.len());
+            let mut failure = None;
+            for entry in batch {
+                match self.stage(generation, entry, ownership) {
+                    Ok(stage) => staged.push(stage),
+                    Err(error) => {
+                        failure = Some(error);
+                        break;
+                    }
+                }
+            }
+            if staged
+                .iter()
+                .any(|stage| matches!(stage, Staged::Written { .. }))
+            {
+                if let Err(error) = self.barrier() {
+                    self.discard(batch, &staged);
+                    return Err(Interrupted::new(error, outcomes, durable));
+                }
+                durable = outcomes.len();
+            }
+            let mut staged = staged.into_iter();
+            let mut offset = 0;
+            while let Some(stage) = staged.next() {
+                let entry = &batch[offset];
+                offset += 1;
+                let outcome = match stage {
+                    Staged::Done(outcome) => outcome,
+                    Staged::Written { temp, directory } => {
+                        match self.commit(entry, &temp, directory, ownership) {
+                            Ok(outcome) => outcome,
+                            Err(error) => {
+                                self.discard(&batch[offset..], staged.as_slice());
+                                return Err(self.interrupted(error, outcomes, durable));
+                            }
+                        }
+                    }
+                };
+                observe(&PublishStep {
+                    index: outcomes.len(),
+                    total,
+                    entry: Some(entry),
+                    outcome: &outcome,
+                });
+                outcomes.push(outcome);
+            }
+            if let Some(error) = failure {
+                return Err(self.interrupted(error, outcomes, durable));
+            }
         }
         for path in &retired {
-            let outcome = self.retire(temp_tag(plan.generation()), path, ownership)?;
+            let outcome = match self.retire(temp_tag(generation), path, ownership, !BATCHED) {
+                Ok(outcome) => outcome,
+                Err(error) => return Err(self.interrupted(error, outcomes, durable)),
+            };
             observe(&PublishStep {
                 index: outcomes.len(),
                 total,
@@ -306,10 +463,257 @@ impl<'lock> Publisher<'lock> {
             });
             outcomes.push(outcome);
         }
+        // A publication that changed nothing, and only confirmed bytes the
+        // ownership record already holds, has nothing to make durable: the
+        // record only ever holds durable outcomes. Skipping the barrier
+        // keeps such a render from waiting on other writers' data.
+        let changed = outcomes.iter().any(|outcome| match outcome.action {
+            Action::Written | Action::Removed => true,
+            Action::Unchanged => match &outcome.previous {
+                Some(OnDisk::Regular { sha256 }) => ownership
+                    .recorded(&outcome.path)
+                    .is_none_or(|(recorded, _)| recorded != sha256),
+                _ => false,
+            },
+            Action::Refused(_) => false,
+        });
+        if changed && let Err(error) = self.barrier() {
+            return Err(Interrupted::new(error, outcomes, durable));
+        }
         Ok(PublishReport {
-            generation: plan.generation().clone(),
+            generation: generation.clone(),
             outcomes,
         })
+    }
+
+    /// The failure of a publication that reached `outcomes`, after one
+    /// barrier attempt to make all of them durable.
+    fn interrupted(
+        &self,
+        error: RenderError,
+        outcomes: Vec<Outcome>,
+        durable: usize,
+    ) -> Interrupted {
+        let durable = if self.barrier().is_ok() {
+            outcomes.len()
+        } else {
+            durable
+        };
+        Interrupted::new(error, outcomes, durable)
+    }
+
+    /// Make every change made so far under the projection root durable:
+    /// written temporaries, renames, removals and new folders. One `syncfs`
+    /// of the root's filesystem; nothing where each change was synced as it
+    /// was made.
+    pub fn barrier(&self) -> Result<(), RenderError> {
+        match &self.vault {
+            Some(root) => barrier_on(root, "vault"),
+            None => Ok(()),
+        }
+    }
+
+    /// Inspect one entry and decide; on [`Decision::Write`], write the
+    /// planned bytes to a temporary beside the target, without syncing it.
+    fn stage(
+        &self,
+        generation: &Generation,
+        entry: &PlanEntry,
+        ownership: &dyn Ownership,
+    ) -> Result<Staged, RenderError> {
+        let path = entry.path();
+        let outcome = |previous, action| {
+            Staged::Done(Outcome {
+                path: path.clone(),
+                previous,
+                action,
+                stat: None,
+            })
+        };
+        let components: Vec<&str> = path.components().collect();
+        let (name, parents) = components
+            .split_last()
+            .expect("plan paths have at least one component");
+        if let Some(refusal) = self.screen(entry, ownership) {
+            return Ok(outcome(None, Action::Refused(refusal)));
+        }
+        let (on_disk, stat) = match self.walk(path, parents, false)? {
+            Walk::Unsafe => return Ok(outcome(None, Action::Refused(Refusal::UnsafeParent))),
+            Walk::Missing => (OnDisk::Absent, None),
+            Walk::Directory(directory) => self.observe(&directory, path, name, ownership)?,
+        };
+        let action = match (ownership.decide(entry, &on_disk), &on_disk) {
+            (_, OnDisk::Other) => Action::Refused(Refusal::NotARegularFile),
+            (Decision::Refuse(refusal), _) => Action::Refused(refusal),
+            (Decision::Keep, OnDisk::Regular { sha256 }) if sha256 == entry.sha256() => {
+                return Ok(Staged::Done(Outcome {
+                    path: path.clone(),
+                    previous: Some(on_disk),
+                    action: Action::Unchanged,
+                    stat,
+                }));
+            }
+            (Decision::Keep | Decision::Remove, _) => Action::Refused(Refusal::NotProvenOwned),
+            (Decision::Write, _) => match self.walk_with(path, parents, true, !BATCHED)? {
+                Walk::Directory(directory) => {
+                    let temp = write_temporary(
+                        &directory,
+                        path.as_str(),
+                        name,
+                        entry.content(),
+                        temp_tag(generation),
+                        !BATCHED,
+                    )?;
+                    let directory = identity(&directory, path.as_str())?;
+                    return Ok(Staged::Written { temp, directory });
+                }
+                Walk::Missing | Walk::Unsafe => Action::Refused(Refusal::UnsafeParent),
+            },
+        };
+        Ok(outcome(Some(on_disk), action))
+    }
+
+    /// [`inspect`] for a plan entry, using fingerprints when the root's
+    /// filesystem is trusted for them ([`crate::fingerprint`]): a regular
+    /// file whose status equals the fingerprint `ownership` recorded is
+    /// taken to hold the recorded bytes, unread. Otherwise it is read and
+    /// hashed, and its fingerprint is returned for recording when its status
+    /// did not change while it was read and its last change is settled.
+    fn observe(
+        &self,
+        directory: &OwnedFd,
+        path: &PlanPath,
+        name: &str,
+        ownership: &dyn Ownership,
+    ) -> Result<(OnDisk, Option<Fingerprint>), RenderError> {
+        let Some(opened) = self.opened else {
+            return Ok((inspect(directory, path, name)?, None));
+        };
+        let label = path.as_str();
+        let io = |error: Errno| RenderError::io(label, error);
+        let stat = match statat(directory, name, AtFlags::SYMLINK_NOFOLLOW) {
+            Ok(stat) => stat,
+            Err(Errno::NOENT) => return Ok((OnDisk::Absent, None)),
+            Err(error) => return Err(io(error)),
+        };
+        if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
+            return Ok((OnDisk::Other, None));
+        }
+        let seen = Fingerprint::of(&stat);
+        if let Some((sha256, Some(recorded))) = ownership.recorded(path)
+            && recorded == seen
+        {
+            return Ok((
+                OnDisk::Regular {
+                    sha256: sha256.clone(),
+                },
+                Some(seen),
+            ));
+        }
+        let Some((on_disk, before, after)) = read_and_hash(directory, label, name)? else {
+            return Ok((OnDisk::Absent, None));
+        };
+        let stable = match (before, after) {
+            (Some(before), Some(after)) if before == after && before.settled(opened) => {
+                Some(before)
+            }
+            _ => None,
+        };
+        Ok((on_disk, stable))
+    }
+
+    /// Put a staged temporary in place: the path is inspected and decided
+    /// again just before the rename, so the window in which another writer
+    /// can race it is as short as an unbatched write's. A temporary that is
+    /// not renamed is removed; one whose folder was moved meanwhile cannot
+    /// be reached and is left for the sweep.
+    fn commit(
+        &self,
+        entry: &PlanEntry,
+        temp: &str,
+        staged_in: (u64, u64),
+        ownership: &dyn Ownership,
+    ) -> Result<Outcome, RenderError> {
+        let path = entry.path();
+        let label = path.as_str();
+        let outcome = |previous, action| Outcome {
+            path: path.clone(),
+            previous,
+            action,
+            stat: None,
+        };
+        let components: Vec<&str> = path.components().collect();
+        let (name, parents) = components
+            .split_last()
+            .expect("plan paths have at least one component");
+        let directory = match self.walk(path, parents, false)? {
+            Walk::Directory(directory) if identity(&directory, label)? == staged_in => directory,
+            _ => return Ok(outcome(None, Action::Refused(Refusal::UnsafeParent))),
+        };
+        let decided = inspect(&directory, path, name).map(|on_disk| {
+            let decision = ownership.decide(entry, &on_disk);
+            (on_disk, decision)
+        });
+        let (on_disk, decision) = match decided {
+            Ok(decided) => decided,
+            Err(error) => {
+                let _ = unlinkat(&directory, temp, AtFlags::empty());
+                return Err(error);
+            }
+        };
+        let action = match (decision, &on_disk) {
+            (_, OnDisk::Other) => Action::Refused(Refusal::NotARegularFile),
+            (Decision::Refuse(refusal), _) => Action::Refused(refusal),
+            (Decision::Keep, OnDisk::Regular { sha256 }) if sha256 == entry.sha256() => {
+                Action::Unchanged
+            }
+            (Decision::Keep | Decision::Remove, _) => Action::Refused(Refusal::NotProvenOwned),
+            (Decision::Write, _) => {
+                // A path inspected as absent is created without replacing,
+                // so a file that appears meanwhile is never overwritten.
+                let replace = !matches!(on_disk, OnDisk::Absent);
+                if rename_into_place(&directory, label, temp, name, replace, !BATCHED)? {
+                    return Ok(outcome(Some(on_disk), Action::Written));
+                }
+                Action::Refused(Refusal::NotProvenOwned)
+            }
+        };
+        let _ = unlinkat(&directory, temp, AtFlags::empty());
+        Ok(outcome(Some(on_disk), action))
+    }
+
+    /// Remove the temporaries of staged entries that will not be committed,
+    /// best effort; whatever is left, the next render's sweep removes.
+    fn discard(&self, entries: &[PlanEntry], staged: &[Staged]) {
+        for (entry, stage) in entries.iter().zip(staged) {
+            let Staged::Written { temp, directory } = stage else {
+                continue;
+            };
+            let path = entry.path();
+            let components: Vec<&str> = path.components().collect();
+            let parents = &components[..components.len() - 1];
+            if let Ok(Walk::Directory(found)) = self.walk(path, parents, false)
+                && identity(&found, path.as_str()).is_ok_and(|found| found == *directory)
+            {
+                let _ = unlinkat(&found, temp.as_str(), AtFlags::empty());
+            }
+        }
+    }
+
+    /// The hard checks made before anything is inspected: a human-owned
+    /// area, and an attachment that is not an approved preview.
+    fn screen(&self, entry: &PlanEntry, ownership: &dyn Ownership) -> Option<Refusal> {
+        let path = entry.path();
+        if layout::is_human_owned(path) {
+            return Some(Refusal::HumanOwned);
+        }
+        if layout::is_attachment(path)
+            && (layout::attachment_artifact(path).is_none()
+                || !ownership.approves_attachment(entry))
+        {
+            return Some(Refusal::UnlistedAttachment);
+        }
+        None
     }
 
     /// Vault-relative paths of files that are neither owned nor human-owned:
@@ -405,17 +809,20 @@ impl<'lock> Publisher<'lock> {
 
     /// Delete one retired path if [`Ownership::decide_removal`] proves it
     /// generated and its bytes do not change while it is being removed.
-    /// `tag` names the hidden file it is moved aside to first.
+    /// `tag` names the hidden file it is moved aside to first. Without
+    /// `sync`, a removal is durable only after the next [`Self::barrier`].
     pub(crate) fn retire(
         &self,
         tag: &str,
         path: &PlanPath,
         ownership: &dyn Ownership,
+        sync: bool,
     ) -> Result<Outcome, RenderError> {
         let outcome = |previous, action| Outcome {
             path: path.clone(),
             previous,
             action,
+            stat: None,
         };
         if layout::is_human_owned(path) {
             return Ok(outcome(None, Action::Refused(Refusal::HumanOwned)));
@@ -435,7 +842,7 @@ impl<'lock> Publisher<'lock> {
             (_, OnDisk::Other) => Action::Refused(Refusal::NotARegularFile),
             (Decision::Refuse(refusal), _) => Action::Refused(refusal),
             (Decision::Remove, OnDisk::Regular { sha256 }) => {
-                match remove_verified(&directory, tag, path.as_str(), name, sha256)? {
+                match remove_verified(&directory, tag, path.as_str(), name, sha256, sync)? {
                     Removal::Removed => {
                         drop(directory);
                         self.prune_empty_parents(path, parents);
@@ -487,19 +894,14 @@ impl<'lock> Publisher<'lock> {
             path: path.clone(),
             previous,
             action,
+            stat: None,
         };
         let components: Vec<&str> = path.components().collect();
         let (name, parents) = components
             .split_last()
             .expect("plan paths have at least one component");
-        if layout::is_human_owned(path) {
-            return Ok(outcome(None, Action::Refused(Refusal::HumanOwned)));
-        }
-        if layout::is_attachment(path)
-            && (layout::attachment_artifact(path).is_none()
-                || !ownership.approves_attachment(entry))
-        {
-            return Ok(outcome(None, Action::Refused(Refusal::UnlistedAttachment)));
+        if let Some(refusal) = self.screen(entry, ownership) {
+            return Ok(outcome(None, Action::Refused(refusal)));
         }
 
         let on_disk = match self.walk(path, parents, false)? {
@@ -539,6 +941,18 @@ impl<'lock> Publisher<'lock> {
         parents: &[&str],
         create: bool,
     ) -> Result<Walk, RenderError> {
+        self.walk_with(path, parents, create, true)
+    }
+
+    /// [`Self::walk`]; without `sync`, a folder it creates is durable only
+    /// after the next [`Self::barrier`].
+    fn walk_with(
+        &self,
+        path: &PlanPath,
+        parents: &[&str],
+        create: bool,
+        sync: bool,
+    ) -> Result<Walk, RenderError> {
         let Some(root) = &self.vault else {
             return Ok(Walk::Missing);
         };
@@ -551,7 +965,9 @@ impl<'lock> Publisher<'lock> {
                         Ok(()) | Err(Errno::EXIST) => {}
                         Err(error) => return Err(RenderError::io(path.as_str(), error)),
                     }
-                    fsync(&directory).map_err(|error| RenderError::io(path.as_str(), error))?;
+                    if sync {
+                        fsync(&directory).map_err(|error| RenderError::io(path.as_str(), error))?;
+                    }
                     openat(&directory, *component, DIRECTORY, Mode::empty())
                 }
                 other => other,
@@ -602,6 +1018,22 @@ pub(crate) fn inspect_named(
     if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
         return Ok(OnDisk::Other);
     }
+    Ok(read_and_hash(directory, label, name)?.map_or(OnDisk::Absent, |(on_disk, _, _)| on_disk))
+}
+
+/// What [`read_and_hash`] found: the file, and its fingerprint before and
+/// after the read.
+type Hashed = (OnDisk, Option<Fingerprint>, Option<Fingerprint>);
+
+/// Open `name` without following links and hash its bytes, with the
+/// fingerprint of the open file before and after the read (`None` when it
+/// is not a regular file). `None` when it vanished.
+fn read_and_hash(
+    directory: &OwnedFd,
+    label: &str,
+    name: &str,
+) -> Result<Option<Hashed>, RenderError> {
+    let io = |error: Errno| RenderError::io(label, error);
     // NONBLOCK: a FIFO swapped in after the stat must not hang the render.
     let fd = match openat(
         directory,
@@ -610,20 +1042,26 @@ pub(crate) fn inspect_named(
         Mode::empty(),
     ) {
         Ok(fd) => fd,
-        Err(Errno::NOENT) => return Ok(OnDisk::Absent),
-        Err(Errno::LOOP) => return Ok(OnDisk::Other),
+        Err(Errno::NOENT) => return Ok(None),
+        Err(Errno::LOOP) => return Ok(Some((OnDisk::Other, None, None))),
         Err(error) => return Err(io(error)),
     };
-    if FileType::from_raw_mode(fstat(&fd).map_err(io)?.st_mode) != FileType::RegularFile {
-        return Ok(OnDisk::Other);
+    let before = fstat(&fd).map_err(io)?;
+    if FileType::from_raw_mode(before.st_mode) != FileType::RegularFile {
+        return Ok(Some((OnDisk::Other, None, None)));
     }
+    let mut file = File::from(fd);
     let mut bytes = Vec::new();
-    File::from(fd)
-        .read_to_end(&mut bytes)
+    file.read_to_end(&mut bytes)
         .map_err(|error| RenderError::io(label, error))?;
-    Ok(OnDisk::Regular {
-        sha256: hash_bytes(&bytes),
-    })
+    let after = fstat(&file).map_err(io)?;
+    Ok(Some((
+        OnDisk::Regular {
+            sha256: hash_bytes(&bytes),
+        },
+        Some(Fingerprint::of(&before)),
+        Some(Fingerprint::of(&after)),
+    )))
 }
 
 /// A short, file-name-safe tag for temporary names from a generation ID.
@@ -704,38 +1142,89 @@ pub(crate) fn write_bytes_atomically(
     tag: &str,
     replace: bool,
 ) -> Result<bool, RenderError> {
-    let (temp, fd) = create_temporary(directory, label, name, tag, "inv-tmp")?;
-    let mut file = File::from(fd);
-    let written = file.write_all(bytes).and_then(|()| file.sync_all());
-    drop(file);
-    let result = written
-        .map_err(|error| RenderError::io(label, error))
-        .and_then(|()| {
-            let renamed = if replace {
-                renameat(directory, temp.as_str(), directory, name)
-            } else {
-                renameat_with(
-                    directory,
-                    temp.as_str(),
-                    directory,
-                    name,
-                    RenameFlags::NOREPLACE,
-                )
-            };
-            match renamed {
-                Ok(()) => Ok(true),
-                Err(Errno::EXIST) if !replace => Ok(false),
-                Err(error) => Err(RenderError::io(label, error)),
-            }
-        });
-    if !matches!(result, Ok(true)) {
+    write_bytes_with(directory, label, name, bytes, tag, replace, true)
+}
+
+/// [`write_bytes_atomically`], with the file and its directory synced only
+/// when `sync`; otherwise a later [`barrier_on`] makes the change durable.
+pub(crate) fn write_bytes_with(
+    directory: &OwnedFd,
+    label: &str,
+    name: &str,
+    bytes: &[u8],
+    tag: &str,
+    replace: bool,
+    sync: bool,
+) -> Result<bool, RenderError> {
+    let temp = write_temporary(directory, label, name, bytes, tag, sync)?;
+    let renamed = rename_into_place(directory, label, &temp, name, replace, sync);
+    if !matches!(renamed, Ok(true)) {
         let _ = unlinkat(directory, temp.as_str(), AtFlags::empty());
     }
-    let renamed = result?;
-    if renamed {
+    renamed
+}
+
+/// Make every change made so far on the filesystem holding `fd` durable:
+/// one `syncfs`. Nothing where [`BATCHED`] is false, because there each
+/// change was synced as it was made.
+pub(crate) fn barrier_on(fd: &OwnedFd, label: &str) -> Result<(), RenderError> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    rustix::fs::syncfs(fd).map_err(|error| RenderError::io(label, error))?;
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    let _ = (fd, label);
+    Ok(())
+}
+
+/// Write `bytes` to a fresh private temporary beside `name` and return its
+/// name; synced when `sync`. A temporary that could not be written whole is
+/// removed.
+fn write_temporary(
+    directory: &OwnedFd,
+    label: &str,
+    name: &str,
+    bytes: &[u8],
+    tag: &str,
+    sync: bool,
+) -> Result<String, RenderError> {
+    let (temp, fd) = create_temporary(directory, label, name, tag, "inv-tmp")?;
+    let mut file = File::from(fd);
+    let written = file
+        .write_all(bytes)
+        .and_then(|()| if sync { file.sync_all() } else { Ok(()) });
+    drop(file);
+    if let Err(error) = written {
+        let _ = unlinkat(directory, temp.as_str(), AtFlags::empty());
+        return Err(RenderError::io(label, error));
+    }
+    Ok(temp)
+}
+
+/// Rename `temp` to `name` in `directory`, then sync the directory when
+/// `sync`. Without `replace` an existing `name` is left alone and the result
+/// is `false`. The temporary is left in place whenever the result is not
+/// `Ok(true)`.
+fn rename_into_place(
+    directory: &OwnedFd,
+    label: &str,
+    temp: &str,
+    name: &str,
+    replace: bool,
+    sync: bool,
+) -> Result<bool, RenderError> {
+    let renamed = if replace {
+        renameat(directory, temp, directory, name)
+    } else {
+        renameat_with(directory, temp, directory, name, RenameFlags::NOREPLACE)
+    };
+    match renamed {
+        Ok(()) => {}
+        Err(Errno::EXIST) if !replace => return Ok(false),
+        Err(error) => return Err(RenderError::io(label, error)),
+    }
+    if sync {
         fsync(directory.as_fd()).map_err(|error| RenderError::io(label, error))?;
     }
-    Ok(renamed)
+    Ok(true)
 }
 
 pub(crate) enum Removal {
@@ -754,12 +1243,15 @@ pub(crate) enum Removal {
 /// when the hash still matches, and otherwise renamed back without replacing
 /// anything. A file that cannot be put back is reported with its location and
 /// never deleted. `label` names the file in errors; `tag` its temporary.
+/// Without `sync` a removal is durable only after the caller's barrier; a
+/// file put back is always synced.
 pub(crate) fn remove_verified(
     directory: &OwnedFd,
     tag: &str,
     label: &str,
     name: &str,
     expected: &Digest,
+    sync: bool,
 ) -> Result<Removal, RenderError> {
     let mut aside = None;
     for attempt in 0..TEMP_ATTEMPTS {
@@ -791,7 +1283,9 @@ pub(crate) fn remove_verified(
     if matches!(unchanged, Ok(true)) {
         unlinkat(directory, aside.as_str(), AtFlags::empty())
             .map_err(|error| RenderError::io(label, error))?;
-        fsync(directory.as_fd()).map_err(|error| RenderError::io(label, error))?;
+        if sync {
+            fsync(directory.as_fd()).map_err(|error| RenderError::io(label, error))?;
+        }
         return Ok(Removal::Removed);
     }
     match renameat_with(

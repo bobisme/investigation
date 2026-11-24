@@ -32,10 +32,23 @@ Other observations at 60 and 130 cases:
 - Drift detection: `vault status` does not see hand edits made since the last render (it reads the manifest and snapshot heads). The first render after the edits detects and records them (4.2 s at 4.5k notes, 8.4 s at 9.9k), after which `status` reports every one (100 of 100), `vault conflicts` takes 20 to 250 ms and `vault reconcile --dry-run` over 90 paths takes 22 to 140 ms.
 - The viewer features add 1,170 Base files (1.1 MB) and 130 Canvas files (1.5 MB) at 130 cases: 16% more files, 8% more bytes, 2 to 5% more full-render time.
 - Render manifest: 5.1 MB at 9.9k notes (about 520 bytes per note), so about 25 MB at 50k.
-- A render writes about 25 to 30 ms per note, and 99% of that is `fsync` (about two per note).
+- A render writes about 25 to 30 ms per note, and 99% of that is `fsync` (about two per note). PERF.07 replaced the per-file syncs with batches; see below.
 - At the measured commit, brief, next and status on one small case cost as much as on the whole workspace, because they verified every case. Since PERF.06 (bn-24bx, ADR 0011), `brief`, `next`, `show` and `record` verify only the cases they read: at 650 cases they take 15, 19, 13 and 85 ms. `vault status` still reads the whole workspace.
 
 Against the plan's §10.5 targets (warm brief/next under 250 ms p95 and mutation under 150 ms p95, set for 10,000 objects in one case): at 60 cases (3,840 objects) brief and next met them and `record` was at the limit; from about 8,000 objects over 130 cases they were missed by 4x to 10x and at 41,600 objects over 650 cases by 2x to 4x on a less loaded moment. Slow commands are filed as PERF bones under bn-9muo: PERF.06 (bn-24bx, commit and read cost grows with the number of cases), PERF.07 (bn-kxx5, render fsync and unchanged-render cost), PERF.08 (bn-171a, `repair index`).
+
+## After PERF.07 (bn-kxx5)
+
+The publisher now makes vault files durable in batches of 2,048, with one filesystem barrier per batch, and an unchanged render skips copies of the plan, needless manifest stores, and reading files whose recorded stat fingerprint still matches ([ADR 0012](adr/0012-batched-vault-durability.md)). Same machine and load as above, `just load-test` at 130 cases, baseline variant, before (main at 1a4c6cb) and after:
+
+| 130 cases, 9,881 notes | Before | After |
+| --- | --- | --- |
+| Full render | 283 s, 258 MiB | 1.3 s, 196 MiB |
+| Render, nothing changed (n=3) | 1.51 s, 267 MiB | 1.00 s, 201 MiB |
+| Render, one record changed (n=3) | 1.73 s | 1.09 s |
+| First render after the drift edits | 6.5 s, 334 MiB | 1.65 s (measured by hand, n=1) |
+
+At 650 cases (49,401 notes), on two copies of one generated workspace with alternating order: full render 1,369 s, 1.20 GiB before and 9.4 s, 0.90 GiB after; the first render after it 24.2 s before (the 23.5 s above) and 9.7 s after; later unchanged renders 6.3 to 8.3 s, 1.28 GiB before and 5.2 to 5.3 s, 0.95 GiB after. The vaults are byte-identical. What remains of an unchanged render at this size is mostly planning (3.6 s) and reading the snapshot (0.7 s). After PERF.06 (case-scoped verification) the unchanged render measured 5.6 to 6.2 s before and 5.1 to 5.4 s after at 650 cases, and 1.16 to 1.24 s before and 0.98 to 1.05 s after at 130 cases.
 
 ## Not measured
 
@@ -44,7 +57,7 @@ The acceptance for this bone also names Obsidian's own behaviour: cold open, a B
 ## Guidance
 
 - Tested scale: up to 49,401 generated notes in one vault and 650 cases. Below about 5,000 notes every measured command finished within a few seconds on this machine, apart from the first render. Treat 10,000 notes as the point where a full render takes minutes and commits and reads take about a second.
-- A full render is slow (about half a minute per 1,000 notes). It happens once, and again only when the renderer version changes or the vault is deleted. After that, an unchanged render reads and hashes every note (23 s at 49k notes).
+- A full render takes about 0.2 s per 1,000 notes since PERF.07 (it was about half a minute). It happens once, and again only when the renderer version changes or the vault is deleted. After that, an unchanged render reads only the notes whose stat fingerprint changed, but it still plans the whole vault: planning is most of its time.
 - Per-case Bases already filter by exact case ID, so a Base reads only its own case's properties when a case view is opened. Obsidian may still index every note in the vault.
 - Mitigations that change no canonical state: keep one vault per active case or per review (`vault render` renders the whole workspace today; use a separate workspace archive or a review export for a closed case), archive closed cases out of the working vault by moving them to a different workspace, and keep the viewer features off for a very large vault, since they add about 16% more files. Deleting or moving generated notes is drift: it is detected and reported, never written back to the journal.
 - Do not edit generated notes while measuring; edits are drift and are kept as found.

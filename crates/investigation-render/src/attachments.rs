@@ -82,6 +82,16 @@ impl Ownership for Gate<'_> {
         self.inner.retired(plan)
     }
 
+    fn recorded(
+        &self,
+        path: &PlanPath,
+    ) -> Option<(
+        &investigation_core::wire::Digest,
+        Option<crate::fingerprint::Fingerprint>,
+    )> {
+        self.inner.recorded(path)
+    }
+
     fn decide_removal(&self, path: &PlanPath, on_disk: &OnDisk) -> Decision {
         self.inner.decide_removal(path, on_disk)
     }

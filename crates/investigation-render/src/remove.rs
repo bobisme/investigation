@@ -103,6 +103,7 @@ pub fn remove_projection(workspace: &Workspace) -> Result<RemoveReport, RenderEr
                 path,
                 previous: Some(OnDisk::Absent),
                 action: Action::Unchanged,
+                stat: None,
             })
             .collect();
         let manifest = manifest.removed(&outcomes);
@@ -121,7 +122,8 @@ pub fn remove_projection(workspace: &Workspace) -> Result<RemoveReport, RenderEr
     let mut outcomes = Vec::with_capacity(targets.len());
     let mut result = Ok(());
     for path in &targets {
-        match publisher.retire(TAG, path, &manifest) {
+        // Each removal is made durable by the barrier below, not one by one.
+        match publisher.retire(TAG, path, &manifest, false) {
             Ok(outcome) => outcomes.push(outcome),
             Err(error) => {
                 result = Err(error);
@@ -129,6 +131,9 @@ pub fn remove_projection(workspace: &Workspace) -> Result<RemoveReport, RenderEr
             }
         }
     }
+    // Nothing is forgotten before its removal is durable: when the barrier
+    // fails, the `updating` record stays, and the next removal finishes.
+    publisher.barrier()?;
     // The outcomes reached are recorded even when a file operation failed,
     // so every deleted path is forgotten and every kept one stays owned.
     let manifest = manifest.removed(&outcomes);

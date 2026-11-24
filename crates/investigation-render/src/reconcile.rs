@@ -739,7 +739,7 @@ fn apply(
                     ));
                 }
                 keep(workspace, to, &bytes, &sha256, tag)?;
-                match remove_verified(&directory, tag, &observed.path, name, &sha256)? {
+                match remove_verified(&directory, tag, &observed.path, name, &sha256, true)? {
                     Removal::Removed | Removal::Vanished => {}
                     Removal::Changed => {
                         return Err(changed(

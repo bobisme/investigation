@@ -6,7 +6,10 @@
 //! randomness or hash-order iteration. A test scans these sources to keep it
 //! that way. Identical inputs therefore give byte-identical plans.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use investigation_core::{
     identity::{Id, Kind},
@@ -153,7 +156,9 @@ pub enum Phase {
 pub struct PlanEntry {
     path: PlanPath,
     phase: Phase,
-    content: Vec<u8>,
+    /// Shared, so copies of a plan that change one entry (a restamped basis,
+    /// an announcing entry note) do not copy every planned byte.
+    content: Arc<[u8]>,
     sha256: Digest,
     projects: Option<Id>,
 }
@@ -266,6 +271,17 @@ impl RenderPlan {
             .iter()
             .find(|entry| entry.path.as_str() == path)
     }
+
+    /// Replace the content of the entry at `index`; its digest follows. The
+    /// path, phase, order and every other entry stay as they are.
+    pub(crate) fn replace_content(&mut self, index: usize, content: Vec<u8>) {
+        let entry = &mut self.entries[index];
+        if *entry.content == *content {
+            return;
+        }
+        entry.sha256 = hash_bytes(&content);
+        entry.content = content.into();
+    }
 }
 
 /// Collects entries in any order and produces a plan in the canonical order.
@@ -299,12 +315,12 @@ impl PlanBuilder {
         if !self.folded.insert(path.as_str().to_lowercase()) {
             return Err(RenderError::DuplicatePath(path.0));
         }
-        let content = content.into();
+        let content: Vec<u8> = content.into();
         let entry = PlanEntry {
             sha256: hash_bytes(&content),
             path: path.clone(),
             phase,
-            content,
+            content: content.into(),
             projects,
         };
         self.entries.insert((phase, path), entry);
@@ -423,6 +439,17 @@ impl CaseRenderer for VaultRenderer {
             .collect();
         let content = templates::start_here(snapshot, &contexts, policy, &generation, health)?;
         let path = layout::start_here()?;
+        // Every other entry is shared with `plan`, already stamped.
+        if let Some(index) = plan
+            .entries()
+            .iter()
+            .position(|entry| entry.path() == &path)
+        {
+            let stamped = marker::stamp_note(&path, &content, snapshot, &generation)?;
+            let mut announced = plan.clone();
+            announced.replace_content(index, stamped);
+            return Ok(announced);
+        }
         let mut builder = PlanBuilder::new(generation.clone());
         for entry in plan.entries() {
             let content = if entry.path() == &path {

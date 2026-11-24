@@ -74,7 +74,7 @@ use crate::{
     Refusal, RenderError, RenderPlan,
     lock::open_local,
     marker,
-    publish::{Walk, write_bytes_atomically},
+    publish::{BATCHED, Walk, barrier_on, write_bytes_with},
 };
 
 /// Workspace-relative folder holding the generated versions a render
@@ -277,6 +277,16 @@ impl Ownership for Guard<'_> {
         self.manifest.retired(plan)
     }
 
+    fn recorded(
+        &self,
+        path: &PlanPath,
+    ) -> Option<(
+        &investigation_core::wire::Digest,
+        Option<crate::fingerprint::Fingerprint>,
+    )> {
+        self.manifest.recorded(path)
+    }
+
     fn decide_removal(&self, path: &PlanPath, on_disk: &OnDisk) -> Decision {
         self.hold(path, self.manifest.decide_removal(path, on_disk))
     }
@@ -436,6 +446,9 @@ pub(crate) fn retain(
         .trim_start_matches("gen_")
         .get(..12)
         .unwrap_or("render");
+    // Copies are written unsynced and made durable by one barrier before
+    // the manifest that names them is stored (ADR 0012).
+    let mut wrote = false;
     for drift in drifts {
         let (Some(generated), Some(entry)) = (&drift.generated, entries.get(&drift.path)) else {
             continue;
@@ -452,10 +465,22 @@ pub(crate) fn retain(
         let relative = format!("{CONFLICTS_DIR}/{generation}/{}", drift.path.as_str());
         let mut components: Vec<&str> = relative.split('/').skip(1).collect();
         let name = components.pop().expect("conflict paths have a file name");
-        let directory =
-            conflicts_directory(&local, &components, true)?.expect("created directories exist");
-        write_bytes_atomically(&directory, &relative, name, entry.content(), tag, true)?;
+        let directory = conflicts_directory_with(&local, &components, true, !BATCHED)?
+            .expect("created directories exist");
+        write_bytes_with(
+            &directory,
+            &relative,
+            name,
+            entry.content(),
+            tag,
+            true,
+            !BATCHED,
+        )?;
         drift.conflict = Some(relative);
+        wrote = true;
+    }
+    if wrote && BATCHED {
+        barrier_on(&local, CONFLICTS_DIR)?;
     }
     Ok(())
 }
@@ -481,6 +506,16 @@ pub(crate) fn conflicts_directory(
     components: &[&str],
     create: bool,
 ) -> Result<Option<OwnedFd>, RenderError> {
+    conflicts_directory_with(local, components, create, true)
+}
+
+/// [`conflicts_directory`], syncing a folder it creates only when `sync`.
+fn conflicts_directory_with(
+    local: &OwnedFd,
+    components: &[&str],
+    create: bool,
+    sync: bool,
+) -> Result<Option<OwnedFd>, RenderError> {
     let flags = OFlags::DIRECTORY | OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC;
     let mut directory = openat(local, ".", flags, Mode::empty())
         .map_err(|error| RenderError::io("local", error))?;
@@ -491,7 +526,9 @@ pub(crate) fn conflicts_directory(
                 Ok(()) | Err(Errno::EXIST) => {}
                 Err(error) => return Err(RenderError::io(CONFLICTS_DIR, error)),
             }
-            fsync(directory.as_fd()).map_err(|error| RenderError::io(CONFLICTS_DIR, error))?;
+            if sync {
+                fsync(directory.as_fd()).map_err(|error| RenderError::io(CONFLICTS_DIR, error))?;
+            }
             next = openat(&directory, *component, flags, Mode::empty());
         }
         directory = match next {

@@ -33,7 +33,17 @@
 //!
 //! The manifest is written atomically and only after every file operation of
 //! a render, so it never claims a file before that file exists with the
-//! recorded bytes.
+//! recorded bytes. The publisher syncs the vault in batches rather than per
+//! file ([`crate::publish`]); every outcome it hands over for recording was
+//! followed by a durability barrier, so after a crash the manifest never
+//! claims a write or removal the crash undid. A render that would change
+//! neither the vault nor the record writes neither: the write-ahead record
+//! is skipped when no planned byte differs from what is owned, and the
+//! final record when it equals the one loaded.
+//!
+//! An owned record can also keep the stat fingerprint of the file its bytes
+//! were last observed in ([`crate::fingerprint`]), so an unchanged render
+//! need not read every file.
 //!
 //! ## Render generations
 //!
@@ -101,8 +111,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Action, Decision, Drift, DriftKind, Generation, OnDisk, Ownership, PlanEntry, PlanPath,
-    PublishReport, Refusal, RenderError, RenderLock, RenderPlan, drift::CONFLICTS_DIR, layout,
-    lock::open_local, projection::Projection, publish::write_bytes_atomically,
+    PublishReport, Refusal, RenderError, RenderLock, RenderPlan, drift::CONFLICTS_DIR,
+    fingerprint::Fingerprint, layout, lock::open_local, projection::Projection,
+    publish::write_bytes_atomically,
 };
 
 /// Workspace-relative path of the manifest.
@@ -128,6 +139,10 @@ pub struct OwnedPath {
     /// generation's head when the note did not change (see
     /// [`crate::incremental`]).
     pub basis: Option<Snapshot>,
+    /// The fingerprint of the file these bytes were last observed in, when
+    /// it may stand for reading them ([`crate::fingerprint`]). Never kept
+    /// across a write of the path.
+    pub stat: Option<Fingerprint>,
 }
 
 /// A vault path a person took over from the renderer (`release-path`).
@@ -238,6 +253,10 @@ pub enum ManifestStatus {
 pub struct LoadedManifest {
     pub manifest: Manifest,
     pub status: ManifestStatus,
+    /// The SHA-256 of the bytes loaded; `None` unless the status is
+    /// [`ManifestStatus::Loaded`]. A render whose record would not change
+    /// these bytes does not store them again.
+    pub digest: Option<Digest>,
 }
 
 impl Manifest {
@@ -552,6 +571,7 @@ impl Manifest {
                 generation: generation.id().to_owned(),
                 projects: entry.projects(),
                 basis: basis_of(entry),
+                stat: None,
             },
         );
         self
@@ -607,6 +627,9 @@ impl Manifest {
                 generation: generation.id().to_owned(),
                 projects: entry.projects(),
                 basis: basis_of(entry).filter(|_| complete || same_rules),
+                // Only a file found holding the planned bytes keeps the
+                // fingerprint it was found with; a write drops it.
+                stat: outcome.stat.filter(|_| outcome.action == Action::Unchanged),
             };
             match outcome.action {
                 Action::Written => {
@@ -713,6 +736,7 @@ impl Manifest {
             Ok(LoadedManifest {
                 manifest: Self::new(),
                 status: ManifestStatus::Rebuilt { reason },
+                digest: None,
             })
         };
         let local = open_local(workspace.root())?;
@@ -727,6 +751,7 @@ impl Manifest {
                 return Ok(LoadedManifest {
                     manifest: Self::new(),
                     status: ManifestStatus::Missing,
+                    digest: None,
                 });
             }
             Err(Errno::LOOP) => return rebuilt("the manifest is a symbolic link".to_owned()),
@@ -751,6 +776,7 @@ impl Manifest {
             Ok(manifest) => Ok(LoadedManifest {
                 manifest,
                 status: ManifestStatus::Loaded,
+                digest: Some(investigation_store::journal::hash_bytes(&bytes)),
             }),
             Err(Problem::Unsupported(version)) => Err(RenderError::UnsupportedManifest { version }),
             Err(Problem::Invalid(reason)) => rebuilt(reason),
@@ -760,6 +786,16 @@ impl Manifest {
     /// Replace `local/render-manifest.json` atomically. Call it only after
     /// every file operation of the render, so the manifest is published last.
     pub fn store(&self, workspace: &Workspace, lock: &RenderLock) -> Result<(), RenderError> {
+        self.store_encoded(workspace, lock, &self.to_json())
+    }
+
+    /// [`Self::store`] with `bytes`, which must be [`Self::to_json`].
+    pub(crate) fn store_encoded(
+        &self,
+        workspace: &Workspace,
+        lock: &RenderLock,
+        bytes: &[u8],
+    ) -> Result<(), RenderError> {
         if lock.workspace_root() != workspace.root() {
             return Err(RenderError::WrongWorkspace);
         }
@@ -769,15 +805,7 @@ impl Manifest {
             .as_ref()
             .and_then(|generation| generation.id.trim_start_matches("gen_").get(..12))
             .unwrap_or("manifest");
-        write_bytes_atomically(
-            &local,
-            RENDER_MANIFEST,
-            FILE_NAME,
-            &self.to_json(),
-            tag,
-            true,
-        )
-        .map(|_| ())
+        write_bytes_atomically(&local, RENDER_MANIFEST, FILE_NAME, bytes, tag, true).map(|_| ())
     }
 
     /// Canonical JSON: fixed field order, owned paths sorted, trailing newline.
@@ -825,6 +853,7 @@ impl Manifest {
                         sequence: head.sequence,
                         head_hash: head.head_hash.clone(),
                     }),
+                    stat: record.stat.as_ref().map(Fingerprint::encode),
                 })
                 .collect(),
             pending: self
@@ -887,12 +916,19 @@ impl Manifest {
     /// Parse and validate a manifest. Every path must be a valid plan path
     /// outside the human-owned roots, and no two may fold to the same name.
     fn from_json(bytes: &[u8]) -> Result<Self, Problem> {
-        let value: serde_json::Value = serde_json::from_slice(bytes)
-            .map_err(|error| Problem::Invalid(format!("the manifest is not JSON: {error}")))?;
-        match value
-            .get("schema_version")
-            .and_then(|version| version.as_str())
-        {
+        // The version is read first, so a newer format is reported as such;
+        // then the record is parsed straight into its wire form, without a
+        // generic JSON tree of the whole file in between.
+        let version = match serde_json::from_slice::<WireVersion>(bytes) {
+            Ok(version) => version.schema_version,
+            Err(error) if error.is_syntax() || error.is_eof() => {
+                return Err(Problem::Invalid(format!(
+                    "the manifest is not JSON: {error}"
+                )));
+            }
+            Err(_) => None,
+        };
+        match version.as_ref().and_then(serde_json::Value::as_str) {
             Some(MANIFEST_VERSION) => {}
             Some(version) => return Err(Problem::Unsupported(version.to_owned())),
             None => {
@@ -901,7 +937,7 @@ impl Manifest {
                 ));
             }
         }
-        let wire: Wire = serde_json::from_value(value)
+        let wire: Wire = serde_json::from_slice(bytes)
             .map_err(|error| Problem::Invalid(format!("the manifest is malformed: {error}")))?;
         let checked = |path: String| {
             let path = PlanPath::new(path).map_err(|error| {
@@ -956,6 +992,9 @@ impl Manifest {
                         sequence: head.sequence,
                         head_hash: head.head_hash,
                     }),
+                    // A fingerprint that does not parse is ignored: the file
+                    // is then read, which is only more cautious.
+                    stat: record.stat.as_deref().and_then(Fingerprint::decode),
                 },
             );
         }
@@ -1160,6 +1199,12 @@ impl Ownership for Manifest {
             .collect()
     }
 
+    fn recorded(&self, path: &PlanPath) -> Option<(&Digest, Option<Fingerprint>)> {
+        self.owned
+            .get(path)
+            .map(|record| (&record.sha256, record.stat))
+    }
+
     fn decide_removal(&self, path: &PlanPath, on_disk: &OnDisk) -> Decision {
         let owned = self.owned.contains_key(path);
         if !owned && !self.pending.contains_key(path) {
@@ -1189,6 +1234,13 @@ impl From<&Generation> for CompletedGeneration {
 enum Problem {
     Unsupported(String),
     Invalid(String),
+}
+
+/// Only the format version of a manifest.
+#[derive(Deserialize)]
+struct WireVersion {
+    #[serde(default)]
+    schema_version: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -1304,6 +1356,10 @@ struct WireOwned {
     /// Absent in manifests written before incremental rendering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     basis: Option<WireBasis>,
+    /// `device:inode:size:mtime:ctime` ([`Fingerprint::encode`]); absent in
+    /// manifests written before fingerprints, and for files not yet settled.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    stat: Option<String>,
 }
 
 /// A case note's basis; its path names the case.

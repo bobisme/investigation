@@ -33,7 +33,7 @@
 
 use investigation_core::wire::{Digest, Snapshot};
 
-use crate::{Generation, PlanBuilder, PlanPath, RenderError, RenderPlan, VerifiedSnapshot, layout};
+use crate::{Generation, PlanPath, RenderError, RenderPlan, VerifiedSnapshot, layout};
 
 /// The case journal sequence a case note reflects.
 pub const SEQUENCE_KEY: &str = "inv_render_sequence";
@@ -194,28 +194,40 @@ pub fn stamp(content: &str, marker: &NoteMarker) -> Result<String, &'static str>
 /// (Bases, Canvas) are left as planned. Order, phases and projections are
 /// unchanged; digests are recomputed.
 pub fn stamp_plan(
-    plan: RenderPlan,
+    mut plan: RenderPlan,
     snapshot: &VerifiedSnapshot,
 ) -> Result<RenderPlan, RenderError> {
     let generation = plan.generation().clone();
-    let mut builder = PlanBuilder::new(generation.clone());
-    for entry in plan.entries() {
+    for index in 0..plan.entries().len() {
+        let entry = &plan.entries()[index];
         let path = entry.path();
-        let content = if path.as_str().ends_with(".md") {
-            let marker = NoteMarker::for_path(path, snapshot, &generation)?;
-            let invalid = |reason| RenderError::Marker {
-                path: path.as_str().to_owned(),
-                reason,
-            };
-            let text = std::str::from_utf8(entry.content())
-                .map_err(|_| invalid("the note is not UTF-8"))?;
-            stamp(text, &marker).map_err(invalid)?.into_bytes()
-        } else {
-            entry.content().to_vec()
-        };
-        builder.add(entry.phase(), path.clone(), content, entry.projects())?;
+        if !path.as_str().ends_with(".md") {
+            continue;
+        }
+        let text = std::str::from_utf8(entry.content()).map_err(|_| RenderError::Marker {
+            path: path.as_str().to_owned(),
+            reason: "the note is not UTF-8",
+        })?;
+        let stamped = stamp_note(path, text, snapshot, &generation)?;
+        plan.replace_content(index, stamped);
     }
-    Ok(builder.finish())
+    Ok(plan)
+}
+
+/// One Markdown note of a plan for `generation`, stamped with its marker.
+pub(crate) fn stamp_note(
+    path: &PlanPath,
+    text: &str,
+    snapshot: &VerifiedSnapshot,
+    generation: &Generation,
+) -> Result<Vec<u8>, RenderError> {
+    let marker = NoteMarker::for_path(path, snapshot, generation)?;
+    stamp(text, &marker)
+        .map(String::into_bytes)
+        .map_err(|reason| RenderError::Marker {
+            path: path.as_str().to_owned(),
+            reason,
+        })
 }
 
 #[cfg(test)]

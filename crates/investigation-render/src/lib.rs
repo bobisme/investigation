@@ -50,7 +50,13 @@
 //!   [`Ownership`] decision before any write. [`NoManifest`] is the
 //!   conservative default: it creates absent files and keeps identical ones,
 //!   and refuses everything else. [`Ownership::approves_attachment`] gates
-//!   every `Attachments/` entry and approves nothing by default.
+//!   every `Attachments/` entry and approves nothing by default. Writes are
+//!   staged as temporaries and made durable in batches, one filesystem sync
+//!   per batch instead of two per file, and each path is inspected again
+//!   just before its rename (ADR 0012).
+//! - [`fingerprint`]: an owned file whose device, inode, size, modification
+//!   and status-change times equal those recorded is confirmed unchanged
+//!   without being read; any difference and it is read and hashed.
 //! - [`manifest`]: [`Manifest`] is the path ownership record in
 //!   `local/render-manifest.json` and the [`Ownership`] the working vault is
 //!   published under. A path is owned only with the hash of the bytes last
@@ -215,6 +221,7 @@ pub(crate) mod entry;
 pub mod error;
 pub mod evidence;
 pub mod export;
+pub mod fingerprint;
 pub mod incremental;
 pub mod layout;
 pub mod lock;
@@ -256,8 +263,8 @@ pub use plan::{
 };
 pub use policy::{Audience, ViewPolicy};
 pub use publish::{
-    Action, Decision, NoManifest, OnDisk, Outcome, Ownership, PublishReport, PublishStep,
-    Publisher, Refusal,
+    Action, Decision, Interrupted, NoManifest, OnDisk, Outcome, Ownership, PublishReport,
+    PublishStep, Publisher, Refusal,
 };
 pub use snapshot::{CaseSnapshot, VerifiedSnapshot};
 pub use start_here::EntryHealth;
@@ -374,14 +381,16 @@ pub(crate) fn render_locked<F: DurableFs>(
     };
     // Announcing re-plans from `planned`, whose notes name their case heads;
     // only the entry note of an announcement is ever published.
-    let plan = match mode {
+    // Plans share their content, so this copy of `planned` copies no note.
+    let carried = match mode {
         PublishMode::Incremental => {
             incremental::carry(&planned, &snapshot, &loaded.manifest, &mut |path| {
                 incremental::read_note(&publisher, path)
             })?
         }
-        PublishMode::Full => planned.clone(),
+        PublishMode::Full => None,
     };
+    let plan = carried.unwrap_or_else(|| planned.clone());
 
     // A first render into an existing vault's prefix never takes over files
     // that are already there, unless they hold exactly the planned bytes.
@@ -424,18 +433,26 @@ pub(crate) fn render_locked<F: DurableFs>(
             })
             .map_or(manifest, |(manifest, _)| manifest)
     };
-    loaded.manifest.begin(&plan).store(workspace, lock)?;
-    let mut reached = Vec::new();
-    let published = publisher.publish(&plan, &ownership, &mut |step| {
-        reached.push(step.outcome.clone());
-        observe(step);
-    });
-    let publish = match published {
+    // The write-ahead record is stored unless the render can change no vault
+    // file: the last render completed, nothing planned differs from what is
+    // owned, and nothing is retired. Every write then needs an intent
+    // ([`Manifest::decide`]), so the publisher only confirms or refuses.
+    let intent = loaded.manifest.begin(&plan);
+    let quiet = *loaded.manifest.state() == RenderState::Complete
+        && intent.pending().next().is_none()
+        && ownership.retired(&plan).is_empty();
+    if !quiet {
+        intent.store(workspace, lock)?;
+    }
+    drop(intent);
+    let publish = match publisher.publish_durably(&plan, &ownership, observe) {
         Ok(report) => report,
-        Err(error) => {
+        Err(publish::Interrupted { error, durable }) => {
+            // Only outcomes a barrier made durable are recorded; every other
+            // path keeps the write-ahead intent ([`Manifest::updated`]).
             let partial = PublishReport {
                 generation: plan.generation().clone(),
-                outcomes: reached,
+                outcomes: durable,
             };
             let (manifest, _) = loaded.manifest.updated(&plan, &partial);
             // The render error is the one to report. A failed manifest write
@@ -487,7 +504,16 @@ pub(crate) fn render_locked<F: DurableFs>(
             }
         }
     };
-    manifest.store(workspace, lock)?;
+    // A render that changed nothing leaves the record byte for byte as it
+    // was loaded; it is not written again.
+    let encoded = manifest.to_json();
+    let unchanged = quiet
+        && actual == expected
+        && loaded.digest.as_ref() == Some(&investigation_store::journal::hash_bytes(&encoded));
+    if !unchanged {
+        manifest.store_encoded(workspace, lock, &encoded)?;
+    }
+    drop(encoded);
     let unknown = publisher.unknown_files(&|path| manifest.claims(path))?;
     Ok(RenderReport {
         publish,

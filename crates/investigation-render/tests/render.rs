@@ -375,9 +375,14 @@ fn publisher_refuses_human_owned_roots_and_unsafe_vaults() {
     ));
 }
 
-/// Writes the target itself between the publisher's inspection and its write,
-/// like an editor or sync client racing the render.
-struct RacingWriter(PathBuf);
+/// Writes the target itself between the publisher's last inspection and its
+/// rename, like an editor or sync client racing the render. The publisher
+/// inspects a path twice: when it stages the write, and again just before
+/// the rename; the race is in the second window, the narrowest one.
+struct RacingWriter(
+    PathBuf,
+    std::cell::RefCell<std::collections::BTreeSet<String>>,
+);
 
 impl investigation_render::Ownership for RacingWriter {
     fn decide(
@@ -386,6 +391,9 @@ impl investigation_render::Ownership for RacingWriter {
         on_disk: &investigation_render::OnDisk,
     ) -> investigation_render::Decision {
         assert_eq!(on_disk, &investigation_render::OnDisk::Absent);
+        if self.1.borrow_mut().insert(entry.path().as_str().to_owned()) {
+            return investigation_render::Decision::Write;
+        }
         let target = self.0.join(entry.path().as_str());
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(target, "written by a racing editor\n").unwrap();
@@ -405,7 +413,11 @@ fn a_file_created_during_publication_is_not_overwritten() {
     let lock = RenderLock::acquire(store.workspace(), Duration::ZERO).unwrap();
     let report = Publisher::open(store.workspace(), &lock)
         .unwrap()
-        .publish(&plan, &RacingWriter(vault(&store)), &mut |_| {})
+        .publish(
+            &plan,
+            &RacingWriter(vault(&store), Default::default()),
+            &mut |_| {},
+        )
         .unwrap();
     assert_eq!(report.refused(), plan.entries().len());
     for entry in plan.entries() {
