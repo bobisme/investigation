@@ -40,6 +40,7 @@
           "$ref": "#/$defs/Reference"
         },
         "rival_refs": {
+          "description": "Rival hypotheses on the same question, by exact revision or by the\nclient_ref of an earlier operation in this transaction; an alias of a\nlater operation is refused. A rivalry recorded once counts in both\ndirections, so rivals created together each name only those before\nthem.",
           "items": {
             "$ref": "#/$defs/Reference"
           },

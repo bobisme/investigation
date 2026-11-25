@@ -687,6 +687,13 @@ fn show(
         );
         inherited_trust::synopsis_fields(&mut view, replay, depth);
     }
+    if depth != ViewDepth::Title
+        && view["content_state"] != "restricted"
+        && id.kind() == investigation_core::identity::Kind::Hypothesis
+        && let Some(record) = record
+    {
+        view["rivals"] = views::rivals(replay, today, record);
+    }
     if depth == ViewDepth::Full
         && at.is_none()
         && let Some(record) = record
@@ -715,6 +722,7 @@ fn show(
     let text = views::authored_text_lines(&mut view);
     let mut text = format!("{id}  {text}");
     text.push_str(&views::challenges_text(&view));
+    text.push_str(&views::rivals_text(&view));
     text.push_str(&synopsis::text_line(&view));
     text.push_str(&inherited_trust::text(&view));
     text.push_str(&investigation_core::confidence::text(&view));
@@ -1131,7 +1139,14 @@ fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failur
             .take(3)
             .map(|record| record.reference())
             .collect();
-        if let Some(first) = refs.first() {
+        // A repair the operation already gave (a forward `rival_refs`
+        // alias reads the schema that shows the order) is kept.
+        let repaired = failure
+            .error
+            .repair
+            .as_ref()
+            .is_some_and(|repair| repair.argv.is_some());
+        if let Some(first) = refs.first().filter(|_| !repaired) {
             failure = failure.with_argv(vec![
                 PROGRAM_NAME.into(),
                 "show".into(),

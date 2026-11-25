@@ -783,6 +783,18 @@ impl OperationContext<'_> {
             .filter(|record| Some(record.header.case_id) == *self.case_id)
     }
 
+    /// Whether `alias` is not yet defined but a later operation of this
+    /// transaction declares it: a forward reference, which resolution
+    /// refuses because an alias names only an earlier operation (plan §9.3).
+    pub fn alias_declared_later(&self, alias: &str) -> bool {
+        !self.aliases.contains_key(alias)
+            && self
+                .command
+                .operations
+                .iter()
+                .any(|operation| operation.client_ref.as_deref() == Some(alias))
+    }
+
     pub fn resolve(
         &self,
         reference: &Reference,

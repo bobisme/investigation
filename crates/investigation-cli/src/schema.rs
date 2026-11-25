@@ -454,10 +454,10 @@ fn transaction_form(
         }
     }
 
-    let mut payload = example.clone();
+    let mut operations = example_operations(name, example);
     substitute_references(
-        &mut payload,
-        "/operations/0/payload",
+        &mut operations,
+        "/operations",
         case.zip(case_revision),
         &mut unresolved_fields,
     );
@@ -473,17 +473,55 @@ fn transaction_form(
         "status": if unresolved_fields.is_empty() && workspace.is_some() { "runnable_example" } else { "incomplete_form" },
         "workspace_required": workspace.is_none(),
         "unresolved_fields": unresolved_fields,
-        "guidance": "Choose a unique command_id for your write. Reuse that ID only with identical input and attribution.",
+        "guidance": guidance(name),
         "input": {
             "schema_version": CommandVersion::V1,
             "command_id": format!("example-{}", name.replace('.', "-")),
             "case_id": case,
             "actor": actor,
             "preconditions": [],
-            "operations": [{"op": name, "payload": payload}],
+            "operations": operations,
         },
         "argv": argv,
     }))
+}
+
+/// The alias the first of two rival hypotheses declares in the
+/// `hypothesis.create` transaction example.
+const FIRST_RIVAL: &str = "first-rival";
+
+/// The operations of a transaction example: the operation once, or for
+/// `hypothesis.create` two rivals created in order (DF.03). The second names
+/// the first by its alias, because an alias names only an earlier operation;
+/// the rivalry counts in both directions, so the first needs no forward
+/// reference.
+fn example_operations(name: &str, example: &Value) -> Value {
+    if name != "hypothesis.create" {
+        return json!([{"op": name, "payload": example}]);
+    }
+    let mut second = example.clone();
+    second["statement"] = json!("A slow consumer holds each burst in the queue.");
+    second["possible_falsifiers"] = json!(["Consumer latency stays flat during a burst."]);
+    second["rival_refs"] = json!([{"client_ref": FIRST_RIVAL}]);
+    json!([
+        {"op": name, "client_ref": FIRST_RIVAL, "payload": example},
+        {"op": name, "client_ref": "second-rival", "payload": second},
+    ])
+}
+
+/// What a transaction example tells its reader beyond its input.
+fn guidance(name: &str) -> String {
+    let mut text = "Choose a unique command_id for your write. Reuse that ID only with identical \
+                    input and attribution."
+        .to_owned();
+    if name == "hypothesis.create" {
+        text.push_str(
+            " Rivals in one transaction: create them in order and let each name only those \
+             before it in rival_refs, by client_ref. An alias names only an earlier operation, \
+             and a rivalry recorded once counts in both directions.",
+        );
+    }
+    text
 }
 
 /// Only the selected case has an unambiguous correspondence with a catalog reference.

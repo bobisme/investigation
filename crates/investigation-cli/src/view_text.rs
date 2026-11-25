@@ -937,6 +937,7 @@ const SHOW_STATED: &[&str] = &[
     "likelihood",
     "authored_synopsis",
     "synopsis_binding",
+    "rivals",
 ];
 
 /// The argv that reads the same full view as JSON, pinned to `snapshot`.

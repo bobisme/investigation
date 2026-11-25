@@ -368,6 +368,7 @@ fn hypothesis_content(
         Kind::Question,
         "/question_ref",
     )?;
+    forward_rivals(ctx, &payload.rival_refs)?;
     pin_all(
         ctx,
         &mut payload.rival_refs,
@@ -396,6 +397,43 @@ fn hypothesis_content(
     let mut body = encode(payload)?;
     metadata(&mut body, json!({"alternative_to": rivals}))?;
     Ok(body)
+}
+
+/// What a rival alias of a later operation is told (DF.03): rivals recorded
+/// in one transaction name only those created before them, and the link
+/// counts both ways, so nothing is lost.
+const FORWARD_RIVAL: &str = "rival_refs may name only earlier operations; a rivalry \
+                                 recorded once counts in both directions. Create the rivals in \
+                                 order and let each name only those before it: assessments, \
+                                 blindspots and show treat the first as a rival of the later \
+                                 ones too.";
+
+/// Refuses a `rival_refs` alias that a later operation of this transaction
+/// declares, with the order rule and a read of the schema whose transaction
+/// example creates two rivals in order. Any other unresolved reference is
+/// left to [`pin_all`].
+fn forward_rivals(ctx: &OperationContext<'_>, rivals: &[Reference]) -> Result<(), Failure> {
+    for (index, rival) in rivals.iter().enumerate() {
+        if let Reference::Client(alias) = rival
+            && ctx.alias_declared_later(&alias.client_ref)
+        {
+            return Err(Failure::new(ErrorCode::UnknownReference, FORWARD_RIVAL)
+                .at(format!("/rival_refs/{index}"))
+                .with_schema("hypothesis.create")
+                .with_argv(
+                    [
+                        crate::PROGRAM_NAME,
+                        "schema",
+                        "hypothesis.create",
+                        "--format",
+                        "json",
+                    ]
+                    .map(str::to_owned)
+                    .to_vec(),
+                ));
+        }
+    }
+    Ok(())
 }
 
 fn hypothesis_create(
@@ -1602,7 +1640,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             "Create an attributed proposed hypothesis.",
             "Hypothesis ID and revision 1.",
             "Pin the question and any declared alternatives and assumptions.",
-            "Use the exact question and name rivals from that question.",
+            "Use the exact question and name rivals from that question; in one transaction, name only rivals created by earlier operations (a rivalry counts both ways).",
             ["inquiry.create", "assessment.add"],
             hypothesis(),
             hypothesis_shape,

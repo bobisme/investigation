@@ -770,6 +770,77 @@ pub fn authored_text_lines(view: &mut Value) -> String {
 
 /// Text lines naming open objections and what an accepted decision was
 /// accepted over; empty when there is nothing to show.
+/// The rivals of a Hypothesis in both directions (DF.03). A rivalry is
+/// recorded once, in `rival_refs` of the hypothesis that names the other,
+/// because an alias may name only an earlier operation; it counts both ways,
+/// as `assessment.add`, the blindspot checks and the vault count it. Each
+/// rival at its current revision in `replay`, in ID order, with the side
+/// that recorded the link. A rival this audience may not see is left out.
+pub(crate) fn rivals(replay: &CaseReplay, today: Option<&State>, record: &Record) -> Value {
+    let classifier = Classifier::new(today.unwrap_or(&replay.state));
+    let policy = AudiencePolicy::default();
+    let named = |body: &Value| -> std::collections::BTreeSet<Id> {
+        body["rival_refs"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|reference| reference["id"].as_str()?.parse().ok())
+            .collect()
+    };
+    let this = record.header.id;
+    let outgoing = named(&record.body);
+    let mut rivals = Vec::new();
+    for rival in replay.state.records_of_kind(Kind::Hypothesis) {
+        let id = rival.header.id;
+        let incoming = named(&rival.body).contains(&this);
+        if id == this
+            || !(incoming || outgoing.contains(&id))
+            || !classifier.may_show(rival, Field::Title, &policy)
+        {
+            continue;
+        }
+        let recorded_on = match (outgoing.contains(&id), incoming) {
+            (true, true) => "both",
+            (true, false) => "this",
+            _ => "rival",
+        };
+        rivals.push(json!({
+            "rival_ref": rival.reference(),
+            "lifecycle": rival.body["lifecycle"],
+            "recorded_on": recorded_on,
+        }));
+    }
+    json!(rivals)
+}
+
+/// The `show` text line of [`rivals`], empty when there are none.
+pub fn rivals_text(view: &Value) -> String {
+    let rivals: Vec<String> = view["rivals"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|rival| {
+            let side = match rival["recorded_on"].as_str() {
+                Some("this") => "named here",
+                Some("rival") => "names this one",
+                _ => "named both ways",
+            };
+            format!(
+                "{}@{} ({side})",
+                rival["rival_ref"]["id"].as_str().unwrap_or("?"),
+                rival["rival_ref"]["revision"]
+            )
+        })
+        .collect();
+    if rivals.is_empty() {
+        return String::new();
+    }
+    format!(
+        "\nRivals, recorded once and counted both ways: {}",
+        rivals.join(", ")
+    )
+}
+
 pub fn challenges_text(view: &Value) -> String {
     let list = |items: &Value| -> Vec<String> {
         items

@@ -15,6 +15,11 @@ pub struct HypothesisCreate {
     pub statement: String,
     pub applicability: Option<String>,
     pub possible_falsifiers: Vec<String>,
+    /// Rival hypotheses on the same question, by exact revision or by the
+    /// client_ref of an earlier operation in this transaction; an alias of a
+    /// later operation is refused. A rivalry recorded once counts in both
+    /// directions, so rivals created together each name only those before
+    /// them.
     pub rival_refs: Vec<Reference>,
     pub assumption_refs: Vec<Reference>,
 }
