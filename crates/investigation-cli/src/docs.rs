@@ -30,7 +30,7 @@ pub(crate) const PRODUCER_ONBOARDING_VERSION: &str = "inv.producer-onboarding.v2
 pub(crate) const MIGRATION_GUIDANCE_VERSION: &str = "inv.migration-guidance.v1";
 
 /// Version of the secret-exposure diagnosis and manual remediation page.
-pub(crate) const EXPOSURE_GUIDANCE_VERSION: &str = "inv.exposure-guidance.v3";
+pub(crate) const EXPOSURE_GUIDANCE_VERSION: &str = "inv.exposure-guidance.v4";
 
 pub(crate) const AFTER_HELP: &str = "\
 Prints one embedded page as Markdown; without PAGE, lists the pages.
@@ -274,6 +274,11 @@ mod tests {
             "exposure",
             "inv.exposure-guidance.v3",
             "sha256:cbf61c4edc8401ddadae110f9d8c8e7a532435e861f156679692c4fe0cdc332f",
+        ),
+        (
+            "exposure",
+            "inv.exposure-guidance.v4",
+            "sha256:a8294ae3e873494ce17cfd07ff5c04ca2fbb0e34f22fd0374553c715fcdf3ed1",
         ),
     ];
 

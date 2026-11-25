@@ -675,3 +675,211 @@ fn the_conflicts_area_is_searched_and_tied_to_the_record_it_was_kept_from() {
         "{traced:#}"
     );
 }
+
+/// A workspace whose observation statement holds the secret, rendered in
+/// `mode` (`dedicated` or `existing`), beside a person's vault folder whose
+/// own note, outside any managed prefix, holds the secret too. Returns the
+/// temporary directory, its canonical path, the case and the observation.
+fn projected(mode: &str) -> (tempfile::TempDir, PathBuf, String, String) {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = fs::canonicalize(temporary.path()).unwrap();
+    fs::create_dir(root.join("inputs")).unwrap();
+    fs::write(
+        root.join("inputs/service.log"),
+        format!("connect ok\nAuthorization: {SECRET}\nretry 3\n"),
+    )
+    .unwrap();
+    fs::write(root.join("secret.txt"), format!("{SECRET}\n")).unwrap();
+    let person = root.join("My Vault/Projects/plan.md");
+    fs::create_dir_all(person.parent().unwrap()).unwrap();
+    fs::write(&person, format!("my own note: {SECRET}\n")).unwrap();
+    let mut init = vec!["init", "ws", "--import-root", "inputs"];
+    if mode == "existing" {
+        init.extend(["--existing-vault", "My Vault"]);
+    }
+    json_run(&root, &init, None, 0);
+    let started = json_run(
+        &root,
+        &[
+            "--workspace",
+            "ws",
+            "--actor",
+            ACTOR,
+            "start",
+            "Why did it retry?",
+            "--attach",
+            "inputs/service.log",
+        ],
+        None,
+        0,
+    );
+    let created = started["created"].as_array().unwrap();
+    let id_of = |reference: &str| {
+        created
+            .iter()
+            .find(|c| c["client_ref"] == reference)
+            .unwrap()["id"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    let (case, source) = (id_of("case"), id_of("source:0"));
+    let statement = format!("The request carried the credential {SECRET}");
+    let quote = format!("Authorization: {SECRET}");
+    let observed = json_run(
+        &root,
+        &[
+            "--workspace",
+            "ws",
+            "--actor",
+            ACTOR,
+            "--case",
+            &case,
+            "observe",
+            &statement,
+            "--source",
+            &source,
+            "--limitations",
+            "[\"one log\"]",
+            "--quote",
+            &quote,
+        ],
+        None,
+        0,
+    );
+    let observation = observed["created"][0]["id"].as_str().unwrap().to_owned();
+    json_run(&root, &["--workspace", "ws", "vault", "render"], None, 0);
+    (temporary, root, case, observation)
+}
+
+#[test]
+fn projected_notes_are_searched_and_tied_in_both_vault_modes() {
+    for mode in ["dedicated", "existing"] {
+        let (_temporary, root, case, observation) = projected(mode);
+        let note = format!("Cases/{case}/Observations/{observation}.md");
+        let (on_disk, shown, root_kind) = if mode == "existing" {
+            (
+                root.join("My Vault/Investigation").join(&note),
+                format!("Investigation/{note}"),
+                "existing_vault",
+            )
+        } else {
+            (
+                root.join("ws/vault").join(&note),
+                format!("vault/{note}"),
+                "workspace",
+            )
+        };
+        assert!(on_disk.is_file(), "{mode}: {}", on_disk.display());
+        let before = (files(&root.join("ws")), files(&root.join("My Vault")));
+
+        let report = json_run(
+            &root,
+            &["--workspace", "ws", "exposure", "--text-file", "secret.txt"],
+            None,
+            0,
+        );
+        let found = located(&report, "found");
+        assert_eq!(
+            found.get(&shown).map(String::as_str),
+            Some("vault_note"),
+            "{mode}: {report:#}"
+        );
+        let entry = location(&report, &shown);
+        assert_eq!(entry["root"], root_kind, "{mode}");
+        assert_eq!(entry["records"], json!([observation.as_str()]), "{mode}");
+        // The person's own note outside the projection is never opened.
+        assert!(
+            !found.keys().any(|path| path.contains("Projects/plan.md")),
+            "{mode}: {report:#}"
+        );
+        if mode == "existing" {
+            assert!(
+                report["searched"]["managed_prefix"]["files"]
+                    .as_u64()
+                    .unwrap()
+                    > 0
+            );
+            assert!(
+                report["outside"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|item| item["kind"] == "existing_vault"),
+                "{report:#}"
+            );
+            assert!(
+                report["limitations"]
+                    .to_string()
+                    .contains("only the managed prefix Investigation/"),
+                "{report:#}"
+            );
+            // The existing vault's location is not repeated.
+            assert!(
+                !report
+                    .to_string()
+                    .contains(root.join("My Vault").to_str().unwrap()),
+                "{report:#}"
+            );
+        } else {
+            assert!(report["searched"]["managed_prefix"].is_null());
+            assert!(
+                report["outside"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|item| item["kind"] != "existing_vault")
+            );
+        }
+
+        // The record's ID alone lists its note, without the text.
+        let traced = json_run(
+            &root,
+            &["--workspace", "ws", "exposure", &observation],
+            None,
+            0,
+        );
+        assert_eq!(
+            located(&traced, "may_hold").get(&shown).map(String::as_str),
+            Some("vault_note"),
+            "{mode}: {traced:#}"
+        );
+        assert_eq!(
+            (files(&root.join("ws")), files(&root.join("My Vault"))),
+            before,
+            "{mode}: exposure writes nothing"
+        );
+
+        if mode == "existing" {
+            // Hand-edited to another prefix while the manifest still records
+            // Investigation/: nothing is tied to the wrong root, and the
+            // report says why.
+            let config = root.join("ws/investigation.toml");
+            let text = fs::read_to_string(&config).unwrap();
+            let edited = text.replace(
+                "managed_prefix = \"Investigation\"",
+                "managed_prefix = \"Elsewhere\"",
+            );
+            assert_ne!(edited, text);
+            fs::write(&config, edited).unwrap();
+            let traced = json_run(
+                &root,
+                &["--workspace", "ws", "exposure", &observation],
+                None,
+                0,
+            );
+            assert!(
+                located(&traced, "may_hold")
+                    .keys()
+                    .all(|path| !path.ends_with(&note)),
+                "{traced:#}"
+            );
+            assert!(
+                traced["limitations"]
+                    .to_string()
+                    .contains("another projection root"),
+                "{traced:#}"
+            );
+        }
+    }
+}

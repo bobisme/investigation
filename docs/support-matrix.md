@@ -54,7 +54,7 @@ Contract versions that this build reads and writes:
 | Agent instructions and skill (`investigation docs agents`, `docs skill`) | `inv.agent-instructions.v5` |
 | Producer onboarding (`investigation docs producer`) | `inv.producer-onboarding.v2` |
 | Migration guidance (`investigation docs migration`) | `inv.migration-guidance.v1` |
-| Exposure guidance (`investigation docs exposure`) | `inv.exposure-guidance.v3` |
+| Exposure guidance (`investigation docs exposure`) | `inv.exposure-guidance.v4` |
 
 The published wire schemas in [`schemas/v1`](../schemas/v1/) are the ones `investigation schema NAME` prints: `record`, `receipt`, `error`, `ingest`, `ingest-receipt`, `evidence-selector`, `producer-run`, `producer-run-receipt`, `audit`, `method-pack`, `export-manifest`, `dry-run`, `producer-bundle`, `capture`, `capture.begin`, `capture.begin.receipt`, `capture.append`, `capture.append.receipt`, `capture.attach`, `capture.attach.receipt`, `capture.finalize`, `capture.finalize.receipt`, `capture.recover` and `capture.recover.receipt`. Each active operation's payload schema is in [`schemas/v1/operations`](../schemas/v1/operations/). CI compares the published files with the executable (`scripts/check-v1-schemas.py`), and a test compares this section with the build.
 

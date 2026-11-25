@@ -1,4 +1,4 @@
-<!-- inv.exposure-guidance.v3 -->
+<!-- inv.exposure-guidance.v4 -->
 # A secret reached the workspace: diagnosis and manual remediation
 
 Read this when a secret (a password, token, key or personal data) reached a workspace: in event text such as an observation statement or quote, in a retained file, or in a vault note.
@@ -29,6 +29,7 @@ Classification is handling policy for this tool's outputs, not access control: a
 - `investigation exposure ID --format json` traces a record, case, transaction or command ID: the events that hold each revision, the retained bytes of a Source or Artifact and of everything derived from it, the index, blob verdicts and the record's vault notes with their conflict copies, the generated versions a render withheld from them and the edits `vault reconcile` set aside from them.
 - `investigation exposure --text-file ./exposed.txt --format json` reads every file in the workspace and lists each one that holds the text. Put the secret alone in a file, or pipe it with `--text-file -`; never pass it as an argument. One trailing line break is ignored. The text is also searched in the escaped forms the tool writes (JSON, Markdown, titles, YAML). Remove the file afterwards.
 - Give both for the fullest list. The command writes nothing and never prints the text.
+- In existing-vault mode the generated notes live in the managed prefix of your own vault. That prefix is searched and traced too; its locations have `root` `existing_vault` and a path relative to the vault, such as `Investigation/Cases/...`. Every other location has `root` `workspace`. Your files outside the prefix are never opened, so text you pasted into them is not found: search them with your own tools. `outside` names them.
 - Retained bytes of restricted Artifacts are listed as not opened. Add `--include-restricted` to search them: `investigation exposure --text-file - --include-restricted --format json`.
 
 Each location has an `evidence` value:

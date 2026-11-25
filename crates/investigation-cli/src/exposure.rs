@@ -34,6 +34,7 @@ use investigation_core::{
 use investigation_render::{
     Manifest,
     drift::is_conflict_copy,
+    projection::Projection,
     set_aside,
     text::{display_text, inline_text},
     yaml,
@@ -65,6 +66,10 @@ remediation in investigation docs exposure.
 
 Retained bytes of restricted Artifacts are listed but not opened unless you
 pass --include-restricted.
+
+In existing-vault mode the managed prefix of your vault is searched and traced
+too (root existing_vault, paths relative to the vault); your files outside the
+prefix are never opened.
 
 Examples:
   investigation exposure obs_01a20751-9140-7d72-bbd2-181cd705230d --format json
@@ -215,10 +220,28 @@ impl Journal {
     }
 }
 
+/// The managed prefix of an existing vault the workspace projects into.
+struct Existing {
+    /// The person's vault, as configured.
+    vault: PathBuf,
+    /// `<vault>/<prefix>`, the projection root.
+    root: PathBuf,
+    /// Whether the root can be searched: `Ok(false)` when it does not exist
+    /// yet, an error when a link or file is on its path.
+    searchable: Result<bool, String>,
+}
+
 /// The rendered vault as the render record knows it.
 #[derive(Default)]
 pub(crate) struct Vault {
-    /// Workspace-relative note path → the record it projects.
+    /// The projection root vault paths are joined to: `vault` below the
+    /// workspace, or the absolute managed prefix of an existing vault.
+    root: PathBuf,
+    /// The existing vault, in existing-vault mode.
+    existing: Option<Existing>,
+    /// What could not be tied or searched in the projection, for the report.
+    pub(crate) limitations: Vec<String>,
+    /// Note path (below `root`) → the record it projects.
     notes: BTreeMap<PathBuf, Option<Id>>,
     /// Record → its workspace-relative note paths.
     by_record: BTreeMap<Id, Vec<PathBuf>>,
@@ -233,18 +256,67 @@ pub(crate) struct Vault {
 
 impl Vault {
     pub(crate) fn load(store: &Store) -> Self {
-        let mut vault = Self::default();
+        let mut vault = Self {
+            root: PathBuf::from("vault"),
+            ..Self::default()
+        };
+        // The root a render publishes into, as render and vault status
+        // resolve it from the vault policy.
+        let configured = Projection::of(store.workspace());
+        if let Projection::Existing {
+            vault: path,
+            prefix,
+        } = &configured
+        {
+            let root = path.join(prefix);
+            let searchable = existing_root(path, prefix);
+            if let Err(reason) = &searchable {
+                vault.limitations.push(format!(
+                    "The managed prefix {prefix}/ of the existing vault was not searched: {reason}."
+                ));
+            }
+            // Plan §16.5 asks for a diagnosis of the workspace's own copies;
+            // it does not reach into the person's vault, and the projection
+            // never opens anything there outside the prefix (§12.1).
+            vault.limitations.push(format!(
+                "In the existing vault only the managed prefix {prefix}/ is searched. The person's files outside it are never opened, so text pasted into them is not found; search them with your own tools."
+            ));
+            vault.root = root.clone();
+            vault.existing = Some(Existing {
+                vault: path.clone(),
+                root,
+                searchable,
+            });
+        }
         let Ok(loaded) = Manifest::read(store.workspace()) else {
             return vault;
         };
-        let in_vault = |path: &str| Path::new("vault").join(path);
-        for owned in loaded.manifest.owned() {
+        let wanted = match &configured {
+            Projection::Dedicated => None,
+            Projection::Existing { vault, prefix } => {
+                Some((vault.to_str().unwrap_or_default(), prefix.as_str()))
+            }
+        };
+        // A record written for another root names paths in that root, which
+        // this one does not hold.
+        let bound =
+            loaded.manifest.projection() == wanted || !loaded.manifest.holds_generated_paths();
+        if !bound {
+            vault.limitations.push(
+                "The render manifest was written for another projection root than the vault policy names, so no note in the current root was tied to a record; the text search still covers it.".to_owned(),
+            );
+        }
+        let in_vault = |path: &str| vault.root.join(path);
+        let mut notes = BTreeMap::new();
+        let mut by_record = BTreeMap::<Id, Vec<PathBuf>>::new();
+        for owned in loaded.manifest.owned().filter(|_| bound) {
             let path = in_vault(owned.path.as_str());
             if let Some(id) = owned.projects {
-                vault.by_record.entry(id).or_default().push(path.clone());
+                by_record.entry(id).or_default().push(path.clone());
             }
-            vault.notes.insert(path, owned.projects);
+            notes.insert(path, owned.projects);
         }
+        let mut drifts = Vec::new();
         // The record each vault path projects, or projected: owned, drifted
         // and released paths.
         let mut projected: BTreeMap<&str, Id> = BTreeMap::new();
@@ -262,14 +334,20 @@ impl Vault {
             if let Some(id) = drift.projects {
                 projected.insert(drift.path.as_str(), id);
             }
+            if !bound {
+                continue;
+            }
             let mut copies: Vec<PathBuf> = drift.copies.iter().map(|p| in_vault(p)).collect();
             copies.extend(drift.renamed_to.iter().map(|p| in_vault(p)));
-            vault.drift.push((
+            drifts.push((
                 in_vault(drift.path.as_str()),
                 drift.conflict.as_ref().map(PathBuf::from),
                 copies,
             ));
         }
+        vault.notes = notes;
+        vault.by_record = by_record;
+        vault.drift = drifts;
         match set_aside::list(store.workspace(), &set_aside::Area::ALL) {
             Ok(report) => {
                 for entry in report.entries {
@@ -299,6 +377,35 @@ impl Vault {
             Err(error) => vault.unlisted = Some(error.to_string()),
         }
         vault
+    }
+
+    /// The managed prefix to search besides the workspace, in existing-vault
+    /// mode, when it exists and no link is on its path.
+    fn searchable_root(&self) -> Option<&Path> {
+        self.existing
+            .as_ref()
+            .filter(|existing| existing.searchable == Ok(true))
+            .map(|existing| existing.root.as_path())
+    }
+
+    /// A location's path for output. A path in an existing vault is shown
+    /// relative to that vault (`<prefix>/...`); the vault's own location is
+    /// not repeated, as `vault status` does not.
+    pub(crate) fn shown(&self, path: &Path) -> String {
+        if let Some(existing) = &self.existing
+            && let Ok(inside) = path.strip_prefix(&existing.vault)
+        {
+            return inside.to_string_lossy().into_owned();
+        }
+        path.to_string_lossy().into_owned()
+    }
+
+    /// Where a location's path is relative to: `workspace` or `existing_vault`.
+    fn root_of(&self, path: &Path) -> &'static str {
+        match &self.existing {
+            Some(existing) if path.starts_with(&existing.vault) => "existing_vault",
+            _ => "workspace",
+        }
     }
 
     /// Refine a generic vault path: an owned note, or a conflict copy beside one.
@@ -536,6 +643,7 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
         }
     };
     let vault = Vault::load(store);
+    limitations.extend(vault.limitations.iter().cloned());
     if let Some(reason) = &vault.unlisted {
         limitations.push(format!(
             "The conflicts area under local/conflicts/ was not fully listed ({reason}), so some of its files were not tied to records; --text-file still searches every file there."
@@ -602,8 +710,41 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
                 "the --text-file input itself".to_owned(),
             );
         }
-        let report = exposure::scan(&root, &forms, &skip);
+        let mut report = exposure::scan(&root, &forms, &skip);
         scanned = json!({"files": report.files, "bytes": report.bytes});
+        // In existing-vault mode the projection is outside the workspace:
+        // search the managed prefix too, and only it.
+        if let Some(prefix_root) = vault.searchable_root() {
+            let mut skip = BTreeMap::new();
+            if let Some(input) = args.text_file.as_deref()
+                && let (Ok(input), Ok(base)) = (input.canonicalize(), prefix_root.canonicalize())
+                && let Ok(relative) = input.strip_prefix(&base)
+            {
+                skip.insert(
+                    relative.to_owned(),
+                    "the --text-file input itself".to_owned(),
+                );
+            }
+            let projected = exposure::scan(prefix_root, &forms, &skip);
+            scanned["files"] = json!(report.files + projected.files);
+            scanned["bytes"] = json!(report.bytes + projected.bytes);
+            scanned["managed_prefix"] = json!({"files": projected.files, "bytes": projected.bytes});
+            // Classified as the same path below the workspace's vault/ would be.
+            let place = |relative: &Path| {
+                (
+                    prefix_root.join(relative),
+                    exposure::area(&Path::new("vault").join(relative)),
+                )
+            };
+            for mut hit in projected.hits {
+                (hit.path, hit.area) = place(&hit.path);
+                report.hits.push(hit);
+            }
+            for mut item in projected.unopened {
+                (item.path, item.area) = place(&item.path);
+                report.unopened.push(item);
+            }
+        }
         for hit in report.hits {
             let area = refine(&vault, &hit.path, hit.area);
             let records = owners(journal.as_ref(), &vault, &hit.path, area);
@@ -622,7 +763,8 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
                 location.not_opened = Some(item.reason);
             } else {
                 unopened.push(json!({
-                    "path": display_path(&item.path, &forms),
+                    "path": display_path(&vault, &item.path, &forms),
+                    "root": vault.root_of(&item.path),
                     "area": area.as_str(),
                     "reason": item.reason,
                     "records": owners(journal.as_ref(), &vault, &item.path, area),
@@ -640,7 +782,8 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
         .iter()
         .map(|(path, location)| {
             json!({
-                "path": display_path(path, &forms),
+                "path": display_path(&vault, path, &forms),
+                "root": vault.root_of(path),
                 "area": location.area.as_str(),
                 "canonical": location.area.canonical(),
                 "evidence": location.evidence.as_str(),
@@ -681,7 +824,7 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
             "{:<11} {:<19} {}",
             location.evidence.as_str(),
             location.area.as_str(),
-            display_path(path, &forms)
+            display_path(&vault, path, &forms)
         );
         if !location.records.is_empty() {
             let ids: Vec<String> = location.records.iter().map(Id::to_string).collect();
@@ -927,10 +1070,38 @@ fn owners(journal: Option<&Journal>, vault: &Vault, path: &Path, area: Area) -> 
     }
 }
 
-/// A workspace-relative path for output, with any form of the text in it
-/// replaced, so the report never repeats the text.
-fn display_path(path: &Path, forms: &[Form]) -> String {
-    let mut shown = path.to_string_lossy().into_owned();
+/// Whether the managed prefix of the existing vault at `vault` can be
+/// searched without following a link: `Ok(false)` when it does not exist.
+/// Only the vault folder and the prefix's own folders are looked at; nothing
+/// else in the person's vault is opened.
+fn existing_root(vault: &Path, prefix: &str) -> Result<bool, String> {
+    match vault.canonicalize() {
+        Ok(canonical) if canonical == vault => {}
+        Ok(_) => {
+            return Err("the existing vault's path is not canonical (a link is on it)".to_owned());
+        }
+        Err(error) => return Err(format!("the existing vault cannot be reached ({error})")),
+    }
+    let mut current = vault.to_owned();
+    for component in prefix.split('/') {
+        current.push(component);
+        match std::fs::symlink_metadata(&current) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+            Err(error) => return Err(format!("its path cannot be read ({error})")),
+            Ok(meta) if meta.file_type().is_symlink() => {
+                return Err("a link is on its path, and links are never followed".to_owned());
+            }
+            Ok(meta) if !meta.is_dir() => return Err("a file is on its path".to_owned()),
+            Ok(_) => {}
+        }
+    }
+    Ok(true)
+}
+
+/// A path for output, with any form of the text in it replaced, so the
+/// report never repeats the text.
+fn display_path(vault: &Vault, path: &Path, forms: &[Form]) -> String {
+    let mut shown = vault.shown(path);
     for form in forms {
         if let Ok(text) = std::str::from_utf8(&form.bytes) {
             shown = shown.replace(text, "[exposed text]");
@@ -940,6 +1111,8 @@ fn display_path(path: &Path, forms: &[Form]) -> String {
 }
 
 /// Places beyond this workspace the tool knows of, which it never searches.
+/// In existing-vault mode the managed prefix is searched; the rest of the
+/// person's vault is never opened.
 pub(crate) fn outside(store: &Store) -> Value {
     let mut items: Vec<Value> = store
         .workspace()
@@ -954,6 +1127,13 @@ pub(crate) fn outside(store: &Store) -> Value {
             })
         })
         .collect();
+    if let Projection::Existing { prefix, .. } = Projection::of(store.workspace()) {
+        items.push(json!({
+            "kind": "existing_vault",
+            "path": Value::Null,
+            "what": format!("the existing vault outside the managed prefix {prefix}/: the person's own notes, settings and folders, which the tool never opens or reads; text pasted there is not found, and nothing there is tied to a record"),
+        }));
+    }
     items.push(json!({
         "kind": "distributed_copies",
         "path": Value::Null,

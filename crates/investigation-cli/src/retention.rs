@@ -817,7 +817,7 @@ fn downstream(
             for (path, area, _) in vault.of(observation.id) {
                 if root.join(&path).is_file() {
                     files.insert(
-                        path,
+                        PathBuf::from(vault.shown(&path)),
                         (area, "a rendered note that may show the quoted text"),
                     );
                 }
