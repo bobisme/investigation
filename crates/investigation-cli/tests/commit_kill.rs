@@ -35,6 +35,7 @@ use std::{
     os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    time::{Duration, Instant},
 };
 
 use investigation_core::identity::{Id, Kind};
@@ -422,28 +423,65 @@ fn a_closure_batch_killed_at_every_commit_point_leaves_both_or_neither() {
     }
 }
 
-/// A child that creates the ready file empty and writes its point a moment
-/// later, as a create-then-write child did under load (bn-38ue): the parent
-/// waits for the whole point instead of reading the empty file.
+/// A child that creates the ready file empty and writes its point later, as
+/// a create-then-write child did under load (bn-38ue): the parent waits for
+/// the whole point instead of reading the empty file. The child writes only
+/// when the test says so, so no step depends on timing (bn-2uoc). Every wait
+/// is bounded, every failure says what the files held, and the child is
+/// killed and reaped on every path.
 #[test]
 fn the_ready_handshake_waits_for_the_whole_point_name() {
+    let bound = Duration::from_secs(30);
     let root = tempfile::tempdir().unwrap();
     let ready = root.path().join(".commit-paused");
-    let mut child = Command::new("/bin/sh")
-        .args([
-            "-c",
-            r#": > "$1"; sleep 0.3; printf lock > "$1"; exec sleep 60"#,
-        ])
-        .args(["sh", ready.to_str().unwrap()])
-        .stdin(Stdio::null())
-        .spawn()
-        .unwrap();
-    let started = std::time::Instant::now();
-    pause::wait_for_ready(&mut child, &ready, "lock", "sh");
-    assert!(started.elapsed() >= std::time::Duration::from_millis(300));
+    let go = root.path().join("go");
+    // Exit codes 3 and 4 name a failed create or write of the ready file, so
+    // such a failure ends the wait at once instead of after the child's life.
+    let script = r#": > "$1" || exit 3
+while [ ! -e "$2" ]; do sleep 0.01; done
+printf lock > "$1" || exit 4
+exec sleep 300"#;
+    let mut child = pause::Reaped(
+        Command::new("/bin/sh")
+            .args(["-c", script, "sh"])
+            .arg(&ready)
+            .arg(&go)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+
+    // The child has created the file and waits for `go`: it is empty.
+    let started = Instant::now();
+    while !ready.exists() {
+        if let Some(status) = child.0.try_wait().unwrap() {
+            panic!("sh exited with {status} before creating the ready file");
+        }
+        assert!(
+            started.elapsed() < bound,
+            "sh did not create the ready file within {bound:?}"
+        );
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(fs::read_to_string(&ready).unwrap(), "");
+
+    std::thread::scope(|scope| {
+        let waiting = scope.spawn(|| {
+            pause::wait_for_ready_within(&mut child.0, &ready, "lock", "sh", bound);
+        });
+        // The file stays empty until `go`, so the wait cannot have returned.
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(
+            !waiting.is_finished(),
+            "the wait returned on an empty ready file"
+        );
+        fs::write(&go, "").unwrap();
+        if let Err(panic) = waiting.join() {
+            std::panic::resume_unwind(panic);
+        }
+    });
     assert_eq!(fs::read_to_string(&ready).unwrap(), "lock");
-    child.kill().unwrap();
-    child.wait().unwrap();
 }
 
 /// A paused process marks its ready file in one rename: the file holds the
