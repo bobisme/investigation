@@ -112,10 +112,14 @@
            {"guidance": "Record generator CPU beside every run.", "applies_when": "Load tests on shared hardware.", "support_refs": [{"$": "draft/items/[cite={patched_run/id}]/cite"}], "transfer_limits": "One benchmark on one host."},
            {"guidance": "Run the generator on its own host.", "applies_when": "Load tests on shared hardware.", "support_refs": [{"$": "draft/items/[cite={patched_run/id}]/cite"}], "transfer_limits": "One benchmark on one host."},
            {"guidance": "Repeat each run at the same offered load.", "applies_when": "Load tests on shared hardware.", "support_refs": [{"$": "draft/items/[cite={patched_run/id}]/cite"}], "transfer_limits": "One benchmark on one host."}]}}]},
-      {"id": "self-admitted-lesson", "fails": ["no_lesson_admitted"],
+      {"id": "lesson-admitted-under-another-actor", "fails": ["no_lesson_admitted"],
        "steps": [
          {"correct": true, "set": {"/3/bind": {"account": "/created/0"}}},
          {"record": {"actor": "agent:closer", "actor_descriptor": {"kind": "human"}, "operations": [
+           {"op": "lesson.admit", "payload": {"retrospective_ref": {"$": "account"}, "lesson_index": 0,
+             "basis": {"kind": "human_review", "rationale": "The cited run shows the saturated generator."}}}]},
+          "exit": 5, "expect": {"/error/code": "GATE_FAILED", "/error/actual/actor": "agent:closer"}},
+         {"record": {"actor": "human:reviewer", "actor_descriptor": {"kind": "human"}, "operations": [
            {"op": "lesson.admit", "payload": {"retrospective_ref": {"$": "account"}, "lesson_index": 0,
              "basis": {"kind": "human_review", "rationale": "The cited run shows the saturated generator."}}}]}}]},
       {"id": "pack-edited", "fails": ["packs_and_configuration_unchanged"],

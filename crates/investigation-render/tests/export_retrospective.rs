@@ -3,8 +3,9 @@
 //!
 //! One Retrospective with four lessons:
 //!
-//! - lesson 0 cites a public observation and is admitted on human review by
-//!   the Retrospective's own author (self-reported);
+//! - lesson 0 cites a public observation. The Retrospective's own author is
+//!   refused when they try to admit it on human review (bn-3kzm); another
+//!   actor admits it on a recorded outcome check;
 //! - lesson 1 cites the same observation and is admitted on human review by
 //!   a different actor;
 //! - lesson 2 cites an internal observation and has no admission;
@@ -16,7 +17,7 @@
 
 use investigation_core::{
     identity::Id,
-    wire::{CommitResult, Receipt},
+    wire::{CommitResult, ErrorCode, Receipt},
 };
 use investigation_render::{
     Audience,
@@ -28,6 +29,7 @@ use serde_json::{Value, json};
 const AUTHOR: &str = "agent:retro-author";
 const OTHER: &str = "human:other-reviewer";
 const REVIEWER: &str = "human:classification-reviewer";
+const CHECKER: &str = "agent:outcome-checker";
 const RESTRICTED: &str = "ZEBRACODE";
 const INTERNAL: &str = "OTTERNOTE";
 const PUBLIC: &str = "PUFFINLINE";
@@ -161,7 +163,7 @@ struct Fixture {
     store: Store,
     case: Id,
     retrospective: Id,
-    admission_self: Id,
+    admission_outcome: Id,
     admission_other: Id,
     internal_observation: Id,
     restricted_observation: Id,
@@ -248,13 +250,46 @@ fn fixture() -> Fixture {
         .created[0]
             .id
     };
-    let admission_self = admit(&mut store, "admit-self", AUTHOR, 0);
+    // The author cannot admit their own lesson on a self-reported human
+    // review. Before bn-3kzm this fixture recorded exactly that admission.
+    let by_author = json!({
+        "schema_version":"inv.command.v1", "command_id":"admit-self", "case_id":case,
+        "actor":AUTHOR, "actor_descriptor":{"kind":"human"}, "preconditions":[],
+        "operations":[{"op":"lesson.admit", "payload":{"retrospective_ref":retro_ref,
+            "lesson_index":0, "basis":{"kind":"human_review", "rationale":"My own lesson."}}}]
+    });
+    let refused = store
+        .record(&serde_json::to_vec(&by_author).unwrap())
+        .unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed, "{refused:?}");
+    // Another actor admits lesson 0 on a later public outcome.
+    let outcome = observation(
+        &mut store,
+        "outcome-observation",
+        case,
+        format!("{PUBLIC} later outcome"),
+    );
+    clear(&mut store, "clear-outcome", case, outcome);
+    let outcome_ref = current(&mut store, case, outcome);
+    let admission_outcome = submit(
+        &mut store,
+        "admit-outcome",
+        CHECKER,
+        None,
+        Some(case),
+        "lesson.admit",
+        json!({"retrospective_ref":retro_ref, "lesson_index":0,
+            "basis":{"kind":"outcome_check", "rationale":format!("{PUBLIC} a later run held"),
+                "outcome_refs":[outcome_ref]}}),
+    )
+    .created[0]
+        .id;
     let admission_other = admit(&mut store, "admit-other", OTHER, 1);
     // Make the lessons' retrospective shareable, as a reviewed downgrade of
     // its text, so the audiences below are decided lesson by lesson.
     for (key, id) in [
         ("clear-retrospective", retrospective),
-        ("clear-admission-self", admission_self),
+        ("clear-admission-outcome", admission_outcome),
         ("clear-admission-other", admission_other),
     ] {
         clear(&mut store, key, case, id);
@@ -264,7 +299,7 @@ fn fixture() -> Fixture {
         store,
         case,
         retrospective,
-        admission_self,
+        admission_outcome,
         admission_other,
         internal_observation,
         restricted_observation,
@@ -364,11 +399,12 @@ fn restricted_shows_every_lesson_with_its_exact_reviewer_status() {
         }
     }
     let zero = lesson_block(&plan, 0, fixture.retrospective).unwrap();
-    assert!(zero.contains("SELF-REPORTED"), "{zero}");
-    assert!(zero.contains("not an independent review"), "{zero}");
-    assert!(zero.contains(AUTHOR), "{zero}");
+    assert!(!zero.contains("SELF-REPORTED"), "{zero}");
+    assert!(zero.contains("recorded outcome check"), "{zero}");
+    assert!(zero.contains(CHECKER), "{zero}");
+    assert!(zero.contains("citing 1 later record(s)"), "{zero}");
     assert!(
-        !zero.contains("other than the retrospective's author"),
+        zero.contains("an actor other than the retrospective's author"),
         "{zero}"
     );
     let one = lesson_block(&plan, 1, fixture.retrospective).unwrap();
@@ -492,7 +528,7 @@ fn public_shows_only_lessons_whose_support_is_public() {
             "lesson {index} rests on non-public evidence:\n{text}"
         );
     }
-    // The self-reported label survives into the public export, without names.
+    // The reviewer status survives into the public export, without names.
     let head = ExportSnapshot::read(&mut fixture.store, fixture.case, &Pin::default())
         .unwrap()
         .case()
@@ -504,10 +540,13 @@ fn public_shows_only_lessons_whose_support_is_public() {
     );
     assert!(mentions(&plan, "not disclosed").len() == 1);
     let zero = lesson_block(&plan, 0, fixture.retrospective).unwrap();
-    assert!(zero.contains("SELF-REPORTED") && zero.contains("the author of this retrospective"));
+    assert!(
+        zero.contains("recorded outcome check")
+            && zero.contains("an actor other than the retrospective's author")
+    );
     let one = lesson_block(&plan, 1, fixture.retrospective).unwrap();
     assert!(one.contains("an actor other than the retrospective's author"));
-    for actor in [AUTHOR, OTHER, REVIEWER] {
+    for actor in [AUTHOR, OTHER, REVIEWER, CHECKER] {
         assert!(
             mentions(&plan, actor).is_empty(),
             "{actor}: {:#?}",
@@ -550,7 +589,7 @@ fn no_audience_leaks_withheld_text_names_or_ids() {
         mentions(&public, &fixture.internal_observation.to_string()).is_empty(),
         "internal evidence ID in public export"
     );
-    let _ = (fixture.admission_self, fixture.admission_other);
+    let _ = (fixture.admission_outcome, fixture.admission_other);
 }
 
 #[test]

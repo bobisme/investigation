@@ -13,12 +13,12 @@
 //!   where it must not be reused, counterexamples, the citations it rests
 //!   on, its admission, trust and classification.
 //! - **Reviewer status is shown exactly.** An admission is shown with its
-//!   basis and the actor that recorded it. A `human_review` admission is
-//!   labelled self-reported when the admitting actor is the Retrospective's
-//!   author (the actor kind is a claim, and an author can admit their own
-//!   lesson), and an admission is described as independent only when the
-//!   admitting actor differs from the author. Actor names are identifiers
-//!   the actors gave themselves; nothing here authenticates them.
+//!   basis and the actor that recorded it. `lesson.admit` now refuses the
+//!   Retrospective's author on either basis, but a journal can hold an
+//!   admission recorded before that check, so an admission by the author is
+//!   still labelled self-reported, and one is described as by another actor
+//!   only when the admitting actor differs from the author. Actor names are
+//!   identifiers the actors gave themselves; nothing here authenticates them.
 //! - **Policy applies to lessons like any text.** A lesson or step that
 //!   cites a record the audience may not see, or one this snapshot does not
 //!   hold, is left out for every audience, since its wording may restate

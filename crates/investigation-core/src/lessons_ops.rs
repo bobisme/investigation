@@ -18,6 +18,7 @@ use crate::{
         ConsultationBody, ConsultationEffect, ConsultationOutcome, LessonKey, LessonPointer,
         admissions, consultation_body, consultations, lesson, lesson_digest,
     },
+    pack_policy::authors_by,
     state::{OperationContext, State},
     wire::{ErrorCode, Failure, Snapshot},
 };
@@ -35,8 +36,9 @@ const OUTCOME_KINDS: &[Kind] = &[Kind::Run, Kind::Observation, Kind::Assessment,
 #[derive(Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum BasisInput {
-    /// A person reviewed the lesson. Send the command with an actor_descriptor
-    /// whose kind is human; the kind is self-reported.
+    /// A person other than the lesson's author reviewed the lesson. The
+    /// admitting actor must not be the author, and the command's
+    /// actor_descriptor kind must be human; both are claims, not authentication.
     HumanReview { rationale: String },
     /// Records accepted after the Retrospective's snapshot check the lesson
     /// against an outcome. The admitting actor must not be the lesson's author.
@@ -153,7 +155,15 @@ fn admit(payload: LessonAdmit, ctx: &mut OperationContext<'_>) -> Result<(), Fai
         return Err(failure);
     }
     let lesson_digest = lesson_digest(content);
-    let author = record.header.created_by.clone();
+    // Who wrote the lesson, by the rule review independence and the
+    // distinct_actor policy use: the actors who recorded the subject's current
+    // content. A Retrospective has no basis digest and is revised only by
+    // supersession, so its content is its body. Actor strings are compared,
+    // a procedural check that authenticates nobody.
+    let authors = authors_by(ctx.state(), record, |revision| Ok(revision.body.clone()))?;
+    let self_admission = authors
+        .contains(ctx.actor())
+        .then(|| json!({"actor": ctx.actor(), "authors": authors}));
     let classification = record.header.classification.clone();
     let snapshot: Snapshot =
         crate::input::decode(&record.body["snapshot"]).map_err(|_| integrity())?;
@@ -162,9 +172,17 @@ fn admit(payload: LessonAdmit, ctx: &mut OperationContext<'_>) -> Result<(), Fai
         .map(|descriptor| descriptor.kind.clone());
     let basis = match payload.basis {
         BasisInput::HumanReview { rationale } => {
+            if let Some(actual) = self_admission {
+                let mut failure = gate(
+                    "Admission on human review needs an actor other than the author of the lesson: a person who reviewed it submits lesson.admit as themselves, with an actor_descriptor whose kind is human. Or an actor other than the author cites a recorded outcome check.",
+                    "/basis",
+                );
+                failure.error.actual = Some(actual);
+                return Err(failure);
+            }
             if reported != Some(ActorKind::Human) {
                 return Err(gate(
-                    "Admission on human review needs a command actor_descriptor whose kind is human. Without one, cite a recorded outcome check instead.",
+                    "Admission on human review is submitted by a person other than the lesson's author, with a command actor_descriptor whose kind is human. Otherwise, have an actor other than the author cite a recorded outcome check.",
                     "/basis",
                 ));
             }
@@ -174,11 +192,13 @@ fn admit(payload: LessonAdmit, ctx: &mut OperationContext<'_>) -> Result<(), Fai
             rationale,
             outcome_refs,
         } => {
-            if ctx.actor() == &author {
-                return Err(gate(
+            if let Some(actual) = self_admission {
+                let mut failure = gate(
                     "An outcome-check admission needs an actor other than the author of the lesson.",
                     "/basis",
-                ));
+                );
+                failure.error.actual = Some(actual);
+                return Err(failure);
             }
             let mut seen = BTreeSet::new();
             let mut refs = Vec::new();
@@ -405,11 +425,11 @@ pub(crate) fn operations() -> [OperationDescriptor; 3] {
                 ADMIT,
                 "close",
                 "Admit one proposed lesson for reading in other cases.",
-                "A person reviewed the lesson, or later recorded work checked it against an outcome.",
+                "A person other than its author reviewed the lesson, or another actor checked it against later recorded work.",
                 "Create an attributed admission annotation bound to the exact Retrospective revision and lesson digest. Until then the lesson is visible only in its own case.",
                 "Annotation ID and revision 1.",
                 "Use the current revision of an unsuperseded Retrospective in this case.",
-                "Send human_review with an actor_descriptor of kind human, or cite Runs, Observations, Assessments or Reviews recorded after the Retrospective's snapshot.",
+                "Admit as an actor other than the lesson's author: human_review with an actor_descriptor of kind human, or outcome_check citing Runs, Observations, Assessments or Reviews recorded after the Retrospective's snapshot.",
             ),
             json!({
                 "retrospective_ref":{"id":"retro_019acd16-0000-7000-8000-000000000002","revision":1},

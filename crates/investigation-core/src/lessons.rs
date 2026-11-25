@@ -4,10 +4,13 @@
 //! A lesson is one entry of a Retrospective's `lessons`: free text an agent may
 //! have written after reading hostile evidence. It stays a case-scoped
 //! observation about process. It becomes visible to other cases only after an
-//! explicit, attributed admission in its source case, on one of two bases: a
-//! human review (the command's self-reported actor descriptor says `human`) or a
-//! recorded outcome check (later same-case records, by an actor other than the
-//! lesson's author). Both are stored as annotations, so no record kind is added:
+//! explicit, attributed admission in its source case by an actor other than
+//! the lesson's author, on one of two bases: a human review (the command's
+//! self-reported actor descriptor says `human`) or a recorded outcome check
+//! (later same-case records). The author is whoever recorded the
+//! Retrospective's content, compared by actor string as review independence
+//! compares them; actors and descriptors are claims, not authentication. Both
+//! are stored as annotations, so no record kind is added:
 //!
 //! - an admission is an annotation with role [`ADMISSION_ROLE`] about the exact
 //!   Retrospective revision, bound to the lesson's content digest;

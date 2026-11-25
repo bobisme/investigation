@@ -418,3 +418,101 @@ fn consultation_records_a_pointer_and_close_asks_whether_it_mattered() {
         assert_eq!(reader_case.get(field), case_before.get(field), "{field}");
     }
 }
+
+/// Admits lesson 0 on human review as `actor`, with a human descriptor.
+fn admit_human_as(
+    source: &mut Case,
+    actor: &str,
+    retrospective: RevisionRef,
+) -> Result<RevisionRef, Failure> {
+    source.one(
+        actor,
+        Some("human"),
+        ADMIT,
+        json!({
+            "retrospective_ref":retrospective,"lesson_index":0,
+            "basis":{"kind":"human_review","rationale":"Read the cited run."},
+        }),
+    )
+}
+
+#[test]
+fn the_lessons_author_cannot_admit_it_on_a_self_reported_human_review() {
+    let mut source = Case::new("explain");
+    let retrospective = source.retrospective();
+    let before = source.state.clone();
+    let refused = admit_human_as(&mut source, AUTHOR, retrospective).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::GateFailed);
+    assert_eq!(
+        refused.error.path.as_deref(),
+        Some("/operations/0/payload/basis")
+    );
+    let message = &refused.error.message;
+    assert!(
+        message.contains("an actor other than the author of the lesson"),
+        "the repair names a different-actor route: {message}"
+    );
+    assert_eq!(
+        refused.error.actual,
+        Some(json!({"actor":AUTHOR,"authors":[AUTHOR]}))
+    );
+    assert_eq!(source.state, before, "a refused admission commits nothing");
+
+    // The refusal for a missing descriptor does not invite the author to
+    // add one: it too names an actor other than the author.
+    let missing = source
+        .one(
+            AUTHOR,
+            None,
+            ADMIT,
+            json!({
+                "retrospective_ref":retrospective,"lesson_index":0,
+                "basis":{"kind":"human_review","rationale":"Looks right."},
+            }),
+        )
+        .unwrap_err();
+    assert!(
+        missing.error.message.contains("other than the author"),
+        "{}",
+        missing.error.message
+    );
+    let undeclared = source
+        .one(
+            "human:reviewer",
+            None,
+            ADMIT,
+            json!({
+                "retrospective_ref":retrospective,"lesson_index":0,
+                "basis":{"kind":"human_review","rationale":"Looks right."},
+            }),
+        )
+        .unwrap_err();
+    assert_eq!(undeclared.error.code, ErrorCode::GateFailed);
+    assert!(
+        undeclared
+            .error
+            .message
+            .contains("other than the lesson's author"),
+        "{}",
+        undeclared.error.message
+    );
+    assert_eq!(source.state, before);
+}
+
+#[test]
+fn an_actor_other_than_the_author_admits_on_human_review() {
+    let mut source = Case::new("explain");
+    let retrospective = source.retrospective();
+    let admission = admit_human_as(&mut source, "human:reviewer", retrospective).unwrap();
+    let record = source.state.revision(admission).unwrap();
+    assert_eq!(record.header.created_by.to_string(), "human:reviewer");
+    let body = admission_body(record).unwrap();
+    assert_eq!(
+        body.basis,
+        AdmissionBasis::HumanReview {
+            rationale: "Read the cited run.".into()
+        }
+    );
+    assert_eq!(body.actor_kind_self_reported, Some(ActorKind::Human));
+    assert_eq!(body.lesson.retrospective_ref, retrospective);
+}

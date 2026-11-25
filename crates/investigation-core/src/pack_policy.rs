@@ -453,13 +453,25 @@ pub fn current_blindspot_reviews(
 /// Actors who recorded the subject's current substantive content: the creator
 /// and whoever recorded a revision that changed its basis digest.
 pub fn content_authors(state: &State, subject: &Record) -> Result<BTreeSet<Actor>, Failure> {
+    authors_by(state, subject, basis_digest)
+}
+
+/// [`content_authors`] for any kind, with `content` saying what of a revision
+/// is its content: the creator and whoever recorded a revision whose content
+/// differs from the one before. Used where the subject's kind has no basis
+/// digest, such as a Retrospective at `lesson.admit`.
+pub(crate) fn authors_by<T: PartialEq>(
+    state: &State,
+    subject: &Record,
+    content: impl Fn(&Record) -> Result<T, Failure>,
+) -> Result<BTreeSet<Actor>, Failure> {
     let mut authors = BTreeSet::new();
     let mut previous = None;
     for revision in state
         .history(subject.header.id)
         .take_while(|revision| revision.header.revision <= subject.header.revision)
     {
-        let digest = basis_digest(revision)?;
+        let digest = content(revision)?;
         if previous.as_ref() != Some(&digest) {
             authors.insert(revision.header.recorded_by.clone());
             if revision.header.revision.0 == 1 {

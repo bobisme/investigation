@@ -4,7 +4,7 @@
       "oneOf": [
         {
           "additionalProperties": false,
-          "description": "A person reviewed the lesson. Send the command with an actor_descriptor\nwhose kind is human; the kind is self-reported.",
+          "description": "A person other than the lesson's author reviewed the lesson. The\nadmitting actor must not be the author, and the command's\nactor_descriptor kind must be human; both are claims, not authentication.",
           "properties": {
             "kind": {
               "const": "human_review",
