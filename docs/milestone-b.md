@@ -266,4 +266,12 @@ These are the dispositions of the lead (investigation-dev), acting as tech lead 
 
 Both findings this proof raised for disposition are resolved: Known limitations 1 and 2.
 
-Still awaiting the project owner (the lead's dispositions above apply until then): the W05b.17 first-use miss, the record-mode closure exemption, and how a frozen v1 enum may widen for the artifact.withdraw guardrail (bn-6fpb).
+### Owner decisions (2026-11-24)
+
+The project owner decided the items above. Nothing here is still waiting for the owner.
+
+- **W05b.17 first-use miss:** the hosted-agent arm supersedes it. That arm is Claude Code with Haiku, preregistered in `training/first-use/hosted/`, and it met all five targets in run 1. The local-model miss stays in the release notes as a disclosed limitation. The hosted arm is one run per cell with an unpinned hosted model.
+- **record-mode closure exemption:** the stricter behaviour ships. A `record` case is exempt from the retrospective only while it is non-material. A record case with a failed or invalid Run requires one. §17.7 is read narrowly, as the data-only sessions of §10.
+- **artifact.withdraw guardrail (bn-6fpb):** additive values are allowed in the frozen v1 input enums that ADR 0007 lists as open. bn-6fpb added `artifact.withdraw` and `artifact.expire` on that basis.
+- **three-call receipt window (C3, bn-gef3):** the frozen target stays. The release notes disclose that the window partly measures how many calls an agent spends finding the commands. A help-only agent spends at least one, so it has less room for mistakes than the docs arm.
+- **help-only learning from `docs agents`:** this counts as learning from `--help` alone for W17, because the page ships in the executable and `--help` points to it. In the hosted help-only arm, 11 of 12 agents read it at call 3.
