@@ -425,7 +425,12 @@ fn related_records_must_be_current_and_in_the_read_set() {
         failure.error.path.as_deref().map(payload_path),
         Some("/read_set")
     );
-    assert_eq!(failure.error.expected, Some(json!([f.question])));
+    // The refusal names the records to read, not the revisions (ADR 0018).
+    assert_eq!(failure.error.expected, None);
+    assert_eq!(
+        failure.error.actual,
+        Some(json!({"records":[f.question.id]}))
+    );
 
     payload["novel_gaps"][0]["record_refs"] = json!([f.conclusion]);
     payload["read_set"] = json!([f.question]);
@@ -645,15 +650,12 @@ fn a_disposition_accepts_its_findings_related_refs_as_given() {
         Some("/read_set"),
         "{failure:?}"
     );
+    assert_eq!(failure.error.expected, None, "{failure:?}");
     assert!(
-        failure
-            .error
-            .expected
-            .as_ref()
-            .unwrap()
+        failure.error.actual.as_ref().unwrap()["records"]
             .as_array()
             .unwrap()
-            .contains(&json!(amended)),
+            .contains(&json!(amended.id)),
         "{failure:?}"
     );
 

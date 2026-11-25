@@ -1154,7 +1154,16 @@ fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failur
             .and_then(|repair| repair.argv.as_mut())
         && argv.first().is_some_and(|program| program == PROGRAM_NAME)
         && argv.get(1).is_some_and(|name| {
-            ["show", "brief", "explain", "frontier", "next", "blindspots"].contains(&name.as_str())
+            [
+                "show",
+                "brief",
+                "explain",
+                "frontier",
+                "next",
+                "blindspots",
+                "review-packet",
+            ]
+            .contains(&name.as_str())
         })
         && !argv.iter().any(|word| word == "--case")
     {

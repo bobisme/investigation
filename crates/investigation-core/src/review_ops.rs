@@ -1005,6 +1005,33 @@ fn review_argv(id: Id) -> Vec<String> {
     ]
 }
 
+/// The read that returns a validation review's basis (`review_basis`: the
+/// subject, its basis digest and the read set) for a Conclusion, Decision or
+/// Comparison. `show ID --depth full` returns the same block for a Conclusion
+/// or Decision. A `review.submit` refusal names this read instead of copying
+/// its values into `expected` (ADR 0018).
+fn packet_argv(id: Id) -> Vec<String> {
+    vec![
+        PROGRAM_NAME.into(),
+        "review-packet".into(),
+        id.to_string(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
+fn summary_argv(id: Id) -> Vec<String> {
+    vec![
+        PROGRAM_NAME.into(),
+        "show".into(),
+        id.to_string(),
+        "--depth".into(),
+        "summary".into(),
+        "--format".into(),
+        "json".into(),
+    ]
+}
+
 fn closure_changed(
     record: &Record,
     state: &State,
@@ -1162,6 +1189,7 @@ fn blindspot_detail(payload: &ReviewSubmit) -> Option<crate::blindspot_review::D
 fn normalized_read_set(
     ctx: &OperationContext<'_>,
     target: &Record,
+    kind: ReviewKind,
     supplied: &[RevisionRef],
     required: &[RevisionRef],
 ) -> Result<Vec<RevisionRef>, Failure> {
@@ -1181,12 +1209,32 @@ fn normalized_read_set(
         .iter()
         .any(|required| by_id.get(&required.id) != Some(required))
     {
-        let mut failure = gate(
-            "/read_set",
-            "The review omits part of the current dependency closure.",
-        );
-        failure.error.expected = Some(json!(required));
-        return Err(failure.with_argv(review_argv(target.header.id)));
+        // The refusal names the read that gives the current revisions, not
+        // the revisions themselves: copying them would record a review of
+        // records the reviewer never read (ADR 0018).
+        return Err(match kind {
+            ReviewKind::Validation => gate(
+                "/read_set",
+                "The review omits part of the current dependency closure. Read review_basis with \
+                 review-packet (or show --depth full for a Conclusion or Decision) and cite every \
+                 record it lists, at the revision it gives, with any objections you cite.",
+            )
+            .with_argv(packet_argv(target.header.id)),
+            ReviewKind::Blindspot => {
+                let missing: Vec<Id> = required
+                    .iter()
+                    .filter(|required| by_id.get(&required.id) != Some(required))
+                    .map(|required| required.id)
+                    .collect();
+                let mut failure = gate(
+                    "/read_set",
+                    "The read set must hold the current revision of each record the review cites. \
+                     Read each record named in actual and cite the revision you read.",
+                );
+                failure.error.actual = Some(json!({"records": missing}));
+                failure.with_argv(summary_argv(missing[0]))
+            }
+        });
     }
     Ok(by_id.into_values().collect())
 }
@@ -1237,12 +1285,15 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             }
             let basis_digest = basis_digest(target)?;
             if basis_digest != supplied_basis {
-                let mut failure = gate(
+                // No `expected` digest: the digest is what reading the basis
+                // produces, so the refusal names the read (ADR 0018).
+                return Err(gate(
                     "/basis_digest",
-                    "The declared review basis differs from this exact claim or decision.",
-                );
-                failure.error.expected = Some(json!(basis_digest));
-                return Err(failure.with_argv(review_argv(subject_ref.id)));
+                    "The declared review basis differs from this exact claim or decision. Read \
+                     review_basis with review-packet (or show --depth full for a Conclusion or \
+                     Decision) and cite its basis_digest and read_set.",
+                )
+                .with_argv(packet_argv(subject_ref.id)));
             }
             let mut required = required_read_set(ctx.state(), target)?;
             let materials_examined =
@@ -1265,7 +1316,8 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             required.extend(objection_refs.iter().copied());
             required.sort_by_key(|reference| (reference.id, reference.revision));
             required.dedup();
-            let read_set = normalized_read_set(ctx, target, &read_set, &required)?;
+            let read_set =
+                normalized_read_set(ctx, target, ReviewKind::Validation, &read_set, &required)?;
             encode(ValidationReviewBody {
                 kind: ReviewKind::Validation,
                 status: ReviewStatus::Submitted,
@@ -1323,7 +1375,8 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             let mut required = evidence_refs.clone();
             required.extend(assumption_refs.iter().copied());
             required.extend(resolved.read.iter().copied());
-            let read_set = normalized_read_set(ctx, target, &read_set, &required)?;
+            let read_set =
+                normalized_read_set(ctx, target, ReviewKind::Blindspot, &read_set, &required)?;
             blindspot = Some(resolved);
             json!({
                 "kind": ReviewKind::Blindspot, "status": ReviewStatus::Submitted, "subject_ref": subject_ref,
@@ -1367,11 +1420,14 @@ fn answer_open_objections(
     let Some(first) = unanswered.first() else {
         return Ok(());
     };
-    let argv = review_argv(first.objection_ref.id);
+    // The summary carries the objection's statement, so a reader limited to
+    // summaries can follow it; `show --depth full` gives the whole record.
+    let argv = summary_argv(first.objection_ref.id);
     let mut failure = gate(
         "/objection_refs",
-        "A supporting review must answer each open objection on its subject: read it, then cite it \
-         in objection_refs, resolve or withdraw it, or submit a verdict that does not support.",
+        "A supporting review must answer each open objection on its subject: read it (show ID \
+         --depth summary, or --depth full for the whole record), then cite it in objection_refs, \
+         resolve or withdraw it, or submit a verdict that does not support.",
     );
     failure.error.actual = Some(json!({
         "open_objections": unanswered
@@ -2640,49 +2696,94 @@ mod tests {
         .unwrap();
     }
 
-    /// Task 7 stage 2 (two-stage injection, bn-4job): a successor reads only
-    /// compact layers of a case whose synopsis says to submit a supporting
-    /// review and validate. It knows the subject's ID and revision and fills
-    /// the basis digest and read set from the refusals' `expected` values. A
-    /// critical or material objection on the subject now ends that loop in a
-    /// refusal that hands it no value to copy; without one the same loop
-    /// commits, as the guardrails-off rehearsal shows.
-    #[test]
-    fn a_review_built_from_repair_hints_cannot_skip_an_open_objection() {
-        fn follow(s: &mut Scenario, subject: RevisionRef) -> Result<RevisionRef, Failure> {
-            let mut basis: Digest =
-                serde_json::from_value(json!(format!("sha256:{}", "0".repeat(64)))).unwrap();
-            let mut reads: Vec<RevisionRef> = Vec::new();
-            for _ in 0..4 {
-                match s.transact(
-                    "agent:successor",
-                    vec![review_payload(subject, &basis, &reads, &[], "supports")],
-                    &[],
-                ) {
-                    Ok(receipt) => return Ok(receipt.records[0].reference()),
-                    Err(failure) => {
-                        match (failure.error.path.as_deref(), &failure.error.expected) {
-                            (Some(path), Some(expected)) if path.ends_with("/basis_digest") => {
-                                basis = serde_json::from_value(expected.clone()).unwrap();
-                            }
-                            (Some(path), Some(expected)) if path.ends_with("/read_set") => {
-                                reads = serde_json::from_value(expected.clone()).unwrap();
-                            }
-                            _ => return Err(failure),
-                        }
+    /// Follow `review.submit` refusals as a summary-only reader does: start
+    /// from the subject reference alone and copy whatever `expected` hands
+    /// back. Returns the review, or the refusal the loop cannot get past.
+    fn follow_hints(s: &mut Scenario, subject: RevisionRef) -> Result<RevisionRef, Failure> {
+        let mut basis: Digest =
+            serde_json::from_value(json!(format!("sha256:{}", "0".repeat(64)))).unwrap();
+        let mut reads: Vec<RevisionRef> = Vec::new();
+        for _ in 0..4 {
+            match s.transact(
+                "agent:successor",
+                vec![review_payload(subject, &basis, &reads, &[], "supports")],
+                &[],
+            ) {
+                Ok(receipt) => return Ok(receipt.records[0].reference()),
+                Err(failure) => match (failure.error.path.as_deref(), &failure.error.expected) {
+                    (Some(path), Some(expected)) if path.ends_with("/basis_digest") => {
+                        basis = serde_json::from_value(expected.clone()).unwrap();
                     }
-                }
+                    (Some(path), Some(expected)) if path.ends_with("/read_set") => {
+                        reads = serde_json::from_value(expected.clone()).unwrap();
+                    }
+                    _ => return Err(failure),
+                },
             }
-            panic!("no review from repair hints");
         }
+        panic!("no review from repair hints");
+    }
 
-        // Control: with no objection the hints alone produce a review.
+    fn names_the_packet_read(failure: &Failure, path: &str, subject: RevisionRef) {
+        assert_eq!(failure.error.code, ErrorCode::GateFailed, "{failure:?}");
+        assert_eq!(failure.error.path.as_deref(), Some(path));
+        assert_eq!(failure.error.expected, None, "{failure:?}");
+        let argv = failure
+            .error
+            .repair
+            .as_ref()
+            .unwrap()
+            .argv
+            .as_ref()
+            .unwrap();
+        assert_eq!(
+            argv[1..3],
+            ["review-packet".to_owned(), subject.id.to_string()]
+        );
+    }
+
+    /// Task 7 stage 2 (two-stage injection, bn-g2l6): a successor that reads
+    /// only compact layers knows the subject's ID and revision and fills the
+    /// basis digest and read set from the refusals' `expected` values. Those
+    /// refusals now name the read that returns the values (`review-packet`)
+    /// and carry none of them, so the loop stops at the first refusal. The
+    /// values the named read returns (`review_basis`) commit the review.
+    #[test]
+    fn review_submit_refusals_name_the_read_not_its_values() {
         let mut s = Scenario::new();
         let observation = s.observation("90", None, false);
         let ready = s.conclusion(Some(observation));
         let ready = s.prepare(ready);
-        follow(&mut s, ready).unwrap();
+        let refused = follow_hints(&mut s, ready).unwrap_err();
+        names_the_packet_read(&refused, "/operations/0/payload/basis_digest", ready);
 
+        // A reader with the right digest but an incomplete read set.
+        let basis = basis_digest(s.get(ready)).unwrap();
+        let refused = s
+            .transact(
+                "agent:successor",
+                vec![review_payload(ready, &basis, &[], &[], "supports")],
+                &[],
+            )
+            .unwrap_err();
+        names_the_packet_read(&refused, "/operations/0/payload/read_set", ready);
+        assert_eq!(s.state.records_of_kind(Kind::Review).count(), 0);
+
+        // What review_basis gives commits.
+        let reads = required_read_set(&s.state, s.get(ready)).unwrap();
+        s.transact(
+            "agent:successor",
+            vec![review_payload(ready, &basis, &reads, &[], "supports")],
+            &[],
+        )
+        .unwrap();
+    }
+
+    /// Task 7 stage 2 with a challenge (bn-4job): a reader that did read the
+    /// review basis but not the critical or material objection on the
+    /// subject is refused, and the refusal hands it no value to copy.
+    #[test]
+    fn a_review_from_the_basis_alone_cannot_skip_an_open_objection() {
         for severity in ["material", "critical"] {
             let mut s = Scenario::new();
             let observation = s.observation("90", None, false);
@@ -2698,8 +2799,27 @@ mod tests {
                 .unwrap()
                 .records[0]
                 .reference();
-            let refused = follow(&mut s, ready).unwrap_err();
+            let basis = basis_digest(s.get(ready)).unwrap();
+            let reads = required_read_set(&s.state, s.get(ready)).unwrap();
+            let refused = s
+                .transact(
+                    "agent:successor",
+                    vec![review_payload(ready, &basis, &reads, &[], "supports")],
+                    &[],
+                )
+                .unwrap_err();
             refused_for(&refused, &[objection]);
+            // The objection is named at summary depth, which carries its
+            // statement, so a summary-only reader can read it.
+            let argv = refused
+                .error
+                .repair
+                .as_ref()
+                .unwrap()
+                .argv
+                .as_ref()
+                .unwrap();
+            assert_eq!(argv[3..5], ["--depth".to_owned(), "summary".to_owned()]);
             assert_eq!(s.state.records_of_kind(Kind::Review).count(), 0);
         }
     }

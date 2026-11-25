@@ -627,3 +627,94 @@ fn decisions_record_and_show_the_objections_they_were_accepted_over() {
     );
     assert!(case.show(&material, "summary")["objection"]["status"] == "withdrawn");
 }
+
+/// Run a repair argv as given, without its program name.
+fn follow(root: &Path, argv: &Value) -> Value {
+    let words: Vec<&str> = argv
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|word| word.as_str().unwrap())
+        .collect();
+    run(root, &words, None, 0)
+}
+
+/// `review.submit` refusals name the read that returns the review basis and
+/// carry none of its values (ADR 0018); the named read is runnable and what
+/// it returns commits the review. The open-objection refusal names a
+/// summary-depth read that shows the objection's statement.
+#[test]
+fn review_refusals_name_a_runnable_read_and_no_values() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let (id, started) = start(root);
+    let case = Case { root, id };
+    let artifact = started["items"][0]["derivative_id"].as_str().unwrap();
+    let selector = json!({"schema_version":"inv.selector.v1","artifact_digest":started["items"][0]["digest"],"selector":{"type":"text_lines","start_line":1,"end_line":1,"encoding":"utf-8","parser_version":"inv.text.utf8.v1"}});
+    let observation = case.one(
+        "observe",
+        "observation.add",
+        json!({
+            "value":{"kind":"text","statement":"The recorded reading is 12.5 units."},
+            "basis":{"kind":"source","artifact_ref":{"id":artifact,"revision":1},"selector":selector,
+                "text_quote":{"exact":"Reading 12.5 units"}},
+            "validity":"unknown","quality":[],"limitations":[],"evidence_kind":"observational","variables_changed":[]
+        }),
+    );
+    let candidate = case.one(
+        "claim",
+        "conclusion.create",
+        json!({
+            "statement":"The reading is 12.5 units.","scope":"This recorded reading.",
+            "significance":"Check the setup before reuse.","support_refs":[observation],
+            "contradiction_refs":[],"caveats":["One reading."]
+        }),
+    );
+    let subject = case.show(&candidate, "summary")["summary_basis"]["revision"].clone();
+    let subject = json!({"id":candidate["id"],"revision":subject});
+    let mut payload = case.review_payload(&subject, "supports", &[]);
+    let refusals = [
+        (
+            "digest",
+            "basis_digest",
+            json!(format!("sha256:{}", "0".repeat(64))),
+        ),
+        ("reads", "read_set", json!([])),
+    ];
+    for (key, field, wrong) in refusals {
+        let mut wrong_payload = payload.clone();
+        wrong_payload[field] = wrong;
+        let refused = case.submit(key, ACTOR, "review.submit", wrong_payload, json!([]), 5);
+        let error = &refused["error"];
+        assert_eq!(error["code"], "GATE_FAILED", "{refused:#}");
+        assert_eq!(error["path"], format!("/operations/0/payload/{field}"));
+        assert!(error.get("expected").is_none(), "{refused:#}");
+        let argv = &error["repair"]["argv"];
+        assert!(
+            argv.as_array().unwrap().contains(&json!("review-packet")),
+            "{argv}"
+        );
+        let basis = follow(root, argv)["review_basis"].clone();
+        assert_eq!(basis["basis_digest"], payload["basis_digest"]);
+        assert_eq!(basis["read_set"], payload["read_set"]);
+    }
+    let objection = case.objection("challenge", &subject, "material");
+    let refused = case.submit(
+        "unanswered",
+        ACTOR,
+        "review.submit",
+        payload.clone(),
+        json!([]),
+        5,
+    );
+    let argv = &refused["error"]["repair"]["argv"];
+    assert!(
+        argv.as_array().unwrap().contains(&json!("summary")),
+        "{argv}"
+    );
+    let read = follow(root, argv);
+    assert!(read.to_string().contains("A material concern."), "{read:#}");
+    payload = case.review_payload(&subject, "supports", &[objection]);
+    case.submit("answered", ACTOR, "review.submit", payload, json!([]), 0);
+}
