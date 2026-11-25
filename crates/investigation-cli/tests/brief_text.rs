@@ -156,12 +156,35 @@ fn sixth_transaction(workspace: &Path, case: &str) -> String {
         .to_owned()
 }
 
-/// Brief levels, a delta and full shows of a case, a conclusion and an
-/// Observation.
+/// Brief levels, a delta and full shows of a case, a conclusion, an
+/// Observation and a measurement Observation, whose summary leads with the
+/// measured value and its unit.
 fn scenario_reads(workspace: &Path, case: &str) -> Vec<(String, Vec<String>)> {
     let brief = json(workspace, &["--case", case, "brief"]);
     let outcome = brief["outcomes"][0]["id"].as_str().unwrap().to_owned();
     let evidence = brief["evidence"][0]["id"].as_str().unwrap().to_owned();
+    let deep = json(
+        workspace,
+        &[
+            "--case",
+            case,
+            "brief",
+            "--level",
+            "deep",
+            "--max-bytes",
+            "200000",
+        ],
+    );
+    let measurement = deep["evidence"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|item| item["id"].as_str().unwrap().to_owned())
+        .find(|id| {
+            let view = json(workspace, &["--case", case, "show", id, "--depth", "full"]);
+            view["record"]["body"]["value"]["kind"] == "measurement"
+        })
+        .expect("Scenario A records a measurement Observation");
     let since = sixth_transaction(workspace, case);
     let reads: Vec<(&str, Vec<&str>)> = vec![
         ("brief", vec!["brief"]),
@@ -179,6 +202,10 @@ fn scenario_reads(workspace: &Path, case: &str) -> Vec<(String, Vec<String>)> {
         (
             "show_evidence_full",
             vec!["show", &evidence, "--depth", "full"],
+        ),
+        (
+            "show_measurement_full",
+            vec!["show", &measurement, "--depth", "full"],
         ),
     ];
     reads

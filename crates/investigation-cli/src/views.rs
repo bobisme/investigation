@@ -893,7 +893,8 @@ pub(crate) fn record_summary(record: &Record) -> String {
         Kind::Observation => &[
             "value.statement",
             "value.description",
-            "value.unit",
+            // The measured value with its unit; see `measured_value`.
+            MEASURED_VALUE,
             "basis.text_quote.exact",
             "claim",
             "statement",
@@ -942,9 +943,14 @@ pub(crate) fn record_summary(record: &Record) -> String {
     for key in preferred {
         // One line: controls, line breaks and bidirectional or invisible
         // characters never reach a summary.
-        if let Some(text) = value_at(&record.body, key)
-            .and_then(Value::as_str)
-            .map(investigation_core::authored_text::fold)
+        let text = if *key == MEASURED_VALUE {
+            measured_value(&record.body)
+        } else {
+            value_at(&record.body, key)
+                .and_then(Value::as_str)
+                .map(investigation_core::authored_text::fold)
+        };
+        if let Some(text) = text
             && !text.is_empty()
             && seen.insert(text.clone())
         {
@@ -967,6 +973,33 @@ pub(crate) fn record_summary(record: &Record) -> String {
 
 fn value_at<'a>(value: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.').try_fold(value, |value, key| value.get(key))
+}
+
+/// The pseudo-field of an Observation summary that stands for its measured
+/// value and unit together.
+const MEASURED_VALUE: &str = "value.value value.unit";
+
+/// A measurement Observation's value and unit as one summary field, such as
+/// `7 failed requests` or `-0.50 ms`. The schema stores the value as a decimal
+/// string (an integer or a decimal, never a range), and it is shown exactly as
+/// recorded, so `18.70` keeps its trailing zero and the text is the same on
+/// every read. A JSON number in an unvalidated body prints in its canonical
+/// JSON form. Any other value shape is left out and the unit stands alone.
+fn measured_value(body: &Value) -> Option<String> {
+    let number = match value_at(body, "value.value") {
+        Some(Value::String(text)) => Some(investigation_core::authored_text::fold(text)),
+        Some(Value::Number(number)) => Some(number.to_string()),
+        _ => None,
+    }
+    .filter(|text| !text.is_empty());
+    let unit = value_at(body, "value.unit")
+        .and_then(Value::as_str)
+        .map(investigation_core::authored_text::fold)
+        .filter(|text| !text.is_empty());
+    match (number, unit) {
+        (Some(number), Some(unit)) => Some(format!("{number} {unit}")),
+        (number, unit) => number.or(unit),
+    }
 }
 
 /// Fields of an index entry: identity, effective state and caveats, without
@@ -1124,6 +1157,82 @@ mod tests {
             summary.contains("total 0, examined not recorded"),
             "{summary}"
         );
+    }
+
+    fn observation_with(body: Value) -> Record {
+        Record {
+            header: serde_json::from_value(json!({
+                "id":"obs_00000000-0000-7000-8000-000000000001",
+                "case_id":"case_00000000-0000-7000-8000-000000000002",
+                "schema_version":"inv.record.v0-alpha","created_by":"agent:test",
+                "actor_descriptor_self_reported":null,"created_at":"2026-01-01T00:00:00.0Z",
+                "recorded_at":"2026-01-01T00:00:00.0Z","recorded_by":"agent:test",
+                "observed_at":null,"acquired_at":null,"acceptance_sequence":1,
+                "revision":1,"history":[],"classification":{"level":"internal","reason":null,"tags":[]},
+                "provenance":{"references":[]},"extensions":{}
+            }))
+            .unwrap(),
+            body,
+        }
+    }
+
+    #[test]
+    fn observation_summary_shows_the_measured_value_with_its_unit() {
+        let summary = |value: Value| {
+            record_summary(&observation_with(json!({
+                "value":value,
+                "basis":{"kind":"assertion","assertion":"counted","context":null}
+            })))
+        };
+        // An integer, a decimal kept exactly as recorded, and a negative one.
+        assert_eq!(
+            summary(json!({"kind":"measurement","value":"7","unit":"failed requests"})),
+            "7 failed requests"
+        );
+        assert_eq!(
+            summary(json!({"kind":"measurement","value":"18.70","unit":"ms"})),
+            "18.70 ms"
+        );
+        assert_eq!(
+            summary(json!({"kind":"measurement","value":"-0.5","unit":"s"})),
+            "-0.5 s"
+        );
+        // An unvalidated JSON number prints in its canonical form; any other
+        // shape, such as a range object, leaves the unit alone.
+        assert_eq!(
+            summary(json!({"kind":"measurement","value":12,"unit":"hits"})),
+            "12 hits"
+        );
+        assert_eq!(
+            summary(json!({"kind":"measurement","value":{"low":"1","high":"2"},"unit":"ms"})),
+            "ms"
+        );
+        assert_eq!(summary(json!({"kind":"measurement","value":"3"})), "3");
+        // Text and binary values keep their own fields.
+        assert_eq!(
+            summary(json!({"kind":"text","statement":"the queue drained"})),
+            "the queue drained"
+        );
+        // The value and unit are one field: included whole or omitted whole,
+        // and the next field follows them.
+        let record = observation_with(json!({
+            "value":{"kind":"measurement","value":"7","unit":"failed requests"},
+            "basis":{"kind":"source","text_quote":{"exact":"7 requests failed"}}
+        }));
+        assert_eq!(
+            record_summary(&record),
+            "7 failed requests 7 requests failed"
+        );
+        // The byte bound counts the value too: "7 " plus a unit that fills
+        // the rest fits exactly, and one more byte omits the field whole
+        // rather than keeping the unit or a cut value.
+        let bounded = |unit_bytes: usize| {
+            record_summary(&observation_with(json!({
+                "value":{"kind":"measurement","value":"7","unit":"u".repeat(unit_bytes)}
+            })))
+        };
+        assert_eq!(bounded(SUMMARY_MAX_BYTES - 2).len(), SUMMARY_MAX_BYTES);
+        assert_eq!(bounded(SUMMARY_MAX_BYTES - 1), "");
     }
 
     #[test]
