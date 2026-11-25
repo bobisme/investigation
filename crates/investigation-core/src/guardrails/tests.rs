@@ -327,10 +327,11 @@ fn requirements_read_authors_sessions_and_reads() {
     assert_eq!(content.len(), 1);
 
     // distinct_actor: the assessor recorded no content.
-    assert!(probe.distinct_actor(&content).is_some());
+    assert!(probe.distinct_actor().unwrap().is_some());
     assert!(
         retract(&state, &subject, case, &assessor, None, None)
-            .distinct_actor(&content)
+            .distinct_actor()
+            .unwrap()
             .is_none()
     );
 
@@ -486,7 +487,7 @@ fn a_human_confirmation_must_name_this_write() {
         evidence: None,
         subject: &subject,
     };
-    let (unmet, repair) = write_with(None).human_confirmation().unwrap();
+    let (unmet, repair) = write_with(None).human_confirmation().unwrap().unwrap();
     assert_eq!(unmet, json!({"missing": "human_confirmation"}));
     assert_eq!(
         repair["shape"]["confirms"],
@@ -494,9 +495,114 @@ fn a_human_confirmation_must_name_this_write() {
     );
     let (unmet, _) = write_with(Some(&confirmation))
         .human_confirmation()
+        .unwrap()
         .unwrap();
     assert_eq!(unmet["missing"], "human_confirmation_for_this_write");
     let mut right = confirmation.clone();
     right.confirms[0].op = GuardedOperation::SourceWithdraw;
-    assert!(write_with(Some(&right)).human_confirmation().is_none());
+    assert!(
+        write_with(Some(&right))
+            .human_confirmation()
+            .unwrap()
+            .is_none()
+    );
+}
+
+/// The confirming person is someone other than the writer and other than
+/// whoever recorded the subject's current content: the content authors that
+/// `distinct_actor` and review independence use. Actor strings are compared,
+/// a procedural check that authenticates nobody.
+#[test]
+fn a_human_confirmation_by_the_writer_or_a_content_author_is_refused() {
+    let case = id("case", 1);
+    let mut state = State::default();
+    write(&mut state, case, case, "agent:author", json!({}));
+    let observation = id("obs", 3);
+    write(
+        &mut state,
+        observation,
+        case,
+        "agent:author",
+        json!({"value": "12.5", "status": "active"}),
+    );
+    // A metadata-only revision by another actor records no content.
+    write(
+        &mut state,
+        observation,
+        case,
+        "agent:assessor",
+        json!({"value": "12.5", "status": "active", "measurement_assessment": {"x": 1}}),
+    );
+    let subject = state.current(observation).unwrap().clone();
+    let confirmed_by = |actor: &str| -> HumanConfirmation {
+        serde_json::from_value(json!({
+            "confirmed_by": actor, "method": "Approved in chat.",
+            "confirms": [{"op": "observation.retract", "subject": observation}],
+        }))
+        .unwrap()
+    };
+    let check = |writer: &str, confirmer: &str| {
+        let actor: Actor = writer.parse().unwrap();
+        let confirmation = confirmed_by(confirmer);
+        Write {
+            operation: GuardedOperation::ObservationRetract,
+            state: &state,
+            case,
+            sequence: 10,
+            actor: &actor,
+            session: None,
+            confirmation: Some(&confirmation),
+            evidence: None,
+            subject: &subject,
+        }
+        .human_confirmation()
+        .unwrap()
+    };
+    for (writer, confirmer) in [
+        ("agent:author", "agent:author"),
+        ("agent:writer", "agent:writer"),
+        ("agent:writer", "agent:author"),
+    ] {
+        let (unmet, repair) = check(writer, confirmer)
+            .unwrap_or_else(|| panic!("{writer} confirmed by {confirmer} was accepted"));
+        assert_eq!(
+            unmet,
+            json!({
+                "missing": "human_confirmation_by_another_actor",
+                "confirmed_by": confirmer, "actor": writer, "authors": ["agent:author"],
+            }),
+            "{writer} {confirmer}"
+        );
+        assert_eq!(repair["change"], "human_confirmation");
+        let route = repair["route"].as_str().unwrap();
+        assert!(route.contains("other than the writer"), "{route}");
+        assert!(route.contains("not authenticate"), "{route}");
+    }
+    // Someone else confirms: a person who recorded no content, even one who
+    // revised the record's metadata.
+    assert!(check("agent:writer", "human:reviewer").is_none());
+    assert!(check("agent:writer", "agent:assessor").is_none());
+    assert!(check("agent:author", "human:reviewer").is_none());
+    // The route without a confirmation also names someone other than the writer.
+    let actor: Actor = "agent:writer".parse().unwrap();
+    let (_, repair) = Write {
+        operation: GuardedOperation::ObservationRetract,
+        state: &state,
+        case,
+        sequence: 10,
+        actor: &actor,
+        session: None,
+        confirmation: None,
+        evidence: None,
+        subject: &subject,
+    }
+    .human_confirmation()
+    .unwrap()
+    .unwrap();
+    assert!(
+        repair["route"]
+            .as_str()
+            .unwrap()
+            .contains("other than the writer")
+    );
 }

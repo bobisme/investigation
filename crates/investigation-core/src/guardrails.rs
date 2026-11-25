@@ -20,9 +20,14 @@
 //! - `distinct_context`: the write declares a session that recorded none of
 //!   the subject's current content and that has no recorded evidence read of
 //!   untrusted material through investigation, so the context that read
-//!   hostile evidence cannot promote or suppress;
+//!   hostile evidence cannot promote or suppress. It does not require the
+//!   writing context to have read the evidence, and reads through `brief` or
+//!   `show` are not recorded, so a fresh context acting on a laundered
+//!   synopsis passes; `human_confirmation` is the requirement for that case;
 //! - `human_confirmation`: the envelope carries an attributed claim of who
-//!   confirmed this exact write (operation and subject) and how.
+//!   confirmed this exact write (operation and subject) and how, naming an
+//!   actor other than the writer and the subject's content authors (the
+//!   authors `distinct_actor` uses). A procedural check of actor strings.
 //!
 //! Actors, sessions and confirmations are self-reported. Investigation does
 //! not authenticate people or contexts and sees only the evidence reads made
@@ -45,7 +50,7 @@ use crate::{
     inherited_trust::{Session, SessionLedger, SessionReads, TrustLevel},
     method_pack::{GuardrailProposal, GuardrailRequirement},
     method_pack_ops::{ResolvedPack, adopted_packs, resolve_pin},
-    pack_policy::ConsultedPack,
+    pack_policy::{ConsultedPack, authors_by},
     state::{OperationContext, Record, State},
     wire::{ErrorCode, Failure},
 };
@@ -58,6 +63,9 @@ pub const LIMITS: &str = "Actors, sessions and human confirmations are self-repo
 
 /// Longest `method` text in a human confirmation, in characters.
 const MAX_METHOD_CHARS: usize = 500;
+/// How to satisfy `human_confirmation`, in every refusal that names it.
+const CONFIRMATION_ROUTE: &str = "Ask a person other than the writer, who did not record the subject's current content, to confirm this exact write. Then resubmit with human_confirmation in the envelope naming that person in confirmed_by and stating how they confirmed it. Investigation compares actor strings and does not authenticate the person.";
+
 /// Most writes one human confirmation may name.
 const MAX_CONFIRMED_WRITES: usize = 128;
 /// Most same-case session reads named in one refusal; the rest are counted.
@@ -123,7 +131,9 @@ impl GuardedOperation {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct HumanConfirmation {
-    /// Who confirmed, as an actor string. Self-reported, not authenticated.
+    /// Who confirmed, as an actor string: not the writing actor and not an
+    /// actor who recorded the subject's current content. Self-reported, not
+    /// authenticated.
     pub confirmed_by: Actor,
     /// How the confirmation was obtained, in words. Self-reported.
     #[schemars(length(min = 1, max = 500))]
@@ -319,9 +329,9 @@ pub fn enforce(
     let mut blockers = Vec::new();
     for (pack, rule) in rules {
         let unmet = match rule.requirement {
-            GuardrailRequirement::DistinctActor => write.distinct_actor(&content),
+            GuardrailRequirement::DistinctActor => write.distinct_actor()?,
             GuardrailRequirement::DistinctContext => write.distinct_context(&content),
-            GuardrailRequirement::HumanConfirmation => write.human_confirmation(),
+            GuardrailRequirement::HumanConfirmation => write.human_confirmation()?,
         };
         match unmet {
             Some((unmet, repair)) => blockers.push(json!({
@@ -416,15 +426,15 @@ impl Write<'_> {
         Ok(revisions)
     }
 
-    fn distinct_actor(&self, content: &[&Record]) -> Unmet {
-        let mut authors = BTreeSet::new();
-        for revision in content {
-            authors.insert(revision.header.recorded_by.clone());
-            if revision.header.revision.0 == 1 {
-                authors.insert(revision.header.created_by.clone());
-            }
-        }
-        authors.contains(self.actor).then(|| {
+    /// Actors who recorded the subject's current content, by the rule review
+    /// independence and `lesson.admit` use ([`authors_by`]) with [`content`].
+    fn authors(&self) -> Result<BTreeSet<Actor>, Failure> {
+        authors_by(self.state, self.subject, content)
+    }
+
+    fn distinct_actor(&self) -> Result<Unmet, Failure> {
+        let authors = self.authors()?;
+        Ok(authors.contains(self.actor).then(|| {
             (
                 json!({"missing": "distinct_actor", "actor": self.actor, "authors": authors}),
                 json!({
@@ -432,7 +442,7 @@ impl Write<'_> {
                     "route": "Submit this write as an actor that did not record the subject's current content.",
                 }),
             )
-        })
+        }))
     }
 
     fn distinct_context(&self, content: &[&Record]) -> Unmet {
@@ -512,18 +522,20 @@ impl Write<'_> {
         Some((unmet, repair))
     }
 
-    fn human_confirmation(&self) -> Unmet {
+    /// The confirmation must name this write and a confirming actor other
+    /// than the writer and the subject's content authors.
+    fn human_confirmation(&self) -> Result<Unmet, Failure> {
         let subject = self.subject.header.id;
         let repair = json!({
             "change": "human_confirmation",
-            "route": "Ask a person to confirm this exact write, then resubmit with human_confirmation in the envelope stating who confirmed it and how.",
+            "route": CONFIRMATION_ROUTE,
             "shape": {
                 "confirmed_by": "<actor who confirmed>",
                 "method": "<how the confirmation was obtained>",
                 "confirms": [{"op": self.operation, "subject": subject}],
             },
         });
-        match self.confirmation {
+        Ok(match self.confirmation {
             None => Some((json!({"missing": "human_confirmation"}), repair)),
             Some(confirmation) if !confirmation.covers(self.operation, subject) => Some((
                 json!({
@@ -532,8 +544,20 @@ impl Write<'_> {
                 }),
                 repair,
             )),
-            Some(_) => None,
-        }
+            Some(confirmation) => {
+                let authors = self.authors()?;
+                let by = &confirmation.confirmed_by;
+                (by == self.actor || authors.contains(by)).then(|| {
+                    (
+                        json!({
+                            "missing": "human_confirmation_by_another_actor",
+                            "confirmed_by": by, "actor": self.actor, "authors": authors,
+                        }),
+                        repair,
+                    )
+                })
+            }
+        })
     }
 }
 

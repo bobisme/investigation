@@ -458,8 +458,9 @@ pub fn content_authors(state: &State, subject: &Record) -> Result<BTreeSet<Actor
 
 /// [`content_authors`] for any kind, with `content` saying what of a revision
 /// is its content: the creator and whoever recorded a revision whose content
-/// differs from the one before. Used where the subject's kind has no basis
-/// digest, such as a Retrospective at `lesson.admit`.
+/// differs from the one before. Used where content is not the basis digest:
+/// a Retrospective at `lesson.admit`, and the write-side guardrails'
+/// `distinct_actor` and `human_confirmation` with `guardrails::content`.
 pub(crate) fn authors_by<T: PartialEq>(
     state: &State,
     subject: &Record,

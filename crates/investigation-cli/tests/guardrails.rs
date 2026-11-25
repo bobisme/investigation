@@ -581,6 +581,35 @@ fn suppression_and_declassification_need_the_required_confirmation_or_actor() {
     );
     assert_eq!(level(&case), before);
 
+    // The writer, who also created the question, cannot confirm its own
+    // write; the refusal names the actor strings it compared.
+    let mut by_writer = confirmation("classification.downgrade", &question);
+    by_writer["confirmed_by"] = json!(ACTOR);
+    let refused = case.submit(
+        "downgrade",
+        "classification.downgrade",
+        downgrade.clone(),
+        Envelope {
+            confirmation: Some(by_writer),
+            ..Envelope::default()
+        },
+        5,
+    );
+    let unmet = blocker(&refused, "confirm-declassification", "human_confirmation");
+    assert_eq!(
+        unmet["unmet"],
+        json!({"missing":"human_confirmation_by_another_actor","confirmed_by":ACTOR,
+            "actor":ACTOR,"authors":[ACTOR]})
+    );
+    assert!(
+        unmet["repair"]["route"]
+            .as_str()
+            .unwrap()
+            .contains("a person other than the writer"),
+        "{unmet}"
+    );
+    assert_eq!(level(&case), before);
+
     // With it, the downgrade is recorded with the confirmation as a claim.
     let accepted = case.submit(
         "downgrade",
@@ -895,4 +924,88 @@ fn retention_preview_predicts_the_guardrail_refusal_of_artifact_expire() {
     assert_eq!(predicted["outcome"], "becomes_unavailable", "{predicted}");
     assert!(predicted.get("refusal").is_none(), "{predicted}");
     expire(&case, "expire", "expirer", 0);
+}
+
+/// The v1 position on payload references in guarded writes (bn-9gkn, plan
+/// §10.3): a reference the write relies on as current state must be current,
+/// and a stale one is refused with `REVISION_CONFLICT`; a reference that
+/// records which exact revision was examined stays an exact historical
+/// citation and is not required to be current.
+#[test]
+fn guarded_writes_refuse_stale_refs_they_rely_on_and_keep_exact_examined_revisions() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    init(root);
+    let case = start(root, "stale-refs-case");
+    adopt(&case);
+    let first = case.observe("observe");
+    let assessed = case.one("assess", "measurement.assess", json!({
+        "observation_ref":first,"channel":null,"validity":"valid",
+        "verification":[{"kind":"equivalent","justification":"The setup reproduced a known reference value."}],
+        "rationale":"Judged from the recorded setup.","limits":[]
+    }));
+    assert_eq!(assessed["revision"], 2);
+    assert_eq!(first["revision"], 1);
+
+    // The evidence that grounds a withdrawal is read as it stands now.
+    let source = json!({"id":case.attachment["source_id"],"revision":1});
+    let withdraw = |key: &str, evidence: &Value, exit| {
+        case.submit(
+            key,
+            "source.withdraw",
+            json!({"source_ref":source,"reason":"superseded","scope":{"extent":"entire"},
+                "rationale":"A corrected reading replaces it.","evidence_refs":[evidence]}),
+            Envelope {
+                session: Some("withdrawer"),
+                ..Envelope::default()
+            },
+            exit,
+        )
+    };
+    let stale = withdraw("withdraw-stale", &first, 4);
+    assert_eq!(stale["error"]["code"], "REVISION_CONFLICT", "{stale:#}");
+    assert_eq!(
+        stale["error"]["path"],
+        "/operations/0/payload/evidence_refs/0"
+    );
+    assert_eq!(case.revision(&source), 1);
+    withdraw("withdraw-current", &assessed, 0);
+    assert_eq!(case.revision(&source), 2);
+
+    // A downgrade review records the exact revisions it examined; besides the
+    // current subject, an earlier revision of another record is accepted as
+    // what the reviewer read.
+    let question = case.one(
+        "question",
+        "question.create",
+        json!({"importance":"normal","wording":"Which setup should be reused?"}),
+    );
+    case.one(
+        "raise",
+        "classification.raise",
+        json!({"subject_ref":question,"level":"restricted","reason":"Names a customer."}),
+    );
+    let accepted = case.submit(
+        "downgrade",
+        "classification.downgrade",
+        json!({
+            "subject_ref":question,"level":"internal","reason":"Customer name removed.",
+            "transformation":{"inputs":[{"input_ref":question,"digest":null}],"transformation":"manual_redaction",
+                "version":"1","redaction_decisions":[{"scope":"Customer name","action":"removed","rationale":"Not needed."}],
+                "output_digest":null},
+            "review":{"method":"Read the question and the first reading.","coverage":"whole_output",
+                "examined":[question, first]}
+        }),
+        Envelope {
+            confirmation: Some(json!({"confirmed_by":"human:reviewer","method":"Approved at an interactive prompt.",
+                "confirms":[{"op":"classification.downgrade","subject":question["id"]}]})),
+            ..Envelope::default()
+        },
+        0,
+    );
+    let journaled = case.journaled(&accepted["created"][0]["id"]);
+    assert_eq!(
+        journaled["body"]["classification_change"]["review"]["examined"],
+        json!([question, first])
+    );
 }

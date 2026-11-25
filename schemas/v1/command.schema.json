@@ -86,7 +86,7 @@
       "properties": {
         "confirmed_by": {
           "$ref": "#/$defs/Actor",
-          "description": "Who confirmed, as an actor string. Self-reported, not authenticated."
+          "description": "Who confirmed, as an actor string: not the writing actor and not an\nactor who recorded the subject's current content. Self-reported, not\nauthenticated."
         },
         "confirms": {
           "description": "The guarded writes confirmed: each names the operation and the ID of\nthe record it changes (the Conclusion, Decision, Source, Observation,\nor the record being downgraded).",
