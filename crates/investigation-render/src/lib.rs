@@ -218,6 +218,7 @@
 
 pub mod attachments;
 pub mod bases;
+pub(crate) mod canvas;
 pub mod compat;
 pub mod copy_map;
 pub mod drift;

@@ -70,7 +70,7 @@ use investigation_core::{
     identity::Id,
     wire::{Digest, Snapshot},
 };
-use investigation_store::{Store, Workspace, durable::DurableFs, journal::hash_bytes};
+use investigation_store::{Store, Workspace, durable::DurableFs};
 use rustix::{
     fs::{RenameFlags, fsync, renameat_with},
     io::Errno,
@@ -953,7 +953,7 @@ fn apply(
                         ),
                     ));
                 };
-                let sha256 = hash_bytes(&bytes);
+                let sha256 = crate::canvas::digest(name, &bytes);
                 if sha256 != observed.sha256 {
                     return Err(changed(
                         label.as_str(),
@@ -1006,7 +1006,12 @@ fn keep(
         conflicts_directory(&local, &parents, true)?.expect("created directories exist");
     if !write_bytes_atomically(&directory, to, name, bytes, tag, false)? {
         let existing = read_regular(&directory, name, to)?;
-        if existing.as_deref().map(hash_bytes).as_ref() != Some(sha256) {
+        if existing
+            .as_deref()
+            .map(|bytes| crate::canvas::digest(name, bytes))
+            .as_ref()
+            != Some(sha256)
+        {
             return Err(RenderError::io(
                 to,
                 std::io::Error::new(

@@ -9,8 +9,16 @@
 //!
 //! Gating and focus: `without_a_supported_viewer_release_there_is_no_map`,
 //! `the_focus_follows_the_case_and_the_bounds_say_what_was_left_out`.
+//!
+//! The viewer's layout (ADR 0019, bn-24y4): `the_map_is_written_in_the_layout_the_viewer_writes`,
+//! `a_map_the_viewer_reformatted_is_not_drift_and_a_changed_one_is`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fs,
+    path::Path,
+    process::Command,
+};
 
 use investigation_render::{
     RenderPlan, VerifiedSnapshot, ViewPolicy,
@@ -354,4 +362,160 @@ fn the_focus_follows_the_case_and_the_bounds_say_what_was_left_out() {
         "questions, then rival hypotheses, then assessments, then observations, then inquiries \
          and runs, then conclusions"
     ));
+}
+
+/// The case map of each scenario is the file the viewer (release 1.15.1)
+/// wrote when it opened the checked-in golden map in the real-viewer gate:
+/// tabs, one compact node or edge per line, no final line break. The
+/// fixtures are those files with the gate's managed prefix taken out of each
+/// node's `file` path, which is the only difference the gate's
+/// existing-vault mode makes.
+#[test]
+fn the_map_is_written_in_the_layout_the_viewer_writes() {
+    let directory = tempfile::tempdir().unwrap();
+    for scenario in WITH_VIEWER {
+        let workspace = fixtures::workspace(scenario, &directory.path().join(scenario), false);
+        let (_, plan) = fixtures::plan(&workspace);
+        let viewer = fs::read(
+            fixtures::repository()
+                .join("crates/investigation-render/tests/fixtures/viewer-canvas")
+                .join(format!("{scenario}-Map.canvas")),
+        )
+        .unwrap();
+        let maps: Vec<&[u8]> = plan
+            .entries()
+            .iter()
+            .filter(|entry| entry.path().as_str().ends_with(".canvas"))
+            .map(|entry| entry.content())
+            .collect();
+        assert_eq!(maps.len(), 1, "{scenario}");
+        assert!(
+            maps[0] == viewer.as_slice(),
+            "{scenario}: the map is not in the viewer's layout:\n{}",
+            String::from_utf8_lossy(maps[0])
+        );
+    }
+}
+
+fn cli(workspace: &Path, args: &[&str]) -> Value {
+    let output = Command::new(env!("CARGO_BIN_EXE_investigation"))
+        .env_clear()
+        .arg("--workspace")
+        .arg(workspace)
+        .args(args)
+        .args(["--format", "json"])
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(output.status.code(), Some(0), "{args:?}: {stdout}");
+    serde_json::from_str(&stdout).unwrap()
+}
+
+/// `text` with every node and edge object in the layout a different writer
+/// might use: two-space indentation, spaces after `:` and `,`, the keys of
+/// each object in reverse order, `/` escaped, a final line break.
+fn other_layout(text: &[u8]) -> Vec<u8> {
+    fn reversed(value: &Value) -> String {
+        match value {
+            Value::Object(map) => {
+                let parts: Vec<String> = map
+                    .iter()
+                    .rev()
+                    .map(|(key, value)| {
+                        format!("{}: {}", Value::String(key.clone()), reversed(value))
+                    })
+                    .collect();
+                format!("{{{}}}", parts.join(", "))
+            }
+            Value::Array(items) => {
+                let parts: Vec<String> = items
+                    .iter()
+                    .map(|item| format!("\n    {}", reversed(item)))
+                    .collect();
+                format!("[{}\n  ]", parts.join(","))
+            }
+            other => other.to_string().replace('/', "\\/"),
+        }
+    }
+    let document: Value = serde_json::from_slice(text).unwrap();
+    format!(
+        "{{\n  \"edges\": {},\n  \"nodes\": {}\n}}\n",
+        reversed(&document["edges"]),
+        reversed(&document["nodes"])
+    )
+    .into_bytes()
+}
+
+#[test]
+fn a_map_the_viewer_reformatted_is_not_drift_and_a_changed_one_is() {
+    let directory = tempfile::tempdir().unwrap();
+    let workspace = fixtures::workspace("scenario-a", &directory.path().join("a"), false);
+    cli(&workspace, &["vault", "render"]);
+    let case = fs::read_dir(workspace.join("vault/Cases"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .find(|name| {
+            workspace
+                .join("vault/Cases")
+                .join(name)
+                .join(layout::MAP)
+                .is_file()
+        })
+        .unwrap();
+    let relative = format!("Cases/{case}/{}", layout::MAP);
+    let map = workspace.join("vault").join(&relative);
+    let generated = fs::read(&map).unwrap();
+
+    // The same content in another layout: not drift, and left as it is.
+    let reformatted = other_layout(&generated);
+    assert_ne!(reformatted, generated);
+    let parsed = |bytes: &[u8]| serde_json::from_slice::<Value>(bytes).unwrap();
+    assert_eq!(parsed(&reformatted), parsed(&generated));
+    fs::write(&map, &reformatted).unwrap();
+    let rendered = cli(&workspace, &["vault", "render"]);
+    assert_eq!(rendered["counts"]["drifted"], 0, "{rendered}");
+    assert_eq!(cli(&workspace, &["vault", "status"])["drift_count"], 0);
+    assert_eq!(
+        fs::read(&map).unwrap(),
+        reformatted,
+        "a render keeps the viewer's file"
+    );
+    let removed = cli(&workspace, &["vault", "remove", "--dry-run"]);
+    assert!(!removed.to_string().contains("drifted"), "{removed}");
+
+    // A changed value is drift, in any layout.
+    let moved = String::from_utf8(reformatted)
+        .unwrap()
+        .replacen("\"x\": 640", "\"x\": 700", 1);
+    fs::write(&map, &moved).unwrap();
+    let rendered = cli(&workspace, &["vault", "render"]);
+    assert_eq!(rendered["counts"]["drifted"], 1, "{rendered}");
+    assert_eq!(rendered["drift"][0]["path"], relative.as_str());
+    assert_eq!(
+        fs::read(&map).unwrap(),
+        moved.as_bytes(),
+        "drift is left in place"
+    );
+
+    // It reconciles like any drift: discarding the edit sets it aside, and
+    // clean-conflicts identifies the set-aside bytes by the same digest.
+    cli(
+        &workspace,
+        &[
+            "vault",
+            "reconcile",
+            &relative,
+            "--disposition",
+            "discard",
+            "--discard-observed",
+        ],
+    );
+    assert_eq!(fs::read(&map).unwrap(), generated);
+    assert_eq!(cli(&workspace, &["vault", "status"])["drift_count"], 0);
+    let preview = cli(
+        &workspace,
+        &["vault", "clean-conflicts", "--area", "discarded"],
+    );
+    assert_eq!(preview["counts"]["would_remove"], 1, "{preview}");
+    assert_eq!(preview["counts"]["kept"], 0, "{preview}");
 }

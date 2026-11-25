@@ -741,35 +741,31 @@ pub(crate) fn plan(
     }))
 }
 
-/// A JSON string literal.
-fn json(text: &str) -> String {
-    Value::String(text.to_owned()).to_string()
-}
-
-fn node(out: &mut String, id: &str, file: &PlanPath, x: i64, y: i64) {
-    let _ = write!(
-        out,
-        "\n    {{\"id\": {}, \"type\": \"file\", \"file\": {}, \"x\": {x}, \"y\": {y}, \
-         \"width\": {NODE_WIDTH}, \"height\": {NODE_HEIGHT}}}",
-        json(id),
-        json(&layout::vault_path(file))
-    );
+fn node(id: &str, file: &PlanPath, x: i64, y: i64) -> Value {
+    serde_json::json!({
+        "id": id,
+        "type": "file",
+        "file": layout::vault_path(file),
+        "x": x,
+        "y": y,
+        "width": NODE_WIDTH,
+        "height": NODE_HEIGHT,
+    })
 }
 
 /// The canvas bytes: JSON Canvas 1.0, file nodes and labelled edges only,
-/// one node or edge per line.
+/// in the layout the viewer writes ([`crate::canvas`]), so opening the map
+/// in the viewer leaves its bytes as they are.
 fn canvas(
     notes: &NoteContext<'_>,
     selection: &Selection,
     legend: &PlanPath,
     left_out: &PlanPath,
 ) -> Result<String, RenderError> {
-    let mut nodes = Vec::new();
-    let mut line = String::new();
-    node(&mut line, LEGEND_NODE, legend, 0, KEY_Y);
-    nodes.push(std::mem::take(&mut line));
-    node(&mut line, LEFT_OUT_NODE, left_out, COLUMN_PITCH, KEY_Y);
-    nodes.push(std::mem::take(&mut line));
+    let mut nodes = vec![
+        node(LEGEND_NODE, legend, 0, KEY_Y),
+        node(LEFT_OUT_NODE, left_out, COLUMN_PITCH, KEY_Y),
+    ];
     for (column, ids) in selection.columns.iter().enumerate() {
         for (row, id) in ids.iter().enumerate() {
             let Some(path) = notes.note_path(*id)? else {
@@ -777,8 +773,7 @@ fn canvas(
             };
             let x = i64::try_from(column).unwrap_or(0) * COLUMN_PITCH;
             let y = i64::try_from(row).unwrap_or(0) * ROW_PITCH;
-            node(&mut line, &id.to_string(), &path, x, y);
-            nodes.push(std::mem::take(&mut line));
+            nodes.push(node(&id.to_string(), &path, x, y));
         }
     }
     let mut edges = Vec::new();
@@ -801,27 +796,17 @@ fn canvas(
         } else {
             format!("{}--{}--{count}", edge.from, edge.to)
         };
-        edges.push(format!(
-            "\n    {{\"id\": {}, \"fromNode\": {}, \"fromSide\": \"{from_side}\", \"toNode\": {}, \
-             \"toSide\": \"{to_side}\", \"label\": {}}}",
-            json(&id),
-            json(&edge.from.to_string()),
-            json(&edge.to.to_string()),
-            json(edge.label)
-        ));
+        edges.push(serde_json::json!({
+            "id": id,
+            "fromNode": edge.from.to_string(),
+            "fromSide": from_side,
+            "toNode": edge.to.to_string(),
+            "toSide": to_side,
+            "label": edge.label,
+        }));
     }
-    let list = |items: &[String]| {
-        if items.is_empty() {
-            "[]".to_owned()
-        } else {
-            format!("[{}\n  ]", items.join(","))
-        }
-    };
-    Ok(format!(
-        "{{\n  \"nodes\": {},\n  \"edges\": {}\n}}\n",
-        list(&nodes),
-        list(&edges)
-    ))
+    let document = serde_json::json!({"nodes": nodes, "edges": edges});
+    Ok(String::from_utf8(crate::canvas::to_bytes(&document)).expect("canvas bytes are UTF-8"))
 }
 
 /// Frontmatter, H1, banner and the case line of a map note. Map notes are

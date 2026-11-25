@@ -181,8 +181,8 @@ pub fn copy_map(
         }),
     );
     let counts = (nodes.len(), canvas["edges"].as_array().map_or(0, Vec::len));
-    let mut bytes = serde_json::to_vec_pretty(&canvas).expect("a canvas serializes");
-    bytes.push(b'\n');
+    // In the viewer's layout, as the generated map is ([`crate::canvas`]).
+    let bytes = crate::canvas::to_bytes(&canvas);
 
     let publisher = Publisher::open(workspace, &lock)?;
     let parents: Vec<&str> = target.components().collect();

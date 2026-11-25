@@ -20,3 +20,4 @@
 | [0016](0016-byte-canonical-journal-files.md) | Journal files are the exact bytes this program writes, and `repair journal` restores witnessed bytes |
 | [0017](0017-supporting-review-answers-open-objections.md) | A supporting validation review must cite each open objection on its subject, or the objection is resolved or withdrawn first (bn-4job) |
 | [0018](0018-review-refusals-name-the-read.md) | A `review.submit` refusal names the read that returns the review basis and withholds its values; promotion gates keep the §10.3 required set (bn-g2l6) |
+| [0019](0019-canvas-files-known-by-content.md) | A generated `.canvas` file is written in the viewer's layout and known by its parsed content, so a viewer's re-save is not drift (bn-24y4) |

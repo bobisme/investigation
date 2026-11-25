@@ -47,7 +47,7 @@ use std::{
 };
 
 use investigation_core::wire::Digest;
-use investigation_store::{Workspace, journal::hash_bytes};
+use investigation_store::Workspace;
 use rustix::{
     fs::{AtFlags, Dir, FileType, Mode, OFlags, openat, statat, unlinkat},
     io::Errno,
@@ -561,7 +561,9 @@ impl Walker {
             self.keep(area, path, Some(vault_path), Kept::NotARegularFile);
             return Ok(false);
         };
-        let sha256 = hash_bytes(&bytes);
+        // Known as reconcile and the render knew it: a `.canvas` file by
+        // its content (ADR 0019).
+        let sha256 = crate::canvas::digest(name, &bytes);
         let size = bytes.len() as u64;
         let refusal = if area == Area::Withheld {
             match self.withheld.get(&path) {

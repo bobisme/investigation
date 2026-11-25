@@ -91,7 +91,11 @@ use crate::{
 /// the latest revision the answer read, adding `, also revision N` for an
 /// earlier revision it also read, instead of one entry per revision
 /// (bn-bn1m).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v27";
+/// v28: `Map.canvas` is written in the layout the viewer writes it (tabs,
+/// one compact node or edge per line, no final line break), so opening the
+/// map in the viewer keeps its bytes; and a `.canvas` file is known by its
+/// content, so a layout change alone is not drift (ADR 0019, bn-24y4).
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v28";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

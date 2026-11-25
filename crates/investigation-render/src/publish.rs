@@ -60,7 +60,7 @@ use std::{
 };
 
 use investigation_core::wire::Digest;
-use investigation_store::{Workspace, journal::hash_bytes};
+use investigation_store::Workspace;
 use rustix::{
     fs::{
         AtFlags, Dir, FileType, Mode, OFlags, RenameFlags, fstat, fsync, mkdirat, openat, renameat,
@@ -1053,6 +1053,17 @@ fn read_and_hash(
     label: &str,
     name: &str,
 ) -> Result<Option<Hashed>, RenderError> {
+    read_and_hash_as(directory, label, name, name)
+}
+
+/// [`read_and_hash`] of `name`, known as the file named `known_as` (a file
+/// moved aside under a temporary name is known by its own name).
+fn read_and_hash_as(
+    directory: &OwnedFd,
+    label: &str,
+    name: &str,
+    known_as: &str,
+) -> Result<Option<Hashed>, RenderError> {
     let io = |error: Errno| RenderError::io(label, error);
     // NONBLOCK: a FIFO swapped in after the stat must not hang the render.
     let fd = match openat(
@@ -1076,8 +1087,10 @@ fn read_and_hash(
         .map_err(|error| RenderError::io(label, error))?;
     let after = fstat(&file).map_err(io)?;
     Ok(Some((
+        // A `.canvas` file is known by its content, so a viewer's layout of
+        // the same content is not drift (ADR 0019).
         OnDisk::Regular {
-            sha256: hash_bytes(&bytes),
+            sha256: crate::canvas::digest(known_as, &bytes),
         },
         Some(Fingerprint::of(&before)),
         Some(Fingerprint::of(&after)),
@@ -1295,8 +1308,10 @@ pub(crate) fn remove_verified(
     let Some(aside) = aside else {
         return Err(leftovers(label, "inv-del"));
     };
-    let unchanged = match inspect_named(directory, label, &aside) {
-        Ok(OnDisk::Regular { sha256 }) => Ok(&sha256 == expected),
+    // Known by its own name, so a `.canvas` file moved aside is still known
+    // by its content (ADR 0019).
+    let unchanged = match read_and_hash_as(directory, label, &aside, name) {
+        Ok(Some((OnDisk::Regular { sha256 }, _, _))) => Ok(&sha256 == expected),
         Ok(_) => Ok(false),
         Err(error) => Err(error),
     };
