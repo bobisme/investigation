@@ -6,7 +6,9 @@
 //! nothing) on PATH. A Base row the viewer does not list, an unresolved link
 //! in a generated note and a Canvas the viewer does not know each fail their
 //! check; a stale first unresolved-link answer passes only after a reload
-//! and two agreeing answers (bn-17wk), and one that never settles fails; an
+//! and two agreeing answers (bn-17wk), and one that never settles fails; links
+//! the viewer keeps unresolved until it re-resolves the file pass only after
+//! it does, and give no verdict under --no-eval (bn-3ifo); an
 //! absent CLI skips with exit 0; the fake's argv log shows the
 //! exact vault and paths; and removing each check from a copy of the adapter
 //! makes the case that relies on it lose its outcome. The real-viewer run is
@@ -37,7 +39,7 @@ fn the_viewer_gate_adapter_catches_each_fault_of_a_fake_cli() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        stdout.contains("cases passed; 8 check removals each fail a case."),
+        stdout.contains("cases passed; 10 check removals each fail a case."),
         "{stdout}"
     );
 }

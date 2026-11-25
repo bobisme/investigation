@@ -66,16 +66,16 @@ each result:
 | `links.anchors` | every excerpt anchor a link names is in the viewer's block cache |
 | `bases.rows` | `base:query path=... view=... format=paths` of each Base returns exactly the rows of its static table |
 | `bases.operators` | probe Bases: `!=` and `> 0` select as the offline evaluator does, and the frontier filter gives the same rows in either and-order; rows for an absent property are recorded, not judged |
-| `links.unresolved` | after a `reload`, once two consecutive `unresolved verbose` answers agree (bounded by `--cache-settle`, 60 s), it names no source inside a managed prefix, and does name the owner's planted link. An owned link whose target the viewer lists is a cache that has not caught up: one more reload is allowed (`--cache-reloads`, 2 in all). The settle time of each reload is in the report |
+| `links.unresolved` | after a `reload`, once two consecutive `unresolved verbose` answers agree (bounded by `--cache-settle`, 60 s), it names no source inside a managed prefix, and does name the owner's planted link. An owned link whose target the viewer lists is a cache that has not caught up: one more reload is allowed (`--cache-reloads`, 2 in all). If such links remain, the viewer is asked to re-resolve each owned file whose unresolved links all name files it lists (`resolveLinks` through `eval`), and its answer is judged again; those files and their counts before and after are under `viewer_reresolved`. A target the viewer does not list always fails. Under `--no-eval` that case gets no verdict (`limited`). The settle time of each reload is in the report |
 | `canvas.open` | each `Map.canvas` is listed, opens as a Canvas, and every file node resolves |
 
 Every call is an argv list, never a shell string. `vault=<name>` comes first and every file is
-named with `path=<exact vault path>`, never `file=`, as the CLI documentation advises. Three
-checks (active view, block cache, new-link form) use the CLI's `eval` with fixed JavaScript
-from the script; `--no-eval` skips them. Exit status: 0 when every check passes, and also when
+named with `path=<exact vault path>`, never `file=`, as the CLI documentation advises. Four
+checks (active view, block cache, new-link form, re-resolving a file's links) use the CLI's
+`eval` with fixed JavaScript from the script; `--no-eval` skips them. Exit status: 0 when every check passes, and also when
 no CLI is found or it does not answer `version` (status `skipped`, with the reason); 1 when a
 check fails; 2 when the run cannot start (status `blocked`), for example when the vault has not
-been opened in the viewer yet.
+been opened in the viewer yet; 3 when no check fails but one gets no verdict (status `limited`).
 
 The commands used were checked against <https://obsidian.md/help/cli> on 2026-11-24 (the page
 carries no revision). It documents commands and parameters but not exit codes, error output,
@@ -85,8 +85,16 @@ list of objects with `link`, `count` and `sources`, each a string; a `sources` s
 at commas, so an owned source cannot hide behind another. On a freshly opened vault 1.15.1
 listed every file node of one Canvas as unresolved for a minute, through an early reload, and a
 reload once the vault was indexed cleared it (bn-17wk); hence the reload right before the
-check. Aliases, excerpt anchors and Base rows read the same cache, and each is retried until
-`--settle` passes before it fails. The CLI needs the 1.12 installer or later,
+check. On a later fresh vault it kept the 18 file nodes of another Canvas unresolved through
+both reloads and for more than 90 s, while its cache listed every target; one
+`app.metadataCache.resolveLinks` call on that Canvas resolved all 18 (bn-3ifo). `resolveLinks`
+is not in the public API types and changes only the viewer's in-memory link tables. Aliases, excerpt anchors and Base rows read the same cache, and each is retried until
+`--settle` passes before it fails.
+
+Known limitation: on a freshly opened vault the viewer may list a case map's links as
+unresolved until it re-resolves them. The targets exist and the links are right; a window
+reload did not clear the list on 1.15.1, so the gate asks the viewer to re-resolve the file and
+reports that it did. The CLI needs the 1.12 installer or later,
 and "if Obsidian is not running, the first command you run launches Obsidian". On Linux the
 app registers the CLI by copying it to `~/.local/bin/obsidian`; pass `--obsidian PATH` (and
 `--obsidian-arg` for a launcher's own arguments) when the `obsidian` on `PATH` is something

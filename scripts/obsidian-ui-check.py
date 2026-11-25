@@ -23,8 +23,10 @@ is exactly this folder; no community plugin is enabled; `investigation obsidian 
 vault-root wikilinks; the viewer lists every prepared file; one note of each generated type
 opens; aliases and excerpt anchors resolve; each Base's rows equal its static table; the probe
 Bases confirm `!=`, `> 0` and that the frontier filter's and-ordering does not matter; after a
-window reload and once two consecutive answers agree, no unresolved link starts in an owned file
-(and the owner's planted one is reported); each Canvas opens and its file nodes resolve.
+window reload and once two consecutive answers agree (and, for an owned file whose unresolved
+links all name files the viewer lists, after asking the viewer to re-resolve that file), no
+unresolved link starts in an owned file (and the owner's planted one is reported); each Canvas
+opens and its file nodes resolve.
 
 `timings` measures the viewer side of the vault load test (docs/vault-load.md) against a vault
 kept by `just load-test DIR --cases 130`: CLI round trip, window reload until every file is
@@ -33,13 +35,16 @@ listed, one Base query, Canvas open, search, and a cold open (app restart) only 
 
 Every call is an argv list (never a shell string, never a shell eval), and every call after
 `version` starts with `vault=<name>` and names a file with `path=<exact vault path>`. Checks
-that need the CLI's `eval` command (active view, block cache, link generation) run fixed
-JavaScript from this file with only JSON-encoded paths of the prepared vault inserted;
+that need the CLI's `eval` command (active view, block cache, link generation, re-resolving a
+file's links) run fixed JavaScript from this file with only JSON-encoded paths of the prepared
+vault inserted;
 --no-eval skips them.
 
 Exit status: 0 every check passed, or the viewer or its CLI is not available (status
 "skipped", with the reason); 1 a check failed; 2 a usage error, or the run could not start
-(DIR not prepared, vault not opened in the viewer, binary missing): status "blocked".
+(DIR not prepared, vault not opened in the viewer, binary missing): status "blocked"; 3 no check
+failed but one could not reach a verdict (status "limited"), as when links.unresolved needs the
+viewer to re-resolve a file and --no-eval forbids it.
 """
 
 import argparse
@@ -67,7 +72,7 @@ PROBE_FOLDER = "UI Check Probe"
 OWNER_NOTE = "Notes/Owner note.md"
 OWNER_LINK = "A note that does not exist"
 EXPECTED = "expected.json"
-EXIT_PASS, EXIT_FAIL, EXIT_BLOCKED = 0, 1, 2
+EXIT_PASS, EXIT_FAIL, EXIT_BLOCKED, EXIT_LIMITED = 0, 1, 2, 3
 # Files the running viewer rewrites by itself (open tabs, pane layout); not compared when
 # checking that setup changed nothing but its keys.
 VIEWER_WRITES = ("workspace.json", "workspace-mobile.json")
@@ -122,6 +127,15 @@ JS_ACTIVE_VIEW = ("/*inv-ui:active-view*/ (() => { const leaf = app.workspace.ge
 JS_BLOCKS = ("/*inv-ui:blocks*/ (() => { const file = app.vault.getAbstractFileByPath(%s);"
              " const cache = file && app.metadataCache.getFileCache(file);"
              " return JSON.stringify(cache ? Object.keys(cache.blocks || {}) : null); })()")
+# bn-3ifo: re-resolve one file's links. resolveLinks is not in the public API types; it
+# changes only the viewer's in-memory link tables (no file is written). Counts are the
+# metadata cache's own entries for the file before and after.
+JS_RESOLVE = ("/*inv-ui:resolve-links*/ (() => { const cache = app.metadataCache; const path = %s;"
+              " const count = (table) => Object.keys((table && table[path]) || {}).length;"
+              " const before = {unresolved: count(cache.unresolvedLinks),"
+              " resolved: count(cache.resolvedLinks)}; cache.resolveLinks(path);"
+              " return JSON.stringify({before, after: {unresolved: count(cache.unresolvedLinks),"
+              " resolved: count(cache.resolvedLinks)}}); })()")
 JS_LINK = ("/*inv-ui:link*/ (() => { const file = app.vault.getAbstractFileByPath(%s);"
            " return JSON.stringify(file ? app.fileManager.generateMarkdownLink(file, %s) : null);"
            " })()")
@@ -534,6 +548,12 @@ class Report:
     def failed(self):
         return any(check["status"] == "fail" for check in self.value["checks"])
 
+    def outcome(self):
+        if self.failed():
+            return "fail"
+        limited = any(check["status"] == "limited" for check in self.value["checks"])
+        return "limited" if limited else "pass"
+
 
 POLL_INTERVAL = 1.0
 
@@ -562,7 +582,8 @@ def run(args):
     report.value["status"] = status
     report.value["finished"] = now()
     write_report(report.value, out, "report")
-    return {"pass": EXIT_PASS, "skipped": EXIT_PASS, "fail": EXIT_FAIL}.get(status, EXIT_BLOCKED)
+    return {"pass": EXIT_PASS, "skipped": EXIT_PASS, "fail": EXIT_FAIL,
+            "limited": EXIT_LIMITED}.get(status, EXIT_BLOCKED)
 
 
 def doctor(binary, release):
@@ -647,7 +668,8 @@ def run_checks(args, directory, report):
     if "probes" in groups:
         check_probes(cli, report, deadline())
     if "unresolved" in groups:
-        check_unresolved(cli, report, prefixes, args.cache_settle, args.cache_reloads)
+        check_unresolved(cli, report, prefixes, args.cache_settle, args.cache_reloads,
+                         args.no_eval)
     if "canvas" in groups:
         check_canvas(cli, report, vault, expected, prefixes, args.no_eval)
     if "errors" in groups:
@@ -655,7 +677,7 @@ def run_checks(args, directory, report):
         report.check("viewer.errors", "info", "JavaScript errors the viewer captured, as printed "
                      "(not judged: they may come from anything in the app)",
                      output=errors.strip()[:4000])
-    return "fail" if report.failed() else "pass"
+    return report.outcome()
 
 
 def check_plugins(cli, report):
@@ -907,7 +929,7 @@ def unresolved_answer(cli):
     return pairs, key, text
 
 
-def settle_cache(cli, budget):
+def settle_cache(cli, budget, reload=True):
     """Reload the window, then poll `unresolved` until two consecutive answers agree.
 
     bn-17wk: on a freshly opened vault the viewer listed every file node of one Canvas as
@@ -917,9 +939,9 @@ def settle_cache(cli, budget):
     """
     started = time.monotonic()
     deadline = started + budget
-    reloaded = cli.call("reload")[0]
+    reloaded = cli.call("reload")[0] if reload else None
     back = None
-    while time.monotonic() < deadline:
+    while reload and time.monotonic() < deadline:
         if cli.call("vault", "info=path")[0]:
             back = round(time.monotonic() - started, 3)
             break
@@ -937,7 +959,31 @@ def settle_cache(cli, budget):
             "settle_s": round(time.monotonic() - started, 3)}, pairs, text
 
 
-def check_unresolved(cli, report, prefixes, budget, max_reloads):
+def owned_unresolved(pairs, prefixes):
+    return [{"link": link, "sources": [s for s in sources if is_owned(s, prefixes)]}
+            for link, sources in pairs if any(is_owned(s, prefixes) for s in sources) or not sources]
+
+
+def listed_files(cli):
+    ok, text, _ = cli.call("files")
+    return set(lines(text)) if ok else set()
+
+
+def names_listed(link, listed):
+    return link in listed or link + ".md" in listed
+
+
+def reresolvable(owned, listed):
+    """Owned sources every one of whose unresolved links names a file the viewer lists."""
+    by_source = {}
+    for entry in owned:
+        for source in entry["sources"]:
+            by_source.setdefault(source, []).append(entry["link"])
+    return {source: links for source, links in sorted(by_source.items())
+            if all(names_listed(link, listed) for link in links)}
+
+
+def check_unresolved(cli, report, prefixes, budget, max_reloads, no_eval):
     rounds = []
     owned, pairs = [], None
     for _ in range(max(1, max_reloads)):
@@ -955,33 +1001,66 @@ def check_unresolved(cli, report, prefixes, budget, max_reloads):
             report.check("links.unresolved", False, "the unresolved-link answer was not "
                          "understood", settle=rounds, output=text[:1000])
             return
-        owned = [{"link": link, "sources": [s for s in sources if is_owned(s, prefixes)]}
-                 for link, sources in pairs
-                 if any(is_owned(s, prefixes) for s in sources) or not sources]
+        owned = owned_unresolved(pairs, prefixes)
         if not owned:
             break
         # A link whose target the viewer itself lists is a cache that has not caught up, not a
         # broken link: reload once more (bounded). A missing target is final.
-        ok, listed_text, _ = cli.call("files")
-        listed = set(lines(listed_text)) if ok else set()
+        listed = listed_files(cli)
         info["owned_with_listed_targets"] = sum(
-            1 for entry in owned if entry["link"] in listed or entry["link"] + ".md" in listed)
+            1 for entry in owned if names_listed(entry["link"], listed))
         if not info["owned_with_listed_targets"]:
             break
+    # bn-3ifo: on first open the viewer can resolve a file's links before it has indexed their
+    # targets and then keep that answer through reloads. Ask it to re-resolve each owned source
+    # whose unresolved links all name files it lists, then judge its answer again.
+    reresolved, limited = [], None
+    candidates = reresolvable(owned, listed_files(cli)) if owned else {}
+    if candidates and no_eval:
+        limited = sorted(candidates)
+    elif candidates:
+        for source, links in candidates.items():
+            _, counts = cli.eval_json(JS_RESOLVE % json.dumps(source))
+            reresolved.append({"source": source, "unresolved_before": len(links),
+                               "viewer_counts": counts})
+        info, settled_pairs, text = settle_cache(cli, budget, reload=False)
+        info["after_reresolve"] = True
+        rounds.append(info)
+        if not info["settled"] or settled_pairs is None:
+            report.check("links.unresolved", False, "after re-resolving, the unresolved-link "
+                         "answer did not settle or was not understood", settle=rounds,
+                         viewer_reresolved=reresolved, output=text[:1000])
+            return
+        pairs = settled_pairs
+        owned = owned_unresolved(pairs, prefixes)
+        for entry in reresolved:
+            entry["unresolved_after"] = sum(1 for item in owned
+                                            if entry["source"] in item["sources"])
     settle_seconds = round(sum(r["settle_s"] for r in rounds), 3)
     control = any(link == OWNER_LINK or link.startswith(OWNER_LINK) for link, _ in pairs)
-    stale = rounds[-1].get("owned_with_listed_targets", 0)
+    listed_now = listed_files(cli) if owned else set()
+    stale = sum(1 for entry in owned if names_listed(entry["link"], listed_now))
+    reloads = sum(1 for r in rounds if r["reloaded"])
+    note = (f"; the viewer re-resolved {len(reresolved)} file(s) whose targets it lists "
+            "(its own bookkeeping on first open; see viewer_reresolved)" if reresolved else "")
+    detail = dict(owned=owned[:50], total=len(pairs), settle=rounds,
+                  settle_seconds=settle_seconds, viewer_reresolved=reresolved)
+    if limited and control:
+        report.check("links.unresolved", "limited",
+                     f"{len(owned)} owned link(s) name files the viewer lists, in "
+                     f"{len(limited)} file(s) the viewer would have to re-resolve; --no-eval "
+                     "forbids that, so no verdict", reresolve_needed=limited, **detail)
+        return
     report.check("links.unresolved", control and not owned,
                  "no unresolved link starts in an owned file; the owner note's planted link is "
-                 f"reported (settled in {settle_seconds:g} s after {len(rounds)} reload(s))"
+                 f"reported (settled in {settle_seconds:g} s after {reloads} reload(s)){note}"
                  if control and not owned else
                  "the planted owner link was not reported, so the answer cannot be trusted"
                  if not control else f"{len(owned)} unresolved link(s) in owned files "
                  "(or with no source named)" + (
                      f"; {stale} of them name a file the viewer lists, still after "
-                     f"{len(rounds)} reload(s)" if stale else ""),
-                 owned=owned[:50], total=len(pairs), settle=rounds,
-                 settle_seconds=settle_seconds)
+                     f"{reloads} reload(s)" + (" and re-resolving" if reresolved else "")
+                     if stale else ""), **detail)
 
 
 def check_canvas(cli, report, vault, expected, prefixes, no_eval):
@@ -1044,7 +1123,8 @@ def timings(args):
     report.value["status"] = status
     report.value["finished"] = now()
     write_report(report.value, out, "timings")
-    return {"pass": EXIT_PASS, "skipped": EXIT_PASS, "fail": EXIT_FAIL}.get(status, EXIT_BLOCKED)
+    return {"pass": EXIT_PASS, "skipped": EXIT_PASS, "fail": EXIT_FAIL,
+            "limited": EXIT_LIMITED}.get(status, EXIT_BLOCKED)
 
 
 def machine():

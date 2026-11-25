@@ -169,8 +169,10 @@ def expectations(prepared):
 
     def owned_unresolved(check):
         assert [entry["link"] for entry in check["owned"]] == ["Nowhere"], check
-        # A target the viewer does not list is a broken link: no second reload.
+        # A target the viewer does not list is a broken link: no second reload, and the
+        # viewer is not asked to re-resolve the file.
         assert len(check["settle"]) == 1 and check["settle"][0]["settled"], check
+        assert check["viewer_reresolved"] == [], check
 
     def settled_after(rounds, distinct):
         def verify(o):
@@ -184,6 +186,29 @@ def expectations(prepared):
             polls = [i for i, call in enumerate(o["calls"]) if call[1:2] == ["unresolved"]]
             assert len(reloads) == rounds and reloads[0] < polls[0], (reloads, polls)
         return verify
+
+    nodes = sum(1 for n in json.loads((vault / canvas).read_text())["nodes"]
+                if n["type"] == "file")
+
+    def reresolved(o):
+        assert_pass(o, "links.unresolved")
+        check = checks(o)["links.unresolved"]
+        (entry,) = check["viewer_reresolved"]
+        assert entry["source"] == canvas and entry["unresolved_before"] == nodes, entry
+        assert entry["unresolved_after"] == 0, entry
+        assert entry["viewer_counts"] == {"before": {"unresolved": nodes, "resolved": 0},
+                                          "after": {"unresolved": 0, "resolved": nodes}}, entry
+        assert "re-resolved 1 file(s)" in check["summary"], check
+        evals = [call for call in o["calls"] if call[1:2] == ["eval"]
+                 and call[2].startswith("code=/*inv-ui:resolve-links*/")]
+        assert len(evals) == 1 and json.dumps(canvas) in evals[0][2], evals
+
+    def no_verdict(o):
+        assert o["exit"] == 3 and o["report"]["status"] == "limited", (o["exit"], o["text"])
+        check = checks(o)["links.unresolved"]
+        assert check["status"] == "limited" and check["reresolve_needed"] == [canvas], check
+        assert not any(call[1:2] == ["eval"] for call in o["calls"]), "eval despite --no-eval"
+        assert "LIMITED" in o["text"], o["text"]
 
     def never_settles(check):
         assert "did not settle" in check["summary"], check
@@ -236,6 +261,14 @@ def expectations(prepared):
               env={"FAKE_STALE_UNRESOLVED": stale, "FAKE_STALE_RELOADS": "99"},
               checks="unresolved"),
          [failed("links.unresolved", lambda c: assert_in("name a file the viewer lists", c))]),
+        (Case("unresolved-stale-until-resolve", env={"FAKE_STALE_UNTIL_RESOLVE": canvas},
+              checks="unresolved"), [reresolved]),
+        (Case("unresolved-resolve-ignored", env={"FAKE_STALE_UNTIL_RESOLVE": canvas,
+                                                 "FAKE_RESOLVE_IGNORED": "1"},
+              checks="unresolved"),
+         [failed("links.unresolved", lambda c: assert_in("and re-resolving", c))]),
+        (Case("unresolved-stale-no-eval", env={"FAKE_STALE_UNTIL_RESOLVE": canvas},
+              checks="unresolved", extra=["--no-eval"]), [no_verdict]),
         (Case("unresolved-never-settles", env={"FAKE_UNRESOLVED_FLAP": "1"},
               checks="unresolved"), [failed("links.unresolved", never_settles)]),
         (Case("canvas-unknown", env={"FAKE_HIDE": canvas}, checks="canvas"),
@@ -273,6 +306,11 @@ def expectations(prepared):
         ("two agreeing unresolved answers",
          "settled = len(answers) >= 2 and key is not None and answers[-1] == answers[-2]",
          "settled = key is not None", "unresolved-stale-first"),
+        ("re-resolving owned files the viewer lists",
+         "candidates = reresolvable(owned, listed_files(cli)) if owned else {}",
+         "candidates = {}", "unresolved-stale-until-resolve"),
+        ("the no-verdict rule under --no-eval", "    if limited and control:", "    if False:",
+         "unresolved-stale-no-eval"),
         ("exact path= on notes", 'target = f"path={path}"', 'target = f"file={Path(path).stem}"',
          "pass"),
     ]
@@ -298,6 +336,8 @@ def verdict(verifiers, outcome):
         return None
     except AssertionError as error:
         return str(error) or "assertion failed"
+    except Exception as error:  # a verifier that cannot read the outcome fails the case
+        return f"{type(error).__name__}: {error}"
 
 
 def static_safety():

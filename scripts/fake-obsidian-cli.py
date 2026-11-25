@@ -24,7 +24,13 @@ Faults, each a way the real viewer could disagree with the static files:
                         FAKE_STALE_RELOADS reloads (default 1) have happened and
                         FAKE_STALE_POLLS answers (default 1) have been given since the last
   FAKE_UNRESOLVED_FLAP=1  every unresolved answer differs from the one before
+  FAKE_STALE_UNTIL_RESOLVE=SOURCE   every link of SOURCE (a note's wikilinks or a Canvas's file
+                        nodes) is listed as unresolved, through any reload, until the adapter's
+                        resolve-links eval names SOURCE (what Obsidian 1.15.1 did on first open)
+  FAKE_RESOLVE_IGNORED=1  that eval changes nothing
 """
+
+import hashlib
 
 import json
 import os
@@ -157,6 +163,10 @@ def unresolved():
     if os.environ.get("FAKE_UNRESOLVED_FLAP"):
         found.setdefault(f"flap {counter('flap')}", []).append("Notes/Owner note.md")
         bump("flap")
+    stuck = os.environ.get("FAKE_STALE_UNTIL_RESOLVE")
+    if stuck and not resolved(stuck):
+        for target in links_of(stuck):
+            found.setdefault(target, []).append(stuck)
     shape = os.environ.get("FAKE_UNRESOLVED_SHAPE", "real")
     if shape == "map":
         return found
@@ -164,6 +174,20 @@ def unresolved():
         return [{"link": link, "sources": sources} for link, sources in found.items()]
     return [{"link": link, "count": str(len(sources)), "sources": ", ".join(sources)}
             for link, sources in found.items()]
+
+
+def links_of(source):
+    """Link targets of one file, without the .md of a note."""
+    path = VAULT / source
+    if source.endswith(".canvas"):
+        nodes = json.loads(path.read_text(encoding="utf-8")).get("nodes", [])
+        return [n["file"][:-3] if n["file"].endswith(".md") else n["file"]
+                for n in nodes if n.get("type") == "file"]
+    return list(wikilinks(path.read_text(encoding="utf-8")))
+
+
+def resolved(source):
+    return (STATE / f"resolved-{hashlib.sha1(source.encode()).hexdigest()}").exists()
 
 
 def counter(name):
@@ -185,6 +209,22 @@ def evaluate(code):
             return "null"
         text = (VAULT / path).read_text(encoding="utf-8")
         return json.dumps(re.findall(r" \^([A-Za-z0-9-]+)$", text, re.MULTILINE))
+    if code.startswith("/*inv-ui:resolve-links*/"):
+        path = json.loads(re.search(r'const path = ("(?:[^"\\]|\\.)*");', code)[1])
+        if path not in files():
+            return json.dumps({"before": {"unresolved": 0, "resolved": 0},
+                               "after": {"unresolved": 0, "resolved": 0}})
+        total = len(links_of(path))
+        stuck = os.environ.get("FAKE_STALE_UNTIL_RESOLVE") == path
+
+        def counts():
+            open_now = total if stuck and not resolved(path) else 0
+            return {"unresolved": open_now, "resolved": total - open_now}
+
+        before = counts()
+        if not os.environ.get("FAKE_RESOLVE_IGNORED"):
+            (STATE / f"resolved-{hashlib.sha1(path.encode()).hexdigest()}").write_text("")
+        return json.dumps({"before": before, "after": counts()})
     if code.startswith("/*inv-ui:link*/"):
         path = json.loads(re.search(r'getAbstractFileByPath\(("(?:[^"\\]|\\.)*")\)', code)[1])
         if path not in files():
