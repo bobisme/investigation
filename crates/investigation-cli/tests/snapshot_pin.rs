@@ -698,16 +698,35 @@ fn a_handoff_reads_a_large_source_by_its_cited_lines() {
         .filter(|command| command.ends_with(" --lines 1500:1500"))
         .collect();
     assert_eq!(lines.len(), 1, "{reads:#?}");
-    // The small source, or the text it was decoded to, is read whole.
+    // The small source, or the text it was decoded to, is read whole: by
+    // the one `--whole` read escalation prints, put on its ID (bn-3qc3).
     let small_text = added["items"][0]["derivative_id"]
         .as_str()
         .unwrap_or(&small);
+    let wholes: Vec<&&String> = reads
+        .iter()
+        .filter(|command| command.ends_with(" --whole"))
+        .collect();
+    assert_eq!(wholes.len(), 1, "{reads:#?}");
+    let escalation = files[0].split_once("\n## Escalation\n").unwrap().1;
+    let marked = |id: &str| {
+        escalation.contains(&format!("- `{id}` artifact, revision 1: "))
+            && escalation
+                .split(&format!("- `{id}` "))
+                .nth(1)
+                .and_then(|rest| rest.lines().nth(1))
+                == Some("  - bytes: read whole")
+    };
     assert!(
-        reads.iter().any(|command| (command.contains(small.as_str())
-            || command.contains(small_text))
-            && command.ends_with(" --whole")),
-        "{reads:#?}"
+        marked(&small) || marked(small_text),
+        "neither {small} nor {small_text} is marked read whole:\n{escalation}"
     );
+    let printed_for = wholes[0].split(' ').nth(5).unwrap();
+    let small_whole = wholes[0].replace(printed_for, small_text);
+    let args: Vec<&str> = small_whole.split(' ').skip(1).collect();
+    let (code, stdout) = invoke(&workspace, &args, None);
+    assert_eq!(code, 0, "{small_whole}\n{stdout}");
+    assert!(stdout.contains("waited 3 seconds"), "{stdout}");
     for command in &reads {
         let args: Vec<&str> = command.split(' ').skip(1).collect();
         let (code, stdout) = invoke(&workspace, &args, None);

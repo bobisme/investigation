@@ -4,10 +4,15 @@
 //! - both files are planned, and the same snapshot, kind and audience give
 //!   the same bytes from two copies of a workspace;
 //! - each file contains every §14.4 element, or a line stating its absence;
-//! - every record either file names has its title, summary, full and
-//!   evidence escalation commands, pinned to the exported snapshot, or, in a
-//!   remapped (public) export, is listed as available to the publisher, with
-//!   no journal sequence, case head or workspace command anywhere;
+//! - every record either file names is listed under escalation with its ID,
+//!   kind, current revision and title, and the title, summary, full and
+//!   evidence reads, pinned to the exported snapshot, are printed once,
+//!   runnable as written, on the first record listed; or, in a remapped
+//!   (public) export, each is listed as available to the publisher, with no
+//!   journal sequence, case head or workspace command anywhere (bn-3qc3);
+//! - retained Sources no shown Observation names are listed near the top,
+//!   and exactly those;
+//! - the question and objective are marked authored, unverified text;
 //! - no withheld record is named anywhere in the export, checked on the
 //!   publisher's restored copy;
 //! - and, through the public binary, a Run with an unknown outcome is listed
@@ -21,7 +26,10 @@ use std::{
     process::{Command, Stdio},
 };
 
-use investigation_core::identity::Id;
+use investigation_core::{
+    identity::{Id, Kind},
+    state::State,
+};
 use investigation_render::{
     Audience,
     export::{ExportPlan, ExportSnapshot, IdentifierMode, Pin, kind, plan_export},
@@ -38,9 +46,10 @@ const OVERVIEW: &str = "handoff-overview.md";
 const AUDIENCES: [Audience; 3] = [Audience::Public, Audience::Internal, Audience::Restricted];
 
 /// The brief's sections, in order: each §14.4 element has one.
-const BRIEF_SECTIONS: [&str; 19] = [
+const BRIEF_SECTIONS: [&str; 20] = [
     "## Snapshot",
     "## Read first",
+    "## Sources without observations",
     "## Do not repeat until reconciled",
     "## Objective and scope",
     "## Effective conclusions and decisions",
@@ -61,9 +70,10 @@ const BRIEF_SECTIONS: [&str; 19] = [
 ];
 
 /// The overview's sections and subsections, in order.
-const OVERVIEW_SECTIONS: [&str; 19] = [
+const OVERVIEW_SECTIONS: [&str; 20] = [
     "## Summary",
     "## Snapshot",
+    "## Sources without observations",
     "### Question and scope",
     "### Conclusions and decisions",
     "### Contradiction and caveat",
@@ -165,10 +175,12 @@ fn assert_every_element(name: &str, text: &str, headings: &[&str]) {
     }
 }
 
-/// Every record named before the escalation section has its four pinned
-/// escalation commands, and the escalation names nothing else. A remapped
-/// export lists each as available to the publisher and runs nothing.
-fn assert_escalation(name: &str, text: &str, plan: &ExportPlan) {
+/// Every record named before the escalation section is listed under it,
+/// and it names nothing else. A canonical export prints the four pinned
+/// reads once, runnable on the first record listed, and lists each record
+/// by ID, kind and its current revision at the snapshot; a remapped export
+/// lists each as available to the publisher and runs nothing.
+fn assert_escalation(name: &str, text: &str, plan: &ExportPlan, state: &State) {
     let snapshot = &plan.manifest().snapshot;
     // The case as the export shows it: remapped when the IDs are.
     let case = snapshot.case_id;
@@ -207,16 +219,76 @@ fn assert_escalation(name: &str, text: &str, plan: &ExportPlan) {
         }
         return;
     }
-    for id in &listed {
-        for tail in [
-            format!("show {id} --depth title {pin}"),
-            format!("show {id} --depth summary {pin}"),
-            format!("show {id} --depth full {pin}"),
-            format!("explain {id} {pin}"),
-        ] {
-            let command = format!("`investigation --case {case} {tail}`");
-            assert!(escalation.contains(&command), "{name}: missing {command}");
-        }
+    // One line per record: ID, kind and current revision, in ID order.
+    let lines: Vec<(Id, &str)> = escalation
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("- `")?;
+            let (id, rest) = rest.split_once("` ")?;
+            Some((id.parse().ok()?, rest))
+        })
+        .collect();
+    let mut order: Vec<Id> = lines.iter().map(|(id, _)| *id).collect();
+    assert_eq!(
+        order.iter().copied().collect::<BTreeSet<_>>(),
+        listed,
+        "{name}: a record is named in a read but has no line"
+    );
+    let printed = order.clone();
+    order.sort();
+    assert_eq!(printed, order, "{name}: records out of ID order");
+    for (id, rest) in &lines {
+        let record = state.current(*id).unwrap();
+        let head = format!(
+            "{}, revision {}",
+            kind_word(id.kind()),
+            record.header.revision.0
+        );
+        assert!(
+            rest.starts_with(&head),
+            "{name}: `{id}` {rest} is not {head}"
+        );
+    }
+    // The four reads, once, on the first record listed.
+    let example = lines[0].0;
+    for tail in [
+        format!("show {example} --depth title {pin}"),
+        format!("show {example} --depth summary {pin}"),
+        format!("show {example} --depth full {pin}"),
+        format!("explain {example} {pin}"),
+    ] {
+        let command = format!("`investigation --case {case} {tail}`");
+        assert!(escalation.contains(&command), "{name}: missing {command}");
+    }
+    assert_eq!(
+        escalation.matches(" --snapshot ").count(),
+        4,
+        "{name}: a pinned read is repeated per record"
+    );
+}
+
+fn kind_word(kind: Kind) -> &'static str {
+    match kind {
+        Kind::Case => "case",
+        Kind::Question => "question",
+        Kind::Source => "source",
+        Kind::Artifact => "artifact",
+        Kind::Observation => "observation",
+        Kind::Hypothesis => "hypothesis",
+        Kind::Assumption => "assumption",
+        Kind::Option => "option",
+        Kind::Criterion => "criterion",
+        Kind::Comparison => "comparison",
+        Kind::Assessment => "assessment",
+        Kind::Conclusion => "conclusion",
+        Kind::Decision => "decision",
+        Kind::Review => "review",
+        Kind::Objection => "objection",
+        Kind::Annotation => "annotation",
+        Kind::Retrospective => "retrospective",
+        Kind::Inquiry => "inquiry",
+        Kind::Run => "run",
+        other => other.prefix(),
     }
 }
 
@@ -284,8 +356,9 @@ fn every_scenario_and_audience_gets_both_files_with_every_element() {
                 let overview = text(&plan, OVERVIEW);
                 assert_every_element(&format!("{name} brief"), &brief, &BRIEF_SECTIONS);
                 assert_every_element(&format!("{name} overview"), &overview, &OVERVIEW_SECTIONS);
-                assert_escalation(&format!("{name} brief"), &brief, &plan);
-                assert_escalation(&format!("{name} overview"), &overview, &plan);
+                let state = fixtures::open(&first).case(case).unwrap().state;
+                assert_escalation(&format!("{name} brief"), &brief, &plan, &state);
+                assert_escalation(&format!("{name} overview"), &overview, &plan, &state);
                 assert_nothing_withheld_leaks(&name, &plan, case);
                 // The two files tell one story: they name the same records.
                 assert_eq!(ids(&brief), ids(&overview), "{name}");
@@ -357,6 +430,173 @@ fn scenario_content_reaches_the_handoff() {
         overview.contains("Our current choice is `dec_"),
         "{overview}"
     );
+}
+
+/// The handoff of a checked-in scenario's every case, for the internal
+/// audience, which sees every scenario record.
+fn internal_handoffs(root: &Path) -> Vec<(String, Id, State, ExportPlan)> {
+    let mut out = Vec::new();
+    for scenario in SCENARIOS {
+        let workspace = fixtures::workspace(scenario, &root.join(scenario), false);
+        for case in cases(&workspace) {
+            let state = fixtures::open(&workspace).case(case).unwrap().state;
+            let plan = plan(&workspace, case, Audience::Internal);
+            out.push((format!("{scenario} {case}"), case, state, plan));
+        }
+    }
+    out
+}
+
+/// A Source is listed under "Sources without observations" exactly when no
+/// current Observation names it or one of its Artifacts and it has retained
+/// bytes to read (DF.05: the successor had to find two such sources itself).
+/// Scenario A's timeout case holds three: control traces it never observed.
+#[test]
+fn retained_sources_no_observation_names_are_listed_near_the_top() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut listed_anywhere = 0;
+    for (name, _, state, plan) in internal_handoffs(directory.path()) {
+        let observations: Vec<String> = state
+            .records_of_kind(Kind::Observation)
+            .map(|record| record.body.to_string())
+            .collect();
+        let named = |id: Id| {
+            let id = format!("\"{id}\"");
+            observations.iter().any(|body| body.contains(&id))
+        };
+        for path in [BRIEF, OVERVIEW] {
+            let text = text(&plan, path);
+            let lines = section(&text, "## Sources without observations");
+            let listed: BTreeSet<Id> = lines
+                .iter()
+                .filter_map(|line| line.strip_prefix("- `")?.split('`').next()?.parse().ok())
+                .collect();
+            for source in state.records_of_kind(Kind::Source) {
+                let id = source.header.id;
+                let artifacts: Vec<_> = state
+                    .records_of_kind(Kind::Artifact)
+                    .filter(|artifact| artifact.body["source"]["id"] == id.to_string())
+                    .collect();
+                let observed =
+                    named(id) || artifacts.iter().any(|artifact| named(artifact.header.id));
+                let retained = artifacts.iter().any(|artifact| {
+                    artifact.body["availability"] == "retained"
+                        && artifact.body["role"] != "manifest"
+                });
+                assert_eq!(
+                    listed.contains(&id),
+                    !observed && retained,
+                    "{name} {path}: {id} (observed {observed}, retained {retained}) in {lines:#?}"
+                );
+                if listed.contains(&id) {
+                    let line = lines
+                        .iter()
+                        .find(|line| line.starts_with(&format!("- `{id}` ")))
+                        .unwrap();
+                    let head = format!("- `{id}` source, revision {}", source.header.revision.0);
+                    assert!(line.starts_with(&head), "{name}: {line}");
+                    // Its readable Artifacts follow it, by ID and revision.
+                    for artifact in &artifacts {
+                        if artifact.body["role"] != "manifest" {
+                            let nested = format!(
+                                "  - `{}` artifact, revision {}",
+                                artifact.header.id, artifact.header.revision.0
+                            );
+                            assert!(text.contains(&nested), "{name}: no {nested}");
+                        }
+                    }
+                }
+            }
+            if path == BRIEF && !listed.is_empty() {
+                listed_anywhere += listed.len();
+                let read_first = section(&text, "## Read first");
+                assert!(
+                    read_first
+                        .iter()
+                        .any(|line| line.contains("Sources without observations")),
+                    "{name}: {read_first:?}"
+                );
+            }
+        }
+    }
+    assert_eq!(listed_anywhere, 3, "Scenario A's three control traces");
+}
+
+/// Every record a handoff names shows its current revision, so a
+/// successor's first write cites it instead of guessing revision 1 (DF.05).
+/// The scenarios hold Observations revised to revision 2 and 3.
+#[test]
+fn every_named_record_shows_its_current_revision() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut revised_observations = 0;
+    for (name, _, state, plan) in internal_handoffs(directory.path()) {
+        let brief = text(&plan, BRIEF);
+        let (body, escalation) = brief.split_once("\n## Escalation\n").unwrap();
+        for id in ids(body) {
+            let record = state.current(id).unwrap();
+            let line = format!(
+                "\n- `{id}` {}, revision {}",
+                kind_word(id.kind()),
+                record.header.revision.0
+            );
+            assert!(escalation.contains(&line), "{name}: no {line:?}");
+            if id.kind() == Kind::Observation && record.header.revision.0 > 1 {
+                revised_observations += 1;
+            }
+        }
+        assert!(
+            escalation.contains("{\"id\":ID,\"revision\":N}"),
+            "{name}: escalation does not say a write cites the revision"
+        );
+    }
+    assert!(revised_observations > 0, "no revised Observation is named");
+}
+
+/// The question and objective are text as written: "over 10 min" in an
+/// objective read as a fact to the DF.05 successor. Both files say so
+/// before the first authored line.
+#[test]
+fn the_question_and_objective_are_marked_authored_and_unverified() {
+    let directory = tempfile::tempdir().unwrap();
+    for (name, _, _, plan) in internal_handoffs(directory.path()) {
+        for (path, heading) in [
+            (BRIEF, "## Objective and scope"),
+            (OVERVIEW, "### Question and scope"),
+        ] {
+            let text = text(&plan, path);
+            let lines = section(&text, heading);
+            assert!(
+                lines[0].starts_with("- Authored context, not findings: ")
+                    && lines[0].contains("unverified until an Observation records it"),
+                "{name} {path}: {lines:#?}"
+            );
+            assert!(lines[1].starts_with("- Question: "), "{name} {path}");
+        }
+    }
+}
+
+/// The escalation reads are printed once, not four per record, so the brief
+/// stays small as the case grows: Scenario B's brief was 58,709 bytes with
+/// 4 commands for each of its records, and is about 24 KB now.
+#[test]
+fn the_brief_prints_each_pinned_read_once() {
+    let directory = tempfile::tempdir().unwrap();
+    for (name, _, _, plan) in internal_handoffs(directory.path()) {
+        for path in [BRIEF, OVERVIEW] {
+            let text = text(&plan, path);
+            let escalation = text.split_once("\n## Escalation\n").unwrap().1;
+            assert_eq!(
+                escalation.matches("--head-hash").count(),
+                4,
+                "{name} {path}"
+            );
+            assert!(
+                escalation.matches(" --whole`").count() <= 1,
+                "{name} {path}: a whole read is repeated per Artifact"
+            );
+            assert!(text.len() < 32_768, "{name} {path}: {} bytes", text.len());
+        }
+    }
 }
 
 fn run(cwd: &Path, args: &[&str], stdin: Option<&Value>) -> Value {
@@ -458,7 +698,7 @@ fn an_unknown_outcome_run_is_listed_under_do_not_repeat_until_reconciled() {
             text.split_once("\n## Escalation\n")
                 .unwrap()
                 .1
-                .contains(&format!("show {run_id} --depth full")),
+                .contains(&format!("\n- `{run_id}` run, revision 1")),
             "{name}: no escalation for {run_id}"
         );
     }
