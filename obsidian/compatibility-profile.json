@@ -1,11 +1,11 @@
 {
   "schema": "inv.obsidian-compat-profile.v1",
-  "profile_revision": 2,
+  "profile_revision": 3,
   "pinned_release": {
     "version": "1.15.1",
     "released": "2026-11-12",
-    "verification": "documentation",
-    "integration_gate": "not yet run; W12.07 records the installed version it actually ran against in its report and may raise this to 'integration'"
+    "verification": "integration",
+    "integration_gate": "passed 2026-11-24 on Obsidian 1.15.1 (installer 1.15.0, Flatpak) with the W12.07 gate at 1cda8061, renderer v28; report in notes/release/obsidian-ui-2026-11-24/"
   },
   "supported_range": {
     "min": "1.12.7",

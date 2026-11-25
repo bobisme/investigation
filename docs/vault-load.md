@@ -58,7 +58,21 @@ Cases are planned in parallel, and the snapshot read keeps each case's state but
 
 The acceptance for this bone also names Obsidian's own behaviour: cold open, a Base query for one case, Canvas open and search. The harness runs headless and does not drive Obsidian. Those figures are not in this page and must not be inferred from it. When someone measures them, record the Obsidian release, the machine, the vault (use `--fixtures` to keep the generated one), and counts, repetitions and order, as the harness does.
 
-`scripts/obsidian-ui-check.py timings` (W12.07) measures them through the viewer's CLI, outside `just check`, against a kept vault: `TMPDIR=/var/tmp just load-test ~/vault-load-10k --cases 130 --samples 1` (under your home folder, so a sandboxed viewer can open it), open `~/vault-load-10k/viewer_1_15_1/vault` in the viewer once, then `just obsidian-ui timings --vault ~/vault-load-10k/viewer_1_15_1/vault --samples 5` (add `--allow-restart` for cold opens; it restarts the whole app). It writes `target/obsidian-ui/timings.json` and a table in this page's form, with the release, machine, counts, samples and order. No such run is recorded yet (see obsidian/README.md, "Integration gate").
+`scripts/obsidian-ui-check.py timings` (W12.07) measures them through the viewer's CLI, outside `just check`, against a kept vault: `TMPDIR=/var/tmp just load-test ~/vault-load-10k --cases 130 --samples 1` (under your home folder, so a sandboxed viewer can open it), open `~/vault-load-10k/viewer_1_15_1/vault` in the viewer once, then `just obsidian-ui timings --vault ~/vault-load-10k/viewer_1_15_1/vault --samples 5` (add `--allow-restart` for cold opens; it restarts the whole app). It writes `target/obsidian-ui/timings.json` and a table in this page's form, with the release, machine, counts, samples and order.
+
+### Viewer timings, 2026-11-24 (bn-1br4)
+
+The run used Obsidian 1.15.1 (installer 1.15.0, Flatpak) on the machine above, on a desktop session the app shared with other work. The vault was the 130-case `viewer_1_15_1` vault: 10,132 notes, 1,170 Base files and 130 Canvas files, opened once in the viewer with Restricted Mode on. Each sample ran in this order: a CLI round trip (`version`), a Base query (the first case's `Timeline.base`, `format=paths`), a Canvas open (the first `Map.canvas`), and a search (that case's ID). Window reloads followed, each timed until `files total` reached the file count on disk. The run had 5 samples and no `--allow-restart`, so it measured no cold open. Raw report: [timings.json](../notes/release/obsidian-ui-2026-11-24/timings.json).
+
+| Measure | n | Median | Min | Max |
+| --- | --- | --- | --- | --- |
+| CLI round trip | 5 | 0.287 s | 0.274 s | 0.300 s |
+| Base query, one case | 5 | 0.331 s | 0.284 s | 0.357 s |
+| Canvas open | 5 | 0.294 s | 0.272 s | 0.310 s |
+| Search | 5 | 0.308 s | 0.280 s | 0.431 s |
+| Window reload until every file is listed | 5 | 2.004 s | 1.945 s | 2.065 s |
+
+Each interactive measure includes the CLI round trip of about 0.29 s, so the viewer's own share of a Base query, Canvas open or search is under about 0.05 s at this size. Cold open was not measured, because `--allow-restart` restarts the whole app. The Canvas open in these samples also rewrites that Canvas in the viewer's layout (bn-24y4).
 
 ## Guidance
 
