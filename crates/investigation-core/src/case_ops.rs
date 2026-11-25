@@ -11,6 +11,7 @@ use crate::{
     },
     catalog::{OperationDescriptor, OperationInfo},
     command::RevisionRef,
+    freshness::{Freshness, FreshnessIndex},
     identity::{Id, Kind},
     input,
     pack_policy::{self, Gate, Subject},
@@ -23,13 +24,25 @@ use crate::{
 /// Warning on an inconclusive close that names no reopen condition.
 pub const REOPEN_CONDITION_MISSING: &str = "case.reopen_condition_missing: the case closes inconclusive without a reopen_condition, so nothing states what observation or change should reopen it. Close with a bounded reopen_condition naming the observable sign that would reopen it, or reopen the case and close again.";
 
+/// Warning on an answered close when the case has live Conclusions and none
+/// is effective current. Closure is not a promotion gate (plan §6.4, §6.6),
+/// so the close is recorded; the warning says the answer needs review.
+pub const ANSWER_NOT_CURRENT: &str = "case.answer_not_current: the case closes answered, but none of its live Conclusions is effective current, so the analysis report will show the answer as needs_review or disputed. To close on a current answer: run `investigation show` on each Conclusion to read its freshness reasons, assess the changed records again, review and validate the Conclusion again (conclusion.request_review, review.submit, conclusion.validate), then record the account and close.";
+
+/// The repair order for an answered close that leaves open questions.
+const OPEN_QUESTIONS: &str = "An answered close leaves these Questions open. For each one: resolve it with question.resolve (answered, inconclusive, deferred or superseded), or list it in unresolved_questions. Then take the draft (`investigation retrospective --draft`), record the account and close; question.resolve, retrospective.record and case.close may share one batch, in that order.";
+
 pub(crate) fn operations() -> [OperationDescriptor; 5] {
     [
         OperationDescriptor::active(
-            info(
-                "case.close",
-                "Close a case with an attributed outcome and a method account when required.",
-            ),
+            OperationInfo {
+                when_to_use: "Close a case with an attributed outcome. Order: resolve each Question with question.resolve, take the draft (retrospective --draft), record the account, then close; question.resolve, retrospective.record and case.close may share one transaction in that order.",
+                related: &["question.resolve", "retrospective.record", "case.reopen"],
+                ..info(
+                    "case.close",
+                    "Close a case with an attributed outcome and a method account when required.",
+                )
+            },
             json!({
                 "outcome":"inconclusive",
                 "reason":"The recorded observations do not resolve the question.",
@@ -242,6 +255,23 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
     if payload.outcome == CaseClosureOutcome::Inconclusive && payload.reopen_condition.is_none() {
         context.warn(REOPEN_CONDITION_MISSING.to_owned());
     }
+    // An answered close states its outstanding questions (§6.4): each open
+    // Question is resolved or listed as unresolved (bn-2xmp).
+    let answered = payload.outcome == CaseClosureOutcome::Answered;
+    if answered {
+        unlisted_open_questions(context.state(), case, &seen)?;
+        let index = FreshnessIndex::build(context.state(), case);
+        if let Some(stale) = answer_not_current(context.state(), case, &index) {
+            context.warn(format!(
+                "{ANSWER_NOT_CURRENT} Conclusions: {}.",
+                stale
+                    .iter()
+                    .map(|reference| reference.id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
     body.closure_outcome = Some(payload.outcome);
     body.transition_reason = Some(payload.reason);
     body.closure = Some(CaseClosureDetails {
@@ -279,8 +309,12 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
             failure.error.expected = Some(json!({"policy_blockers": policy.closure_blockers(state)}));
             return Err(failure);
         }
-        for (index, reference) in unresolved.into_iter().enumerate() {
-            unresolved_question(state, case, reference, &format!("/unresolved_questions/{index}"))?;
+        for (index, reference) in unresolved.iter().enumerate() {
+            unresolved_question(state, case, *reference, &format!("/unresolved_questions/{index}"))?;
+        }
+        if answered {
+            let listed = unresolved.iter().map(|reference| reference.id).collect();
+            unlisted_open_questions(state, case, &listed)?;
         }
         if let Some(retrospective) = retrospective {
             return check_retrospective(state, case, retrospective)
@@ -345,6 +379,59 @@ fn unresolved_question(
         return Err(gate("List only questions that remain unresolved.").at(path));
     }
     Ok(())
+}
+
+/// Refuse an answered close while a Question of the case is open and not
+/// listed in `unresolved_questions`. `expected` names the open Questions.
+fn unlisted_open_questions(state: &State, case: Id, listed: &BTreeSet<Id>) -> Result<(), Failure> {
+    let mut open: Vec<RevisionRef> = state
+        .records()
+        .filter(|record| {
+            record.header.case_id == case
+                && record.header.id.kind() == Kind::Question
+                && !listed.contains(&record.header.id)
+                && record.body["disposition"] == json!(QuestionDisposition::Open)
+        })
+        .map(|record| record.reference())
+        .collect();
+    if open.is_empty() {
+        return Ok(());
+    }
+    open.sort();
+    let mut failure = gate(OPEN_QUESTIONS).at("/unresolved_questions");
+    failure.error.expected = Some(json!(open));
+    Err(failure)
+}
+
+/// The live Conclusions of a case (not rejected, retracted or superseded)
+/// when there is at least one and none is effective current; `None` otherwise.
+pub(crate) fn answer_not_current(
+    state: &State,
+    case: Id,
+    index: &FreshnessIndex,
+) -> Option<Vec<RevisionRef>> {
+    let live: Vec<_> = state
+        .records()
+        .filter(|record| {
+            record.header.case_id == case
+                && record.header.id.kind() == Kind::Conclusion
+                && !matches!(
+                    record.body["status"].as_str(),
+                    Some("rejected" | "retracted" | "superseded")
+                )
+        })
+        .collect();
+    if live.is_empty() {
+        return None;
+    }
+    let current = live.iter().any(|record| {
+        index
+            .get(record.header.id)
+            .is_some_and(|result| result.freshness == Freshness::Current)
+    });
+    let mut stale: Vec<_> = live.iter().map(|record| record.reference()).collect();
+    stale.sort();
+    (!current).then_some(stale)
 }
 
 pub(crate) fn case_for_update(

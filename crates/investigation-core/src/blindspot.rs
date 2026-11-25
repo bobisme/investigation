@@ -32,6 +32,7 @@
 //! every registered spec (unique IDs, known schemas, cards and gap rules).
 
 mod causal;
+mod closure;
 mod evaluative;
 mod lessons;
 mod seed;
@@ -73,6 +74,7 @@ const FAMILIES: &[&[CheckSpec]] = &[
     causal::CHECKS,
     lessons::CHECKS,
     sources::CHECKS,
+    closure::CHECKS,
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

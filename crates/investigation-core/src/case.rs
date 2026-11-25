@@ -229,12 +229,17 @@ pub struct CaseReopen {
     pub reason: String,
 }
 
+/// Close a case. Order: resolve each Question with `question.resolve`, then
+/// take the draft (`retrospective --draft`), then `retrospective.record` and
+/// `case.close`; all three may share one transaction, in that order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CaseClose {
     pub outcome: CaseClosureOutcome,
     #[schemars(length(min = 1, max = 2048))]
     pub reason: String,
+    /// Questions left unresolved, each at its current revision. Outcome
+    /// `answered` is refused while a Question is open and not listed here.
     pub unresolved_questions: Vec<Reference>,
     pub reopen_condition: Option<String>,
     /// Existing or same-transaction Retrospective. Mutually exclusive with waiver.

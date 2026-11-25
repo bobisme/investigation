@@ -431,8 +431,48 @@ fn case_framing(body: &Value) -> Value {
     projection
 }
 
+/// The fields that frame a Question: its resolution (disposition, answer,
+/// reason and evidence) is not among them.
+fn question_framing(body: &Value) -> Value {
+    let mut projection = body.clone();
+    if let Some(fields) = projection.as_object_mut() {
+        for field in [
+            "disposition",
+            "answer",
+            "resolution_reason",
+            "evidence_refs",
+        ] {
+            fields.remove(field);
+        }
+    }
+    projection
+}
+
+/// Whether `current` only resolves a Question the account already covered: the
+/// Question existed at the snapshot with the same framing, and every record
+/// the resolution cites was accepted at or before the snapshot. Recording the
+/// answer to recorded work is not new work (plan §8.6), so the resolution may
+/// share the closing batch with the account (bn-2xmp).
+fn resolution_only(state: &State, current: &Record, snapshot: u64) -> bool {
+    let Some(previous) = state.record_at(current.header.id, snapshot) else {
+        return false;
+    };
+    question_framing(&previous.body) == question_framing(&current.body)
+        && crate::input::decode::<Vec<RevisionRef>>(
+            current.body.get("evidence_refs").unwrap_or(&json!([])),
+        )
+        .is_ok_and(|refs| {
+            refs.iter().all(|reference| {
+                state
+                    .revision(*reference)
+                    .is_some_and(|cited| cited.header.acceptance_sequence <= snapshot)
+            })
+        })
+}
+
 /// A closing account must cover the current material basis. A narrative note,
-/// another process account, or a lifecycle-only case transition does not stale it.
+/// another process account, a lifecycle-only case transition, or a Question
+/// resolution that cites only covered records does not stale it.
 pub(crate) fn check_retrospective(
     state: &State,
     case: Id,
@@ -454,6 +494,7 @@ pub(crate) fn check_retrospective(
                         .is_none_or(|previous| {
                             case_framing(&previous.body) != case_framing(&current.body)
                         }),
+                    Kind::Question => !resolution_only(state, current, snapshot.sequence),
                     _ => true,
                 }
         })
@@ -904,6 +945,125 @@ mod tests {
         assert_eq!(
             case.state.current(expected.id).unwrap().body["lifecycle"],
             "closed"
+        );
+    }
+
+    fn question(case: &mut Case) -> RevisionRef {
+        case.transact(
+            vec![json!({"op":"question.create","payload":{
+                "wording":"Why did the synthetic run fail?","importance":"normal"}})],
+            &[],
+        )
+        .unwrap()
+        .records[0]
+            .reference()
+    }
+
+    fn resolve(question: RevisionRef, disposition: &str) -> Value {
+        json!({"op":"question.resolve","payload":{
+            "question_ref":question,"disposition":disposition,
+            "reason":"The recorded run cannot settle it.","evidence_refs":[]}})
+    }
+
+    /// bn-2xmp: resolving a question records its answer, not new work, so it
+    /// may share the closing batch with the account drafted before it (plan
+    /// §8.6: one atomic batch). A new question after the snapshot still stales
+    /// the account.
+    #[test]
+    fn resolving_a_question_in_the_closing_batch_keeps_the_account_current() {
+        let mut case = Case::new("explore");
+        let run = case.failed_run();
+        let question = question(&mut case);
+        let payload = case.retrospective_input(Some(run.id));
+        let expected = case.case_ref();
+        let mut late = case.clone_state();
+        let accepted = case
+            .transact(
+                vec![
+                    resolve(question, "inconclusive"),
+                    json!({"op":"retrospective.record","payload":payload,"client_ref":"account"}),
+                    close(json!({"retrospective_ref":{"client_ref":"account"}})),
+                ],
+                &[expected],
+            )
+            .unwrap();
+        assert_eq!(accepted.records[0].body["disposition"], "inconclusive");
+        assert_eq!(
+            case.state.current(expected.id).unwrap().body["lifecycle"],
+            "closed"
+        );
+
+        let payload = late.retrospective_input(Some(run.id));
+        let failure = late
+            .transact(
+                vec![
+                    json!({"op":"question.create","payload":{
+                        "wording":"Does the failure recur?","importance":"normal"}}),
+                    json!({"op":"retrospective.record","payload":payload,"client_ref":"account"}),
+                    close(json!({"retrospective_ref":{"client_ref":"account"}})),
+                ],
+                &[expected],
+            )
+            .unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::RetrospectiveStale);
+    }
+
+    /// bn-2xmp: an `answered` close states the outstanding questions (plan
+    /// §6.4): each open Question is resolved first or listed as unresolved.
+    #[test]
+    fn an_answered_close_resolves_or_lists_every_open_question() {
+        let mut case = Case::new("explore");
+        let question = question(&mut case);
+        let expected = case.case_ref();
+        let answered = |extra: Value| {
+            let mut op = close(extra);
+            op["payload"]["outcome"] = json!("answered");
+            op["payload"]["retrospective_waived"] = json!("No material work occurred.");
+            op
+        };
+        let before = case.state.clone();
+        let refused = case
+            .clone_state()
+            .transact(vec![answered(json!({}))], &[expected])
+            .unwrap_err();
+        assert_eq!(refused.error.code, ErrorCode::GateFailed);
+        assert_eq!(
+            refused.error.path.as_deref(),
+            Some("/operations/0/payload/unresolved_questions")
+        );
+        assert_eq!(refused.error.expected, Some(json!([question])));
+        assert!(
+            refused.error.message.contains("question.resolve"),
+            "{}",
+            refused.error.message
+        );
+        assert_eq!(case.state, before);
+        // Resolved in the same batch, or listed: both close.
+        assert!(
+            case.clone_state()
+                .transact(
+                    vec![resolve(question, "deferred"), answered(json!({}))],
+                    &[expected]
+                )
+                .is_ok()
+        );
+        assert!(
+            case.clone_state()
+                .transact(
+                    vec![answered(json!({"unresolved_questions":[question]}))],
+                    &[expected]
+                )
+                .is_ok()
+        );
+        // Another outcome is unchanged.
+        assert!(
+            case.transact(
+                vec![close(
+                    json!({"retrospective_waived":"No material work occurred."})
+                )],
+                &[expected]
+            )
+            .is_ok()
         );
     }
 

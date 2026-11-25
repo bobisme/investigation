@@ -22,7 +22,7 @@ investigation demo ./demo-case --scenario performance
 ```text
 demo  performance  <WORKSPACE>
 fixture  fixtures/vault-goldens/scenario-b  replayed 75 transactions  seed 0x5eed0b17
-case  case_01a20a66-1244-7001-adab-1a5a11b46bcf
+case  case_01a210c9-bce7-7001-adab-1a5a11b46bcf
 open step  The bounded conclusions await the attributed retrospective and case closure.
 ...
 ```
@@ -34,14 +34,14 @@ investigation --workspace ./demo-case brief --level compact
 ```
 
 ```text
-case_01a20a66-1244-7001-adab-1a5a11b46bcf  active / needs_review  snapshot 75  level compact
+case_01a210c9-bce7-7001-adab-1a5a11b46bcf  active / needs_review  snapshot 75  level compact
 ...
 outcomes  shown 7
 ...
-concl_01a20a66-4a0d-7000-a4a0-7478a7bb7a64  candidate / current  revision 1  title [authored_data]: "Optimization A does not change p99."
+concl_01a210c9-d83c-7000-a4a0-7478a7bb7a64  candidate / current  revision 1  title [authored_data]: "Optimization A does not change p99."
   caveat [authored_data]: "Captures stopped early under a failed monitor."
 ...
-concl_01a20a66-4485-7000-9e7e-9b17c320c0f0  review_ready / current  revision 3  title [authored_data]: "On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's."
+concl_01a210c9-d466-7000-9e7e-9b17c320c0f0  review_ready / current  revision 3  title [authored_data]: "On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's."
   caveat [authored_data]: "The runtime and the allocator changed together between these builds."
 ...
 ```
@@ -59,11 +59,11 @@ reports its run, and Investigation keeps the original bytes and the
 producer's own claims apart from any judgment.
 
 ```sh
-investigation --workspace ./demo-case show run_01a20a66-202b-7006 --depth full
+investigation --workspace ./demo-case show run_01a210c9-c258-7006 --depth full
 ```
 
 ```text
-run_01a20a66-202b-7006-8fc6-f59f642db139  recorded / current  revision 1  depth full
+run_01a210c9-c258-7006-8fc6-f59f642db139  recorded / current  revision 1  depth full
 ...
 body.evidence_validity  unknown
 ...
@@ -82,11 +82,11 @@ measured what was planned is a separate judgment, recorded on the
 observation with its reasons:
 
 ```sh
-investigation --workspace ./demo-case show obs_01a20a66-2117 --depth full
+investigation --workspace ./demo-case show obs_01a210c9-c2ad --depth full
 ```
 
 ```text
-obs_01a20a66-2117-7000-9b1c-45ad7ec0fe7e  active / current  use in_use  validity invalid  selector verified  revision 2  depth full
+obs_01a210c9-c2ad-7000-9b1c-45ad7ec0fe7e  active / current  use in_use  validity invalid  selector verified  revision 2  depth full
 ...
 limitation [authored_data]: "Monitor self-check failed."
 limitation [authored_data]: "Capture stopped early; 8 s observed of 300 s planned."
@@ -105,23 +105,23 @@ its pair. It cannot go to review:
 # Refused with exit status 5: GATE_FAILED, and nothing is committed.
 investigation --workspace ./demo-case record --input - <<'EOF'
 {"schema_version": "inv.command.v1", "command_id": "walkthrough-b-review",
- "case_id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf",
+ "case_id": "case_01a210c9-bce7-7001-adab-1a5a11b46bcf",
  "actor": "agent:walkthrough", "preconditions": [],
  "operations": [{"op": "conclusion.request_review", "payload": {
-   "conclusion_ref": {"id": "concl_01a20a66-4a0d-7000-a4a0-7478a7bb7a64", "revision": 1}}}]}
+   "conclusion_ref": {"id": "concl_01a210c9-d83c-7000-a4a0-7478a7bb7a64", "revision": 1}}}]}
 EOF
 ```
 
 ```text
 /operations/0/payload/support_refs: The conclusion rests on an absence or equivalence basis that does not support it. Until the missing requirements are recorded it reads as inconclusive.
-Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a20a66-4a0d-7000-a4a0-7478a7bb7a64 --case case_01a20a66-1244-7001-adab-1a5a11b46bcf --depth full --format json
+Retry or inspect with investigation --workspace <WORKSPACE> show concl_01a210c9-d83c-7000-a4a0-7478a7bb7a64 --case case_01a210c9-bce7-7001-adab-1a5a11b46bcf --depth full --format json
 See investigation schema conclusion.request_review
 ```
 
 The assessment behind it says what is missing, in its own fields:
 
 ```sh
-investigation --workspace ./demo-case show assess_01a20a66-3c73 --depth full
+investigation --workspace ./demo-case show assess_01a210c9-cffe --depth full
 ```
 
 ```text
@@ -142,11 +142,11 @@ stays inconclusive. The repair is new captures under adequate conditions,
 planned before they are seen. The case froze that plan:
 
 ```sh
-investigation --workspace ./demo-case show inq_01a20a66-4e01 --depth full
+investigation --workspace ./demo-case show inq_01a210c9-dade --depth full
 ```
 
 ```text
-inq_01a20a66-4e01-7000-94f6-80ec16d0427d  frozen / current  trust unknown  revision 3  depth full
+inq_01a210c9-dade-7000-94f6-80ec16d0427d  frozen / current  trust unknown  revision 3  depth full
 ...
 body.controls.3 [authored_data]: "Debug logging off and monitor self-check passing"
 body.controls.4 [authored_data]: "At least 299 samples per capture"
@@ -166,12 +166,12 @@ separates the allocator from the runtime, which the existing captures cannot.
 ## Started, observed and timed out: count every attempt
 
 ```sh
-investigation --workspace ./demo-case show obs_01a20a66-2a31 --depth full
+investigation --workspace ./demo-case show obs_01a210c9-c64e --depth full
 ```
 
 ```text
 ...
-measurement_flag  advisory true  fields 2  flag_id measurement.completion_only_statistic  rule_version measurement-flags.v1  subject_ref obs_01a20a66-2a31-7000-8853-28a448deac8e@2
+measurement_flag  advisory true  fields 2  flag_id measurement.completion_only_statistic  rule_version measurement-flags.v1  subject_ref obs_01a210c9-c64e-7000-8853-28a448deac8e@2
 ...
 body.measurement.attempts.observed.count.value  95
 ...
@@ -201,12 +201,12 @@ investigation --workspace ./demo-case blindspots
 
 ```text
 ...
-gap:measurement.closed_loop_without_intended_send_timing:obs_01a20a66-286c-7000-b67d-64fff59a7465
+gap:measurement.closed_loop_without_intended_send_timing:obs_01a210c9-c581-7000-b67d-64fff59a7465
    measurement.advisory_flags (v1)  advisory
 ...
-gap:measurement.compared_warmup_differs:obs_01a20a66-1b83-7000-a879-fee252cf2ad5+obs_01a20a66-1f41-7000-b5b5-df5e1a205ce4+assess_01a20a66-3b1f-7000-b589-ef67863979bf
+gap:measurement.compared_warmup_differs:obs_01a210c9-bfbe-7000-a879-fee252cf2ad5+obs_01a210c9-c1e7-7000-b5b5-df5e1a205ce4+assess_01a210c9-cf62-7000-b589-ef67863979bf
 ...
-gap:measurement.sequential_trial_order:obs_01a20a66-2489-7000-a45a-d46babd50b4a
+gap:measurement.sequential_trial_order:obs_01a210c9-c3bc-7000-a45a-d46babd50b4a
 ...
 ```
 
@@ -222,7 +222,7 @@ The plan fixed a margin of ±5 ms before any results. The intervals were
 supplied by the producer, not computed by Investigation:
 
 ```sh
-investigation --workspace ./demo-case show assess_01a20a66-3d0c --depth full
+investigation --workspace ./demo-case show assess_01a210c9-d04b --depth full
 ```
 
 ```text
@@ -230,7 +230,7 @@ investigation --workspace ./demo-case show assess_01a20a66-3d0c --depth full
 body.equivalence_evaluation.interval.lower  -2
 ...
 body.equivalence_evaluation.interval.upper  3
-body.equivalence_evaluation.margin.inquiry_ref  inq_01a20a66-17a8-7000-97d5-feb11a2e1ba5@2
+body.equivalence_evaluation.margin.inquiry_ref  inq_01a210c9-be0d-7000-97d5-feb11a2e1ba5@2
 body.equivalence_evaluation.margin.lower  -5
 ...
 body.equivalence_evaluation.margin.upper  5
@@ -240,7 +240,7 @@ body.equivalence_evaluation.outcome  bounded_equivalence_supported
 ```
 
 ```sh
-investigation --workspace ./demo-case show assess_01a20a66-3dbe --depth full
+investigation --workspace ./demo-case show assess_01a210c9-d0a2 --depth full
 ```
 
 ```text
@@ -268,12 +268,12 @@ investigation --workspace ./demo-case retrospective --draft
 ```
 
 ```text
-case case_01a20a66-1244-7001-adab-1a5a11b46bcf  snapshot 75
+case case_01a210c9-bce7-7001-adab-1a5a11b46bcf  snapshot 75
 ...
 Process digest: 8 item(s)
-  observation.invalid/obs_01a20a66-1d5d-7000-a178-4b51713905d8
+  observation.invalid/obs_01a210c9-c0d4-7000-a178-4b51713905d8
 ...
-  assessment.inconclusive/assess_01a20a66-3c73-7000-9447-f077588e4845
+  assessment.inconclusive/assess_01a210c9-cffe-7000-9447-f077588e4845
 ...
 ```
 
@@ -293,40 +293,40 @@ case.
 ```sh
 investigation --workspace ./demo-case record --dry-run --input - <<'EOF'
 {"schema_version": "inv.command.v1", "command_id": "walkthrough-b-close",
- "case_id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "actor": "agent:walkthrough",
- "preconditions": [{"id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "revision": 1}],
+ "case_id": "case_01a210c9-bce7-7001-adab-1a5a11b46bcf", "actor": "agent:walkthrough",
+ "preconditions": [{"id": "case_01a210c9-bce7-7001-adab-1a5a11b46bcf", "revision": 1}],
  "operations": [
   {"op": "retrospective.record", "client_ref": "account", "payload": {
-    "case_ref": {"id": "case_01a20a66-1244-7001-adab-1a5a11b46bcf", "revision": 1},
-    "snapshot": {"sequence": 75, "head_hash": "sha256:965e1ffd7214bbff00bfb2575559fec1c0c960e146fd3a66031c579abf7e3461"},
+    "case_ref": {"id": "case_01a210c9-bce7-7001-adab-1a5a11b46bcf", "revision": 1},
+    "snapshot": {"sequence": 75, "head_hash": "sha256:314094e0f3b7fd206c4ba32693bc5e906a563cadbb7bfaacfcae9e5031a4e60c"},
     "methods_attempted": [{"name": "Interleaved control and treatment captures with typed measurement fields"},
                           {"name": "Externally supplied intervals against a margin frozen in advance"}],
     "effective_steps": [{"description": "The matched pair showed the regression on this workload.",
-      "support_refs": ["concl_01a20a66-4485-7000-9e7e-9b17c320c0f0"]},
+      "support_refs": ["concl_01a210c9-d466-7000-9e7e-9b17c320c0f0"]},
      {"description": "Freezing the margin before the intervals let one resolve and the other stay unresolved.",
-      "support_refs": ["assess_01a20a66-3d0c-7000-9005-f73c542fa161"]}],
+      "support_refs": ["assess_01a210c9-d04b-7000-9005-f73c542fa161"]}],
     "invalid_or_misleading_steps": [
      {"description": "Debug logging was on for one capture, so it measured different instrumentation.",
-      "support_refs": ["obs_01a20a66-1d5d-7000-a178-4b51713905d8"]},
+      "support_refs": ["obs_01a210c9-c0d4-7000-a178-4b51713905d8"]},
      {"description": "The short captures ran 8 s of 300 s under a failed monitor and settle nothing.",
-      "support_refs": ["obs_01a20a66-2117-7000-9b1c-45ad7ec0fe7e", "obs_01a20a66-22b8-7000-91ec-d0ca93e833e0"]},
+      "support_refs": ["obs_01a210c9-c2ad-7000-9b1c-45ad7ec0fe7e", "obs_01a210c9-c329-7000-91ec-d0ca93e833e0"]},
      {"description": "The closed-loop capture timed from the actual send and hid queueing delay.",
-      "support_refs": ["obs_01a20a66-286c-7000-b67d-64fff59a7465"]}],
+      "support_refs": ["obs_01a210c9-c581-7000-b67d-64fff59a7465"]}],
     "costs_or_constraints": "Synthetic offline captures; one capture per build and condition.",
     "residual_unknowns": ["Whether the regression follows the allocator alone.",
                           "Whether optimization A improves p99 under matched conditions."],
     "lessons": [{"guidance": "Do not interpret a capture whose monitor self-check failed or whose window was cut short.",
       "applies_when": "Latency captures compared across builds or conditions.",
-      "support_refs": ["obs_01a20a66-2117-7000-9b1c-45ad7ec0fe7e"],
+      "support_refs": ["obs_01a210c9-c2ad-7000-9b1c-45ad7ec0fe7e"],
       "transfer_limits": "Learned from one synthetic workload and host."},
      {"guidance": "Interleave run order, match warm-up and time latency from the intended send.",
       "applies_when": "Latency captures compared across builds or conditions.",
-      "support_refs": ["obs_01a20a66-2489-7000-a45a-d46babd50b4a", "obs_01a20a66-286c-7000-b67d-64fff59a7465"],
+      "support_refs": ["obs_01a210c9-c3bc-7000-a45a-d46babd50b4a", "obs_01a210c9-c581-7000-b67d-64fff59a7465"],
       "transfer_limits": "Learned from one synthetic workload and host."}]}},
   {"op": "case.close", "payload": {"outcome": "inconclusive",
     "reason": "A regression is shown for this workload; its cause and optimization A's effect are unresolved.",
-    "unresolved_questions": [{"id": "q_01a20a66-155a-7000-b02e-ea1c8a18e50e", "revision": 1},
-                             {"id": "q_01a20a66-547a-7000-931b-852995fb67fc", "revision": 1}],
+    "unresolved_questions": [{"id": "q_01a210c9-bd28-7000-b02e-ea1c8a18e50e", "revision": 1},
+                             {"id": "q_01a210c9-de33-7000-931b-852995fb67fc", "revision": 1}],
     "reopen_condition": "Run the frozen confirmatory repeat plan with only the allocator reverted.",
     "retrospective_ref": {"client_ref": "account"}}}]}
 EOF
@@ -335,7 +335,7 @@ EOF
 ```text
 dry_run  would_result committed  nothing committed
 $RETRO  revision 1
-case_01a20a66-1244-7001-adab-1a5a11b46bcf  revision 2
+case_01a210c9-bce7-7001-adab-1a5a11b46bcf  revision 2
 ...
 ```
 

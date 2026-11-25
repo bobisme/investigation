@@ -62,6 +62,7 @@
   "$id": "urn:investigation:schema:v1:operation:case.close",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
+  "description": "Close a case. Order: resolve each Question with `question.resolve`, then\ntake the draft (`retrospective --draft`), then `retrospective.record` and\n`case.close`; all three may share one transaction, in that order.",
   "properties": {
     "outcome": {
       "$ref": "#/$defs/CaseClosureOutcome"
@@ -98,6 +99,7 @@
       ]
     },
     "unresolved_questions": {
+      "description": "Questions left unresolved, each at its current revision. Outcome\n`answered` is refused while a Question is open and not listed here.",
       "items": {
         "$ref": "#/$defs/Reference"
       },

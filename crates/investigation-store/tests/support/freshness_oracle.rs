@@ -491,7 +491,9 @@ fn role(kind: Kind, path: &str) -> (Role, bool) {
         (Kind::Hypothesis, "question_ref") => Context,
         (Kind::Hypothesis, "assumption_refs" | "evidence_refs") => Basis,
         (Kind::Hypothesis, "rival_refs" | "alternative_to") => Ignored,
-        (Kind::Assessment, "subject_ref") => Subject,
+        // A named rival is judged like the subject (rules version 8): ending it
+        // does not change the judgment, a changed claim does.
+        (Kind::Assessment, "subject_ref" | "rival_expectations.rival_ref") => Subject,
         (Kind::Assessment, "evidence_refs" | "assumption_refs") => Basis,
         (Kind::Conclusion, "support_refs" | "contradiction_refs") => Basis,
         // A validated claim relies on its validation review; the review is
@@ -604,13 +606,14 @@ fn substantive_fields(kind: Kind) -> &'static [&'static str] {
             "run_ref",
         ],
         Kind::Question => &["wording", "scope", "context", "importance", "parent"],
+        // A disposition's evidence_refs are its reason, not the claim (rules
+        // version 8, ADR 0021); the hypothesis still rests on them (rule 2).
         Kind::Hypothesis => &[
             "statement",
             "applicability",
             "possible_falsifiers",
             "question_ref",
             "assumption_refs",
-            "evidence_refs",
             "rival_refs",
         ],
         Kind::Assessment => &[

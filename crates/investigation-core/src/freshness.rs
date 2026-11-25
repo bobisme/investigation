@@ -53,7 +53,20 @@ use crate::{
 /// [`resolution_only`]) is benign to it, and the reader inherits nothing
 /// through such a question, so naming a validated conclusion as the answer no
 /// longer makes it, its review or its hypotheses `needs_review`.
-pub const FRESHNESS_RULES_VERSION: u32 = 7;
+/// Version 8 keeps judgments current through hypothesis dispositions
+/// (bn-2xmp, ADR 0021): a disposition's `evidence_refs` are lifecycle fields
+/// of the hypothesis, and the rivals an assessment's `rival_expectations` or
+/// a confirmatory plan's predictions name are judged like a subject, so ending
+/// them does not make the judgment `needs_review`; a changed claim still does.
+pub const FRESHNESS_RULES_VERSION: u32 = 8;
+
+/// Change-only fields naming what a record judges or predicts about: ending
+/// the named record does not make the judgment `needs_review`.
+const JUDGED_FIELDS: &[&str] = &[
+    "subject_ref",
+    "rival_expectations.rival_ref",
+    "inquiry.confirmatory.predictions.rival_ref",
+];
 
 /// Effective freshness, ordered by severity.
 #[derive(
@@ -786,7 +799,9 @@ fn lifecycle_fields(kind: Kind) -> &'static [&'static str] {
             "withdrawals",
             "source_assessment",
         ],
-        Kind::Hypothesis => &["lifecycle", "rationale", "alternative_to"],
+        // A disposition's evidence is its reason, recorded with the
+        // disposition; the hypothesis' claim is unchanged (rules version 8).
+        Kind::Hypothesis => &["lifecycle", "rationale", "alternative_to", "evidence_refs"],
         Kind::Inquiry => &[
             "lifecycle",
             "rationale",
@@ -869,8 +884,12 @@ fn edge_change(
         return Some((Change::from(Trigger::MissingDependency), edge.target));
     };
     // A judgment about a subject stays a record of that subject when the
-    // subject is later rejected or superseded; only its claim matters.
-    let subject = edge.propagation == Propagation::ChangeOnly && edge.field == "subject_ref";
+    // subject is later rejected or superseded; only its claim matters. The
+    // same holds for the rivals a judgment or a frozen plan names (rules
+    // version 8): rejecting a rival, often on that very judgment, is not a
+    // change to what it judged.
+    let subject =
+        edge.propagation == Propagation::ChangeOnly && JUDGED_FIELDS.contains(&edge.field);
     revision_change(state, cited, current, scope, subject, Some(reader))
         .map(|change| (change, current.reference()))
 }
@@ -2395,6 +2414,173 @@ mod tests {
         )
         .unwrap();
         assert!(lagging.update(&earlier).is_err());
+    }
+
+    /// bn-2xmp (rules version 8): disposing of hypotheses on the evidence an
+    /// assessment judged does not make that assessment, the other judgments
+    /// about them or the conclusion that rests on them `needs_review`.
+    /// Rejecting a rival is not a change to a judgment that named it, and the
+    /// evidence a disposition cites is its reason, not the hypothesis' claim.
+    #[test]
+    fn disposing_of_hypotheses_on_an_assessment_keeps_the_judgments_current() {
+        let mut case = Case::new();
+        let f = case.fixture();
+        let question = case.current(f.question);
+        let rival = case.one("hypothesis.create", json!({
+            "question_ref":question,"statement":"The managed queue misses the latency limit.",
+            "applicability":"Projected load","assumption_refs":[],"possible_falsifiers":["p99 below 25 ms"],
+            "rival_refs":[f.hypothesis]
+        }));
+        let discriminating = case.one(
+            "assessment.add",
+            json!({
+                "subject_ref":f.hypothesis,"evidence_refs":[f.observation],"relation":"supports",
+                "rival_expectations":[{"rival_ref":rival,"expectation":"less_expected",
+                    "rationale":"A p99 of 20 ms is unlikely if the queue misses the limit."}],
+                "rationale":"The retained p99 is below the limit."
+            }),
+        );
+        // Both dispositions in one transaction, as the dogfood case did.
+        case.run(
+            vec![
+                op(
+                    "hypothesis.disposition",
+                    json!({
+                        "hypothesis_ref":rival,"lifecycle":"rejected_within_scope",
+                        "rationale":"The retained p99 is below the limit.",
+                        "evidence_refs":[f.observation]
+                    }),
+                ),
+                op(
+                    "hypothesis.disposition",
+                    json!({
+                        "hypothesis_ref":f.hypothesis,"lifecycle":"active",
+                        "rationale":"Supported by the retained p99.","evidence_refs":[f.observation]
+                    }),
+                ),
+            ],
+            &[],
+        );
+        assert_eq!(case.current(rival).revision, 2);
+        assert_eq!(case.current(f.hypothesis).revision, 2);
+        for judgment in [
+            discriminating,
+            f.assessment,
+            f.conclusion,
+            f.conclusion_review,
+        ] {
+            assert_eq!(
+                case.freshness(judgment).freshness,
+                Freshness::Current,
+                "{:#?}",
+                case.freshness(judgment)
+            );
+        }
+        // A changed claim still reaches every judgment that names the record.
+        let mut body = case.state.current(rival.id).unwrap().body.clone();
+        body["statement"] = json!("The managed queue misses the limit under burst load.");
+        let amended = case.image(Kind::Hypothesis, body, Some(case.current(rival)));
+        let reason = only_reason(case.freshness(discriminating));
+        assert_eq!(
+            (&reason.trigger, reason.cause),
+            (&Trigger::MaterialRevision, amended)
+        );
+    }
+
+    /// bn-2xmp: an answered close whose live Conclusions are none current is
+    /// recorded (closure is not a promotion gate, plan §6.4) but warns, and the
+    /// blindspot audit reports the closed case until the answer is current.
+    #[test]
+    fn an_answered_close_on_a_stale_answer_warns_and_the_audit_reports_it() {
+        let close = |case: &mut Case, f: &Fixture| {
+            let expected = case.state.current(case.case).unwrap().reference();
+            let question = case.current(f.question);
+            let snapshot = crate::wire::Snapshot {
+                sequence: case.state.sequence(),
+                head_hash: format!("sha256:{:064x}", case.state.sequence())
+                    .parse()
+                    .unwrap(),
+            };
+            case.state.note_verified_snapshot(snapshot.clone()).unwrap();
+            let mut account = op(
+                "retrospective.record",
+                json!({
+                    "case_ref":expected,"snapshot":snapshot,
+                    "methods_attempted":[{"name":"Retained benchmark"}],"effective_steps":[],
+                    "invalid_or_misleading_steps":[],"none_observed_reason":"No invalid work was recorded.",
+                    "costs_or_constraints":"One benchmark.","residual_unknowns":[],
+                    "lessons":[],"no_reusable_lesson_reason":"One fixture."
+                }),
+            );
+            account["client_ref"] = json!("account");
+            case.run(
+                vec![
+                    account,
+                    op(
+                        "case.close",
+                        json!({
+                            "outcome":"answered","reason":"The benchmark answers the queue choice.",
+                            "unresolved_questions":[question],"reopen_condition":null,
+                            "retrospective_ref":{"client_ref":"account"}
+                        }),
+                    ),
+                ],
+                &[expected],
+            )
+        };
+        let finding = |case: &Case| {
+            let snapshot = crate::wire::Snapshot {
+                sequence: case.state.sequence(),
+                head_hash: format!("sha256:{:064x}", case.state.sequence())
+                    .parse()
+                    .unwrap(),
+            };
+            crate::blindspot::audit(&case.state, &snapshot, case.case, &Default::default())
+                .unwrap()
+                .checks
+                .into_iter()
+                .find(|finding| finding.check_id == "closure.answered_without_current_conclusion")
+        };
+        let mut current = Case::new();
+        let f = current.fixture();
+        let accepted = close(&mut current, &f);
+        assert!(
+            !accepted
+                .warnings
+                .iter()
+                .any(|warning| warning.starts_with("case.answer_not_current")),
+            "{:?}",
+            accepted.warnings
+        );
+        assert_eq!(finding(&current), None);
+
+        let mut stale = Case::new();
+        let f = stale.fixture();
+        stale.one("source.withdraw", json!({
+            "source_ref": f.source, "reason": "retracted_by_origin", "scope": {"extent":"entire"},
+            "rationale": "The publisher retracted the benchmark.", "evidence_refs": []
+        }));
+        let accepted = close(&mut stale, &f);
+        let warning = accepted
+            .warnings
+            .iter()
+            .find(|warning| warning.starts_with("case.answer_not_current"))
+            .expect("an answered close on a stale answer warns");
+        assert!(warning.contains(&f.conclusion.id.to_string()), "{warning}");
+        assert_eq!(
+            stale.state.current(stale.case).unwrap().body["lifecycle"],
+            "closed"
+        );
+        let finding = finding(&stale).expect("the audit reports the stale answer");
+        assert_eq!(finding.subject_refs, vec![stale.current(f.conclusion)]);
+        assert!(
+            finding
+                .facts
+                .iter()
+                .any(|fact| fact.fact == "freshness:needs_review"),
+            "{:?}",
+            finding.facts
+        );
     }
 
     #[test]

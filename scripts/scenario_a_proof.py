@@ -196,6 +196,7 @@ def challenge(cli, case, claim_ref, refused):
         "wording": "Does the scheduler add to the connection hold under a compatible build?",
         "importance": "normal"}, "scheduler"), op("review.submit", review), actor=REVIEWER)
     assert receipt["updated"] == [], receipt
+    scheduler = receipt["created"][0]["id"]
     reviewed = receipt["created"][1]["id"]
     stored = cli.show(case, reviewed)["record"]["body"]
     assert stored["audit"]["undispositioned_gap_ids"] == [] and stored["novel_gaps"][0]["origin"] == "reviewer", stored
@@ -206,7 +207,7 @@ def challenge(cli, case, claim_ref, refused):
     again = {check["gap_id"] for check in cli.call("--case", case, "blindspots")["checks"]}
     assert again - {check["gap_id"] for check in audit["checks"]} == {
         f"blindspot:review.promoted_single_dependence_group:{claim_ref['id']}"}, again
-    return reviewed
+    return reviewed, scheduler
 
 
 def proof(binary, handoff, workspace=None):
@@ -303,7 +304,7 @@ def proof(binary, handoff, workspace=None):
         promoted = cli.record(case, op("conclusion.validate", {"conclusion_ref": ref(claim, ready), "review_ref": ref(review)}),
                               preconditions=[ref(claim, ready), ref(review), *basis["read_set"]])
         claim_ref = ref(claim, promoted["updated"][0]["revision"])
-        blindspot_review = challenge(cli, case, claim_ref, wrong_claim)
+        blindspot_review, scheduler = challenge(cli, case, claim_ref, wrong_claim)
         point = cli.call("--case", case, "brief")["snapshot"]
         closing = {"outcome": "answered", "reason": "The synthetic fixture isolates the scoped mechanism.",
                    "unresolved_questions": [ref(question)], "reopen_condition": "A comparable scheduler-only toggle changes the result."}
@@ -338,6 +339,15 @@ def proof(binary, handoff, workspace=None):
             "residual_unknowns": ["The scheduler's independent contribution under a compatible build."],
             "lessons": [], "no_reusable_lesson_reason": "The result is scoped to a synthetic workload.",
         })
+        # An answered close resolves or lists every open Question (bn-2xmp): the
+        # reviewer's scheduler question is still open, so the close names it.
+        unlisted = cli.record(case, op("retrospective.record", retrospective, "methods"),
+                              op("case.close", dict(closing, retrospective_ref={"client_ref": "methods"})),
+                              preconditions=[ref(case)], exit_code=5)
+        assert unlisted["error"]["code"] == "GATE_FAILED", unlisted
+        assert unlisted["error"]["expected"] == [ref(scheduler)], unlisted
+        assert "question.resolve" in unlisted["error"]["message"], unlisted
+        closing["unresolved_questions"].append(ref(scheduler))
         receipt = cli.record(case, op("retrospective.record", retrospective, "methods"),
                              op("case.close", dict(closing, retrospective_ref={"client_ref": "methods"})),
                              preconditions=[ref(case)])

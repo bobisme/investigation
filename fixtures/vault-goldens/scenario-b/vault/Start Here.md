@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_e0006cb032205512fca77ad55e24b7e99fc751a6be6171954203e28dda4830c5"
+inv_generation: "gen_0b3d667f9cd62ee52c6735d73dfff49eb1171eda327b3a738c00f9046eaa76f6"
 ---
 # Start Here
 
@@ -14,7 +14,7 @@ This vault is a read-only view of the Investigation workspace that contains it. 
 
 ## Projection health
 
-- Generation: `gen_e0006cb032205512fca77ad55e24b7e99fc751a6be6171954203e28dda4830c5` (the `inv_generation` property of this note)
+- Generation: `gen_0b3d667f9cd62ee52c6735d73dfff49eb1171eda327b3a738c00f9046eaa76f6` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
 - Each case note names the case head its exact content was rendered at, in `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose content changed, so a note that later commits left unchanged keeps an older sequence than its case's below. While a render runs, notes can briefly mix generations; once it completes, every note is one that render confirmed.
@@ -41,24 +41,24 @@ Run the commands listed under each case in a terminal, in the workspace folder (
 
 One case.
 
-- [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Overview|Ledgerd p99 after the Marlin 1.9 upgrade]]
-  - Case ID: `case_01a20a66-1244-7750-b6d2-f86ae3d07363`
-  - Last committed snapshot: sequence 76, head `sha256:ade5b751f40d4cb3d7b7a2265c13cc09d0d184d7016b96bfe7f06c33a0600c23`
-  - Current answer: [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Conclusions/concl_01a20a66-4cde-76c0-b262-2eba3ee19420|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]], effective `candidate`
+- [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Overview|Ledgerd p99 after the Marlin 1.9 upgrade]]
+  - Case ID: `case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb`
+  - Last committed snapshot: sequence 76, head `sha256:84b77a40830103079c839b9cd38ab8642d8fc81492cf4d47feccab8c91098e92`
+  - Current answer: [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-da04-7760-b23c-d79f68f9a304|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]], effective `candidate`
   - Case freshness: `stale`
   - Focus: explanation
   - Pending questions (2):
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Questions/q_01a20a66-155a-7ea3-b81e-4adb868c856e|After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression]]: `open`
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Questions/q_01a20a66-547b-74a1-a945-caa83564e880|Which monitor health and window conditions must hold before a capture is interpreted?]]: `open`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Questions/q_01a210c9-bd28-7521-81dc-8c94b65cc696|After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression]]: `open`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Questions/q_01a210c9-de34-7672-98bb-8e5b024c9115|Which monitor health and window conditions must hold before a capture is interpreted?]]: `open`
   - Outstanding reviews (4):
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Conclusions/concl_01a20a66-4486-70d0-a76b-b420369421de|On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's.]]: `review_ready`, awaiting review
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Conclusions/concl_01a20a66-4b27-7322-b726-efc18b97cb6d|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]]: `review_ready`, awaiting review
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Reviews/rev_01a20a66-41e3-7960-81c5-d479ddc01db5|Read the comparison and the capture it cites.]]: review is `stale`
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Reviews/rev_01a20a66-54c1-70a3-93a6-07da9e355103|Read the structural audit, then each capture's typed fields, controls and limitations.]]: review is `stale`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-d466-7eb3-9508-93707e8e6242|On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's.]]: `review_ready`, awaiting review
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-d90b-71b3-9be8-88548ef139f1|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]]: `review_ready`, awaiting review
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-d2e9-7481-800a-141b62e295fb|Read the comparison and the capture it cites.]]: review is `stale`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-de9c-7f20-8e21-4a2d03bad9ee|Read the structural audit, then each capture's typed fields, controls and limitations.]]: review is `stale`
   - Unresolved blindspot reviews (1):
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Reviews/rev_01a20a66-54c1-70a3-93a6-07da9e355103|Read the structural audit, then each capture's typed fields, controls and limitations.]]: verdict `gaps_identified`, freshness `stale`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-de9c-7f20-8e21-4a2d03bad9ee|Read the structural audit, then each capture's typed fields, controls and limitations.]]: verdict `gaps_identified`, freshness `stale`
   - Retrospectives (1):
-    - [[Cases/case_01a20a66-1244-7750-b6d2-f86ae3d07363/Retrospectives/retro_01a20a66-5862-7533-a5dc-2ba9e43f85b4|Retrospective at sequence 75]]: freshness `current`
+    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Retrospectives/retro_01a210c9-e0df-7d52-908e-d02c244d5e79|Retrospective at sequence 75]]: freshness `current`
   - Resume:
-    - `investigation --case case_01a20a66-1244-7750-b6d2-f86ae3d07363 brief --format json`
-    - `investigation --case case_01a20a66-1244-7750-b6d2-f86ae3d07363 frontier --format json`
+    - `investigation --case case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb brief --format json`
+    - `investigation --case case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb frontier --format json`
