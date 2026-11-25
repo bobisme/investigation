@@ -1061,6 +1061,7 @@ mod tests {
             },
             warnings: Vec::new(),
             next: Vec::new(),
+            attribution: None,
         }
     }
 

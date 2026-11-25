@@ -9,6 +9,7 @@ use serde_json::Value;
 use crate::{
     command::RevisionRef,
     evidence::{SelectorValidation, TextQuoteState},
+    header::Actor,
     identity::Id,
 };
 
@@ -161,6 +162,79 @@ pub struct Receipt {
     pub projection: Projection,
     pub warnings: Vec<String>,
     pub next: Vec<Guidance>,
+    /// The actor this write was attributed to and where that actor came from (bn-2wct). The
+    /// CLI sets it on every write it answers; the journal does not keep it, so a receipt read
+    /// back from the store has none. Absent from receipts of earlier v1 builds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<Attribution>,
+}
+
+/// Which actor a write used and why (bn-2wct). An attribution is a claim, never a verified
+/// identity.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct Attribution {
+    pub actor: Actor,
+    pub source: ActorSource,
+    /// The actor that `init --actor` recorded for this workspace (`local/actor.toml`) when
+    /// `AGENT` named a different one and took precedence. The receipt then also carries the
+    /// warning `actor.agent_overrides_local`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides_local_actor: Option<Actor>,
+}
+
+/// Where a write's actor came from, in precedence order: the first that names an actor wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ActorSource {
+    /// `--actor`.
+    Flag,
+    /// The request's own `actor` field (a command, manifest or capture request).
+    Request,
+    /// The `actor` setting in the workspace's `investigation.toml`.
+    WorkspaceConfig,
+    /// The `AGENT` environment variable.
+    Environment,
+    /// `local/actor.toml`, written by `init --actor` for this machine.
+    LocalActor,
+}
+
+/// Leave `attribution` unconstrained in a schema that flattens [`Receipt`] into an open object
+/// (the ingest and producer-run receipts). There a new property must accept any value (ADR
+/// 0007); its shape is the one `receipt.schema.json` publishes.
+pub fn unconstrain_attribution(schema: &mut schemars::Schema) {
+    if let Some(property) = schema
+        .get_mut("properties")
+        .and_then(Value::as_object_mut)
+        .and_then(|properties| properties.get_mut("attribution"))
+    {
+        *property = Value::Bool(true);
+    }
+    if let Some(definitions) = schema.get_mut("$defs").and_then(Value::as_object_mut) {
+        definitions.remove("Attribution");
+        definitions.remove("ActorSource");
+    }
+    // `Actor` too, unless something else in the schema still refers to it.
+    let referenced = Value::from(schema.clone())
+        .to_string()
+        .contains("\"#/$defs/Actor\"");
+    if !referenced && let Some(definitions) = schema.get_mut("$defs").and_then(Value::as_object_mut)
+    {
+        definitions.remove("Actor");
+    }
+}
+
+impl ActorSource {
+    /// How text output names the source.
+    pub fn describe(self) -> &'static str {
+        match self {
+            Self::Flag => "--actor",
+            Self::Request => "the request's actor",
+            Self::WorkspaceConfig => "investigation.toml",
+            Self::Environment => "AGENT",
+            Self::LocalActor => "local/actor.toml, written by init --actor",
+        }
+    }
 }
 
 impl Receipt {
@@ -408,6 +482,7 @@ mod tests {
             },
             warnings: vec!["Vault projection failed after the journal commit".into()],
             next: Vec::new(),
+            attribution: None,
         };
         let serialized = serde_json::to_value(&receipt).unwrap();
         let retry = serde_json::to_value(receipt.as_retry()).unwrap();

@@ -154,7 +154,9 @@ pub fn envelope_schema() -> Schema {
 }
 
 pub fn receipt_schema() -> Schema {
-    schema_for!(ProducerRunReceipt)
+    let mut schema = schema_for!(ProducerRunReceipt);
+    investigation_core::wire::unconstrain_attribution(&mut schema);
+    schema
 }
 
 fn invalid(message: &str, path: &str) -> Failure {

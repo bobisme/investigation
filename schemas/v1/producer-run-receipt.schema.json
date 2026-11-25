@@ -346,6 +346,7 @@
       },
       "type": "array"
     },
+    "attribution": true,
     "case_id": {
       "$ref": "#/$defs/Id"
     },

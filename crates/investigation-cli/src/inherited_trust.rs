@@ -21,7 +21,7 @@ use investigation_core::{
 use investigation_store::{Store, journal::CaseReplay};
 use serde_json::{Value, json};
 
-use crate::{Global, brief::Section, selection::select_actor, views::ViewDepth};
+use crate::{Global, brief::Section, selection::read_actor, views::ViewDepth};
 
 /// Environment fallback for `--session`.
 pub(crate) const SESSION_ENV: &str = "INVESTIGATION_SESSION";
@@ -74,7 +74,7 @@ pub(crate) fn record_read(
         }));
     }
     // Reading never requires an actor; recording a read for a session does.
-    let Ok(actor) = select_actor(store.workspace(), global.actor.as_ref(), None) else {
+    let Ok(actor) = read_actor(store.workspace(), global.actor.as_ref(), None) else {
         return Ok(json!({
             "recorded":false,"session":session,"reason":"no_actor",
             "notice":"A session read is recorded for an actor. Pass --actor, set the workspace actor or AGENT to record it.",

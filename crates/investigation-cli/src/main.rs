@@ -214,7 +214,7 @@ enum Format {
 enum Commands {
     /// Create a local workspace and an optional Markdown vault.
     #[command(
-        after_help = "Examples:\n  investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json\n  investigation init ./casework --existing-vault ~/Notes --managed-prefix Investigation --format json\n--actor records ACTOR in local/actor.toml as this machine's actor for writes in the workspace that name no actor. --actor on a write and AGENT take precedence.\n--existing-vault renders the casebook into one folder (--managed-prefix, default Investigation) of a vault you already have instead of the workspace's vault/; nothing outside that folder is written or read. On an existing workspace it writes the same setting. To change the prefix: vault remove, then init --existing-vault VAULT --managed-prefix NEW, then vault render; your notes in the old folder stay where they are."
+        after_help = "Examples:\n  investigation init ./casework --actor agent:investigator --no-vault --import-root . --format json\n  investigation init ./casework --existing-vault ~/Notes --managed-prefix Investigation --format json\n--actor records ACTOR in local/actor.toml as this machine's actor for writes in the workspace that name no actor. --actor on a write and AGENT take precedence; each write's receipt names its actor and source, and warns when AGENT overrode this one.\n--existing-vault renders the casebook into one folder (--managed-prefix, default Investigation) of a vault you already have instead of the workspace's vault/; nothing outside that folder is written or read. On an existing workspace it writes the same setting. To change the prefix: vault remove, then init --existing-vault VAULT --managed-prefix NEW, then vault render; your notes in the old folder stay where they are."
     )]
     Init {
         /// New or empty directory for the workspace, or an existing workspace; --workspace PATH also works.
@@ -1268,7 +1268,8 @@ fn record_repair_one(store: &mut Store, command: &RecordCommand, mut failure: Fa
 }
 
 fn lookup_receipt(store: &mut Store, global: &Global, key: &str) -> Result<Output, Failure> {
-    let actor = select_actor(store.workspace(), global.actor.as_ref(), None)?;
+    // A lookup reads a receipt; it is not attributed itself.
+    let actor = selection::read_actor(store.workspace(), global.actor.as_ref(), None)?;
     if key.is_empty() || key.chars().count() > 128 || key.chars().any(char::is_control) {
         return Err(Failure::new(
             ErrorCode::InvalidInput,
@@ -1321,9 +1322,6 @@ fn receipt_read_failure(workspace: &Workspace, mut failure: Failure) -> Failure 
 }
 
 pub(crate) fn receipt_output(workspace: &Workspace, mut receipt: Receipt) -> Output {
-    if let Some(warning) = selection::local_actor_warning() {
-        receipt.warnings.push(warning);
-    }
     if receipt.next.is_empty() {
         receipt.next.push(Guidance {
             kind: GuidanceKind::LocalRead,
@@ -1461,7 +1459,7 @@ fn main() -> ExitCode {
     let parser = help_teach::command_tree();
     let help = help_argv(&parser, &args);
     let parsed = parser.clone().try_get_matches_from(&args);
-    let output = match parsed {
+    let mut output = match parsed {
         Ok(mut matches) => {
             // `open_workspace` refuses a write this program must not make
             // to the workspace's format (W11.15, ADR 0014).
@@ -1480,6 +1478,8 @@ fn main() -> ExitCode {
         Err(error) => first_use::parse_repair(&error, &parser, &args)
             .map_or_else(|| parse_error(error, help), Output::failure),
     };
+    // Every write's receipt names its actor and where it came from (bn-2wct).
+    selection::stamp_attribution(&mut output);
 
     // Authored and recorded text never reaches a terminal with a literal
     // control, bidirectional override or invisible character.

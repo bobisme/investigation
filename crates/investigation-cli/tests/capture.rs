@@ -130,7 +130,17 @@ fn capture_begin_declares_a_run_and_a_retry_returns_the_same_receipt() {
         first["commit"]["transaction_id"]
     );
 
-    // A Rust producer sending the same request gets the identical receipt.
+    // A Rust producer sending the same request gets the identical receipt,
+    // less the attribution the CLI adds to its journal receipt (bn-2wct).
+    let mut retry = retry;
+    assert_eq!(
+        retry["commit"]["attribution"],
+        json!({"actor":"agent:example-producer","source":"request"})
+    );
+    retry["commit"]
+        .as_object_mut()
+        .unwrap()
+        .remove("attribution");
     let parsed: BeginCapture = serde_json::from_slice(&request).unwrap();
     let native = LocalRecorder::open(root.join("ws"))
         .unwrap()

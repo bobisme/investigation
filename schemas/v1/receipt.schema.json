@@ -1,5 +1,69 @@
 {
   "$defs": {
+    "Actor": {
+      "maxLength": 128,
+      "minLength": 1,
+      "pattern": "^[A-Za-z0-9:_.-]+$",
+      "type": "string"
+    },
+    "ActorSource": {
+      "description": "Where a write's actor came from, in precedence order: the first that names an actor wins.",
+      "oneOf": [
+        {
+          "const": "flag",
+          "description": "`--actor`.",
+          "type": "string"
+        },
+        {
+          "const": "request",
+          "description": "The request's own `actor` field (a command, manifest or capture request).",
+          "type": "string"
+        },
+        {
+          "const": "workspace_config",
+          "description": "The `actor` setting in the workspace's `investigation.toml`.",
+          "type": "string"
+        },
+        {
+          "const": "environment",
+          "description": "The `AGENT` environment variable.",
+          "type": "string"
+        },
+        {
+          "const": "local_actor",
+          "description": "`local/actor.toml`, written by `init --actor` for this machine.",
+          "type": "string"
+        }
+      ]
+    },
+    "Attribution": {
+      "additionalProperties": false,
+      "description": "Which actor a write used and why (bn-2wct). An attribution is a claim, never a verified\nidentity.",
+      "properties": {
+        "actor": {
+          "$ref": "#/$defs/Actor"
+        },
+        "overrides_local_actor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Actor"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The actor that `init --actor` recorded for this workspace (`local/actor.toml`) when\n`AGENT` named a different one and took precedence. The receipt then also carries the\nwarning `actor.agent_overrides_local`."
+        },
+        "source": {
+          "$ref": "#/$defs/ActorSource"
+        }
+      },
+      "required": [
+        "actor",
+        "source"
+      ],
+      "type": "object"
+    },
     "CommitResult": {
       "enum": [
         "committed",
@@ -205,6 +269,17 @@
         "$ref": "#/$defs/ReceiptArtifact"
       },
       "type": "array"
+    },
+    "attribution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Attribution"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The actor this write was attributed to and where that actor came from (bn-2wct). The\nCLI sets it on every write it answers; the journal does not keep it, so a receipt read\nback from the store has none. Absent from receipts of earlier v1 builds."
     },
     "command_id": {
       "type": "string"

@@ -25,3 +25,4 @@
 | [0021](0021-dispositions-keep-judgments-current.md) | A hypothesis disposition keeps the judgments about it current (freshness rules 8), an answered close resolves or lists each open question, and a question resolution may share the closing batch (bn-2xmp) |
 | [0022](0022-refusals-name-what-the-field-needs.md) | Refusals name the expected values or nested type, the dependent field and the accepted kinds, and one attempt reports every refusal in the optional `error.additional_errors` (bn-29t7) |
 | [0023](0023-validity-context-applies-to-measurements.md) | Validity context applies to measurements; a recorded `validity` is the recorder's statement, and the evidence gate names `partial` (bn-32z3) |
+| [0024](0024-receipts-name-their-actor.md) | Every write's receipt names its actor and its source in the optional `attribution`, and warns when `AGENT` overrode the actor `init --actor` recorded (bn-2wct) |

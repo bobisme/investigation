@@ -5,7 +5,7 @@ use investigation_core::{
     classification::{AudiencePolicy, Classifier, Field},
     header::{Actor, ActorResolutionError, resolve_actor},
     identity::{Id, Kind, ResolveError, resolve_prefix},
-    wire::{ErrorCode, Failure},
+    wire::{ActorSource, Attribution, ErrorCode, Failure},
 };
 use investigation_store::{Store, Workspace, workspace::WorkspaceError};
 use serde_json::json;
@@ -164,32 +164,124 @@ pub(crate) fn workspace_failure(error: WorkspaceError) -> Failure {
 }
 
 thread_local! {
-    /// The actor this invocation took from the machine-local actor setting,
-    /// so receipts can say where their attribution came from.
-    static LOCAL_ACTOR_USED: std::cell::RefCell<Option<Actor>> =
+    /// The actor this invocation's write was attributed to, and why, so the
+    /// receipt can say so (bn-2wct). Set by [`select_actor`] only; stamped
+    /// on the output once, by [`stamp_attribution`].
+    static ATTRIBUTION: std::cell::RefCell<Option<Attribution>> =
         const { std::cell::RefCell::new(None) };
 }
 
-/// A receipt warning when this invocation attributed a write to the actor in
-/// `local/actor.toml`, because no flag, request, workspace setting or AGENT
-/// named one.
-pub(crate) fn local_actor_warning() -> Option<String> {
-    LOCAL_ACTOR_USED.with(|used| {
-        used.borrow().as_ref().map(|actor| {
-            format!(
-                "Attributed to {actor}, the actor that init --actor recorded for this machine \
-                 ({}). Pass --actor to attribute work to someone else.",
-                investigation_store::workspace::LOCAL_ACTOR_FILE
-            )
-        })
-    })
+/// The warning a receipt carries when `AGENT` took precedence over the actor
+/// that `init --actor` recorded for the same workspace.
+pub(crate) const AGENT_OVERRIDES_LOCAL: &str = "actor.agent_overrides_local";
+
+/// Put the attribution of this invocation's write on its receipt: the
+/// `attribution` object, the warnings it implies, and one `Actor:` line in
+/// the text. The one place every write's receipt gets it, so no receipt
+/// constructor carries it. A failure or a read is left as it is.
+pub(crate) fn stamp_attribution(output: &mut crate::Output) {
+    let Some(attribution) = ATTRIBUTION.with(|used| used.borrow().clone()) else {
+        return;
+    };
+    if output.exit != 0 {
+        return;
+    }
+    let writing = WRITE_INTENT.with(|intent| intent.borrow().is_some());
+    let value = &mut output.value;
+    // The journal receipt: the response itself, or the one it embeds (a
+    // capture's `commit`, a consultation's `consultation_receipt`). A write
+    // whose response has none (a bundle import, a vault note snapshot or
+    // reconcile) carries the attribution at its top level. A read that named
+    // an actor (a retention preview, a printed envelope) carries none.
+    let receipt = if value.get("transaction_id").is_some() {
+        value
+    } else if let Some(nested) = ["commit", "receipt", "consultation_receipt"]
+        .into_iter()
+        .find(|key| value[*key].get("transaction_id").is_some())
+    {
+        &mut value[nested]
+    } else if writing && value.is_object() {
+        value
+    } else {
+        return;
+    };
+    let warnings = attribution_warnings(&attribution);
+    receipt["attribution"] = json!(attribution);
+    if let Some(list) = receipt["warnings"].as_array_mut() {
+        list.extend(warnings.iter().map(|warning| json!(warning)));
+    }
+    let mut lines = vec![format!(
+        "Actor: {} (from {})",
+        attribution.actor,
+        attribution.source.describe()
+    )];
+    lines.extend(warnings.iter().map(|warning| format!("Warning: {warning}")));
+    // Before the suggested next command, where the receipt's own warnings end.
+    let text = &mut output.text;
+    let at = text
+        .match_indices('\n')
+        .map(|(index, _)| index)
+        .find(|index| {
+            let rest = &text[index + 1..];
+            rest.starts_with("Next: ") || rest.starts_with("Commit: ")
+        });
+    let block = lines.join("\n");
+    match at {
+        Some(index) => text.insert_str(index, &format!("\n{block}")),
+        None if text.is_empty() => text.push_str(&block),
+        None => text.push_str(&format!("\n{block}")),
+    }
 }
 
+fn attribution_warnings(attribution: &Attribution) -> Vec<String> {
+    let mut warnings = Vec::new();
+    if attribution.source == ActorSource::LocalActor {
+        warnings.push(format!(
+            "Attributed to {}, the actor that init --actor recorded for this machine \
+             ({}). Pass --actor to attribute work to someone else.",
+            attribution.actor,
+            investigation_store::workspace::LOCAL_ACTOR_FILE
+        ));
+    }
+    if let Some(local) = &attribution.overrides_local_actor {
+        warnings.push(format!(
+            "{AGENT_OVERRIDES_LOCAL}: attributed to {}, from AGENT, not {local}, the actor that \
+             init --actor recorded for this workspace ({}); AGENT takes precedence. Pass \
+             --actor {local} to use the recorded actor.",
+            attribution.actor,
+            investigation_store::workspace::LOCAL_ACTOR_FILE
+        ));
+    }
+    warnings
+}
+
+/// The actor a write is attributed to, recorded for its receipt.
 pub(crate) fn select_actor(
     workspace: &Workspace,
     flag: Option<&Actor>,
     envelope: Option<&Actor>,
 ) -> Result<Actor, Failure> {
+    let attribution = attribute(workspace, flag, envelope)?;
+    let actor = attribution.actor.clone();
+    ATTRIBUTION.with(|used| *used.borrow_mut() = Some(attribution));
+    Ok(actor)
+}
+
+/// The actor a read names (a receipt lookup, a schema form, a session read),
+/// with no attribution recorded: a read has no receipt.
+pub(crate) fn read_actor(
+    workspace: &Workspace,
+    flag: Option<&Actor>,
+    envelope: Option<&Actor>,
+) -> Result<Actor, Failure> {
+    attribute(workspace, flag, envelope).map(|attribution| attribution.actor)
+}
+
+fn attribute(
+    workspace: &Workspace,
+    flag: Option<&Actor>,
+    envelope: Option<&Actor>,
+) -> Result<Attribution, Failure> {
     let config = workspace.config().actor.as_ref();
     let environment = if flag.or(envelope).or(config).is_none() {
         env::var_os("AGENT")
@@ -222,9 +314,27 @@ pub(crate) fn select_actor(
     } else {
         None
     };
-    if let Some(actor) = &local {
-        LOCAL_ACTOR_USED.with(|used| *used.borrow_mut() = Some(actor.clone()));
-    }
+    let source = if flag.is_some() {
+        ActorSource::Flag
+    } else if envelope.is_some() {
+        ActorSource::Request
+    } else if config.is_some() {
+        ActorSource::WorkspaceConfig
+    } else if environment.is_some() {
+        ActorSource::Environment
+    } else {
+        ActorSource::LocalActor
+    };
+    // AGENT decided, though init recorded another actor here: say so. An
+    // unreadable setting changes nothing, as before (it is not consulted).
+    let overrides_local_actor = match &environment {
+        Some(agent) if source == ActorSource::Environment => workspace
+            .local_actor()
+            .ok()
+            .flatten()
+            .filter(|recorded| recorded != agent),
+        _ => None,
+    };
 
     resolve_actor(
         flag,
@@ -232,6 +342,11 @@ pub(crate) fn select_actor(
         config,
         environment.as_ref().or(local.as_ref()),
     )
+    .map(|actor| Attribution {
+        actor,
+        source,
+        overrides_local_actor,
+    })
     .map_err(|error| match error {
         ActorResolutionError::Conflict => {
             let mut failure = Failure::new(

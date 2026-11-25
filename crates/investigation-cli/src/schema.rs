@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 
 use crate::{
     Global, Output,
-    selection::{open_workspace, select_actor, select_case, workspace_argv},
+    selection::{open_workspace, read_actor, select_case, workspace_argv},
 };
 
 const WIRE_SCHEMAS: &[&str] = &[
@@ -424,7 +424,7 @@ fn transaction_form(
     let mut unresolved_fields = Vec::new();
     let actor = workspace
         .as_ref()
-        .and_then(|workspace| select_actor(workspace, global.actor.as_ref(), None).ok())
+        .and_then(|workspace| read_actor(workspace, global.actor.as_ref(), None).ok())
         .or_else(|| global.actor.clone())
         .or_else(|| env::var("AGENT").ok().and_then(|actor| actor.parse().ok()));
     if actor.is_none() {

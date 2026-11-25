@@ -220,7 +220,9 @@ pub fn manifest_schema() -> Schema {
 }
 
 pub fn receipt_schema() -> Schema {
-    schema_for!(IngestReceipt)
+    let mut schema = schema_for!(IngestReceipt);
+    investigation_core::wire::unconstrain_attribution(&mut schema);
+    schema
 }
 
 pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {

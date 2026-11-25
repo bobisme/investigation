@@ -258,6 +258,7 @@
       },
       "type": "array"
     },
+    "attribution": true,
     "command_id": {
       "type": "string"
     },

@@ -427,6 +427,12 @@ fn lessons_cross_cases_only_by_admission_and_explicit_consultation() {
     );
     assert_eq!(shown["guidance"]["rendering"], "quoted_data");
     let consultation = read["consultation_receipt"]["created"][0]["id"].clone();
+    // The consultation's journal receipt names its actor (bn-2wct).
+    assert_eq!(
+        read["consultation_receipt"]["attribution"],
+        json!({"actor":READER,"source":"flag"})
+    );
+    assert!(read.get("attribution").is_none(), "{read}");
     assert_eq!(
         shown["consultation"]["consultation_ref"]["id"],
         consultation

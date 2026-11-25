@@ -1153,6 +1153,7 @@ fn receipt_for(verified: &VerifiedEvent) -> Receipt {
             })
             .into_iter()
             .collect(),
+        attribution: None,
     }
 }
 

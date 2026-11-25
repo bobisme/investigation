@@ -215,6 +215,11 @@ fn a_record_keeps_the_cited_bytes_after_the_note_is_edited() {
 
     let snapshot = casework.snapshot("Notes/plan.md", &casework.case, &["--command-id", "snap-1"]);
     assert_eq!(snapshot["result"], "note_snapshot_recorded");
+    // A write with no journal receipt of its own names its actor at the top (bn-2wct).
+    assert_eq!(
+        snapshot["attribution"],
+        serde_json::json!({"actor":ACTOR,"source":"flag"})
+    );
     assert_eq!(snapshot["role"], "human_note_snapshot");
     assert_eq!(snapshot["owner"], "human");
     assert_eq!(snapshot["file_modified"], false);

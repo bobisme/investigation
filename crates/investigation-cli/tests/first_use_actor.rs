@@ -4,7 +4,7 @@
 
 use std::{fs, path::Path, process::Command};
 
-use serde_json::Value;
+use serde_json::{Value, json};
 
 fn run(cwd: &Path, agent: Option<&str>, args: &[&str]) -> (i32, Value) {
     let mut command = Command::new(env!("CARGO_BIN_EXE_investigation"));
@@ -114,15 +114,40 @@ fn the_onboarding_init_records_the_actor_and_a_start_without_actor_succeeds_attr
         "the next write names the actor explicitly"
     );
 
-    // --actor and AGENT both take precedence, and then no warning is given.
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:investigator","source":"local_actor"})
+    );
+
+    // --actor and AGENT both take precedence. --actor is explicit, so no
+    // warning is given; AGENT overriding the recorded actor is said once
+    // (bn-2wct, DF.01 F1).
     let (code, receipt) = start(cwd, None, &["--actor", "agent:other"], "Second?");
     assert_eq!(code, 0, "{receipt}");
     assert_eq!(case_actor(&workspace, &receipt), "agent:other");
     assert!(receipt["warnings"].as_array().unwrap().is_empty());
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:other","source":"flag"})
+    );
     let (code, receipt) = start(cwd, Some("agent:from-env"), &[], "Third?");
     assert_eq!(code, 0, "{receipt}");
     assert_eq!(case_actor(&workspace, &receipt), "agent:from-env");
-    assert!(receipt["warnings"].as_array().unwrap().is_empty());
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:from-env","source":"environment",
+            "overrides_local_actor":"agent:investigator"})
+    );
+    let warnings = receipt["warnings"].as_array().unwrap();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    let warning = warnings[0].as_str().unwrap();
+    assert!(
+        warning.starts_with("actor.agent_overrides_local: ")
+            && warning.contains("agent:from-env")
+            && warning.contains("agent:investigator")
+            && warning.contains("--actor agent:investigator"),
+        "{warning}"
+    );
 
     // Running init again with another actor replaces the setting and says so.
     let (code, again) = run(
@@ -289,4 +314,175 @@ fn init_takes_its_destination_from_workspace_and_repairs_a_directory_that_holds_
     assert_eq!(code, 2, "{missing}");
     let repair = strings(&missing["error"]["repair"]["argv"]);
     assert!(repair.contains(&"./casework".to_owned()), "{repair:?}");
+}
+
+/// Run with stdin and return the exit code and both output streams.
+fn run_text(cwd: &Path, agent: Option<&str>, args: &[&str], stdin: &[u8]) -> (i32, String) {
+    use std::io::Write;
+    let mut command = Command::new(env!("CARGO_BIN_EXE_investigation"));
+    command
+        .current_dir(cwd)
+        .env_remove("AGENT")
+        .env_remove("FORMAT")
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    if let Some(agent) = agent {
+        command.env("AGENT", agent);
+    }
+    let mut child = command.spawn().unwrap();
+    child.stdin.take().unwrap().write_all(stdin).unwrap();
+    let output = child.wait_with_output().unwrap();
+    (
+        output.status.code().unwrap(),
+        String::from_utf8(output.stdout).unwrap() + &String::from_utf8(output.stderr).unwrap(),
+    )
+}
+
+/// Every write's receipt names its actor and the source of it, in JSON and
+/// text; AGENT overriding the init actor is one warning line; a read is not
+/// attributed (bn-2wct, DF.01 F1).
+#[test]
+fn every_write_receipt_names_its_actor_and_where_it_came_from() {
+    let directory = tempfile::tempdir().unwrap();
+    let cwd = directory.path();
+    fs::write(cwd.join("source.txt"), "kiln K2 read 12 degrees low\n").unwrap();
+    let (code, _) = run(
+        cwd,
+        None,
+        &[
+            "init",
+            "./casework",
+            "--no-vault",
+            "--import-root",
+            ".",
+            "--actor",
+            "agent:dogfood",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(code, 0);
+    let command = |key: &str| {
+        serde_json::to_vec(&json!({
+            "schema_version":"inv.command.v1","command_id":key,"case_id":null,
+            "actor":"agent:req","preconditions":[],
+            "operations":[{"op":"case.create","payload":{"title":"Which actor?","mode":"record"}}],
+        }))
+        .unwrap()
+    };
+    let record = |extra: &[&str], key: &str| {
+        let mut args = vec!["--workspace", "./casework"];
+        args.extend(extra.iter().filter(|flag| **flag != "--dry-run"));
+        args.extend(["record", "--input", "-", "--format", "json"]);
+        args.extend(extra.iter().filter(|flag| **flag == "--dry-run"));
+        let (code, out) = run_text(cwd, Some("agent:env"), &args, &command(key));
+        assert_eq!(code, 0, "{out}");
+        serde_json::from_str::<Value>(&out).unwrap()
+    };
+
+    // The request's own actor, though AGENT is set; --actor, when it agrees.
+    let receipt = record(&[], "by-request");
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:req","source":"request"})
+    );
+    assert!(receipt["warnings"].as_array().unwrap().is_empty());
+    let receipt = record(&["--actor", "agent:req"], "by-flag");
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:req","source":"flag"})
+    );
+    // A dry run says the same of the write it plans.
+    let planned = record(&["--dry-run"], "planned");
+    assert_eq!(planned["result"], "dry_run");
+    assert_eq!(
+        planned["attribution"],
+        json!({"actor":"agent:req","source":"request"})
+    );
+
+    // AGENT over the init actor: the text names the actor and its source,
+    // then gives the override in one line.
+    let (code, text) = run_text(
+        cwd,
+        Some("investigation-dev"),
+        &[
+            "--workspace",
+            "./casework",
+            "start",
+            "Which kiln?",
+            "--attach",
+            "./source.txt",
+            "--format",
+            "text",
+        ],
+        b"",
+    );
+    assert_eq!(code, 0, "{text}");
+    assert!(
+        text.contains("\nActor: investigation-dev (from AGENT)\n"),
+        "{text}"
+    );
+    let overrides: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains("actor.agent_overrides_local"))
+        .collect();
+    assert_eq!(overrides.len(), 1, "{text}");
+    assert!(
+        overrides[0].starts_with("Warning: actor.agent_overrides_local: "),
+        "{text}"
+    );
+    assert!(overrides[0].contains("agent:dogfood"), "{text}");
+    // AGENT that names the recorded actor overrides nothing.
+    let (code, receipt) = start(cwd, Some("agent:dogfood"), &[], "Same actor?");
+    assert_eq!(code, 0, "{receipt}");
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:dogfood","source":"environment"})
+    );
+    assert!(receipt["warnings"].as_array().unwrap().is_empty());
+
+    // A malformed setting does not fail a write AGENT attributes, as before:
+    // it is not consulted, so it overrides nothing.
+    fs::write(cwd.join("casework/local/actor.toml"), "actor = [").unwrap();
+    let (code, receipt) = start(cwd, Some("agent:env"), &[], "Malformed?");
+    assert_eq!(code, 0, "{receipt}");
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:env","source":"environment"})
+    );
+
+    // investigation.toml's actor comes before AGENT and the local actor.
+    let config = cwd.join("casework/investigation.toml");
+    let text = fs::read_to_string(&config).unwrap().replacen(
+        "\nimport_roots",
+        "\nactor = \"agent:configured\"\nimport_roots",
+        1,
+    );
+    fs::write(&config, text).unwrap();
+    let (code, receipt) = start(cwd, Some("agent:env"), &[], "Configured?");
+    assert_eq!(code, 0, "{receipt}");
+    assert_eq!(
+        receipt["attribution"],
+        json!({"actor":"agent:configured","source":"workspace_config"})
+    );
+
+    // Looking a receipt up is a read: it names no attribution of its own.
+    let (code, looked) = run(
+        cwd,
+        None,
+        &[
+            "--workspace",
+            "./casework",
+            "--actor",
+            "agent:req",
+            "receipt",
+            "by-request",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(code, 0, "{looked}");
+    assert!(looked.get("attribution").is_none(), "{looked}");
 }
