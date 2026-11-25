@@ -3,7 +3,8 @@
 Rust 1.100.0, Clippy, and rustfmt are selected by `rust-toolchain.toml`. The
 workspace MSRV (`rust-version` in `Cargo.toml`) is 1.100, and CI checks the
 workspace with that toolchain too. Install Just 1.57.0 and cargo-deny 0.20.2
-to match CI. The checks also use Python 3 from the system. The versions and
+to match CI. If cargo-deny comes from a mise shim, the justfile selects 0.20.2
+through `MISE_CARGO_DENY_VERSION`. The checks also use Python 3 from the system. The versions and
 the tested configurations are listed in the
 [support matrix](support-matrix.md#versions).
 

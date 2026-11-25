@@ -1,3 +1,7 @@
+# The cargo-deny version CI installs (docs/support-matrix.md). A mise shim reads
+# this to pick its version; anywhere else the variable has no effect.
+export MISE_CARGO_DENY_VERSION := "0.20.2"
+
 check: format lint test boundaries neutrality hygiene audit
 
 check-offline: format lint test boundaries neutrality hygiene (audit "--offline")
