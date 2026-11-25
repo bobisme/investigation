@@ -134,7 +134,7 @@ Plain Markdown tables over this case at this snapshot, readable in any text view
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Inquiries and Runs|Inquiries and Runs]]: 5 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Conclusions|Conclusions]]: 2 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Reviews and Blindspots|Reviews and Blindspots]]: 1 row
-- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Epistemic Frontier|Epistemic Frontier]]: 16 rows
+- [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Epistemic Frontier|Epistemic Frontier]]: 5 rows
 - [[Cases/case_01a20751-b71f-7240-9c30-6231f12f86ee/Views/Timeline|Timeline]]: 68 rows
 
 ## Records

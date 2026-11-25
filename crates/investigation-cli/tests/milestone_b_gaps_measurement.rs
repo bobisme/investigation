@@ -447,7 +447,16 @@ fn x27_pooled_samples_and_merged_histograms_pass_while_averaged_run_percentiles_
             }),
             0,
         );
-        assert_eq!(receipt["warnings"], json!([]), "{fields}\n{receipt}");
+        // No flag; the one warning is that `valid` is the recorder's own
+        // statement (ADR 0023).
+        let warnings = receipt["warnings"].as_array().unwrap();
+        assert!(
+            warnings.iter().all(|warning| warning
+                .as_str()
+                .unwrap()
+                .contains("validity basis recorded_only")),
+            "{fields}\n{receipt}"
+        );
         let reference = receipt["created"][0].clone();
         let shown = workspace.show(&reference);
         assert!(flag_ids(&shown).is_empty(), "{fields}\n{shown}");
@@ -471,9 +480,11 @@ fn x27_pooled_samples_and_merged_histograms_pass_while_averaged_run_percentiles_
             }),
             0,
         );
+        // The flag, and the note that `valid` is the recorder's own
+        // statement (ADR 0023).
         assert_eq!(
             receipt["warnings"].as_array().unwrap().len(),
-            1,
+            2,
             "{receipt}"
         );
         assert_eq!(warnings_with(&receipt, AVERAGED), 1, "{receipt}");

@@ -1,5 +1,5 @@
 ---
-inv_generation: "gen_0b3d667f9cd62ee52c6735d73dfff49eb1171eda327b3a738c00f9046eaa76f6"
+inv_generation: "gen_b59652ef15f010f29c90be13d6dbf130102b3918768141db1707d826a3ae166a"
 ---
 # Start Here
 
@@ -9,12 +9,12 @@ inv_generation: "gen_0b3d667f9cd62ee52c6735d73dfff49eb1171eda327b3a738c00f9046ea
 
 This vault is a read-only view of the Investigation workspace that contains it. The workspace journal is the record; every note here is projected from one verified snapshot of it, and nothing written in the vault changes it. The notes are plain Markdown with wikilinks, and nothing here needs a community plugin.
 
-- Renderer: `inv.vault-renderer.v28`
+- Renderer: `inv.vault-renderer.v29`
 - View audience: `internal`
 
 ## Projection health
 
-- Generation: `gen_0b3d667f9cd62ee52c6735d73dfff49eb1171eda327b3a738c00f9046eaa76f6` (the `inv_generation` property of this note)
+- Generation: `gen_b59652ef15f010f29c90be13d6dbf130102b3918768141db1707d826a3ae166a` (the `inv_generation` property of this note)
 - State: complete. A render publishes this note after every case note, so the notes it links to reflect the case heads listed below.
 - Drift: none identified when this note was written.
 - Each case note names the case head its exact content was rendered at, in `inv_render_sequence` and `inv_snapshot`. A render rewrites only the notes whose content changed, so a note that later commits left unchanged keeps an older sequence than its case's below. While a render runs, notes can briefly mix generations; once it completes, every note is one that render confirmed.
@@ -41,24 +41,24 @@ Run the commands listed under each case in a terminal, in the workspace folder (
 
 One case.
 
-- [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Overview|Ledgerd p99 after the Marlin 1.9 upgrade]]
-  - Case ID: `case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb`
-  - Last committed snapshot: sequence 76, head `sha256:84b77a40830103079c839b9cd38ab8642d8fc81492cf4d47feccab8c91098e92`
-  - Current answer: [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-da04-7760-b23c-d79f68f9a304|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]], effective `candidate`
+- [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Overview|Ledgerd p99 after the Marlin 1.9 upgrade]]
+  - Case ID: `case_01a210e7-b0f7-7292-bf1f-b46f0afac864`
+  - Last committed snapshot: sequence 76, head `sha256:64850cf0ec9eea5c9f7d21301ed632eab3c9e79f15fcfad56eb3842694df1c50`
+  - Current answer: [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Conclusions/concl_01a210e8-07c6-7c11-9a47-6678cbd6ead5|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]], effective `candidate`
   - Case freshness: `stale`
   - Focus: explanation
   - Pending questions (2):
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Questions/q_01a210c9-bd28-7521-81dc-8c94b65cc696|After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression]]: `open`
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Questions/q_01a210c9-de34-7672-98bb-8e5b024c9115|Which monitor health and window conditions must hold before a capture is interpreted?]]: `open`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Questions/q_01a210e7-b873-7622-936d-16b9587b16c2|After the Marlin runtime upgrade from 1.8 to 1.9, did the change to the Ledgerd allocator cause a p99 latency regression]]: `open`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Questions/q_01a210e8-0f14-76e2-805c-86f3fbd5619d|Which monitor health and window conditions must hold before a capture is interpreted?]]: `open`
   - Outstanding reviews (4):
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-d466-7eb3-9508-93707e8e6242|On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's.]]: `review_ready`, awaiting review
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Conclusions/concl_01a210c9-d90b-71b3-9be8-88548ef139f1|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]]: `review_ready`, awaiting review
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-d2e9-7481-800a-141b62e295fb|Read the comparison and the capture it cites.]]: review is `stale`
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-de9c-7f20-8e21-4a2d03bad9ee|Read the structural audit, then each capture's typed fields, controls and limitations.]]: review is `stale`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Conclusions/concl_01a210e7-fe42-7bd1-b42c-547c41c03cc8|On this workload the marlin-1.9/slab-v2 build's p99 is higher than the marlin-1.8/slab-v1 build's.]]: `review_ready`, awaiting review
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Conclusions/concl_01a210e8-05c4-7fb2-b687-2c63c30d5599|Optimization A and the treatment build are practically equivalent in p99 within the frozen margin.]]: `review_ready`, awaiting review
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Reviews/rev_01a210e7-fb9f-7a60-8ef6-898fa3d2e1f2|Read the comparison and the capture it cites.]]: review is `stale`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Reviews/rev_01a210e8-0f55-7610-9ded-ca44495d4179|Read the structural audit, then each capture's typed fields, controls and limitations.]]: review is `stale`
   - Unresolved blindspot reviews (1):
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Reviews/rev_01a210c9-de9c-7f20-8e21-4a2d03bad9ee|Read the structural audit, then each capture's typed fields, controls and limitations.]]: verdict `gaps_identified`, freshness `stale`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Reviews/rev_01a210e8-0f55-7610-9ded-ca44495d4179|Read the structural audit, then each capture's typed fields, controls and limitations.]]: verdict `gaps_identified`, freshness `stale`
   - Retrospectives (1):
-    - [[Cases/case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb/Retrospectives/retro_01a210c9-e0df-7d52-908e-d02c244d5e79|Retrospective at sequence 75]]: freshness `current`
+    - [[Cases/case_01a210e7-b0f7-7292-bf1f-b46f0afac864/Retrospectives/retro_01a210e8-1203-7191-9d82-430e1a94c9e7|Retrospective at sequence 75]]: freshness `current`
   - Resume:
-    - `investigation --case case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb brief --format json`
-    - `investigation --case case_01a210c9-bce7-7580-b1a8-1f2e97ee88fb frontier --format json`
+    - `investigation --case case_01a210e7-b0f7-7292-bf1f-b46f0afac864 brief --format json`
+    - `investigation --case case_01a210e7-b0f7-7292-bf1f-b46f0afac864 frontier --format json`

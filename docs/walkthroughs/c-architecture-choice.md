@@ -90,12 +90,12 @@ investigation --workspace ./demo-case export --kind decision-record --audience i
 ```
 
 ```text
-exported  decision-record  complete  exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-6f11a8178ed1
+exported  decision-record  complete  exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-cb0c7087252e
 ...
 ```
 
 ```sh
-cat ./demo-case/exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-6f11a8178ed1/decision-record.md
+cat ./demo-case/exports/decision-record-case_01a20751-966d-7001-ae2d-5a18d7d5f0ce-44-cb0c7087252e/decision-record.md
 ```
 
 ```text
@@ -265,7 +265,7 @@ investigation --workspace ./demo-case record --dry-run --input - <<'EOF'
  "operations": [
   {"op": "retrospective.record", "client_ref": "account", "payload": {
     "case_ref": {"id": "case_01a20751-966d-7001-ae2d-5a18d7d5f0ce", "revision": 1},
-    "snapshot": {"sequence": 44, "head_hash": "sha256:34de579123d60fea3d5ebea273faf507099222faf86ba2ec541322dd5cca9d69"},
+    "snapshot": {"sequence": 44, "head_hash": "sha256:a6c4f271a23a77f8e050cb28def45854b867e232add32c925d32160ad5374532"},
     "methods_attempted": [{"name": "Option-by-criterion comparison with a do-nothing baseline and a conditional decision"}],
     "effective_steps": [{"description": "Retaining the recovery-time source let every cell be judged again against the new threshold.",
       "support_refs": ["obs_01a20751-98a7-7000-975b-065951c6309a"]}],

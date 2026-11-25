@@ -90,8 +90,20 @@ fn flags_are_advisory_on_receipts_and_shown_in_every_read() {
         }),
     );
     let observation = receipt["created"][0]["id"].as_str().unwrap().to_owned();
-    let warnings = receipt["warnings"].as_array().unwrap();
+    // Three advisory flags, and the note that a recorded `valid` is the
+    // recorder's own statement (ADR 0023).
+    let (warnings, recorded): (Vec<_>, Vec<_>) = receipt["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .partition(|warning| {
+            !warning
+                .as_str()
+                .unwrap()
+                .contains("validity basis recorded_only")
+        });
     assert_eq!(warnings.len(), 3, "{receipt}");
+    assert_eq!(recorded.len(), 1, "{receipt}");
     assert!(warnings.iter().all(|warning| {
         warning
             .as_str()

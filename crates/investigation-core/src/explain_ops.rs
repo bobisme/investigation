@@ -1205,8 +1205,11 @@ fn ensure_observation_usable(
     // Read the typed body only: corrections, assessments, origin traces and
     // guardrails keep their keys beside it.
     let body = ObservationBody::from_stored(&observation.body).map_err(|_| integrity())?;
-    let usable = match &body.basis {
-        ObservationBasis::Assertion { .. } => false,
+    let validity = crate::measurement_ops::effective_validity(ctx.state(), observation);
+    let mut unmet: Vec<String> = Vec::new();
+    match &body.basis {
+        ObservationBasis::Assertion { .. } => unmet
+            .push("its basis is an assertion, not a source selector, so it is unattributed".into()),
         ObservationBasis::Source {
             artifact_ref,
             selector,
@@ -1227,27 +1230,73 @@ fn ensure_observation_usable(
                 &["status", "lifecycle", "rationale", "withdrawal_reason"],
             )?;
             let source = cited_evidence(ctx, artifact.source, Kind::Source, path)?;
-            crate::measurement_ops::effective_validity(ctx.state(), observation)
-                == MeasurementValidity::Valid
-                && selector.validation == crate::evidence::SelectorValidation::Verified
-                && matches!(
-                    text_quote.state,
-                    crate::evidence::TextQuoteState::Verified
-                        | crate::evidence::TextQuoteState::NotApplicable
-                )
-                && artifact.availability == ArtifactAvailability::Retained
-                && artifact.integrity == ArtifactIntegrity::Verified
-                && artifact.digest.as_ref() == Some(&selector.artifact_digest)
-                && source.body["status"] != "withdrawn"
+            if selector.validation != crate::evidence::SelectorValidation::Verified {
+                unmet.push("its selector is not verified against the retained bytes".into());
+            }
+            if !matches!(
+                text_quote.state,
+                crate::evidence::TextQuoteState::Verified
+                    | crate::evidence::TextQuoteState::NotApplicable
+            ) {
+                unmet.push("its text quote is not verified".into());
+            }
+            if artifact.availability != ArtifactAvailability::Retained
+                || artifact.integrity != ArtifactIntegrity::Verified
+                || artifact.digest.as_ref() != Some(&selector.artifact_digest)
+            {
+                unmet.push(
+                    "its artifact is not retained and verified with the selector's digest".into(),
+                );
+            }
+            if source.body["status"] == "withdrawn" {
+                unmet.push("its source is withdrawn".into());
+            }
         }
-    };
-    if !usable {
-        return Err(blocked(
+    }
+    if validity != MeasurementValidity::Valid {
+        unmet.insert(0, validity_unmet(validity));
+    }
+    if !unmet.is_empty() {
+        let mut failure = blocked(
             path,
-            "Use an inconclusive or non_diagnostic relation for an invalid, unverified, or unattributed measurement.",
-        ));
+            format!(
+                "Observation {} cannot support, contradict or reject: {}. Only an effectively valid, attributed and verified Observation has diagnostic force. Cite this one with relation inconclusive or non_diagnostic instead{}",
+                reference.id,
+                unmet.join("; "),
+                validity_remedy(validity)
+            ),
+        );
+        failure.error.actual = Some(json!({ "effective_validity": validity }));
+        return Err(failure);
     }
     Ok(())
+}
+
+/// Why the effective validity keeps an Observation from diagnostic use.
+fn validity_unmet(validity: MeasurementValidity) -> String {
+    match validity {
+        MeasurementValidity::Partial => "its effective measurement validity is partial: a channel or an assessor's judgment is not valid, so the Observation as a whole is not".into(),
+        MeasurementValidity::Invalid => "its effective measurement validity is invalid".into(),
+        MeasurementValidity::Unknown => "its effective measurement validity is unknown".into(),
+        MeasurementValidity::Valid => "its effective measurement validity is valid".into(),
+    }
+}
+
+/// What else the caller can do, by effective validity (plan §6.3: validity is
+/// judged per observation or channel).
+fn validity_remedy(validity: MeasurementValidity) -> &'static str {
+    match validity {
+        MeasurementValidity::Partial => {
+            ". To use the part that is valid, record an Observation of that part alone, assess it with measurement.assess and cite it."
+        }
+        MeasurementValidity::Unknown => {
+            ". To use it, judge its validity first: measurement.assess with a verification, or for an extracted statement such as a quote, the validity recorded with observation.correct."
+        }
+        MeasurementValidity::Invalid => {
+            ". An invalid measurement stays readable but has no diagnostic force; record a corrected Observation if the source supports one."
+        }
+        MeasurementValidity::Valid => ".",
+    }
 }
 
 fn evidence_basis(
@@ -2265,5 +2314,68 @@ mod tests {
         let failure = case.submit("assessment.add", assessment).unwrap_err();
         assert_eq!(failure.error.code, ErrorCode::RevisionConflict);
         assert_eq!(failure.error.actual, Some(json!(latest.revision)));
+    }
+
+    /// bn-32z3: a partial measurement is refused as support with a message
+    /// that says it is partial and names the relations and the narrower
+    /// Observation the plan allows instead.
+    #[test]
+    fn a_partial_measurement_is_refused_by_name_and_can_be_cited_inconclusive() {
+        let mut case = Case::new();
+        let (_, subject, rival) = case.rival_pair();
+        let source = case.fixture_image(Kind::Source, json!({"access":"local_only"}), None);
+        let sha256 = digest(&json!("Synthetic fixture source")).unwrap();
+        let artifact = case.fixture_image(Kind::Artifact, json!({
+            "digest": sha256, "size_bytes": 24, "format": "text/plain", "source": source,
+            "transforms": [], "availability":"retained", "integrity":"verified", "sensitivity":"internal"
+        }), None);
+        let observation = case.fixture_image(Kind::Observation, json!({
+            "status":"active",
+            "value":{"kind":"measurement", "value":"2.3", "unit":"s"},
+            "basis":{"kind":"source", "artifact_ref": artifact,
+                "selector":{"schema_version":"inv.selector.v1", "artifact_digest":sha256, "selector":{"type":"whole"}, "validation":"verified"},
+                "text_quote":{"state":"not_applicable"}
+            },
+            "validity":"valid", "quality":[], "limitations":[], "variables_changed":[]
+        }), None);
+        let partial = case
+            .submit(
+                "measurement.assess",
+                json!({
+                    "observation_ref": observation, "channel": "first round", "validity": "invalid",
+                    "verification": [], "rationale": "The first round stalled on I/O.", "limits": [],
+                }),
+            )
+            .unwrap()
+            .records[0]
+            .reference();
+        let mut assessment = json!({
+            "subject_ref": subject, "evidence_refs":[partial], "relation":"supports",
+            "rival_expectations":[{"rival_ref":rival, "expectation":"not_assessed", "rationale":"Not measured."}],
+            "rationale":"The rounds that ran are consistent with the candidate."
+        });
+        let failure = case
+            .submit("assessment.add", assessment.clone())
+            .unwrap_err();
+        assert_eq!(failure.error.code, ErrorCode::GateFailed);
+        let message = &failure.error.message;
+        for needed in [
+            "partial",
+            "inconclusive or non_diagnostic",
+            "Observation of that part alone",
+            "measurement.assess",
+        ] {
+            assert!(message.contains(needed), "{needed}: {message}");
+        }
+        assert!(
+            !message.contains("unverified, or unattributed"),
+            "{message}"
+        );
+        assert_eq!(
+            failure.error.actual,
+            Some(json!({"effective_validity": "partial"}))
+        );
+        assessment["relation"] = json!("inconclusive");
+        case.create("assessment.add", assessment);
     }
 }

@@ -3,7 +3,7 @@ inv_kind: "view"
 inv_view: "frontier"
 inv_case_id: "case_01a20751-8e56-7b21-9630-4b49275ec85d"
 inv_case: "[[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Overview]]"
-inv_rows: 9
+inv_rows: 8
 inv_render_sequence: 29
 inv_snapshot: "sha256:04e8e7421f58b8ee4b6508746532451757992c521bf1e52ee9344fafd6008151"
 inv_schema: "inv.vault.v1"
@@ -18,7 +18,7 @@ tags:
 
 Case: [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Overview|Why does the synthetic lookup stall?]]. Snapshot: sequence 29, head `sha256:04e8e7421f58b8ee4b6508746532451757992c521bf1e52ee9344fafd6008151`.
 
-Open, blocked and stale uncertainty at this snapshot: every unresolved gap the structural rules emit (rule version `slice-gaps.v1`), with the prerequisite evidence each needs. One row per gap, in gap ID order, unranked. A row describes missing or stale recorded information; it is not a task, an assignment or an external board, and nothing here is dispatched. Zero gaps means these rules detected none, not that the investigation is complete. `investigation --case case_01a20751-8e56-7b21-9630-4b49275ec85d next --format json` ranks the next steps.
+Open, blocked and stale uncertainty at this snapshot: every unresolved gap the structural rules emit (rule version `slice-gaps.v2`), with the prerequisite evidence each needs. One row per gap, in gap ID order, unranked. A row describes missing or stale recorded information; it is not a task, an assignment or an external board, and nothing here is dispatched. Zero gaps means these rules detected none, not that the investigation is complete. `investigation --case case_01a20751-8e56-7b21-9630-4b49275ec85d next --format json` ranks the next steps.
 
 | Gap rule | State | Subjects | Prerequisite evidence | Why it is open | Decision effect |
 |---|---|---|---|---|---|
@@ -26,11 +26,10 @@ Open, blocked and stale uncertainty at this snapshot: every unresolved gap the s
 | `conclusion.causal_claim_without_rival_account` | open: requires a source | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Conclusions/concl_01a20751-9308-7c52-b557-693825716707\|Holding the database connection across the asynchronous wait explains the overshoot in these recorded attempts.]] | `rival_account` unmet | A causal Conclusion names causal factors but records no acknowledged rival account or contradiction reference\. | `could_discriminate` |
 | `hypothesis.no_assessment` | open: requires a source | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8e9a-7312-8e8c-2d318d46c4eb\|A checked-out connection is held during the asynchronous wait.]] | `evidence_refs` unknown | No current Assessment interprets evidence against this live Hypothesis\. | `could_discriminate` |
 | `hypothesis.no_assessment` | open: requires a source | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Hypotheses/hyp_01a20751-8eb8-7f03-b74b-ad5633c8ef75\|Scheduler delay alone accounts for the connection-hold overshoot.]] | `evidence_refs` unknown | No current Assessment interprets evidence against this live Hypothesis\. | `could_discriminate` |
-| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-8ff0-71b3-8533-fa18bea0abb8\|The slow trace records a 28-second callback wait.]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
-| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9066-7e50-945b-fa7cf8f304ac\|Measured 28007 ms]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
-| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
-| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
-| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | `validity_assessment` unmet | The Observation has no recorded validity context\; presence of a quote or value alone does not establish measurement validity\. | `could_discriminate` |
+| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9066-7e50-945b-fa7cf8f304ac\|Measured 28007 ms]] | `validity_assessment` unmet | The measurement has no attributed validity context\; a quote\, a value or the recorder\'s own validity statement alone does not establish measurement validity\. | `could_discriminate` |
+| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | `validity_assessment` unmet | The measurement has no attributed validity context\; a quote\, a value or the recorder\'s own validity statement alone does not establish measurement validity\. | `could_discriminate` |
+| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | `validity_assessment` unmet | The measurement has no attributed validity context\; a quote\, a value or the recorder\'s own validity statement alone does not establish measurement validity\. | `could_discriminate` |
+| `observation.validity_context_missing` | blocked by evidence quality | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9140-7d72-bbd2-181cd705230d\|Measured 28104 ms]] | `validity_assessment` unmet | The measurement has no attributed validity context\; a quote\, a value or the recorder\'s own validity statement alone does not establish measurement validity\. | `could_discriminate` |
 
 ## Records named by an open gap
 
@@ -38,7 +37,6 @@ The notes the unresolved gaps name, with how many name each (`inv_open_gaps`). O
 
 | Record | Kind | Open gaps | Effective state |
 |---|---|---|---|
-| [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-8ff0-71b3-8533-fa18bea0abb8\|The slow trace records a 28-second callback wait.]] | observation | 1 | `current` |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-9066-7e50-945b-fa7cf8f304ac\|Measured 28007 ms]] | observation | 1 | `current` |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90b0-7583-8016-b35360f4629f\|Measured 102 ms]] | observation | 1 | `current` |
 | [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Observations/obs_01a20751-90f8-7182-9ca5-67ba76435760\|Measured 0 count]] | observation | 1 | `current` |

@@ -1229,9 +1229,9 @@ fn scenario_b_analysis_report_shows_its_recorded_measurement_evidence() {
             .unwrap()
             .to_owned()
     };
-    let control = "`run_01a210c9-be76-7413-86a7-b1564d7d217c` control latency capture";
-    let treatment = "`run_01a210c9-bf3a-7dc1-a4c9-f4e76187a026` treatment latency capture";
-    let debug = "`run_01a210c9-c05d-7c83-b0ef-19884a0c7d49`";
+    let control = "`run_01a210e7-bd11-7582-abfa-cf36144e5790` control latency capture";
+    let treatment = "`run_01a210e7-bf92-7440-a5df-414d3bba5f91` treatment latency capture";
+    let debug = "`run_01a210e7-c30f-7ff2-871f-5469b8c0c783`";
 
     let outcome = section("Status and outcome");
     assert!(outcome.contains("- Outcome: `inconclusive`. This case is inconclusive"));
@@ -1267,7 +1267,7 @@ fn scenario_b_analysis_report_shows_its_recorded_measurement_evidence() {
     // the advisory flag, each under the observation it belongs to.
     let logged = block(&runs, debug);
     for element in [
-        "`obs_01a210c9-c0dc-7a01-86cb-246cfbd2a4fd` Measured 79.1 ms",
+        "`obs_01a210e7-c4d0-7182-bdc2-e93b438a0ebb` Measured 79.1 ms",
         "        - Instrumentation changed: `true`",
         "      - Measurement validity: effective `invalid` (recorded with the observation `unknown`)",
         "        - Judgment `invalid` by `agent:scenario-b`",
@@ -1295,10 +1295,10 @@ fn scenario_b_analysis_report_shows_its_recorded_measurement_evidence() {
         "- Measurements whose effective measurement validity, from their judgments, is not",
     );
     for (observation, validity) in [
-        ("obs_01a210c9-c0dc-7a01-86cb-246cfbd2a4fd", "invalid"),
-        ("obs_01a210c9-c2ad-7140-8dea-8ddd28982787", "invalid"),
-        ("obs_01a210c9-c32a-7fa1-8c3d-ccdd9be37f0c", "invalid"),
-        ("obs_01a210c9-c582-71d1-8610-6daeb8cc856c", "partial"),
+        ("obs_01a210e7-c4d0-7182-bdc2-e93b438a0ebb", "invalid"),
+        ("obs_01a210e7-ca23-7f53-8abc-30f967e786a7", "invalid"),
+        ("obs_01a210e7-cccd-7710-bb95-8adceeaa63be", "invalid"),
+        ("obs_01a210e7-d4e8-7c52-ac4e-784a2b98f0a0", "partial"),
     ] {
         assert!(
             judged.lines().any(|line| line.contains(observation)
@@ -1307,11 +1307,11 @@ fn scenario_b_analysis_report_shows_its_recorded_measurement_evidence() {
         );
     }
     // A capture judged valid is not listed as uncertain on that account.
-    assert!(!judged.contains("obs_01a210c9-bebe-7110-97ca-38cc352767ba"));
+    assert!(!judged.contains("obs_01a210e7-be56-7202-87bf-10177c265da1"));
 
     let assessment = section("Root-cause or measurement assessment");
     assert!(assessment.contains(
-        "`concl_01a210c9-d65f-7ce1-8785-70861bfbe6dc` The slab-v2 allocator change causes the p99 \
+        "`concl_01a210e8-01e2-78b0-bb01-f46f0386259e` The slab-v2 allocator change causes the p99 \
          regression.: effective `candidate` (recorded `candidate`)"
     ));
 }
@@ -1332,7 +1332,7 @@ fn scenario_b_case_report_contains_every_required_element() {
         .split("\n## ")
         .next()
         .unwrap();
-    let logged = block(observations, "`obs_01a210c9-c0dc-7a01-86cb-246cfbd2a4fd`");
+    let logged = block(observations, "`obs_01a210e7-c4d0-7182-bdc2-e93b438a0ebb`");
     assert!(
         logged.contains("  - Measurement validity: effective `invalid`"),
         "{logged}"
@@ -1343,12 +1343,12 @@ fn scenario_b_case_report_contains_every_required_element() {
     );
     let decisions = main.split("## Decisions\n").nth(1).unwrap();
     assert!(decisions.contains(
-        "- `dec_01a210c9-d22c-7f71-8871-edeaff4bf86e` Chosen option: Keep the Marlin 1.9 build \
+        "- `dec_01a210e7-fa93-7d02-aca9-9a2371253ca3` Chosen option: Keep the Marlin 1.9 build \
          with slab-v2: effective `proposed` (recorded `proposed`)"
     ));
     let retrospective = main
         .split("## Methodological retrospective\n")
         .nth(1)
         .unwrap();
-    assert!(retrospective.contains("- `retro_01a210c9-e0df-7d52-908e-d02c244d5e79` "));
+    assert!(retrospective.contains("- `retro_01a210e8-1203-7191-9d82-430e1a94c9e7` "));
 }

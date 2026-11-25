@@ -657,12 +657,8 @@ fn assess(payload: MeasurementAssess, ctx: &mut OperationContext<'_>) -> Result<
             .next()
             .map(|(index, item)| (format!("/verification/{index}"), item.reasons.join(", ")))
             .unwrap_or_else(|| ("/verification".into(), "none supplied".into()));
-        let mut failure = gate(
-            &path,
-            format!(
-                "A valid or partial judgment needs a qualifying instrument check, comparable control or justified equivalent. Unqualified: {reasons}."
-            ),
-        );
+        let mut failure = gate(&path, unqualified_message(&reasons, &verification))
+            .with_schema("measurement.assess");
         failure.error.actual = Some(json!(
             verification
                 .iter()
@@ -687,6 +683,34 @@ fn assess(payload: MeasurementAssess, ctx: &mut OperationContext<'_>) -> Result<
         .insert(MEASUREMENT_ASSESSMENT_KEY.into(), json!(log));
     ctx.update(payload.observation_ref, body)?;
     Ok(())
+}
+
+/// The refusal of a `valid` or `partial` judgment with no qualifying
+/// verification. It names the three kinds and the path that needs no Run: a
+/// control is compared by recorded environment, which comes from a Run or
+/// from structured identity on both Observations, while an instrument check
+/// and a justified equivalent need neither.
+fn unqualified_message(reasons: &str, verification: &[Verification]) -> String {
+    let environment = verification.iter().any(|item| {
+        item.reasons.iter().any(|reason| {
+            matches!(
+                reason.as_str(),
+                "REQUIRED_ENVIRONMENT_UNRECORDED"
+                    | "CONTROL_ENVIRONMENT_UNRECORDED"
+                    | "CONTROL_ENVIRONMENT_MISMATCH"
+            )
+        })
+    });
+    let mut message = format!(
+        "A valid or partial judgment needs at least one qualifying verification in /verification. Unqualified: {reasons}. Kinds: instrument_check (evidence_ref: an effectively valid Observation or an Artifact showing the instrument or setup behaved as specified), control (observation_ref: a comparable, effectively valid Observation recorded in the same environment) or equivalent (justification and evidence_refs; it qualifies as assessor_justified). An instrument_check or an equivalent needs no Run."
+    );
+    if environment {
+        message.push_str(" A control is compared by recorded environment: the Run each Observation cites (run_ref) or structured environment identity in its measurement fields; with neither recorded, use an instrument_check or an equivalent.");
+    }
+    message.push_str(
+        " To record doubt without a verification, judge the measurement unknown or invalid.",
+    );
+    message
 }
 
 /// Conservative order of effective validity: `invalid` < `partial` < `unknown` < `valid`.
@@ -856,6 +880,48 @@ pub fn validity_view(state: &State, record: &Record) -> Result<ValidityView, Fai
         judgments_kept: log.judgments.len(),
         disagreement,
     })
+}
+
+/// Whether a stored Observation body records a measurement rather than an
+/// extracted statement (plan §5: both are Observations; §6.3: measurement
+/// validity asks whether instrument, setup and controls support interpreting
+/// a measurement). Typed fields decide, never statement text: a `measurement`
+/// value, the `measurement` conditions block, an `interventional` evidence
+/// kind (variables were changed and an outcome measured) or a cited Run.
+/// A quote or a code reading recorded as a text or binary value, with none of
+/// these, is an extracted statement (ADR 0023).
+pub fn is_measurement(body: &Value) -> bool {
+    let present = |key: &str| body.get(key).is_some_and(|value| !value.is_null());
+    body.pointer("/value/kind").and_then(Value::as_str) == Some("measurement")
+        || present(crate::measurement_fields::MEASUREMENT_KEY)
+        || present("run_ref")
+        || body.get("evidence_kind").and_then(Value::as_str) == Some("interventional")
+}
+
+/// The warning `observation.add` and `observation.correct` give when a
+/// measurement carries a recorded `valid` or `partial` validity and no
+/// attributed judgment: the recorder's own statement is the effective basis
+/// (`recorded_only`), and the frontier keeps asking for `measurement.assess`.
+pub fn recorded_validity_warning(record: &Record) -> Option<String> {
+    if record.header.id.kind() != Kind::Observation || !is_measurement(&record.body) {
+        return None;
+    }
+    let recorded: MeasurementValidity = record
+        .body
+        .get("validity")
+        .and_then(|value| input::decode(value).ok())?;
+    let label = match recorded {
+        MeasurementValidity::Valid => "valid",
+        MeasurementValidity::Partial => "partial",
+        MeasurementValidity::Unknown | MeasurementValidity::Invalid => return None,
+    };
+    if judgment_log(&record.body).is_ok_and(|log| !log.judgments.is_empty()) {
+        return None;
+    }
+    Some(format!(
+        "Observation {} records validity `{label}` as the recorder's own statement (validity basis recorded_only). It is a measurement, so frontier keeps observation.validity_context_missing until measurement.assess records an attributed judgment with an instrument_check, a comparable control or a justified equivalent. A confirmatory basis needs that judgment too (empirical.confirmatory_basis_incomplete).",
+        record.header.id
+    ))
 }
 
 /// The effective validity used by evidence gates. Unreadable data is `unknown`.
@@ -1405,5 +1471,170 @@ mod tests {
         let mut payload = descriptor.example().unwrap().clone();
         payload["rationale"] = json!(" ");
         assert!(descriptor.validate_payload(&payload).is_err());
+    }
+
+    /// A text Observation of a quote or a code reading, with the given
+    /// evidence kind; interventional ones name a changed variable.
+    fn statement(
+        case: &mut Case,
+        validity: &str,
+        evidence_kind: &str,
+    ) -> (RevisionRef, Vec<String>) {
+        let changed: Vec<&str> = if evidence_kind == "interventional" {
+            vec!["build flag"]
+        } else {
+            vec![]
+        };
+        let accepted = case
+            .submit(
+                "observation.add",
+                json!({
+                    "value": {"kind": "text", "statement": "The function opens one transaction per event."},
+                    "basis": {"kind": "assertion", "assertion": "Read in the source code.", "context": null},
+                    "extraction_method": "code_reading",
+                    "validity": validity,
+                    "quality": [],
+                    "limitations": [],
+                    "evidence_kind": evidence_kind,
+                    "variables_changed": changed,
+                    "observed_at": null,
+                    "run_ref": null,
+                }),
+            )
+            .unwrap();
+        (accepted.records[0].reference(), accepted.warnings)
+    }
+
+    fn validity_gaps(case: &Case) -> Vec<Id> {
+        crate::gap_rules::case_gaps(&case.state, case.case.unwrap())
+            .unwrap()
+            .into_iter()
+            .filter(|gap| gap.rule_id == "observation.validity_context_missing")
+            .map(|gap| gap.subject_refs[0].id)
+            .collect()
+    }
+
+    /// ADR 0023: the validity rule reads measurements only, decided by typed
+    /// fields; a quote or a code reading is an extracted statement.
+    #[test]
+    fn only_measurements_lack_validity_context() {
+        let mut case = Case::new();
+        let (reading, _) = statement(&mut case, "unknown", "observational");
+        let (experiment, _) = statement(&mut case, "unknown", "interventional");
+        let measured = case.observation("unknown", None);
+        let run = case.run("completed", None);
+        let from_run = case.observation("unknown", Some(run));
+        let gaps = validity_gaps(&case);
+        assert!(!gaps.contains(&reading.id), "{gaps:?}");
+        for subject in [experiment, measured, from_run] {
+            assert!(gaps.contains(&subject.id), "{subject:?} in {gaps:?}");
+        }
+        let body = |reference: RevisionRef| case.state.current(reference.id).unwrap().body.clone();
+        assert!(!is_measurement(&body(reading)));
+        assert!(is_measurement(&body(experiment)));
+        assert!(is_measurement(&body(measured)));
+        assert!(is_measurement(&body(from_run)));
+
+        // The recorder's own `valid` does not settle a measurement's validity;
+        // an attributed judgment does.
+        let claimed = case.observation("valid", None);
+        assert!(validity_gaps(&case).contains(&claimed.id));
+        let judged = case
+            .assess("agent:reviewer", claimed, "valid", equivalent())
+            .unwrap();
+        assert!(!validity_gaps(&case).contains(&judged.id));
+    }
+
+    #[test]
+    fn a_recorded_valid_measurement_warns_that_it_is_the_recorders_statement() {
+        let mut case = Case::new();
+        let accepted = case
+            .submit(
+                "observation.add",
+                json!({
+                    "value": {"kind": "measurement", "value": "2.3", "unit": "s"},
+                    "basis": {"kind": "assertion", "assertion": "Timed by the recorder.", "context": null},
+                    "extraction_method": null, "validity": "valid", "quality": [], "limitations": [],
+                    "evidence_kind": "observational", "variables_changed": [], "observed_at": null, "run_ref": null,
+                }),
+            )
+            .unwrap();
+        let warning = accepted
+            .warnings
+            .iter()
+            .find(|warning| warning.contains("recorded_only"))
+            .unwrap_or_else(|| panic!("{:?}", accepted.warnings));
+        assert!(warning.contains("measurement.assess"), "{warning}");
+        assert!(
+            warning.contains("observation.validity_context_missing"),
+            "{warning}"
+        );
+
+        // An extracted statement, or a measurement left unknown, gets none.
+        let (_, warnings) = statement(&mut case, "valid", "observational");
+        assert!(
+            !warnings.iter().any(|w| w.contains("recorded_only")),
+            "{warnings:?}"
+        );
+        let unknown = case
+            .submit(
+                "observation.add",
+                json!({
+                    "value": {"kind": "measurement", "value": "2.3", "unit": "s"},
+                    "basis": {"kind": "assertion", "assertion": "Timed by the recorder.", "context": null},
+                    "extraction_method": null, "validity": "unknown", "quality": [], "limitations": [],
+                    "evidence_kind": "observational", "variables_changed": [], "observed_at": null, "run_ref": null,
+                }),
+            )
+            .unwrap();
+        assert!(!unknown.warnings.iter().any(|w| w.contains("recorded_only")));
+    }
+
+    #[test]
+    fn a_judgment_without_a_verification_names_the_kinds_that_need_no_run() {
+        let mut case = Case::new();
+        let target = case.observation("unknown", None);
+        let failure = case
+            .assess("agent:reviewer", target, "valid", json!([]))
+            .unwrap_err();
+        let message = &failure.error.message;
+        assert_eq!(
+            failure.error.path.as_deref(),
+            Some("/operations/0/payload/verification")
+        );
+        for needed in [
+            "none supplied",
+            "instrument_check",
+            "control",
+            "equivalent",
+            "needs no Run",
+            "unknown or invalid",
+        ] {
+            assert!(message.contains(needed), "{needed}: {message}");
+        }
+        assert!(!message.contains("recorded environment"), "{message}");
+
+        // A control with no recorded environment on either side says why and
+        // what to use instead.
+        let other = case.observation("unknown", None);
+        let reference = case
+            .assess("agent:reviewer", other, "valid", equivalent())
+            .unwrap();
+        let failure = case
+            .assess("agent:reviewer", target, "valid", control(reference, None))
+            .unwrap_err();
+        let message = &failure.error.message;
+        assert!(
+            message.contains("REQUIRED_ENVIRONMENT_UNRECORDED"),
+            "{message}"
+        );
+        assert!(message.contains("recorded environment"), "{message}");
+        assert!(message.contains("run_ref"), "{message}");
+
+        // The path the message names works without a Run.
+        assert!(
+            case.assess("agent:reviewer", target, "valid", equivalent())
+                .is_ok()
+        );
     }
 }

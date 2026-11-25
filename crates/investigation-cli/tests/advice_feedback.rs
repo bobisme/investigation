@@ -12,7 +12,7 @@ use std::{
 use serde_json::{Value, json};
 
 const ACTOR: &str = "agent:cli-test";
-const RULE_VERSION: &str = "slice-gaps.v1";
+const RULE_VERSION: &str = "slice-gaps.v2";
 
 fn output(cwd: &Path, args: &[&str], stdin: Option<&Value>, exit: i32) -> String {
     let mut command = Command::new(env!("CARGO_BIN_EXE_investigation"));

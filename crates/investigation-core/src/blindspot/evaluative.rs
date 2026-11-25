@@ -66,7 +66,7 @@ pub(super) const CHECKS: &[CheckSpec] = &[
         version: "v2",
         subject_kinds: &[Kind::Criterion],
         reads: &[
-            "gaps of rules decision.hard_criterion_cell_missing, decision.hard_criterion_cell_unknown and comparison.stale_dependency_revision (slice-gaps.v1)",
+            "gaps of rules decision.hard_criterion_cell_missing, decision.hard_criterion_cell_unknown and comparison.stale_dependency_revision (slice-gaps.v2)",
             "kind, lifecycle, question_ref and option_refs of each Criterion, and every revision since the one a Comparison cites",
             "question_ref and lifecycle of each Option",
             "option_ref, criterion_ref, outcome and retracted of each Comparison",

@@ -57,11 +57,17 @@ impl Case {
         Ok(accepted)
     }
 
+    /// The created record and its measurement-flag warnings. The
+    /// recorded-only validity warning (ADR 0023) is not a flag and is left out.
     fn create(&mut self, op: &str, payload: Value) -> (RevisionRef, Vec<String>) {
         let accepted = self.submit(op, payload).unwrap();
         (
             accepted.records.last().unwrap().reference(),
-            accepted.warnings,
+            accepted
+                .warnings
+                .into_iter()
+                .filter(|warning| !warning.contains("validity basis recorded_only"))
+                .collect(),
         )
     }
 

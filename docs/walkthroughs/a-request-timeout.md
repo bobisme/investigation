@@ -276,7 +276,7 @@ investigation --workspace ./demo-case record --dry-run --input - <<'EOF'
  "operations": [
   {"op": "retrospective.record", "client_ref": "methods", "payload": {
     "case_ref": {"id": "case_01a20751-8e54-7001-b14b-62fb37d7b21b", "revision": 1},
-    "snapshot": {"sequence": 28, "head_hash": "sha256:09241fdbbd6e76ba2a5409fe4517d4b37d6d6fa8ccb6e770c2483227954bf97c"},
+    "snapshot": {"sequence": 28, "head_hash": "sha256:ed3ac9a18b2cba56ddb31be45c1b7bef12f2f77a2b8d47079f1af8d61a03dc71"},
     "methods_attempted": [{"name": "Compare a slow/control pair and a bounded toggle and reversal"}],
     "effective_steps": [{"description": "The same-build toggle and reversal separated the connection hold from the rival.",
       "support_refs": ["run_01a20751-903e-7000-94ec-440881a456ba", "run_01a20751-9088-7000-941b-479396aa8579", "run_01a20751-9118-7000-b17e-7aebde1f76d2"]}],

@@ -19,7 +19,9 @@ use crate::{
     wire::{ErrorCode, Failure, Snapshot},
 };
 
-pub const GAP_RULE_VERSION: &str = "slice-gaps.v1";
+/// v2 (ADR 0023): `observation.validity_context_missing` reads only
+/// Observations that record a measurement, not quotes or code readings.
+pub const GAP_RULE_VERSION: &str = "slice-gaps.v2";
 
 /// Gap rules that report a stalled investigation (plan §7.4), in rule ID
 /// order. `stall::StallPattern` indexes this table; the patterns, thresholds
@@ -223,15 +225,16 @@ pub(crate) fn case_gaps(state: &State, case_id: Id) -> Result<Vec<Gap>, Failure>
     time_sensitive: false,
     creation_sequence: observation.header.acceptance_sequence,
 }));
-        } else if validity == crate::evidence::MeasurementValidity::Unknown
-            || observation.body.get("measurement_assessment").is_none()
+        } else if crate::measurement_ops::is_measurement(&observation.body)
+            && (validity == crate::evidence::MeasurementValidity::Unknown
+                || observation.body.get("measurement_assessment").is_none())
         {
             gaps.push(make_gap(GapFields {
     rule_id: "observation.validity_context_missing",
     subject_refs: vec![observation_ref],
     read_set: vec![observation_ref],
     status: GapStatus::BlockedByQuality,
-    reason: "The Observation has no recorded validity context; presence of a quote or value alone does not establish measurement validity.",
+    reason: "The measurement has no attributed validity context; a quote, a value or the recorder's own validity statement alone does not establish measurement validity.",
     prerequisites: vec![prerequisite("validity_assessment", PrerequisiteState::Unmet, "An attributed measurement assessment or explicit limitation is needed.", vec![observation_ref])],
     suggested_operation: Some("measurement.assess"),
     unresolved_fields: vec!["instrument_or_channel_validity".into(), "control_or_limitations".into()],

@@ -95,7 +95,10 @@ use crate::{
 /// one compact node or edge per line, no final line break), so opening the
 /// map in the viewer keeps its bytes; and a `.canvas` file is known by its
 /// content, so a layout change alone is not drift (ADR 0019, bn-24y4).
-pub const RENDERER_VERSION: &str = "inv.vault-renderer.v28";
+/// v29: no new layout; the gap rules moved to `slice-gaps.v2` (ADR 0023), so
+/// the Epistemic Frontier names that version and Observation notes list
+/// `observation.validity_context_missing` only on measurements.
+pub const RENDERER_VERSION: &str = "inv.vault-renderer.v29";
 
 const MAX_PATH_BYTES: usize = 1024;
 const MAX_COMPONENT_BYTES: usize = 255;

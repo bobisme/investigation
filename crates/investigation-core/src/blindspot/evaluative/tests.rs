@@ -311,8 +311,10 @@ fn registered_conditions_match_their_constants() {
         assert!(registry.iter().any(|check| check.check_id == id), "{id}");
     }
     // The hard-cell check groups these rules of this rule version; a new rule
-    // version must revisit the check and bump its version.
-    assert_eq!(GAP_RULE_VERSION, "slice-gaps.v1");
+    // version must revisit the check and bump its version. slice-gaps.v2
+    // (ADR 0023) changed only observation.validity_context_missing, which this
+    // check does not read, so the check keeps its version.
+    assert_eq!(GAP_RULE_VERSION, "slice-gaps.v2");
     assert!(gap_rule(HARD_CELL_MISSING).is_some());
     assert!(gap_rule(HARD_CELL_UNKNOWN).is_some());
     let stall = registry

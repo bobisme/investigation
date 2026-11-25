@@ -246,14 +246,15 @@ const RULES: &[RuleSpec] = &[
         rule_id: "observation.validity_context_missing",
         subject_kinds: &[Kind::Observation],
         status: GapStatus::BlockedByQuality,
-        condition: "A non-retracted Observation not flagged by observation.invalid_or_missing_source_match has unknown effective measurement validity or no measurement_assessment.",
+        condition: "A non-retracted Observation that records a measurement (a measurement value, measurement fields, a run_ref or an interventional evidence kind) and is not flagged by observation.invalid_or_missing_source_match has unknown effective measurement validity or no measurement_assessment. A text or binary Observation with none of those is an extracted statement, such as a quote or a code reading, and is not read by this rule.",
         inspected_fields: &[
             "status, retracted and lifecycle",
+            "value.kind, measurement, run_ref and evidence_kind",
             "effective measurement validity",
             "measurement_assessment",
         ],
         suggested_operation: Some("measurement.assess"),
-        persistence: "Stops when the Observation has a measurement_assessment and a known effective validity, or it is retracted.",
+        persistence: "Stops when the Observation has a measurement_assessment and a known effective validity, or it is retracted. Validity recorded with observation.add is the recorder's own statement and does not stop it.",
     },
     RuleSpec {
         rule_id: "review.stale_read_set",

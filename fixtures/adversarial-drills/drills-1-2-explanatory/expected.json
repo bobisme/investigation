@@ -35,8 +35,7 @@
       ]
     },
     "frontier_rules": {
-      "hypothesis.no_assessment": 1,
-      "observation.validity_context_missing": 16
+      "hypothesis.no_assessment": 1
     },
     "outcomes": [
       {

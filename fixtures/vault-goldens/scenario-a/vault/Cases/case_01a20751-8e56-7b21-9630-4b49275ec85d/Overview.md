@@ -136,7 +136,7 @@ Plain Markdown tables over this case at this snapshot, readable in any text view
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Conclusions|Conclusions]]: 2 rows
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Reviews and Blindspots|Reviews and Blindspots]]: 1 row
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Retrospectives and Lessons|Retrospectives and Lessons]]: 1 row
-- [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Epistemic Frontier|Epistemic Frontier]]: 9 rows
+- [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Epistemic Frontier|Epistemic Frontier]]: 8 rows
 - [[Cases/case_01a20751-8e56-7b21-9630-4b49275ec85d/Views/Timeline|Timeline]]: 51 rows
 
 ## Map

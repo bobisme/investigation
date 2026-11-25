@@ -360,6 +360,7 @@ fn add(payload: ObservationAddPayload, context: &mut OperationContext<'_>) -> Re
     let body = with_metadata(body, Some("active"), run_ref, None, None)?;
     let created = context.create(Kind::Observation, body)?;
     crate::measurement_flags::warn_recorded(context, created);
+    warn_recorded_validity(context, created);
     Ok(())
 }
 
@@ -391,7 +392,19 @@ fn correct(
     let _ = old_body;
     let corrected = context.update(reference, body)?;
     crate::measurement_flags::warn_recorded(context, corrected);
+    warn_recorded_validity(context, corrected);
     Ok(())
+}
+
+/// Say when a measurement's recorded validity is only the recorder's
+/// statement, so the receipt does not read as if it settled validity.
+fn warn_recorded_validity(context: &mut OperationContext<'_>, reference: RevisionRef) {
+    if let Some(warning) = context
+        .exact(reference)
+        .and_then(crate::measurement_ops::recorded_validity_warning)
+    {
+        context.warn(warning);
+    }
 }
 
 fn retract(

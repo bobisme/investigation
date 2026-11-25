@@ -174,7 +174,7 @@ fn frontier_is_the_complete_unranked_inventory_behind_next() {
     );
     let first = &pages[0];
     assert_eq!(first["schema_version"], "inv.gap_page.v1");
-    assert_eq!(first["rule_version"], "slice-gaps.v1");
+    assert_eq!(first["rule_version"], "slice-gaps.v2");
     assert_eq!(first["inventory_total"], 6);
     assert!(
         pages
@@ -211,7 +211,7 @@ fn frontier_is_the_complete_unranked_inventory_behind_next() {
         .iter()
         .flat_map(|page| page["gaps"].as_array().unwrap())
     {
-        assert_eq!(gap["rule_version"], "slice-gaps.v1");
+        assert_eq!(gap["rule_version"], "slice-gaps.v2");
         let subjects = gap["subject_refs"].as_array().unwrap();
         let distinct: BTreeSet<_> = subjects
             .iter()
@@ -342,7 +342,7 @@ fn explain_names_the_rule_and_version_for_any_gap_id() {
     assert_eq!(explained["schema_version"], "inv.gap_explanation.v1");
     assert_eq!(explained["emitted"], true);
     assert_eq!(explained["rule"]["rule_id"], "hypothesis.no_assessment");
-    assert_eq!(explained["rule"]["rule_version"], "slice-gaps.v1");
+    assert_eq!(explained["rule"]["rule_version"], "slice-gaps.v2");
     assert_eq!(explained["rule"]["emitted_status"], "requires_source");
     assert_eq!(explained["gap"]["gap_id"], json!(gap_id));
     assert_eq!(explained["subjects"][0]["current_revision"], 1);
@@ -357,7 +357,7 @@ fn explain_names_the_rule_and_version_for_any_gap_id() {
     assert_eq!(not_emitted["emitted"], false);
     assert!(not_emitted["gap"].is_null());
     assert_eq!(not_emitted["rule"]["rule_id"], "review.stale_read_set");
-    assert_eq!(not_emitted["rule"]["rule_version"], "slice-gaps.v1");
+    assert_eq!(not_emitted["rule"]["rule_version"], "slice-gaps.v2");
     assert!(not_emitted["subjects"][0]["current_revision"].is_null());
 
     let unknown = fixture.frontier(
@@ -397,7 +397,7 @@ fn text_output_is_deterministic_and_unknown_filters_are_rejected() {
     };
     let rendered = text(&[]);
     assert_eq!(rendered, text(&[]));
-    assert!(rendered.contains("hypothesis.no_assessment (slice-gaps.v1)"));
+    assert!(rendered.contains("hypothesis.no_assessment (slice-gaps.v2)"));
     assert!(rendered.contains("prerequisites: evidence_refs (unknown)"));
     assert!(rendered.contains("does not mean the investigation is complete"));
     assert!(!rendered.contains('\u{1b}'));

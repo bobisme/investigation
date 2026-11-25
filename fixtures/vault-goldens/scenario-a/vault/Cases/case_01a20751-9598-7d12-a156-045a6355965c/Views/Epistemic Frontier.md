@@ -18,7 +18,7 @@ tags:
 
 Case: [[Cases/case_01a20751-9598-7d12-a156-045a6355965c/Overview|Was a matched production sample available?]]. Snapshot: sequence 2, head `sha256:1d7ad980091987aed14d469d98681daf4e91199bb7afba34cb971dc311b5f3c2`.
 
-Open, blocked and stale uncertainty at this snapshot: every unresolved gap the structural rules emit (rule version `slice-gaps.v1`), with the prerequisite evidence each needs. One row per gap, in gap ID order, unranked. A row describes missing or stale recorded information; it is not a task, an assignment or an external board, and nothing here is dispatched. Zero gaps means these rules detected none, not that the investigation is complete. `investigation --case case_01a20751-9598-7d12-a156-045a6355965c next --format json` ranks the next steps.
+Open, blocked and stale uncertainty at this snapshot: every unresolved gap the structural rules emit (rule version `slice-gaps.v2`), with the prerequisite evidence each needs. One row per gap, in gap ID order, unranked. A row describes missing or stale recorded information; it is not a task, an assignment or an external board, and nothing here is dispatched. Zero gaps means these rules detected none, not that the investigation is complete. `investigation --case case_01a20751-9598-7d12-a156-045a6355965c next --format json` ranks the next steps.
 
 No unresolved gap is detected at this snapshot.
 

@@ -430,7 +430,15 @@ fn the_performance_pack_pins_drives_cards_and_requires_comparability_fields() {
     // points at the core's measurement flags rather than repeating them.
     let fields = json!({"performance": {
         "workload_id": "checkout-flow", "environment_id": "bench-host-a", "sample_count": 300}});
-    let accepted = case.observe("timing", Some(fields.clone()), 0);
+    // A timing is a measurement value (ADR 0023): the validity rule reads
+    // measurements, not text readings.
+    let mut timing = case.observation_op(Some(fields.clone()));
+    timing["payload"]["value"] = json!({"kind": "measurement", "value": "12.5", "unit": "units"});
+    timing["payload"]["basis"]
+        .as_object_mut()
+        .unwrap()
+        .remove("text_quote");
+    let accepted = case.submit("timing", timing, json!([]), 0);
     let id = json!({"id": accepted["created"][0]["id"], "revision": 1});
     assert_eq!(case.show(&id)["record"]["header"]["extensions"], fields);
     // The card is triggered by the unassessed measurement. That gap is
