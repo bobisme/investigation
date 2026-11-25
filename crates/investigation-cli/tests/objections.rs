@@ -105,22 +105,43 @@ impl Case<'_> {
         )
     }
 
-    /// Submit a supportive validation review over the exact current basis.
-    fn review(&self, key: &str, subject: &Value) -> Value {
+    /// A validation review over the exact current basis. `answered` are the
+    /// open objections on the subject that the review cites (ADR 0017).
+    fn review_payload(&self, subject: &Value, verdict: &str, answered: &[Value]) -> Value {
         let basis = self.show(subject, "full")["review_basis"].clone();
+        let mut read_set = basis["read_set"].as_array().cloned().unwrap();
+        read_set.extend(answered.iter().cloned());
+        json!({
+            "kind":"validation","subject_ref":basis["subject_ref"],"basis_digest":basis["basis_digest"],
+            "read_set":read_set,"method":"Read the recorded basis.","materials_examined":[],
+            "shared_dependencies":[],"objection_refs":answered,"verdict":verdict,"caveats":["One reading."],
+            "context_isolation":"fresh_context_unblinded","context":{
+                "saw_original_conclusion":{"state":"known","value":true},
+                "gathered_new_evidence":{"state":"known","value":false},
+                "method_or_source_changes":[],"activity":"Read the recorded basis.",
+                "dependencies":"shared","dependence_basis":"Same recorded data."}
+        })
+    }
+
+    /// The open objections naming `subject` itself, as `show` lists them.
+    fn open_on(&self, subject: &Value) -> Vec<Value> {
+        self.show(subject, "full")["challenges"]["open_objections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|objection| objection["subject_ref"]["id"] == subject["id"])
+            .map(|objection| objection["objection_ref"].clone())
+            .collect()
+    }
+
+    /// Submit a supportive validation review over the exact current basis
+    /// that answers every open objection on the subject by citing it.
+    fn review(&self, key: &str, subject: &Value) -> Value {
+        let answered = self.open_on(subject);
         self.one(
             key,
             "review.submit",
-            json!({
-                "kind":"validation","subject_ref":basis["subject_ref"],"basis_digest":basis["basis_digest"],
-                "read_set":basis["read_set"],"method":"Read the recorded basis.","materials_examined":[],
-                "shared_dependencies":[],"objection_refs":[],"verdict":"supports","caveats":["One reading."],
-                "context_isolation":"fresh_context_unblinded","context":{
-                    "saw_original_conclusion":{"state":"known","value":true},
-                    "gathered_new_evidence":{"state":"known","value":false},
-                    "method_or_source_changes":[],"activity":"Read the recorded basis.",
-                    "dependencies":"shared","dependence_basis":"Same recorded data."}
-            }),
+            self.review_payload(subject, "supports", &answered),
         )
     }
 
@@ -252,10 +273,51 @@ fn critical_objections_block_validation_and_material_ones_stay_visible() {
 
     // A critical objection blocks validation and the blocker names it.
     let critical = case.objection("critical", &ready, "critical");
+
+    // A supporting review that does not cite the open objections on its
+    // subject is refused and names them (ADR 0017); one that answers only
+    // some of them is refused for the rest. A disputing review is recorded.
+    for (key, answered) in [("unanswered", vec![]), ("half", vec![material.clone()])] {
+        let refused = case.submit(
+            key,
+            ACTOR,
+            "review.submit",
+            case.review_payload(&ready, "supports", &answered),
+            json!([]),
+            5,
+        );
+        assert_eq!(refused["error"]["code"], "GATE_FAILED", "{refused:#}");
+        assert_eq!(
+            refused["error"]["path"],
+            "/operations/0/payload/objection_refs"
+        );
+        let open: Vec<_> = refused["error"]["actual"]["open_objections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|objection| objection["objection_ref"].clone())
+            .collect();
+        let mut wanted = vec![material.clone(), critical.clone()];
+        wanted.retain(|objection| !answered.contains(objection));
+        wanted.sort_by_key(|objection| objection["id"].as_str().unwrap().to_owned());
+        assert_eq!(open, wanted);
+        let argv = refused["error"]["repair"]["argv"].as_array().unwrap();
+        assert!(argv.contains(&wanted[0]["id"]), "{argv:?}");
+    }
+    case.submit(
+        "objects",
+        ACTOR,
+        "review.submit",
+        case.review_payload(&ready, "objects", &[]),
+        json!([]),
+        0,
+    );
     let review = case.review("review-1", &ready);
     let validate = |key: &str, review: &Value, exit| {
         let basis = case.show(&ready, "full")["review_basis"].clone();
         let mut pre = basis["read_set"].as_array().cloned().unwrap();
+        // The review's read set holds the objections it answered.
+        pre.extend(case.open_on(&ready));
         pre.extend([ready.clone(), review.clone()]);
         case.submit(
             key,

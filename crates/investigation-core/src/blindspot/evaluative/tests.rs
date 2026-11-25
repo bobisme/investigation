@@ -197,13 +197,25 @@ impl Case {
     fn validate(&mut self, subject: RevisionRef) -> RevisionRef {
         let record = self.state.revision(subject).unwrap();
         let basis = basis_digest(record).unwrap();
-        let reads = required_read_set(&self.state, record).unwrap();
+        let mut reads = required_read_set(&self.state, record).unwrap();
+        // A supporting review answers each open objection on its subject by
+        // citing it (ADR 0017).
+        let answered: Vec<RevisionRef> = crate::objection_policy::open_objections(
+            &self.state,
+            record.header.case_id,
+            &[subject.id].into(),
+        )
+        .unwrap()
+        .into_iter()
+        .map(|objection| objection.objection_ref)
+        .collect();
+        reads.extend(answered.iter().copied());
         self.one(
             "review.submit",
             json!({
                 "kind":"validation","subject_ref":subject,"basis_digest":basis,"read_set":reads,
                 "method":"Inspect the recorded cells.","materials_examined":[],"shared_dependencies":[],
-                "objection_refs":[],"verdict":"supports","caveats":["One fixture."],
+                "objection_refs":answered,"verdict":"supports","caveats":["One fixture."],
                 "context_isolation":"fresh_context_unblinded","context":{
                     "saw_original_conclusion":{"state":"known","value":true},
                     "gathered_new_evidence":{"state":"known","value":false},

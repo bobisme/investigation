@@ -39,6 +39,7 @@ use investigation_core::{
     command::RevisionRef,
     freshness::{Freshness, FreshnessIndex, RecordFreshness, Trigger},
     identity::{Id, Kind},
+    objection_policy::open_objections,
     review_ops::required_read_set,
     state::{Record, State},
     wire::{ErrorCode, Failure, Receipt, Snapshot},
@@ -395,11 +396,20 @@ impl Run {
     fn validation_review(&self, subject: RevisionRef) -> Result<Value, String> {
         let record = self.state().revision(subject).expect("subject revision");
         let digest = basis_digest(record).map_err(|f| f.error.message)?;
-        let reads = required_read_set(self.state(), record).map_err(|f| f.error.message)?;
+        let mut reads = required_read_set(self.state(), record).map_err(|f| f.error.message)?;
+        // A supporting review answers each open objection on its subject by
+        // citing it (ADR 0017); the cited revision joins its read set.
+        let answered: Vec<RevisionRef> =
+            open_objections(self.state(), record.header.case_id, &[subject.id].into())
+                .map_err(|f| f.error.message)?
+                .into_iter()
+                .map(|objection| objection.objection_ref)
+                .collect();
+        reads.extend(answered.iter().copied());
         Ok(json!({
             "kind":"validation","subject_ref":subject,"basis_digest":digest,"read_set":reads,
             "method":"Inspect the cited measurements and sources.","materials_examined":[],
-            "shared_dependencies":[],"objection_refs":[],"verdict":"supports","caveats":["Generated."],
+            "shared_dependencies":[],"objection_refs":answered,"verdict":"supports","caveats":["Generated."],
             "context_isolation":"fresh_context_unblinded","context":{
                 "saw_original_conclusion":{"state":"known","value":true},
                 "gathered_new_evidence":{"state":"known","value":false},

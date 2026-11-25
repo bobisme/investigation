@@ -369,7 +369,7 @@ fn build() -> Fixture {
     let mut objection = example(&root, "objection.raise");
     objection["subject_ref"] = exact(&conclusion, 1);
     objection["severity"] = json!("material");
-    fixture.one("objection.raise", objection);
+    let objection = exact(&fixture.one("objection.raise", objection), 1);
     fixture.one(
         "annotation.add",
         json!({"subject_refs":[exact(&conclusion, 1)],"role":"synopsis",
@@ -377,12 +377,15 @@ fn build() -> Fixture {
     );
     let (full, _) = fixture.show(&case, &conclusion, "full");
     let basis = full["review_basis"].clone();
+    // A supporting review answers the open objection by citing it (ADR 0017).
+    let mut read_set = basis["read_set"].as_array().cloned().unwrap();
+    read_set.push(objection.clone());
     fixture.one(
         "review.submit",
         json!({
             "kind":"validation","subject_ref":basis["subject_ref"],"basis_digest":basis["basis_digest"],
-            "read_set":basis["read_set"],"method":"Read the recorded basis.","materials_examined":[],
-            "shared_dependencies":[],"objection_refs":[],"verdict":"supports","caveats":["One reading."],
+            "read_set":read_set,"method":"Read the recorded basis.","materials_examined":[],
+            "shared_dependencies":[],"objection_refs":[objection],"verdict":"supports","caveats":["One reading."],
             "context_isolation":"fresh_context_unblinded","context":{
                 "saw_original_conclusion":{"state":"known","value":true},
                 "gathered_new_evidence":{"state":"known","value":false},

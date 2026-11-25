@@ -170,12 +170,24 @@ impl Case<'_> {
         })
     }
 
+    /// A supporting validation review that answers each open objection on
+    /// its subject by citing it (ADR 0017).
     fn review(&self, key: &str, subject: &Value) -> Value {
-        let basis = self.show(subject)["review_basis"].clone();
+        let shown = self.show(subject);
+        let basis = shown["review_basis"].clone();
+        let answered: Vec<Value> = shown["challenges"]["open_objections"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|objection| objection["subject_ref"]["id"] == subject["id"])
+            .map(|objection| objection["objection_ref"].clone())
+            .collect();
+        let mut read_set = basis["read_set"].as_array().cloned().unwrap();
+        read_set.extend(answered.iter().cloned());
         self.one(key, "review.submit", json!({
             "kind":"validation","subject_ref":basis["subject_ref"],"basis_digest":basis["basis_digest"],
-            "read_set":basis["read_set"],"method":"Read the recorded basis.","materials_examined":[],
-            "shared_dependencies":[],"objection_refs":[],"verdict":"supports","caveats":["One reading."],
+            "read_set":read_set,"method":"Read the recorded basis.","materials_examined":[],
+            "shared_dependencies":[],"objection_refs":answered,"verdict":"supports","caveats":["One reading."],
             "context_isolation":"fresh_context_unblinded","context":Self::context()
         }))
     }

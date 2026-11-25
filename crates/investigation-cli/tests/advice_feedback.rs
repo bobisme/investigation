@@ -368,14 +368,26 @@ fn a_deferred_blocker_still_blocks_its_promotion_and_keeps_its_caveat() {
 
     // The promotion gate never reads advice feedback.
     let critical = objection("critical", &ready, "critical");
-    let basis = case.show(&ready, "full")["review_basis"].clone();
+    let shown = case.show(&ready, "full");
+    let basis = shown["review_basis"].clone();
+    // A supporting review answers each open objection on its subject by
+    // citing it (ADR 0017).
+    let answered: Vec<Value> = shown["challenges"]["open_objections"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|objection| objection["subject_ref"]["id"] == ready["id"])
+        .map(|objection| objection["objection_ref"].clone())
+        .collect();
+    let mut read_set = basis["read_set"].as_array().cloned().unwrap();
+    read_set.extend(answered.iter().cloned());
     let review = case.one(
         "review",
         "review.submit",
         json!({
             "kind":"validation","subject_ref":basis["subject_ref"],"basis_digest":basis["basis_digest"],
-            "read_set":basis["read_set"],"method":"Read the recorded basis.","materials_examined":[],
-            "shared_dependencies":[],"objection_refs":[],"verdict":"supports","caveats":["One reading."],
+            "read_set":read_set,"method":"Read the recorded basis.","materials_examined":[],
+            "shared_dependencies":[],"objection_refs":answered,"verdict":"supports","caveats":["One reading."],
             "context_isolation":"fresh_context_unblinded","context":{
                 "saw_original_conclusion":{"state":"known","value":true},
                 "gathered_new_evidence":{"state":"known","value":false},
@@ -383,8 +395,7 @@ fn a_deferred_blocker_still_blocks_its_promotion_and_keeps_its_caveat() {
                 "dependencies":"shared","dependence_basis":"Same recorded data."}
         }),
     );
-    let basis = case.show(&ready, "full")["review_basis"].clone();
-    let mut pre = basis["read_set"].as_array().cloned().unwrap();
+    let mut pre = read_set.clone();
     pre.extend([ready.clone(), review.clone()]);
     let blocked = case.submit(
         "validate",

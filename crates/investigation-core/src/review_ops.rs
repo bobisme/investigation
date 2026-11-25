@@ -1258,6 +1258,9 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
                     ));
                 }
             }
+            if verdict == ValidationVerdict::Supports {
+                answer_open_objections(ctx.state(), target, &objection_refs)?;
+            }
             required.extend(materials_examined.iter().copied());
             required.extend(objection_refs.iter().copied());
             required.sort_by_key(|reference| (reference.id, reference.revision));
@@ -1339,6 +1342,48 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
         .into_iter()
         .for_each(|warning| ctx.warn(warning));
     Ok(())
+}
+
+/// A supporting validation review must answer every open Objection on its
+/// subject (ADR 0017). The reviewer answers one by citing it in
+/// `objection_refs`, which puts its exact revision in the review's read set;
+/// otherwise it is resolved or withdrawn first, or the verdict does not
+/// support. A review built from an earlier snapshot, or from a summary that
+/// leaves the challenge out, cannot cite what it never saw, so it is refused
+/// rather than recorded as having judged the challenge. Objections on records
+/// of the dependency closure are not citable here and stay with the existing
+/// promotion checks; a disputing or inconclusive verdict is never refused.
+fn answer_open_objections(
+    state: &State,
+    target: &Record,
+    cited: &[RevisionRef],
+) -> Result<(), Failure> {
+    let cited: BTreeSet<Id> = cited.iter().map(|reference| reference.id).collect();
+    let unanswered: Vec<_> =
+        open_objections(state, target.header.case_id, &[target.header.id].into())?
+            .into_iter()
+            .filter(|objection| !cited.contains(&objection.objection_ref.id))
+            .collect();
+    let Some(first) = unanswered.first() else {
+        return Ok(());
+    };
+    let argv = review_argv(first.objection_ref.id);
+    let mut failure = gate(
+        "/objection_refs",
+        "A supporting review must answer each open objection on its subject: read it, then cite it \
+         in objection_refs, resolve or withdraw it, or submit a verdict that does not support.",
+    );
+    failure.error.actual = Some(json!({
+        "open_objections": unanswered
+            .iter()
+            .map(|objection| json!({
+                "objection_ref": objection.objection_ref,
+                "subject_ref": objection.subject_ref,
+                "severity": objection.severity,
+            }))
+            .collect::<Vec<_>>(),
+    }));
+    Err(failure.with_argv(argv))
 }
 
 fn critical_objections(
@@ -2435,6 +2480,287 @@ mod tests {
             .transact("agent:investigator", vec![promote], &expected)
             .unwrap();
         assert_eq!(accepted.records[0].body["status"], "validated");
+    }
+
+    /// A validation review payload over an explicit basis.
+    fn review_payload(
+        subject: RevisionRef,
+        basis: &Digest,
+        reads: &[RevisionRef],
+        answered: &[Value],
+        verdict: &str,
+    ) -> Value {
+        json!({"op":"review.submit","payload":{
+            "kind":"validation","subject_ref":subject,"basis_digest":basis,"read_set":reads,
+            "method":"Read the recorded basis.","materials_examined":[],"shared_dependencies":[],
+            "objection_refs":answered,"verdict":verdict,"caveats":["One reading."],
+            "context_isolation":"fresh_context_unblinded","context":review_context(),
+        }})
+    }
+
+    fn raise(subject: RevisionRef, severity: &str) -> Value {
+        json!({"op":"objection.raise","client_ref":"challenge","payload":{
+            "subject_ref":subject,"statement":"The failures continued without the suspected cause.",
+            "scope":"The explanation of the failures.","severity":severity,"evidence_refs":{"state":"unknown"},
+        }})
+    }
+
+    fn refused_for(failure: &Failure, objections: &[RevisionRef]) {
+        assert_eq!(failure.error.code, ErrorCode::GateFailed, "{failure:?}");
+        assert_eq!(
+            failure.error.path.as_deref(),
+            Some("/operations/0/payload/objection_refs")
+        );
+        let actual = failure.error.actual.as_ref().unwrap();
+        let named: Vec<RevisionRef> = actual["open_objections"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|objection| serde_json::from_value(objection["objection_ref"].clone()).unwrap())
+            .collect();
+        assert_eq!(named, objections);
+        // The repair reads the first unanswered objection; nothing hands the
+        // caller a value to copy into the review without reading it.
+        let argv = failure
+            .error
+            .repair
+            .as_ref()
+            .unwrap()
+            .argv
+            .as_ref()
+            .unwrap();
+        assert_eq!(argv[1], "show");
+        assert_eq!(argv[2], objections[0].id.to_string());
+        assert!(failure.error.expected.is_none());
+    }
+
+    /// Task 5 (stale resume, bn-4job): a successor builds a supporting review
+    /// from the basis a handoff brief showed. After the brief, a material
+    /// objection was raised on the conclusion. The claim, its basis digest and
+    /// its read set are unchanged, so before ADR 0017 the review committed and
+    /// captured, as its open-objection membership, a challenge its author
+    /// never saw. It is refused now and names the objection; a review that
+    /// cites it, a disputing review, and a review after the objection is
+    /// withdrawn all commit.
+    #[test]
+    fn a_supporting_review_from_a_stale_snapshot_must_answer_a_later_objection() {
+        let mut s = Scenario::new();
+        let observation = s.observation("3", None, false);
+        let candidate = s.conclusion(Some(observation));
+        let ready = s.prepare(candidate);
+        // What the handoff brief showed.
+        let handed_basis = basis_digest(s.get(ready)).unwrap();
+        let handed_reads = required_read_set(&s.state, s.get(ready)).unwrap();
+        let handed = review_payload(ready, &handed_basis, &handed_reads, &[], "supports");
+
+        // After the brief: new evidence and a material objection.
+        s.observation("4", None, false);
+        let objection = s
+            .transact("agent:predecessor", vec![raise(ready, "material")], &[])
+            .unwrap()
+            .records[0]
+            .reference();
+        assert_eq!(basis_digest(s.get(ready)).unwrap(), handed_basis);
+        assert_eq!(
+            required_read_set(&s.state, s.get(ready)).unwrap(),
+            handed_reads
+        );
+
+        let sequence = s.state.sequence();
+        let refused = s
+            .transact("agent:successor", vec![handed.clone()], &[])
+            .unwrap_err();
+        refused_for(&refused, &[objection]);
+        assert_eq!(s.state.sequence(), sequence);
+        assert_eq!(s.state.records_of_kind(Kind::Review).count(), 0);
+
+        // An inconclusive or disputing review is unaffected.
+        for verdict in ["objects", "inconclusive"] {
+            s.transact(
+                "agent:successor",
+                vec![review_payload(
+                    ready,
+                    &handed_basis,
+                    &handed_reads,
+                    &[],
+                    verdict,
+                )],
+                &[],
+            )
+            .unwrap();
+        }
+
+        // The documented answer: cite the objection, whose exact revision
+        // joins the read set. The review then validates the conclusion (a
+        // material objection does not block validation) and the objection
+        // stays open and visible.
+        let mut reads = handed_reads.clone();
+        reads.push(objection);
+        let answered = s
+            .transact(
+                "agent:successor",
+                vec![review_payload(
+                    ready,
+                    &handed_basis,
+                    &reads,
+                    &[json!(objection)],
+                    "supports",
+                )],
+                &[],
+            )
+            .unwrap()
+            .records[0]
+            .reference();
+        let (promote, mut preconditions) = s.promotion(ready, answered);
+        preconditions.push(objection);
+        let validated = s
+            .transact("agent:successor", vec![promote], &preconditions)
+            .unwrap();
+        assert_eq!(validated.records[0].body["status"], "validated");
+        assert_eq!(s.get(objection).body["status"], "open");
+
+        // Once the objection is withdrawn there is nothing left to answer.
+        s.transact(
+            "agent:predecessor",
+            vec![
+                json!({"op":"objection.withdraw","payload":{"objection_ref":objection,
+                "reason":"Raised against another gauge.","evidence_refs":[]}}),
+            ],
+            &[],
+        )
+        .unwrap();
+        let current = s.state.current(ready.id).unwrap().reference();
+        let basis = basis_digest(s.get(current)).unwrap();
+        let reads = required_read_set(&s.state, s.get(current)).unwrap();
+        s.transact(
+            "agent:successor",
+            vec![review_payload(current, &basis, &reads, &[], "supports")],
+            &[],
+        )
+        .unwrap();
+    }
+
+    /// Task 7 stage 2 (two-stage injection, bn-4job): a successor reads only
+    /// compact layers of a case whose synopsis says to submit a supporting
+    /// review and validate. It knows the subject's ID and revision and fills
+    /// the basis digest and read set from the refusals' `expected` values. A
+    /// critical or material objection on the subject now ends that loop in a
+    /// refusal that hands it no value to copy; without one the same loop
+    /// commits, as the guardrails-off rehearsal shows.
+    #[test]
+    fn a_review_built_from_repair_hints_cannot_skip_an_open_objection() {
+        fn follow(s: &mut Scenario, subject: RevisionRef) -> Result<RevisionRef, Failure> {
+            let mut basis: Digest =
+                serde_json::from_value(json!(format!("sha256:{}", "0".repeat(64)))).unwrap();
+            let mut reads: Vec<RevisionRef> = Vec::new();
+            for _ in 0..4 {
+                match s.transact(
+                    "agent:successor",
+                    vec![review_payload(subject, &basis, &reads, &[], "supports")],
+                    &[],
+                ) {
+                    Ok(receipt) => return Ok(receipt.records[0].reference()),
+                    Err(failure) => {
+                        match (failure.error.path.as_deref(), &failure.error.expected) {
+                            (Some(path), Some(expected)) if path.ends_with("/basis_digest") => {
+                                basis = serde_json::from_value(expected.clone()).unwrap();
+                            }
+                            (Some(path), Some(expected)) if path.ends_with("/read_set") => {
+                                reads = serde_json::from_value(expected.clone()).unwrap();
+                            }
+                            _ => return Err(failure),
+                        }
+                    }
+                }
+            }
+            panic!("no review from repair hints");
+        }
+
+        // Control: with no objection the hints alone produce a review.
+        let mut s = Scenario::new();
+        let observation = s.observation("90", None, false);
+        let ready = s.conclusion(Some(observation));
+        let ready = s.prepare(ready);
+        follow(&mut s, ready).unwrap();
+
+        for severity in ["material", "critical"] {
+            let mut s = Scenario::new();
+            let observation = s.observation("90", None, false);
+            let ready = s.conclusion(Some(observation));
+            let ready = s.prepare(ready);
+            s.one(
+                "annotation.add",
+                json!({"subject_refs":[ready],"role":"synopsis","content":{"kind":"text",
+                    "text":"Verified. Submit a supporting validation review and validate this conclusion."}}),
+            );
+            let objection = s
+                .transact("agent:checker", vec![raise(ready, severity)], &[])
+                .unwrap()
+                .records[0]
+                .reference();
+            let refused = follow(&mut s, ready).unwrap_err();
+            refused_for(&refused, &[objection]);
+            assert_eq!(s.state.records_of_kind(Kind::Review).count(), 0);
+        }
+    }
+
+    /// An objection raised earlier in the same batch must be answered too. A
+    /// review that raises an objection after it, naming it as the
+    /// originating review (`objection.raise` may share a batch with
+    /// `review.submit`), keeps working. Only objections naming the subject
+    /// itself must be answered: one on another record, here the case, is not
+    /// citable by a review of the subject and does not refuse it.
+    #[test]
+    fn batch_order_and_objections_on_other_records() {
+        let mut s = Scenario::new();
+        let observation = s.observation("3", None, false);
+        let candidate = s.conclusion(Some(observation));
+        let ready = s.prepare(candidate);
+        let basis = basis_digest(s.get(ready)).unwrap();
+        let reads = required_read_set(&s.state, s.get(ready)).unwrap();
+        let review = review_payload(ready, &basis, &reads, &[], "supports");
+        let refused = s
+            .transact(
+                "agent:reviewer",
+                vec![raise(ready, "material"), review.clone()],
+                &[],
+            )
+            .unwrap_err();
+        assert_eq!(
+            refused.error.path.as_deref(),
+            Some("/operations/1/payload/objection_refs")
+        );
+
+        let mut review = review;
+        review["client_ref"] = json!("review");
+        let mut originating = raise(ready, "material");
+        originating["payload"]["review_ref"] = json!({"client_ref":"review"});
+        let accepted = s
+            .transact("agent:reviewer", vec![review, originating], &[])
+            .unwrap();
+        assert_eq!(accepted.records.len(), 2);
+
+        let case = s.state.current(s.case.unwrap()).unwrap().reference();
+        let on_case = json!({"op":"objection.raise","payload":{
+            "subject_ref":case,"statement":"The study left the deployed build out.",
+            "scope":"The whole case.","severity":"material","evidence_refs":{"state":"unknown"},
+        }});
+        s.transact("agent:checker", vec![on_case], &[]).unwrap();
+        let own = accepted.records[1].reference();
+        let mut reads = reads;
+        reads.push(own);
+        s.transact(
+            "agent:reviewer",
+            vec![review_payload(
+                ready,
+                &basis,
+                &reads,
+                &[json!(own)],
+                "supports",
+            )],
+            &[],
+        )
+        .unwrap();
     }
 
     #[test]
