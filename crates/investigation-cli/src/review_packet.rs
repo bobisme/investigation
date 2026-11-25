@@ -25,6 +25,10 @@ The packet writes nothing and makes no review independent: the review still
 declares its context_isolation. review_basis gives the exact references a
 validation review cites; packet_digest identifies what was available.
 
+Without --case, in a workspace with several cases, the case is the one that
+holds the ID. A prefix that matches records in several cases is refused with
+CASE_REQUIRED, which names the cases and gives the retry with --case.
+
 Examples:
   investigation --case <ID> review-packet <CONCLUSION_ID> --format json
   investigation --case <ID> review-packet <ID> --snapshot 12 --head-hash <DIGEST> --format json";
@@ -38,7 +42,7 @@ pub(crate) struct Args {
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
-    let case = selection::select_case(store, global.case.as_deref())?;
+    let case = selection::select_case_for(store, global.case.as_deref(), &args.id)?;
     let mut retry = workspace_argv(store.workspace());
     retry.extend([
         "--case".into(),

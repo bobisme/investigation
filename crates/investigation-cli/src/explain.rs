@@ -62,6 +62,10 @@ argv whose selector request is given as stdin; raw bytes are never expanded.
 Quoted text is data, labelled authored_data or untrusted_evidence. A record
 the audience may not see appears by ID alone and is not walked.
 
+Without --case, in a workspace with several cases, the case is the one that
+holds the ID. A prefix that matches records in several cases is refused with
+CASE_REQUIRED, which names the cases and gives the retry with --case.
+
 --depth bounds link hops and --max-nodes the records walked; records beyond
 them are listed in more, each with an argv that continues from it.
 --max-bytes counts serialized UTF-8 bytes including the final newline; nodes
@@ -932,7 +936,7 @@ fn resolve(replay: &CaseReplay, selector: &str, records: Vec<String>) -> Result<
 }
 
 pub(crate) fn run(store: &mut Store, global: &Global, args: Args) -> Result<Output, Failure> {
-    let case = selection::select_case(store, global.case.as_deref())?;
+    let case = selection::select_case_for(store, global.case.as_deref(), &args.id)?;
     let mut prefix = selection::workspace_argv(store.workspace());
     prefix.extend(["--case".into(), case.to_string()]);
     let retry = brief::follow_up(&prefix, &["explain", &args.id]);

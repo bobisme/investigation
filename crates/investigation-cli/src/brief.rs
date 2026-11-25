@@ -51,6 +51,8 @@ recorded.
 --level sets depth, not size. compact is an index of outcomes and evidence with
 their status, freshness, caveat and contradiction. standard adds bounded
 synopses, unresolved questions and inquiries. deep adds the full outcome records.
+These names differ from show --depth (title, summary, full), which reads one
+record: --level full is refused, and the repair retries with --level deep.
 Each level fills the same --max-bytes, and a section keeps only whole items,
 so a compact brief can be larger than a standard one: its short entries all
 fit, while standard leaves out items that do not fit and counts them.

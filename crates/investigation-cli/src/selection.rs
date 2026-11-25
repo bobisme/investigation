@@ -290,6 +290,74 @@ pub(crate) fn select_case(store: &mut Store, selector: Option<&str>) -> Result<I
     Err(failure.with_argv(argv))
 }
 
+/// [`select_case`] for a read that names a record by `id`, a full ID or a
+/// typed prefix (bn-1lau). Without `--case`, in a workspace with several
+/// cases, the case is the one that holds the record: an ID names its case,
+/// so this is not a guess. A prefix that matches records in several cases is
+/// refused with `CASE_REQUIRED`, which names those cases and repeats this
+/// invocation with `--case` set to the first. A typed ID that no case holds
+/// is `UNKNOWN_REFERENCE`. Text that is not a typed ID selects as
+/// [`select_case`] does.
+pub(crate) fn select_case_for(
+    store: &mut Store,
+    selector: Option<&str>,
+    id: &str,
+) -> Result<Id, Failure> {
+    if selector.is_some() {
+        return select_case(store, selector);
+    }
+    let cases = store.case_ids()?;
+    if cases.len() < 2 || resolve_prefix(id, std::iter::empty()) == Err(ResolveError::InvalidPrefix)
+    {
+        return select_case(store, selector);
+    }
+    let holders: Vec<Id> = store.locate_records(id)?.into_keys().collect();
+    match holders.as_slice() {
+        [case] => Ok(*case),
+        [] => {
+            let mut failure = Failure::new(
+                ErrorCode::UnknownReference,
+                format!(
+                    "No case in this workspace holds a record that matches {id}. List a case's outcomes and evidence with investigation --case ID brief."
+                ),
+            )
+            .at("/id");
+            failure.error.actual = Some(json!({"id": id, "cases": cases}));
+            Err(failure)
+        }
+        [first, ..] => {
+            let mut failure = Failure::new(
+                ErrorCode::CaseRequired,
+                format!(
+                    "{id} matches records in {} cases: {}. Select one with --case ID, or give a longer ID.",
+                    holders.len(),
+                    listed_cases(store, &holders)
+                ),
+            )
+            .at("/case_id");
+            failure.error.actual = Some(json!(holders));
+            match with_case(env::args_os(), *first) {
+                Some(argv) => Err(failure.with_argv(argv)),
+                None => Err(failure),
+            }
+        }
+    }
+}
+
+/// This invocation again with `--case CASE` before its first argument.
+/// `None` when an argument is not UTF-8 or the invocation has no command.
+fn with_case(args: impl Iterator<Item = std::ffi::OsString>, case: Id) -> Option<Vec<String>> {
+    let rest: Option<Vec<String>> = args.skip(1).map(|arg| arg.into_string().ok()).collect();
+    let rest = rest.filter(|rest| !rest.is_empty())?;
+    let mut argv = vec![
+        PROGRAM_NAME.to_owned(),
+        "--case".to_owned(),
+        case.to_string(),
+    ];
+    argv.extend(rest);
+    Some(argv)
+}
+
 /// Cases a `CASE_REQUIRED` message lists by ID; `error.actual` holds all.
 const MAX_LISTED_CASES: usize = 8;
 /// Characters of a case title the list shows.

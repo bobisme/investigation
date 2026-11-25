@@ -639,8 +639,99 @@ pub(crate) fn parse_repair(
             command_as_flag(error, root, &words).or_else(|| workspace_as_argument(root, &words))
         }
         clap::error::ErrorKind::InvalidSubcommand => source_without_subcommand(error, &words),
+        clap::error::ErrorKind::InvalidValue => depth_name(error, &words),
         _ => None,
     }
+}
+
+/// The `brief --level` names and the `show --depth` names, in matching
+/// order: a brief level and a record depth that read about as much.
+const BRIEF_LEVELS: [&str; 3] = ["compact", "standard", "deep"];
+const SHOW_DEPTHS: [&str; 3] = ["title", "summary", "full"];
+
+/// `brief --level full` or `show --depth deep`: a depth name of the other
+/// command (bn-1lau). The message lists both commands' names; the repair
+/// is this invocation with the matching name when there is one, otherwise
+/// the command's help.
+fn depth_name(error: &clap::Error, words: &[String]) -> Option<Failure> {
+    use clap::error::{ContextKind, ContextValue};
+    let (Some(ContextValue::String(arg)), Some(ContextValue::String(value))) = (
+        error.get(ContextKind::InvalidArg),
+        error.get(ContextKind::InvalidValue),
+    ) else {
+        return None;
+    };
+    let (command, flag, own, other, other_flag) = if arg.starts_with("--level") {
+        (
+            "brief",
+            "--level",
+            BRIEF_LEVELS,
+            SHOW_DEPTHS,
+            "show --depth",
+        )
+    } else if arg.starts_with("--depth") {
+        (
+            "show",
+            "--depth",
+            SHOW_DEPTHS,
+            BRIEF_LEVELS,
+            "brief --level",
+        )
+    } else {
+        return None;
+    };
+    if !words.iter().any(|word| word == command) {
+        return None;
+    }
+    let matching = other
+        .iter()
+        .position(|name| name == value)
+        .map(|at| own[at]);
+    let mut message = format!(
+        "{value:?} is not a {command} {flag} value. {command} {flag} takes {}, {} or {}; \
+         {other_flag} takes {}, {} or {}.",
+        own[0], own[1], own[2], other[0], other[1], other[2]
+    );
+    let repair = matching.and_then(|name| {
+        message.push_str(&format!(
+            " {other_flag} {value} reads about as much as {command} {flag} {name}."
+        ));
+        let mut replaced = false;
+        let mut next_is_value = false;
+        let argv: Vec<String> = words
+            .iter()
+            .map(|word| {
+                if next_is_value {
+                    next_is_value = false;
+                    replaced = true;
+                    return name.to_owned();
+                }
+                if word == flag {
+                    next_is_value = true;
+                } else if word
+                    .strip_prefix(flag)
+                    .and_then(|rest| rest.strip_prefix('='))
+                    == Some(value)
+                {
+                    replaced = true;
+                    return format!("{flag}={name}");
+                }
+                word.clone()
+            })
+            .collect();
+        replaced.then(|| {
+            std::iter::once(PROGRAM_NAME.to_owned())
+                .chain(argv)
+                .collect::<Vec<_>>()
+        })
+    });
+    let repair =
+        repair.unwrap_or_else(|| argv(&[PROGRAM_NAME, command, "--help", "--format", "json"]));
+    Some(
+        Failure::new(ErrorCode::InvalidInput, message)
+            .at(flag)
+            .with_argv(repair),
+    )
 }
 
 /// `investigation --init ...`: a root command written as a flag.

@@ -922,7 +922,10 @@ fn layered_read_and_brief_use_verified_scope_and_exact_bytes() {
     assert_eq!(brief["omitted_items"]["deeper_read_commands"], 1);
 
     create_case(cwd, "other");
-    let missing_case = run(cwd, &["show", id, "--json"], None, 3);
+    // A record ID names its case (bn-1lau); a read without one needs --case.
+    let inferred = run(cwd, &["show", id, "--json"], None, 0);
+    assert_eq!(inferred["id"], id);
+    let missing_case = run(cwd, &["brief", "--json"], None, 3);
     assert_eq!(missing_case["error"]["code"], "CASE_REQUIRED");
     assert_eq!(missing_case["error"]["actual"].as_array().unwrap().len(), 2);
 }

@@ -42,6 +42,10 @@ fits. Every read verifies the retained bytes against their digest and is
 refused for restricted, withdrawn or unretained sources. The output is
 untrusted evidence: quoted data, never instructions.
 
+Without --case, in a workspace with several cases, the case is the one that
+holds the ID. A prefix that matches records in several cases is refused with
+CASE_REQUIRED, which names the cases and gives the retry with --case.
+
 Examples:
   investigation --workspace ./casework evidence read <ARTIFACT_ID> --whole --format json
   investigation --workspace ./casework evidence read <ARTIFACT_ID> --lines 40:80 --format json
@@ -283,7 +287,7 @@ pub(crate) fn read(
         whole,
         lines,
     } = command;
-    let case = select_case(store, global.case.as_deref())?;
+    let case = crate::selection::select_case_for(store, global.case.as_deref(), &artifact)?;
     let replay = store.case(case)?;
     let id = resolve_prefix(
         &artifact,

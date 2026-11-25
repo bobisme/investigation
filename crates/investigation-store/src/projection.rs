@@ -328,6 +328,35 @@ impl Projection {
             .collect()
     }
 
+    /// The cases whose applied events created a record of `kind` whose ID
+    /// starts with `prefix`. A pointer for the caller to verify against
+    /// canonical state (bn-1lau).
+    pub fn id_prefix_cases(&self, kind: Kind, prefix: &str) -> Result<Vec<Id>, Failure> {
+        let table = format!("record_{}", kind.prefix());
+        let exists: bool = self
+            .database
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+                [&table],
+                |row| row.get(0),
+            )
+            .map_err(db_error)?;
+        if !exists {
+            return Ok(Vec::new());
+        }
+        let mut query = self
+            .database
+            .prepare(&format!(
+                "SELECT DISTINCT case_id FROM {table} WHERE substr(id, 1, length(?1)) = ?1"
+            ))
+            .map_err(db_error)?;
+        let rows = query
+            .query_map([prefix], |row| row.get::<_, String>(0))
+            .map_err(db_error)?;
+        rows.map(|row| parse_case_id(&row.map_err(db_error)?))
+            .collect()
+    }
+
     /// The cases whose applied events recorded a revision that makes
     /// `claim`. A pointer for the caller to verify against canonical state.
     pub fn claim_cases(&self, claim: &Claim) -> Result<Vec<Id>, Failure> {

@@ -634,3 +634,59 @@ fn a_tampered_case_refuses_the_visit_as_it_refuses_a_load() {
     assert_eq!(diagnostic(&visit), Some("EVENT_REQUEST_HASH_MISMATCH"));
     assert_eq!(diagnostic(&visit), diagnostic(&load));
 }
+
+#[test]
+fn a_record_is_located_in_its_case_from_verified_events_whatever_the_index_says() {
+    let mut fixture = fixture();
+    let question = fixture.record("locate", fixture.untouched).unwrap().created[0].id;
+    let id = question.to_string();
+    let only = BTreeMap::from([(fixture.untouched, vec![question])]);
+    assert_eq!(fixture.store.locate_records(&id).unwrap(), only);
+    // A typed prefix every question shares is held by both cases.
+    let both = fixture.store.locate_records("q_0").unwrap();
+    assert_eq!(
+        both.keys().copied().collect::<Vec<_>>(),
+        BTreeSet::from([fixture.target, fixture.untouched])
+            .into_iter()
+            .collect::<Vec<_>>()
+    );
+    assert!(both[&fixture.untouched].contains(&question));
+    // An untyped or unknown ID is held by no case.
+    assert!(fixture.store.locate_records("locate").unwrap().is_empty());
+    assert!(
+        fixture
+            .store
+            .locate_records("q_ffffffff")
+            .unwrap()
+            .is_empty()
+    );
+
+    // An index that names the wrong case is not believed.
+    let database = rusqlite::Connection::open(fixture.index()).unwrap();
+    database
+        .execute(
+            "UPDATE record_q SET case_id = ?1 WHERE id = ?2",
+            rusqlite::params![fixture.target.to_string(), id],
+        )
+        .unwrap();
+    drop(database);
+    assert_eq!(fixture.store.locate_records(&id).unwrap(), only);
+
+    // Nor is an absent index, or one behind the case.
+    fs::remove_file(fixture.index()).unwrap();
+    assert_eq!(fixture.store.locate_records(&id).unwrap(), only);
+    fixture.record("rebuild", fixture.target).unwrap();
+    let older = fs::read(fixture.index()).unwrap();
+    let later = fixture.record("later", fixture.untouched).unwrap().created[0].id;
+    fs::remove_file(fixture.index()).unwrap();
+    fs::write(fixture.index(), &older).unwrap();
+    assert_eq!(
+        fixture.store.locate_records(&later.to_string()).unwrap(),
+        BTreeMap::from([(fixture.untouched, vec![later])])
+    );
+
+    // The holder is verified before it answers.
+    fixture.tamper(fixture.untouched, 2);
+    let refused = fixture.store.locate_records(&id).unwrap_err();
+    assert_eq!(refused.error.code, ErrorCode::IntegrityFailure);
+}

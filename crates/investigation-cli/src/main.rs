@@ -325,6 +325,7 @@ enum Commands {
         key: String,
     },
     /// Read a case record at title, summary, or full depth.
+    #[command(after_help = SHOW_HELP)]
     Show {
         /// Record to read: a full ID or a unique typed prefix.
         id: String,
@@ -610,7 +611,7 @@ fn show(
     at: Option<u64>,
     pin: &snapshot::SnapshotArgs,
 ) -> Result<Output, Failure> {
-    let case = selection::select_case(store, global.case.as_deref())?;
+    let case = selection::select_case_for(store, global.case.as_deref(), selector)?;
     let mut retry = workspace_argv(store.workspace());
     retry.extend([
         "--case".into(),
@@ -1472,6 +1473,21 @@ fn parse_error(error: clap::Error, help: Vec<String>) -> Output {
         ),
     }
 }
+
+const SHOW_HELP: &str = "\
+Every depth shows the record's title, status, freshness and caveats. --depth
+summary adds its synopsis and the synopsis basis; full adds the whole record.
+These names differ from brief --level (compact, standard, deep), which sets how
+much of a whole case a brief includes.
+
+Without --case, in a workspace with several cases, the case is the one that
+holds the ID. A prefix that matches records in several cases is refused with
+CASE_REQUIRED, which names the cases and gives the retry with --case.
+
+Examples:
+  investigation --workspace ./casework show <ID> --format json
+  investigation --workspace ./casework show <ID> --depth full --format json
+  investigation --workspace ./casework --case <CASE_ID> show <ID> --depth full --format json";
 
 const ROOT_PROSE_ADVICE: &str = "\
 investigation takes a command first, not free text. To start a case from a local file:

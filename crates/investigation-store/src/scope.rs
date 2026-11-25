@@ -293,6 +293,58 @@ impl<F: DurableFs> Store<F> {
         Ok(())
     }
 
+    /// Every verified record whose ID starts with the typed `prefix` (a full
+    /// ID is its own prefix), by the case that holds it (bn-1lau). Cases the
+    /// index is not current for are verified and searched; for the others the
+    /// index names the cases that may hold a match, and those are verified
+    /// and searched. An index that cannot answer gives way to a verified load
+    /// of every case. An untyped prefix matches nothing.
+    pub fn locate_records(&mut self, prefix: &str) -> Result<BTreeMap<Id, Vec<Id>>, Failure> {
+        let _lock = self.coordinate_read()?;
+        let Some(kind) = prefix
+            .split_once('_')
+            .and_then(|(tag, _)| Kind::ALL.iter().copied().find(|kind| kind.prefix() == tag))
+        else {
+            return Ok(BTreeMap::new());
+        };
+        let found = |scope: &Scope| -> BTreeMap<Id, Vec<Id>> {
+            scope
+                .replay
+                .cases
+                .iter()
+                .filter_map(|(case_id, replay)| {
+                    let ids: Vec<Id> = replay
+                        .state
+                        .records_of_kind(kind)
+                        .map(|record| record.header.id)
+                        .filter(|id| id.to_string().starts_with(prefix))
+                        .collect();
+                    (!ids.is_empty()).then_some((*case_id, ids))
+                })
+                .collect()
+        };
+        let mut scope = self.load_scope(None, Reads::Target)?;
+        let pointed = scope
+            .index
+            .as_ref()
+            .map(|index| index.id_prefix_cases(kind, prefix));
+        let pointed = match pointed {
+            None => return Ok(found(&scope)),
+            Some(Err(_)) => return Ok(found(&self.full_scope()?)),
+            Some(Ok(cases)) => cases,
+        };
+        for case_id in &pointed {
+            self.ensure_loaded(&mut scope, *case_id)?;
+        }
+        let located = found(&scope);
+        // A case the index names that its verified events do not confirm
+        // means the index is wrong: search every verified case instead.
+        if pointed.iter().any(|case_id| !located.contains_key(case_id)) {
+            return Ok(found(&self.full_scope()?));
+        }
+        Ok(located)
+    }
+
     /// Whether any case already records one of `ids`, a record or a
     /// transaction ID. Loaded cases answer from their events, the others from
     /// the index; if the index cannot answer, every case is verified.
