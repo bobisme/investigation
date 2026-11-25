@@ -5,7 +5,9 @@
 //! case revision the note was rendered from (a stale note conflicts), and a
 //! retry under the same key returns the original receipt; read-only mode refuses
 //! everything but the dry run; the help teaches the command and its next
-//! step.
+//! step. `vault clean-conflicts` previews, then with `--apply` removes, the
+//! bytes a discard set aside; `vault unrelease` returns a released path once
+//! the person's file is gone from it.
 
 use std::{
     collections::BTreeMap,
@@ -890,4 +892,216 @@ fn every_disposition_refuses_alike_in_the_dry_run_and_the_real_run() {
     assert_eq!(casework.title(), title);
     let status = casework.run(&["vault", "status"], 0);
     assert_eq!(status["drift_count"], 1, "{status}");
+}
+
+impl Casework {
+    /// Run a full argv a response named (`next` or `repair`), as given.
+    fn run_argv(&self, argv: &[String], exit: i32) -> Value {
+        let args: Vec<&str> = argv[1..].iter().map(String::as_str).collect();
+        let output = self.command(&self.root, &args).output().unwrap();
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        assert_eq!(output.status.code(), Some(exit), "{argv:?}\n{stdout}");
+        serde_json::from_str(&stdout).unwrap()
+    }
+
+    fn help(&self, args: &[&str]) -> String {
+        let output = self.command(&self.root, args).output().unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap()
+    }
+}
+
+#[test]
+fn clean_conflicts_previews_then_with_apply_removes_the_discarded_bytes() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.edit(&overview, "\nan edit to throw away\n");
+    let done = casework.run(
+        &[
+            "vault",
+            "reconcile",
+            &overview,
+            "--disposition",
+            "discard",
+            "--discard-observed",
+        ],
+        0,
+    );
+    let kept = done["paths"][0]["observed"][0]["to"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(casework.root.join(&kept).is_file());
+    let before = casework.files();
+
+    for read_only in [false, true] {
+        let mut args = vec!["vault", "clean-conflicts"];
+        if read_only {
+            args.insert(0, "--read-only");
+        }
+        let preview = casework.run(&args, 0);
+        assert_eq!(preview["result"], "vault_clean_conflicts_preview");
+        assert_eq!(preview["apply"], false);
+        assert_eq!(preview["counts"]["would_remove"], 1, "{preview}");
+        assert_eq!(preview["would_remove"][0]["path"], kept.as_str());
+        assert_eq!(preview["would_remove"][0]["vault_path"], overview.as_str());
+        assert_eq!(preview["would_remove"][0]["area"], "discarded");
+        assert_eq!(casework.files(), before, "a preview writes nothing");
+    }
+    let refused = casework.run(&["--read-only", "vault", "clean-conflicts", "--apply"], 2);
+    assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+    // The proposed area alone holds nothing.
+    let proposed = casework.run(
+        &["vault", "clean-conflicts", "--area", "proposed", "--apply"],
+        0,
+    );
+    assert_eq!(proposed["counts"]["removed"], 0);
+    assert_eq!(casework.files(), before);
+    let wrong = casework.run(&["vault", "clean-conflicts", "--area", "all"], 2);
+    assert_eq!(wrong["error"]["code"], "INVALID_INPUT");
+
+    // The preview's next step is the removal.
+    let preview = casework.run(&["vault", "clean-conflicts"], 0);
+    let next = argv(&preview);
+    assert!(next.ends_with(&[
+        "--apply".to_owned(),
+        "--format".to_owned(),
+        "json".to_owned()
+    ]));
+    let cleaned = casework.run_argv(&next, 0);
+    assert_eq!(cleaned["result"], "vault_conflicts_cleaned");
+    assert_eq!(cleaned["counts"]["removed"], 1, "{cleaned}");
+    assert!(!casework.root.join(&kept).exists());
+    assert!(!casework.root.join("local/conflicts/discarded").exists());
+    let mut expected = before.clone();
+    expected.remove(&PathBuf::from(&kept));
+    assert_eq!(
+        casework.files(),
+        expected,
+        "only the set-aside file is gone"
+    );
+    let status = casework.run(&["vault", "status"], 0);
+    assert_eq!(status["drift_count"], 0);
+    assert_eq!(argv(&cleaned)[3..5], ["vault", "status"]);
+}
+
+#[test]
+fn unrelease_returns_a_released_note_once_the_persons_file_is_moved() {
+    let casework = Casework::new();
+    let overview = casework.overview();
+    casework.edit(&overview, "\nthis is my note now\n");
+    let released = casework.run(
+        &[
+            "vault",
+            "reconcile",
+            &overview,
+            "--disposition",
+            "release-path",
+        ],
+        0,
+    );
+    let relocated = released["paths"][0]["relocated_to"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let mine = fs::read(casework.vault().join(&overview)).unwrap();
+    let before = casework.files();
+
+    // The person's file is still there: refused, with a repair that works.
+    let refused = casework.run(&["vault", "unrelease", &overview], 2);
+    assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(message.contains("still holds your file"), "{message}");
+    let repair: Vec<String> = refused["error"]["repair"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|part| part.as_str().unwrap().to_owned())
+        .collect();
+    let status = casework.run_argv(&repair, 0);
+    assert_eq!(status["released"][0]["path"], overview.as_str());
+    assert_eq!(casework.files(), before, "a refusal changes nothing");
+
+    fs::create_dir_all(casework.vault().join("Notes")).unwrap();
+    fs::rename(
+        casework.vault().join(&overview),
+        casework.vault().join("Notes/mine.md"),
+    )
+    .unwrap();
+    let before = casework.files();
+    for read_only in [false, true] {
+        let mut args = vec!["vault", "unrelease", overview.as_str(), "--dry-run"];
+        if read_only {
+            args.insert(0, "--read-only");
+        }
+        let preview = casework.run(&args, 0);
+        assert_eq!(preview["result"], "vault_unrelease_preview");
+        assert_eq!(preview["paths"][0]["path"], overview.as_str());
+        assert_eq!(preview["paths"][0]["relocated_from"], relocated.as_str());
+        assert_eq!(casework.files(), before, "a dry run writes nothing");
+    }
+    let refused = casework.run(&["--read-only", "vault", "unrelease", &overview], 2);
+    assert_eq!(refused["error"]["code"], "INVALID_INPUT");
+
+    let preview = casework.run(&["vault", "unrelease", &overview, "--dry-run"], 0);
+    let done = casework.run_argv(&argv(&preview), 0);
+    assert_eq!(done["result"], "vault_unreleased");
+    assert_eq!(done["clear"], true, "{done}");
+    let note = fs::read_to_string(casework.vault().join(&overview)).unwrap();
+    assert!(
+        note.contains(&format!("inv_id: \"{}\"", casework.case)),
+        "{note}"
+    );
+    assert!(!casework.vault().join(&relocated).exists());
+    assert_eq!(
+        fs::read(casework.vault().join("Notes/mine.md")).unwrap(),
+        mine
+    );
+    let status = casework.run(&["vault", "status"], 0);
+    assert_eq!(status["released_count"], 0, "{status}");
+    assert_eq!(status["drift_count"], 0);
+    // Returned once; a second return has nothing to do.
+    let again = casework.run(&["vault", "unrelease", &overview], 2);
+    let message = again["error"]["message"].as_str().unwrap();
+    assert!(message.contains("already owns"), "{message}");
+}
+
+#[test]
+fn help_teaches_clean_conflicts_and_unrelease_with_examples_and_the_next_step() {
+    let casework = Casework::new();
+    for (args, needles) in [
+        (
+            &["vault", "clean-conflicts", "--help"][..],
+            &[
+                "local/conflicts/discarded/",
+                "local/conflicts/proposed/",
+                "--apply",
+                "--area",
+                "Examples:",
+                "vault clean-conflicts --area discarded --apply",
+                "Next: investigation --workspace ./casework vault clean-conflicts --apply",
+            ][..],
+        ),
+        (
+            &["vault", "unrelease", "--help"],
+            &[
+                "release-path",
+                "--dry-run",
+                "Examples:",
+                "vault unrelease Cases/",
+                "Next: investigation --workspace ./casework vault status",
+            ],
+        ),
+        (
+            &["vault", "reconcile", "--help"],
+            &["vault unrelease", "vault clean-conflicts"],
+        ),
+        (&["vault", "--help"], &["unrelease", "clean-conflicts"]),
+    ] {
+        let help = casework.help(args);
+        for needle in needles {
+            assert!(help.contains(needle), "{args:?}: {needle}\n{help}");
+        }
+        assert!(!help.to_lowercase().contains("obsidian"), "{help}");
+    }
 }

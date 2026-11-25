@@ -171,6 +171,10 @@
 //!   Each file it moves there is recorded in the manifest as handed over
 //!   ([`manifest::HandedOver`]), so the manifest names every path the
 //!   renderer ever wrote.
+//!   `vault unrelease` ([`reconcile::unrelease_vault`]) returns a released
+//!   path once the person's file is gone from it. `vault clean-conflicts`
+//!   ([`set_aside`]) removes the bytes `discard` and `propose-change` set
+//!   aside, only while they still hash to the name they were kept under.
 //! - Existing-vault mode ([`projection`]): `[vault_policy] existing_vault`
 //!   and `managed_prefix` move the projection root from `vault/` to one
 //!   folder of a vault the person already has. Everything above applies
@@ -238,6 +242,7 @@ pub mod publish;
 pub mod reconcile;
 pub(crate) mod records;
 pub mod remove;
+pub mod set_aside;
 pub mod snapshot;
 pub mod start_here;
 pub mod status;

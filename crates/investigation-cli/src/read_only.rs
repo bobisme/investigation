@@ -135,11 +135,20 @@ pub(crate) const EFFECTS: &[(&str, Effect)] = &[
     ("vault reconcile", Effect::WriteUnlessFlag(&["dry_run"])),
     // Deletes generated vault files the manifest proves owned.
     ("vault remove", Effect::WriteUnlessFlag(&["dry_run"])),
+    // Preview by default; --apply deletes set-aside bytes under
+    // local/conflicts/{discarded,proposed}/ that still hash to their names.
+    ("vault clean-conflicts", Effect::ReadUnlessFlag(&["apply"])),
+    // Ends a release in the render manifest and renders; the path must be
+    // empty, so no file of the person's is touched.
+    ("vault unrelease", Effect::WriteUnlessFlag(&["dry_run"])),
     // `doctor bundle` requires --preview and writes no archive.
     // Reads investigation.toml and local/actor.toml; never writes or prints a secret.
     ("config list", Effect::Read),
     ("config get", Effect::Read),
     ("config path", Effect::Read),
+    // Rewrite investigation.toml for the one settable key.
+    ("config set", Effect::Write),
+    ("config unset", Effect::Write),
     ("doctor", Effect::Read),
     ("doctor bundle", Effect::Read),
     // Apply and remove change one file the user names outside any workspace,

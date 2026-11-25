@@ -40,7 +40,9 @@ render publishes the vault from the current verified snapshot. Files edited,
 moved or deleted outside the renderer are left as found and reported as drift;
 drift never fails a render. status and conflicts read the render record only
 and write nothing. reconcile resolves listed drifted paths with one explicit
-disposition. remove deletes the generated files, keeping edited ones.
+disposition; unrelease returns a path reconcile released once your file is
+gone from it; clean-conflicts removes the edits reconcile set aside (a preview
+unless --apply). remove deletes the generated files, keeping edited ones.
 snapshot-note captures a human note or board a record relies on, by hash;
 note-snapshots reports when the live file differs from the captured bytes.
 Nothing here opens a viewer.
@@ -75,6 +77,12 @@ pub(crate) enum VaultCommand {
     /// Delete the projection's generated files; edited and human-owned files stay.
     #[command(after_help = crate::vault_remove::AFTER_HELP)]
     Remove(crate::vault_remove::RemoveArgs),
+    /// Return paths released with reconcile release-path to the projection, once your file is gone.
+    #[command(after_help = crate::vault_unrelease::AFTER_HELP)]
+    Unrelease(crate::vault_unrelease::UnreleaseArgs),
+    /// Remove the edits reconcile set aside under local/conflicts/; a preview unless --apply.
+    #[command(after_help = crate::vault_clean::AFTER_HELP)]
+    CleanConflicts(crate::vault_clean::CleanArgs),
     /// Capture the exact bytes of a human note or board that records rely on; the file is only read.
     #[command(after_help = crate::vault_note_snapshot::SNAPSHOT_AFTER_HELP)]
     SnapshotNote(crate::vault_note_snapshot::SnapshotNoteArgs),
@@ -106,6 +114,8 @@ pub(crate) fn run(
             unreachable!("handled before the scope is selected")
         }
         VaultCommand::Remove(args) => crate::vault_remove::run(store.workspace(), &args),
+        VaultCommand::CleanConflicts(args) => crate::vault_clean::run(store.workspace(), &args),
+        VaultCommand::Unrelease(args) => crate::vault_unrelease::run(store, &args),
     }
 }
 
@@ -656,7 +666,9 @@ fn conflicts(workspace: &Workspace, scope: &Scope) -> Result<Output, Failure> {
             release-path; add --dry-run to see what it would do. No disposition infers \
             anything from the edited Markdown, and only discard, confirmed with \
             --discard-observed, removes observed bytes from the vault (they stay under \
-            local/conflicts/discarded/). Render first when the vault is stale, so the \
+            local/conflicts/discarded/ until vault clean-conflicts --apply removes them). \
+            A released path returns to the projection with vault unrelease once your file \
+            is gone from it. Render first when the vault is stale, so the \
             diagnosis is current. Files in Notes/, Boards/ and Inbox/ are yours; reconcile \
             only ever adds new files under Notes/Reconciled/.",
         "scope":scope.json(),

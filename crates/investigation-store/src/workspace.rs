@@ -450,6 +450,34 @@ impl Workspace {
         Ok(true)
     }
 
+    /// State, or with `None` remove, `[vault_policy] viewer_release`, the one
+    /// setting `config set` changes. The caller has checked the release
+    /// against the renderer's compatibility profile; the store keeps it as
+    /// text. Returns the release stated before, and whether the file
+    /// changed. Like [`Self::set_existing_vault`], the config is re-read and
+    /// replaced atomically under the commit lock, so a concurrent update is
+    /// not lost; nothing is written when the release is already the one
+    /// asked for. The rewritten file keeps every setting but not hand-written
+    /// comments.
+    pub fn set_viewer_release(
+        &mut self,
+        release: Option<&str>,
+    ) -> Result<(Option<String>, bool), WorkspaceError> {
+        let _lock = self.config_lock()?;
+        let config_path = self.root.join(CONFIG_FILE);
+        let mut config = self.read_config()?;
+        let before = config.vault_policy.viewer_release.clone();
+        if before.as_deref() == release {
+            self.config = config;
+            return Ok((before, false));
+        }
+        config.vault_policy.viewer_release = release.map(str::to_owned);
+        config.validate()?;
+        self.replace_config(&config_path, &config)?;
+        self.config = config;
+        Ok((before, true))
+    }
+
     /// `investigation.toml` as it is on disk now, parsed and validated. The
     /// settings this handle was opened with ([`Self::config`]) may be older:
     /// another process can change the file afterwards. A caller that must not

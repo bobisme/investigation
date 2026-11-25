@@ -1,7 +1,9 @@
 //! `vault reconcile`: each of the four dispositions leaves its path without
 //! drift, loses no observed bytes without a confirmed discard, never changes
 //! canonical state on its own, and refuses a path that changed since the
-//! render diagnosed it.
+//! render diagnosed it. `vault clean-conflicts` removes only the set-aside
+//! bytes it can identify, and `vault unrelease` returns a released path once
+//! the person's file is gone from it.
 
 use std::{
     fs,
@@ -14,9 +16,12 @@ use investigation_render::{
     VerifiedSnapshot, ViewPolicy, foreign_files,
     reconcile::{
         DISCARDED_DIR, Disposition, Handling, NOTES_FOLDER, PROPOSED_DIR, ReconcileReport,
-        ReconcileRequest, Role, preview, reconcile_vault,
+        ReconcileRequest, Role, UnreleaseReport, preview, preview_unrelease, reconcile_vault,
+        unrelease_vault,
     },
-    render_vault_with, vault_status,
+    render_vault_with,
+    set_aside::{self, Action, Area, Kept},
+    vault_status,
 };
 use investigation_store::{Store, Workspace, journal::hash_bytes};
 use serde_json::{Value, json};
@@ -618,4 +623,349 @@ fn a_manifest_that_both_owns_and_releases_a_path_is_rebuilt_conservatively() {
         status.manifest
     );
     assert!(status.released.is_empty());
+}
+
+/// A file's path under the workspace, by its bytes.
+fn find(root: &Path, under: &str, bytes: &[u8]) -> String {
+    files(&root.join(under))
+        .into_iter()
+        .find(|(_, found)| found == bytes)
+        .map(|(path, _)| format!("{under}/{path}"))
+        .unwrap_or_else(|| panic!("no file under {under} holds {bytes:?}"))
+}
+
+#[test]
+fn clean_conflicts_removes_only_the_set_aside_bytes_it_can_identify() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let root = fixture.root();
+    let (discarded, proposed, changed) = (fixture.note(0), fixture.note(1), fixture.note(2));
+    for (path, text) in [
+        (&discarded, "discard me\n"),
+        (&proposed, "proposed edit\n"),
+        (&changed, "discard me too\n"),
+    ] {
+        fs::write(vault.join(path), text).unwrap();
+    }
+    fixture.render();
+    fixture
+        .reconcile(Disposition::Discard, &[&discarded, &changed], true)
+        .unwrap();
+    fixture
+        .reconcile(Disposition::ProposeChange, &[&proposed], false)
+        .unwrap();
+    let kept_discard = find(&root, DISCARDED_DIR, b"discard me\n");
+    let kept_proposal = find(&root, PROPOSED_DIR, b"proposed edit\n");
+    // A kept file someone changed since, and entries reconcile never writes.
+    let edited_since = find(&root, DISCARDED_DIR, b"discard me too\n");
+    fs::write(root.join(&edited_since), b"changed in local/\n").unwrap();
+    let area = root.join(DISCARDED_DIR);
+    fs::write(area.join("README.txt"), b"mine\n").unwrap();
+    fs::create_dir_all(area.join("notes")).unwrap();
+    fs::write(area.join("notes/x.md"), b"mine too\n").unwrap();
+    let prefix = kept_discard
+        .strip_prefix(&format!("{DISCARDED_DIR}/"))
+        .unwrap()
+        .split('/')
+        .next()
+        .unwrap()
+        .to_owned();
+    std::os::unix::fs::symlink(
+        root.join("investigation.toml"),
+        area.join(&prefix).join("link.md"),
+    )
+    .unwrap();
+    // A withheld generated version, which drift records name.
+    let withheld = root.join("local/conflicts/gen_withheld/Cases/x.md");
+    fs::create_dir_all(withheld.parent().unwrap()).unwrap();
+    fs::write(&withheld, b"withheld\n").unwrap();
+    let heads = fixture.heads();
+    let manifest = fs::read(root.join("local/render-manifest.json")).unwrap();
+    let vault_before = files(&vault);
+    let before = files(&root);
+
+    let previewed = set_aside::preview(fixture.store.workspace(), &Area::ALL).unwrap();
+    assert_eq!(files(&root), before, "a preview writes nothing");
+    let action = |report: &set_aside::CleanReport, path: &str| {
+        report
+            .entries
+            .iter()
+            .find(|entry| entry.path == path)
+            .unwrap_or_else(|| panic!("{path} is not listed: {report:?}"))
+            .action
+    };
+    assert_eq!(action(&previewed, &kept_discard), Action::WouldRemove);
+    assert_eq!(action(&previewed, &kept_proposal), Action::WouldRemove);
+    assert_eq!(
+        action(&previewed, &edited_since),
+        Action::Kept(Kept::BytesDiffer)
+    );
+    assert_eq!(
+        action(&previewed, &format!("{DISCARDED_DIR}/README.txt")),
+        Action::Kept(Kept::UnexpectedEntry)
+    );
+    assert_eq!(
+        action(&previewed, &format!("{DISCARDED_DIR}/notes")),
+        Action::Kept(Kept::UnexpectedEntry)
+    );
+    assert_eq!(
+        action(&previewed, &format!("{DISCARDED_DIR}/{prefix}/link.md")),
+        Action::Kept(Kept::NotARegularFile)
+    );
+    assert!(
+        previewed
+            .entries
+            .iter()
+            .all(|entry| !entry.path.contains("gen_withheld")),
+        "withheld versions are not looked at"
+    );
+    let entry = previewed
+        .entries
+        .iter()
+        .find(|entry| entry.path == kept_discard)
+        .unwrap();
+    assert_eq!(entry.vault_path.as_deref(), Some(discarded.as_str()));
+    assert_eq!(entry.area, Area::Discarded);
+
+    // One area at a time.
+    let done = set_aside::clean(fixture.store.workspace(), &[Area::Proposed]).unwrap();
+    assert_eq!(action(&done, &kept_proposal), Action::Removed);
+    assert!(!root.join(&kept_proposal).exists());
+    assert!(!root.join(PROPOSED_DIR).exists(), "empty folders go");
+    assert!(root.join(&kept_discard).exists());
+
+    let done = set_aside::clean(fixture.store.workspace(), &Area::ALL).unwrap();
+    assert_eq!(action(&done, &kept_discard), Action::Removed);
+    let mut expected = before.clone();
+    expected.retain(|(path, _)| path != &kept_discard && path != &kept_proposal);
+    let mut after = files(&root);
+    after.retain(|(path, _)| !path.ends_with("render.lock"));
+    expected.retain(|(path, _)| !path.ends_with("render.lock"));
+    assert_eq!(after, expected, "only the identified files are gone");
+    assert!(
+        !root
+            .join(DISCARDED_DIR)
+            .join(
+                kept_discard
+                    .strip_prefix(&format!("{DISCARDED_DIR}/"))
+                    .unwrap()
+            )
+            .parent()
+            .unwrap()
+            .exists(),
+        "the folders it emptied are removed"
+    );
+    assert!(fs::symlink_metadata(area.join(&prefix).join("link.md")).is_ok());
+    assert_eq!(fs::read(&withheld).unwrap(), b"withheld\n");
+    assert_eq!(files(&vault), vault_before, "the vault is untouched");
+    assert_eq!(
+        fs::read(root.join("local/render-manifest.json")).unwrap(),
+        manifest
+    );
+    assert_eq!(fixture.heads(), heads, "the journal is unchanged");
+
+    // Nothing left to identify: cleaning again removes nothing.
+    let again = set_aside::clean(fixture.store.workspace(), &Area::ALL).unwrap();
+    assert_eq!(again.count(|action| *action == Action::Removed), 0);
+}
+
+impl Fixture {
+    fn unrelease(&mut self, paths: &[&str]) -> Result<UnreleaseReport, RenderError> {
+        let paths: Vec<String> = paths.iter().map(|path| (*path).to_owned()).collect();
+        unrelease_vault(
+            &mut self.store,
+            &VaultRenderer,
+            &ViewPolicy::default(),
+            &paths,
+            &mut |_| {},
+        )
+    }
+
+    fn relocated(&self, index: usize, n: usize) -> String {
+        format!(
+            "Cases/{}/Questions/{}-{n}.md",
+            self.case_id, self.questions[index]
+        )
+    }
+
+    /// Edit `path`, render, and release it.
+    fn release(&mut self, path: &str, text: &str) {
+        fs::write(self.vault().join(path), text).unwrap();
+        self.render();
+        self.reconcile(Disposition::ReleasePath, &[path], false)
+            .unwrap();
+    }
+}
+
+/// Whether `text` links to the note at `path`.
+fn links_to(text: &str, path: &str) -> bool {
+    let target = format!("[[{}", path.strip_suffix(".md").unwrap());
+    text.match_indices(&target).any(|(at, _)| {
+        text[at + target.len()..]
+            .chars()
+            .next()
+            .is_some_and(|c| matches!(c, '|' | '\\' | '#' | ']'))
+    })
+}
+
+#[test]
+fn unrelease_returns_a_released_path_once_the_persons_file_is_gone() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let path = fixture.note(0);
+    let relocated = fixture.relocated(0, 2);
+    fixture.release(&path, "my own note now\n");
+    let heads = fixture.heads();
+    let before = files(&fixture.root());
+
+    // The person's file is still there: refused, and nothing changes.
+    for refused in [
+        preview_unrelease(fixture.store.workspace(), std::slice::from_ref(&path)).unwrap_err(),
+        fixture.unrelease(&[&path]).unwrap_err(),
+    ] {
+        assert!(
+            refused.to_string().contains("still holds your file"),
+            "{refused}"
+        );
+        assert_eq!(
+            refused.to_failure().error.code,
+            investigation_core::wire::ErrorCode::InvalidInput
+        );
+    }
+    assert_eq!(files(&fixture.root()), before, "a refusal changes nothing");
+
+    // Owned or never released: refused.
+    let owned = fixture.note(1);
+    for (paths, expected) in [
+        (vec![owned.as_str()], "already owns"),
+        (vec![relocated.as_str()], "already owns"),
+        (vec!["Notes/mine.md"], "was not released"),
+    ] {
+        let refused = fixture.unrelease(&paths).unwrap_err();
+        assert!(refused.to_string().contains(expected), "{refused}");
+    }
+    assert_eq!(files(&fixture.root()), before);
+
+    // The person moves their file into Notes/; the path is empty.
+    fs::create_dir_all(vault.join("Notes")).unwrap();
+    fs::rename(vault.join(&path), vault.join("Notes/mine.md")).unwrap();
+    let before = files(&fixture.root());
+    let twice = fixture.unrelease(&[&path, &path]).unwrap_err();
+    assert!(twice.to_string().contains("listed twice"), "{twice}");
+    let previewed =
+        preview_unrelease(fixture.store.workspace(), std::slice::from_ref(&path)).unwrap();
+    assert_eq!(previewed[0].path.as_str(), path);
+    assert_eq!(previewed[0].relocated_from.as_str(), relocated);
+    assert_eq!(previewed[0].projects, Some(fixture.questions[0]));
+    assert_eq!(files(&fixture.root()), before, "a preview writes nothing");
+
+    let done = fixture.unrelease(&[&path]).unwrap();
+    assert_eq!(done.returned, previewed);
+    assert!(done.remaining().is_empty(), "{:?}", done.remaining());
+    assert_eq!(fixture.read(&path), fixture.planned_text(&path));
+    assert!(
+        !vault.join(&relocated).exists(),
+        "the relocated note is retired"
+    );
+    assert_eq!(
+        fs::read(vault.join("Notes/mine.md")).unwrap(),
+        b"my own note now\n"
+    );
+    let overview = fs::read_to_string(vault.join(fixture.overview())).unwrap();
+    assert!(links_to(&overview, &path), "{overview}");
+    assert!(!links_to(&overview, &relocated), "{overview}");
+    let status = vault_status(fixture.store.workspace()).unwrap();
+    assert!(status.released.is_empty());
+    assert!(fixture.drifted().is_empty());
+    assert_eq!(fixture.heads(), heads, "the journal is unchanged");
+
+    // The path is owned again: a later render keeps it current, and a
+    // release undoes the return.
+    fixture.render_in(PublishMode::Full);
+    assert_eq!(fixture.read(&path), fixture.planned_text(&path));
+    fixture.release(&path, "mine again\n");
+    assert_eq!(fs::read(vault.join(&path)).unwrap(), b"mine again\n");
+    assert!(vault.join(&relocated).exists());
+    let refused = fixture
+        .reconcile(Disposition::ReleasePath, &[&path], false)
+        .unwrap_err();
+    assert!(refused.to_string().contains("vault unrelease"), "{refused}");
+}
+
+#[test]
+fn unrelease_undoes_a_chain_of_releases_one_step_at_a_time() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let (first, second, third) = (
+        fixture.note(0),
+        fixture.relocated(0, 2),
+        fixture.relocated(0, 3),
+    );
+    fixture.release(&first, "first\n");
+    fixture.release(&second, "second\n");
+    assert!(vault.join(&third).exists());
+
+    // Return the second path while the first stays released: the record
+    // moves back to it, and the third is retired.
+    fs::remove_file(vault.join(&second)).unwrap();
+    let done = fixture.unrelease(&[&second]).unwrap();
+    assert_eq!(done.returned[0].relocated_from.as_str(), third);
+    assert!(done.remaining().is_empty());
+    assert_eq!(fs::read(vault.join(&first)).unwrap(), b"first\n");
+    assert!(!vault.join(&third).exists());
+    let note = fs::read_to_string(vault.join(&second)).unwrap();
+    assert!(
+        note.contains(&format!("inv_id: \"{}\"", fixture.questions[0])),
+        "{note}"
+    );
+    let overview = fs::read_to_string(vault.join(fixture.overview())).unwrap();
+    assert!(links_to(&overview, &second), "{overview}");
+    let status = vault_status(fixture.store.workspace()).unwrap();
+    assert_eq!(status.released.len(), 1);
+    assert_eq!(status.released[0].relocated_to.as_str(), second);
+
+    // Then the first: the record is home, and nothing is released.
+    fs::remove_file(vault.join(&first)).unwrap();
+    let done = fixture.unrelease(&[&first]).unwrap();
+    assert!(done.remaining().is_empty());
+    assert_eq!(fixture.read(&first), fixture.planned_text(&first));
+    assert!(!vault.join(&second).exists());
+    assert!(
+        vault_status(fixture.store.workspace())
+            .unwrap()
+            .released
+            .is_empty()
+    );
+    assert!(fixture.drifted().is_empty());
+}
+
+#[test]
+fn an_edited_relocated_note_is_kept_as_drift_when_its_path_is_returned() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let (path, relocated) = (fixture.note(0), fixture.relocated(0, 2));
+    fixture.release(&path, "mine\n");
+    fs::write(vault.join(&relocated), b"edited the relocated note\n").unwrap();
+    fixture.render();
+    fs::remove_file(vault.join(&path)).unwrap();
+
+    let done = fixture.unrelease(&[&path]).unwrap();
+    assert_eq!(fixture.read(&path), fixture.planned_text(&path));
+    assert_eq!(
+        fs::read(vault.join(&relocated)).unwrap(),
+        b"edited the relocated note\n",
+        "an edit is never lost"
+    );
+    let remaining: Vec<&str> = done
+        .remaining()
+        .iter()
+        .map(|drift| drift.path.as_str())
+        .collect();
+    assert_eq!(remaining, [relocated.as_str()]);
+    // It reconciles like any drift.
+    fixture
+        .reconcile(Disposition::PreserveAsNote, &[&relocated], false)
+        .unwrap();
+    assert!(fixture.drifted().is_empty());
+    assert!(!vault.join(&relocated).exists());
 }

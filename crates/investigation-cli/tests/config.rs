@@ -1,4 +1,6 @@
-//! `config list|get|path`: effective settings with their sources, read-only.
+//! `config list|get|path`: effective settings with their sources, read-only;
+//! `config set|unset`: the one settable key, checked against the bundled
+//! compatibility profile.
 
 use std::{fs, path::Path, process::Command};
 
@@ -254,4 +256,200 @@ fn path_prints_the_settings_file_and_the_command_is_read_only() {
         fs::read(directory.path().join("casework/investigation.toml")).unwrap(),
         before
     );
+}
+
+fn config(directory: &Path, args: &[&str]) -> (i32, Value, String) {
+    let mut argv = vec!["--workspace", "casework"];
+    argv.extend_from_slice(args);
+    argv.extend(["--format", "json"]);
+    run(directory, None, &argv)
+}
+
+/// Vault files under `Cases/` with this extension.
+fn vault_files(directory: &Path, extension: &str) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut pending = vec![directory.join("casework/vault/Cases")];
+    while let Some(folder) = pending.pop() {
+        for entry in fs::read_dir(&folder).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                pending.push(path);
+            } else if path.extension().is_some_and(|found| found == extension) {
+                found.push(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn set_states_a_supported_release_and_the_next_render_follows_it() {
+    let directory = workspace(&[]);
+    let (code, case, _) = run(
+        directory.path(),
+        None,
+        &[
+            "--workspace",
+            "casework",
+            "--actor",
+            "agent:config-test",
+            "case",
+            "new",
+            "Request latency",
+            "--format",
+            "json",
+        ],
+    );
+    assert_eq!(code, 0, "{case}");
+    let (code, render, _) = config(directory.path(), &["vault", "render"]);
+    assert_eq!(code, 0, "{render}");
+    assert!(vault_files(directory.path(), "base").is_empty());
+
+    let (code, set, _) = config(
+        directory.path(),
+        &["config", "set", "vault_policy.viewer_release", "1.15.1"],
+    );
+    assert_eq!(code, 0, "{set}");
+    assert_eq!(set["result"], "config_set");
+    assert_eq!(set["changed"], true);
+    assert!(set["previous"].is_null());
+    assert_eq!(set["setting"]["value"], "1.15.1");
+    assert_eq!(set["setting"]["origin"], "workspace_file");
+    assert_eq!(set["next"][0]["argv"][3], "vault");
+    let (_, got, _) = config(
+        directory.path(),
+        &["config", "get", "vault_policy.viewer_release"],
+    );
+    assert_eq!(got["setting"]["value"], "1.15.1");
+    assert_eq!(got["setting"]["source"], "investigation.toml");
+
+    // The same value again writes nothing.
+    let toml = directory.path().join("casework/investigation.toml");
+    let before = fs::read(&toml).unwrap();
+    let (code, again, _) = config(
+        directory.path(),
+        &["config", "set", "vault_policy.viewer_release", "1.15.1"],
+    );
+    assert_eq!(code, 0, "{again}");
+    assert_eq!(again["changed"], false);
+    assert_eq!(fs::read(&toml).unwrap(), before);
+
+    // The render now writes the optional view files the release allows.
+    let (code, render, _) = config(directory.path(), &["vault", "render"]);
+    assert_eq!(code, 0, "{render}");
+    assert!(!vault_files(directory.path(), "base").is_empty());
+
+    let (code, unset, _) = config(
+        directory.path(),
+        &["config", "unset", "vault_policy.viewer_release"],
+    );
+    assert_eq!(code, 0, "{unset}");
+    assert_eq!(unset["result"], "config_unset");
+    assert_eq!(unset["changed"], true);
+    assert_eq!(unset["previous"], "1.15.1");
+    assert_eq!(unset["setting"]["origin"], "default");
+    assert!(
+        !fs::read_to_string(&toml)
+            .unwrap()
+            .contains("viewer_release")
+    );
+    let (code, render, _) = config(directory.path(), &["vault", "render"]);
+    assert_eq!(code, 0, "{render}");
+    assert!(vault_files(directory.path(), "base").is_empty());
+    let (code, unset, _) = config(
+        directory.path(),
+        &["config", "unset", "vault_policy.viewer_release"],
+    );
+    assert_eq!(code, 0, "{unset}");
+    assert_eq!(unset["changed"], false);
+}
+
+#[test]
+fn set_refuses_a_release_the_profile_does_not_support_and_keys_it_does_not_change() {
+    let directory = workspace(&[]);
+    let toml = directory.path().join("casework/investigation.toml");
+    let before = fs::read(&toml).unwrap();
+    for value in ["2.0", "1.0.0", "latest", " 1.15.1", "1.15.1-beta", ""] {
+        let (code, failure, _) = config(
+            directory.path(),
+            &["config", "set", "vault_policy.viewer_release", value],
+        );
+        assert_eq!(code, 2, "{value:?}: {failure}");
+        assert_eq!(failure["error"]["code"], "INVALID_INPUT");
+        assert_eq!(failure["error"]["path"], "/value");
+        assert_eq!(failure["error"]["expected"]["max"], "1.15.1");
+        assert_eq!(fs::read(&toml).unwrap(), before, "{value:?} wrote");
+    }
+    // The repair is a command that works.
+    let (_, failure, _) = config(
+        directory.path(),
+        &["config", "set", "vault_policy.viewer_release", "9.9"],
+    );
+    let repair: Vec<String> = failure["error"]["repair"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap().to_owned())
+        .collect();
+    assert_eq!(
+        &repair[3..6],
+        ["config", "set", "vault_policy.viewer_release"]
+    );
+    let repair: Vec<&str> = repair[1..].iter().map(String::as_str).collect();
+    let (code, fixed, _) = run(directory.path(), None, &repair);
+    assert_eq!(code, 0, "{fixed}");
+    fs::write(&toml, &before).unwrap();
+
+    for (key, repaired) in [
+        ("actor", "list"),
+        ("import_roots", "list"),
+        ("vault_policy.enabled", "list"),
+        ("vault_policy.existing_vault", "list"),
+        ("viewer-release", "set"),
+    ] {
+        let (code, failure, _) = config(directory.path(), &["config", "set", key, "x"]);
+        assert_eq!(code, 2, "{key}: {failure}");
+        assert_eq!(failure["error"]["path"], "/key");
+        assert_eq!(
+            failure["error"]["expected"][0],
+            "vault_policy.viewer_release"
+        );
+        assert_eq!(failure["error"]["repair"]["argv"][4], repaired, "{failure}");
+        let (code, failure, _) = config(directory.path(), &["config", "unset", key]);
+        assert_eq!(code, 2, "{key}: {failure}");
+        assert_eq!(fs::read(&toml).unwrap(), before, "{key} wrote");
+    }
+    let (_, failure, _) = config(directory.path(), &["config", "set", "actor", "x"]);
+    let message = failure["error"]["message"].as_str().unwrap();
+    assert!(message.contains("init PATH --actor"), "{message}");
+}
+
+#[test]
+fn set_and_unset_are_writes_and_teach_themselves() {
+    let directory = workspace(&[]);
+    let toml = directory.path().join("casework/investigation.toml");
+    let before = fs::read(&toml).unwrap();
+    for args in [
+        &["config", "set", "vault_policy.viewer_release", "1.15.1"][..],
+        &["config", "unset", "vault_policy.viewer_release"],
+    ] {
+        let mut argv = vec!["--read-only"];
+        argv.extend_from_slice(args);
+        let (code, failure, _) = config(directory.path(), &argv);
+        assert_ne!(code, 0, "{failure}");
+        assert_eq!(fs::read(&toml).unwrap(), before);
+    }
+    for (command, example) in [
+        ("set", "config set vault_policy.viewer_release 1.15.1"),
+        ("unset", "config unset vault_policy.viewer_release"),
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_investigation"))
+            .args(["config", command, "--help"])
+            .output()
+            .unwrap();
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains(example), "{help}");
+        assert!(help.contains("Next: "), "{help}");
+        assert!(!help.to_lowercase().contains("obsidian"), "{help}");
+    }
 }

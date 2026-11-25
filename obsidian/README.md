@@ -100,8 +100,17 @@ When the gate has passed on a release, record that release in `compatibility-pro
 The renderer can plan one native Base beside each static table view, at
 `Cases/<case-id>/Views/<view>.base`. The comparison matrix is the exception: it
 stays a static table in v1 (plan §12.5). Bases are optional, and they are off
-by default. To turn them on, state the viewer release in the workspace's
-`investigation.toml`:
+by default. To turn them on, state the viewer release with `config set`,
+which refuses a release outside the profile's supported range and writes
+nothing then; `config unset` turns them off again. The next render adds or
+removes the files:
+
+```sh
+investigation --workspace ./casework config set vault_policy.viewer_release 1.15.1 --format json
+investigation --workspace ./casework vault render --format json
+```
+
+The command writes this key of the workspace's `investigation.toml`:
 
 ```toml
 [vault_policy]

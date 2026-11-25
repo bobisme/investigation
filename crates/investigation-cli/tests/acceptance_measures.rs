@@ -381,6 +381,22 @@ const NOT_CASE_TARGETED: &[(&str, &str)] = &[
         "deletes generated vault files and records nothing",
     ),
     (
+        "vault unrelease",
+        "ends a release in the render manifest and renders the vault; records nothing",
+    ),
+    (
+        "vault clean-conflicts",
+        "--apply deletes set-aside edits under local/conflicts/, machine-local bookkeeping; records nothing",
+    ),
+    (
+        "config set",
+        "rewrites vault_policy.viewer_release in investigation.toml; records nothing",
+    ),
+    (
+        "config unset",
+        "removes vault_policy.viewer_release from investigation.toml; records nothing",
+    ),
+    (
         "export",
         "writes files outside canonical state and records nothing",
     ),

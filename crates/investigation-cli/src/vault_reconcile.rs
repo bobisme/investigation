@@ -61,11 +61,12 @@ Nothing is inferred from the edited Markdown, and no observed bytes are lost:
                     (refused if the case changed since), keep the observed
                     bytes in local/conflicts/proposed/, then regenerate the path
   discard           needs --discard-observed; keep the observed bytes in
-                    local/conflicts/discarded/ until you remove them, then
-                    regenerate the path
+                    local/conflicts/discarded/ until vault clean-conflicts
+                    --apply removes them, then regenerate the path
   release-path      the file becomes yours where it is and is never written
                     again; the record is projected at <name>-2.md beside it
-                    and generated links follow it
+                    and generated links follow it. vault unrelease returns
+                    the path once you move your file away
 
 List paths explicitly; there is no \"all\". --dry-run prints the plan and
 writes nothing. Works with the viewer closed.

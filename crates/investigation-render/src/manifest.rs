@@ -73,7 +73,9 @@
 //! is never written, replaced, removed, adopted or reported as unknown
 //! again. The record it projected is published at `relocated_to` instead,
 //! and every generated link to the old path points there
-//! ([`crate::reconcile`]). A lost manifest forgets the release; the old path
+//! ([`crate::reconcile`]). `vault unrelease` ends a release once the
+//! person's file is gone from the path, and the projection returns there
+//! ([`Manifest::unrelease`]). A lost manifest forgets the release; the old path
 //! then holds a file nobody owns, which a render refuses as foreign and never
 //! overwrites.
 //!
@@ -489,6 +491,26 @@ impl Manifest {
             }
         }
         self.released.insert(released.path.clone(), released);
+        self
+    }
+
+    /// The same record with the released `path` returned to the renderer
+    /// (`vault unrelease`): no longer released, not owned, so the next
+    /// render creates it, without replacing, when its record is planned
+    /// there. It is the inverse of [`Self::release`]: a release that
+    /// relocated to the same place as this one (it was released after this
+    /// path's projection moved to it, or before) now relocates to `path`,
+    /// where the projection is published again, so links never point at a
+    /// path nothing is planned at.
+    pub(crate) fn unrelease(mut self, path: &PlanPath) -> Self {
+        let Some(released) = self.released.remove(path) else {
+            return self;
+        };
+        for other in self.released.values_mut() {
+            if other.relocated_to == released.relocated_to {
+                other.relocated_to = path.clone();
+            }
+        }
         self
     }
 
