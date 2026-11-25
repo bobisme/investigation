@@ -5,7 +5,9 @@
 //! No viewer is needed or reachable: the adapter runs with only the fake (or
 //! nothing) on PATH. A Base row the viewer does not list, an unresolved link
 //! in a generated note and a Canvas the viewer does not know each fail their
-//! check; an absent CLI skips with exit 0; the fake's argv log shows the
+//! check; a stale first unresolved-link answer passes only after a reload
+//! and two agreeing answers (bn-17wk), and one that never settles fails; an
+//! absent CLI skips with exit 0; the fake's argv log shows the
 //! exact vault and paths; and removing each check from a copy of the adapter
 //! makes the case that relies on it lose its outcome. The real-viewer run is
 //! `just obsidian-ui`, never part of `just check`.
@@ -35,7 +37,7 @@ fn the_viewer_gate_adapter_catches_each_fault_of_a_fake_cli() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(
-        stdout.contains("cases passed; 6 check removals each fail a case."),
+        stdout.contains("cases passed; 8 check removals each fail a case."),
         "{stdout}"
     );
 }

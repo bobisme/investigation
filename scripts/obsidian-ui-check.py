@@ -22,9 +22,9 @@ is exactly this folder; no community plugin is enabled; `investigation obsidian 
 --apply) changes only its two app.json keys, and after a reload the viewer writes new links as
 vault-root wikilinks; the viewer lists every prepared file; one note of each generated type
 opens; aliases and excerpt anchors resolve; each Base's rows equal its static table; the probe
-Bases confirm `!=`, `> 0` and that the frontier filter's and-ordering does not matter; no
-unresolved link starts in an owned file (and the owner's planted one is reported); each Canvas
-opens and its file nodes resolve.
+Bases confirm `!=`, `> 0` and that the frontier filter's and-ordering does not matter; after a
+window reload and once two consecutive answers agree, no unresolved link starts in an owned file
+(and the owner's planted one is reported); each Canvas opens and its file nodes resolve.
 
 `timings` measures the viewer side of the vault load test (docs/vault-load.md) against a vault
 kept by `just load-test DIR --cases 130`: CLI round trip, window reload until every file is
@@ -481,7 +481,10 @@ def unresolved_pairs(text):
             if key in item:
                 found = item[key]
                 if isinstance(found, str):
-                    return [found]
+                    # Obsidian 1.15.1 prints one string here (seen with one source); split a
+                    # joined list so an owned source is never hidden behind another.
+                    return [piece.strip() for piece in re.split(r",\s+|\n", found)
+                            if piece.strip()]
                 if isinstance(found, dict):
                     return list(found)
                 if isinstance(found, list):
@@ -532,13 +535,16 @@ class Report:
         return any(check["status"] == "fail" for check in self.value["checks"])
 
 
-def settle(attempt, deadline, interval=1.0):
+POLL_INTERVAL = 1.0
+
+
+def settle(attempt, deadline, interval=None):
     """Repeat `attempt` until it returns a passing result or the deadline passes."""
     while True:
         result = attempt()
         if result[0] or time.monotonic() >= deadline:
             return result
-        time.sleep(interval)
+        time.sleep(POLL_INTERVAL if interval is None else interval)
 
 
 def run(args):
@@ -582,6 +588,8 @@ def run_checks(args, directory, report):
     if unknown:
         raise Blocked(f"unknown check group(s) {sorted(unknown)}; known: {list(CHECK_GROUPS)}")
     binary = require_binary(args.bin)
+    global POLL_INTERVAL
+    POLL_INTERVAL = args.poll_interval
     deadline = lambda: time.monotonic() + args.settle  # noqa: E731
 
     argv_prefix = find_cli(args.obsidian, args.obsidian_arg)
@@ -631,15 +639,15 @@ def run_checks(args, directory, report):
     owned_notes = sorted(path for path in expected["files"]
                          if path.endswith(".md") and is_owned(path, prefixes))
     if "notes" in groups:
-        check_notes(cli, report, vault, owned_notes, prefixes, args.no_eval)
+        check_notes(cli, report, vault, owned_notes, prefixes, args.no_eval, deadline())
     if "anchors" in groups:
-        check_anchors(cli, report, vault, owned_notes, args.no_eval)
+        check_anchors(cli, report, vault, owned_notes, args.no_eval, deadline())
     if "bases" in groups:
         check_bases(cli, report, vault, expected, prefixes, deadline())
     if "probes" in groups:
         check_probes(cli, report, deadline())
     if "unresolved" in groups:
-        check_unresolved(cli, report, prefixes, deadline())
+        check_unresolved(cli, report, prefixes, args.cache_settle, args.cache_reloads)
     if "canvas" in groups:
         check_canvas(cli, report, vault, expected, prefixes, args.no_eval)
     if "errors" in groups:
@@ -760,7 +768,7 @@ def check_files(cli, report, expected, deadline):
                  missing=missing[:50])
 
 
-def check_notes(cli, report, vault, owned_notes, prefixes, no_eval):
+def check_notes(cli, report, vault, owned_notes, prefixes, no_eval, deadline):
     by_type = {}
     for path in owned_notes:
         relative = next(path[len(prefix) + 1:] for prefix in prefixes
@@ -786,8 +794,12 @@ def check_notes(cli, report, vault, owned_notes, prefixes, no_eval):
         titles = frontmatter((vault / path).read_text(encoding="utf-8")).get("aliases") or []
         if titles:
             aliases_checked += 1
-            ok, text, _ = cli.call("aliases", f"path={path}")
-            if not ok or any(title not in text for title in titles):
+            def attempt():
+                ok, text, _ = cli.call("aliases", f"path={path}")
+                return ok and all(title in text for title in titles), text
+
+            ok, text = settle(attempt, deadline)
+            if not ok:
                 alias_failures.append({"path": path, "aliases": titles, "output": text[:300]})
     report.check("notes.open", not failures, f"opened one note of each of {len(by_type)} "
                  "generated note types" if not failures else
@@ -798,7 +810,7 @@ def check_notes(cli, report, vault, owned_notes, prefixes, no_eval):
                  failures=alias_failures)
 
 
-def check_anchors(cli, report, vault, owned_notes, no_eval):
+def check_anchors(cli, report, vault, owned_notes, no_eval, deadline):
     targets = {}
     for path in owned_notes:
         for target, subpath in wikilinks((vault / path).read_text(encoding="utf-8")):
@@ -809,9 +821,14 @@ def check_anchors(cli, report, vault, owned_notes, no_eval):
         return
     failures = []
     for target, wanted in sorted(targets.items()):
-        _, blocks = cli.eval_json(JS_BLOCKS % json.dumps(target))
-        missing = sorted(wanted - set(blocks or []))
-        if not isinstance(blocks, list) or missing:
+        def attempt():
+            _, blocks = cli.eval_json(JS_BLOCKS % json.dumps(target))
+            listed = isinstance(blocks, list)
+            return listed and wanted <= set(blocks), blocks
+
+        ok, blocks = settle(attempt, deadline)
+        missing = sorted(wanted - set(blocks if isinstance(blocks, list) else []))
+        if not ok:
             failures.append({"path": target, "missing": missing, "blocks": blocks})
     report.check("links.anchors", bool(targets) and not failures,
                  f"every linked excerpt anchor is in the viewer's block cache "
@@ -882,28 +899,89 @@ def check_probes(cli, report, deadline):
                  "present on every note they reach)", rows=observed.get("missing-property"))
 
 
-def check_unresolved(cli, report, prefixes, deadline):
-    def attempt():
-        ok, text, _ = cli.call("unresolved", "verbose", "format=json")
-        pairs = unresolved_pairs(text) if ok else None
-        control = pairs is not None and any(link == OWNER_LINK or link.startswith(OWNER_LINK)
-                                            for link, _ in pairs)
-        return control, pairs, text
+def unresolved_answer(cli):
+    ok, text, _ = cli.call("unresolved", "verbose", "format=json")
+    pairs = unresolved_pairs(text) if ok else None
+    key = None if pairs is None else json.dumps(sorted([link, sorted(sources)]
+                                                       for link, sources in pairs))
+    return pairs, key, text
 
-    control, pairs, text = settle(attempt, deadline)
-    if pairs is None:
-        report.check("links.unresolved", False, "the unresolved-link answer was not understood",
-                     output=text[:1000])
-        return
-    owned = [{"link": link, "sources": [s for s in sources if is_owned(s, prefixes)]}
-             for link, sources in pairs
-             if any(is_owned(s, prefixes) for s in sources) or not sources]
+
+def settle_cache(cli, budget):
+    """Reload the window, then poll `unresolved` until two consecutive answers agree.
+
+    bn-17wk: on a freshly opened vault the viewer listed every file node of one Canvas as
+    unresolved for a minute, through an earlier reload; a reload once the vault was indexed
+    cleared it within 10 s. So the reload comes right before the check, and the answer
+    counts only once it repeats.
+    """
+    started = time.monotonic()
+    deadline = started + budget
+    reloaded = cli.call("reload")[0]
+    back = None
+    while time.monotonic() < deadline:
+        if cli.call("vault", "info=path")[0]:
+            back = round(time.monotonic() - started, 3)
+            break
+        time.sleep(POLL_INTERVAL)
+    answers, pairs, text = [], None, ""
+    while True:
+        pairs, key, text = unresolved_answer(cli)
+        answers.append(key)
+        settled = len(answers) >= 2 and key is not None and answers[-1] == answers[-2]
+        if settled or time.monotonic() >= deadline:
+            break
+        time.sleep(POLL_INTERVAL)
+    return {"reloaded": reloaded, "window_back_s": back, "polls": len(answers),
+            "distinct_answers": len(set(answers)), "settled": settled,
+            "settle_s": round(time.monotonic() - started, 3)}, pairs, text
+
+
+def check_unresolved(cli, report, prefixes, budget, max_reloads):
+    rounds = []
+    owned, pairs = [], None
+    for _ in range(max(1, max_reloads)):
+        info, pairs, text = settle_cache(cli, budget)
+        rounds.append(info)
+        settle_seconds = round(sum(r["settle_s"] for r in rounds), 3)
+        if not info["settled"]:
+            report.check("links.unresolved", False,
+                         f"the unresolved-link answer did not settle within {budget:g} s after a "
+                         f"reload ({info['polls']} answers, {info['distinct_answers']} distinct, "
+                         "the last two differ)", settle=rounds, settle_seconds=settle_seconds,
+                         output=text[:1000])
+            return
+        if pairs is None:
+            report.check("links.unresolved", False, "the unresolved-link answer was not "
+                         "understood", settle=rounds, output=text[:1000])
+            return
+        owned = [{"link": link, "sources": [s for s in sources if is_owned(s, prefixes)]}
+                 for link, sources in pairs
+                 if any(is_owned(s, prefixes) for s in sources) or not sources]
+        if not owned:
+            break
+        # A link whose target the viewer itself lists is a cache that has not caught up, not a
+        # broken link: reload once more (bounded). A missing target is final.
+        ok, listed_text, _ = cli.call("files")
+        listed = set(lines(listed_text)) if ok else set()
+        info["owned_with_listed_targets"] = sum(
+            1 for entry in owned if entry["link"] in listed or entry["link"] + ".md" in listed)
+        if not info["owned_with_listed_targets"]:
+            break
+    settle_seconds = round(sum(r["settle_s"] for r in rounds), 3)
+    control = any(link == OWNER_LINK or link.startswith(OWNER_LINK) for link, _ in pairs)
+    stale = rounds[-1].get("owned_with_listed_targets", 0)
     report.check("links.unresolved", control and not owned,
                  "no unresolved link starts in an owned file; the owner note's planted link is "
-                 "reported" if control and not owned else
+                 f"reported (settled in {settle_seconds:g} s after {len(rounds)} reload(s))"
+                 if control and not owned else
                  "the planted owner link was not reported, so the answer cannot be trusted"
                  if not control else f"{len(owned)} unresolved link(s) in owned files "
-                 "(or with no source named)", owned=owned[:50], total=len(pairs))
+                 "(or with no source named)" + (
+                     f"; {stale} of them name a file the viewer lists, still after "
+                     f"{len(rounds)} reload(s)" if stale else ""),
+                 owned=owned[:50], total=len(pairs), settle=rounds,
+                 settle_seconds=settle_seconds)
 
 
 def check_canvas(cli, report, vault, expected, prefixes, no_eval):
@@ -1147,6 +1225,12 @@ def main():
     check.add_argument("--checks", help=f"comma-separated subset of {','.join(CHECK_GROUPS)}")
     check.add_argument("--settle", type=float, default=30.0,
                        help="seconds to keep retrying a check while the viewer indexes")
+    check.add_argument("--cache-settle", type=float, default=60.0,
+                       help="seconds, per reload, for the unresolved-link answer to repeat")
+    check.add_argument("--cache-reloads", type=int, default=2,
+                       help="reloads allowed while owned links name files the viewer lists")
+    check.add_argument("--poll-interval", type=float, default=1.0,
+                       help="seconds between repeated CLI answers")
     check.add_argument("--no-eval", action="store_true",
                        help="skip the checks that use the CLI's eval command")
     measure_parser = sub.add_parser("timings", help="viewer-side load timings for a large vault")

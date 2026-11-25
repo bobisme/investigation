@@ -30,6 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER = ROOT / "scripts/obsidian-ui-check.py"
 FAKE = ROOT / "scripts/fake-obsidian-cli.py"
 VAULT = "investigation-ui-check"
+OWNER = "A note that does not exist"
 
 
 class Case:
@@ -70,7 +71,8 @@ def execute(case, prepared, scratch, binary, adapter=ADAPTER):
     if case.timings:
         argv += ["timings", "--vault", str(vault), "--samples", "2", "--open-timeout", "20"]
     else:
-        argv += ["run", str(directory), "--settle", "0"]
+        argv += ["run", str(directory), "--settle", "0", "--cache-settle", "3",
+                 "--poll-interval", "0.02"]
     argv += ["--out", str(work / "report"), "--timeout", "20", *case.extra]
     if case.checks:
         argv += ["--checks", case.checks]
@@ -112,6 +114,9 @@ def expectations(prepared):
     frontier = first(vault, "Epistemic Frontier.base")
     canvas = first(vault, "Map.canvas")
     start = "Investigation/scenario-a/Start Here.md"
+    node = next(n["file"] for n in json.loads((vault / canvas).read_text())["nodes"]
+                if n["type"] == "file")
+    stale = f"{canvas}|{node[:-3]}"
 
     def passed(o):
         statuses = {c["status"] for c in checks(o).values()}
@@ -164,6 +169,25 @@ def expectations(prepared):
 
     def owned_unresolved(check):
         assert [entry["link"] for entry in check["owned"]] == ["Nowhere"], check
+        # A target the viewer does not list is a broken link: no second reload.
+        assert len(check["settle"]) == 1 and check["settle"][0]["settled"], check
+
+    def settled_after(rounds, distinct):
+        def verify(o):
+            assert_pass(o, "links.unresolved")
+            check = checks(o)["links.unresolved"]
+            assert len(check["settle"]) == rounds, check
+            assert check["settle"][0]["distinct_answers"] == distinct, check
+            assert all(r["reloaded"] and r["settled"] for r in check["settle"]), check
+            assert check["settle_seconds"] >= 0 and "settled in" in check["summary"], check
+            reloads = [i for i, call in enumerate(o["calls"]) if call[1:] == ["reload"]]
+            polls = [i for i, call in enumerate(o["calls"]) if call[1:2] == ["unresolved"]]
+            assert len(reloads) == rounds and reloads[0] < polls[0], (reloads, polls)
+        return verify
+
+    def never_settles(check):
+        assert "did not settle" in check["summary"], check
+        assert not check["settle"][-1]["settled"] and check["settle"][-1]["polls"] > 2, check
 
     def canvas_unknown(check):
         assert [f["path"] for f in check["failures"]] == [canvas], check
@@ -194,10 +218,26 @@ def expectations(prepared):
         (Case("pass", checks=all_checks), [passed, exact_argv]),
         (Case("pass-map-shape", env={"FAKE_UNRESOLVED_SHAPE": "map"}, checks="unresolved"),
          [lambda o: assert_pass(o, "links.unresolved")]),
+        (Case("pass-list-shape", env={"FAKE_UNRESOLVED_SHAPE": "list"}, checks="unresolved"),
+         [lambda o: assert_pass(o, "links.unresolved")]),
+        (Case("owned-source-joined-behind-another",
+              env={"FAKE_EXTRA_UNRESOLVED": f"{start}|{OWNER}"}, checks="unresolved"),
+         [failed("links.unresolved")]),
         (Case("base-row-missing", env={"FAKE_DROP_ROW": frontier}, checks="bases"),
          [failed("bases.rows", row_missing)]),
         (Case("unresolved-in-owned", env={"FAKE_EXTRA_UNRESOLVED": f"{start}|Nowhere"},
               checks="unresolved"), [failed("links.unresolved", owned_unresolved)]),
+        (Case("unresolved-stale-first", env={"FAKE_STALE_UNRESOLVED": stale},
+              checks="unresolved"), [settled_after(1, 2)]),
+        (Case("unresolved-stale-through-a-reload",
+              env={"FAKE_STALE_UNRESOLVED": stale, "FAKE_STALE_RELOADS": "2",
+                   "FAKE_STALE_POLLS": "0"}, checks="unresolved"), [settled_after(2, 1)]),
+        (Case("unresolved-stale-forever",
+              env={"FAKE_STALE_UNRESOLVED": stale, "FAKE_STALE_RELOADS": "99"},
+              checks="unresolved"),
+         [failed("links.unresolved", lambda c: assert_in("name a file the viewer lists", c))]),
+        (Case("unresolved-never-settles", env={"FAKE_UNRESOLVED_FLAP": "1"},
+              checks="unresolved"), [failed("links.unresolved", never_settles)]),
         (Case("canvas-unknown", env={"FAKE_HIDE": canvas}, checks="canvas"),
          [failed("canvas.open", canvas_unknown)]),
         (Case("canvas-deleted", checks="canvas", edit=drop_canvas),
@@ -228,10 +268,19 @@ def expectations(prepared):
          'raise Blocked("No obsidian command on PATH', "cli-absent"),
         ("vault= on every call", '*([f"vault={self.vault_name}"] if targeted else [])',
          "*([] if targeted else [])", "pass"),
+        ("a reload before links.unresolved", 'reloaded = cli.call("reload")[0]',
+         "reloaded = True", "unresolved-stale-first"),
+        ("two agreeing unresolved answers",
+         "settled = len(answers) >= 2 and key is not None and answers[-1] == answers[-2]",
+         "settled = key is not None", "unresolved-stale-first"),
         ("exact path= on notes", 'target = f"path={path}"', 'target = f"file={Path(path).stem}"',
          "pass"),
     ]
     return cases, mutants
+
+
+def assert_in(text, check):
+    assert text in check["summary"], check
 
 
 def assert_pass(outcome, check_id):

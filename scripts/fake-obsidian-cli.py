@@ -17,7 +17,13 @@ Faults, each a way the real viewer could disagree with the static files:
   FAKE_HIDE=PATH[:PATH] the viewer does not know these files (files, file, open)
   FAKE_IGNORE_CONFIG=1  new links ignore app.json (setup not honoured)
   FAKE_COMMUNITY=ID     a community plugin is enabled
-  FAKE_UNRESOLVED_SHAPE=list|map   JSON shape of `unresolved verbose format=json`
+  FAKE_UNRESOLVED_SHAPE=real|list|map   JSON shape of `unresolved verbose format=json`;
+                        real (default) is what Obsidian 1.15.1 printed: link, count and
+                        sources as strings (several sources joined by ", " is assumed)
+  FAKE_STALE_UNRESOLVED=SOURCE|LINK   a stale cache: listed as unresolved until
+                        FAKE_STALE_RELOADS reloads (default 1) have happened and
+                        FAKE_STALE_POLLS answers (default 1) have been given since the last
+  FAKE_UNRESOLVED_FLAP=1  every unresolved answer differs from the one before
 """
 
 import json
@@ -141,9 +147,32 @@ def unresolved():
     if extra:
         source, link = extra.split("|", 1)
         found.setdefault(link, []).append(source)
-    if os.environ.get("FAKE_UNRESOLVED_SHAPE") == "map":
+    reloads, polls = counter("reloads"), counter("polls-since-reload")
+    bump("polls-since-reload")
+    stale = os.environ.get("FAKE_STALE_UNRESOLVED")
+    if stale and (reloads < int(os.environ.get("FAKE_STALE_RELOADS", "1"))
+                  or polls < int(os.environ.get("FAKE_STALE_POLLS", "1"))):
+        source, link = stale.split("|", 1)
+        found.setdefault(link, []).append(source)
+    if os.environ.get("FAKE_UNRESOLVED_FLAP"):
+        found.setdefault(f"flap {counter('flap')}", []).append("Notes/Owner note.md")
+        bump("flap")
+    shape = os.environ.get("FAKE_UNRESOLVED_SHAPE", "real")
+    if shape == "map":
         return found
-    return [{"link": link, "sources": sources} for link, sources in found.items()]
+    if shape == "list":
+        return [{"link": link, "sources": sources} for link, sources in found.items()]
+    return [{"link": link, "count": str(len(sources)), "sources": ", ".join(sources)}
+            for link, sources in found.items()]
+
+
+def counter(name):
+    path = STATE / f"count-{name}"
+    return int(path.read_text()) if path.exists() else 0
+
+
+def bump(name, reset=False):
+    (STATE / f"count-{name}").write_text("0" if reset else str(counter(name) + 1))
 
 
 def evaluate(code):
@@ -228,6 +257,8 @@ def main():
     elif command == "eval":
         print(evaluate(params["code"]))
     elif command in ("reload", "restart"):
+        bump("reloads")
+        bump("polls-since-reload", reset=True)
         print("")
     elif command == "dev:errors":
         print("No errors captured.")
