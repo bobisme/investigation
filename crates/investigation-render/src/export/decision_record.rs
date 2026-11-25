@@ -2,7 +2,8 @@
 //!
 //! One Markdown file, `decision-record.md`, in a fixed order. Case level:
 //! basis, context (objective and questions), one section per decision that
-//! has not been superseded, then the supersession history and the limits.
+//! has not been superseded (accepted ones first, then live proposals), then
+//! the supersession history and the limits.
 //! Each decision section follows the ADR order:
 //!
 //! 1. status: the effective disposition beside the recorded lifecycle,
@@ -149,9 +150,12 @@ fn report(input: &ExportInput<'_>, human: &[human_files::Shown]) -> String {
     context(&mut out, input, case_record);
 
     let decisions = shown_of_kind(input, Kind::Decision);
-    let (live, history): (Vec<&Record>, Vec<&Record>) = decisions
+    let (mut live, history): (Vec<&Record>, Vec<&Record>) = decisions
         .into_iter()
         .partition(|record| lifecycle(record) != Some("superseded"));
+    // The record leads with what was decided: accepted decisions first, then
+    // live proposals, each group in its shown order (bn-30vf).
+    live.sort_by_key(|record| lifecycle(record) != Some("accepted"));
     if live.is_empty() {
         out.push_str("\n## Decision\n\n- No decision is recorded or included for this audience.\n");
     }

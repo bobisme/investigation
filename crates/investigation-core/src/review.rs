@@ -330,12 +330,22 @@ pub enum BlindspotVerdict {
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ReviewSubmit {
     Validation {
+        /// The Conclusion, Decision or Comparison reviewed, at its current revision.
         subject_ref: Reference,
+        /// The `basis_digest` of the subject's `review_basis`, from `review-packet ID` or, for a
+        /// Conclusion or Decision, `show ID --depth full`.
         basis_digest: Digest,
+        /// Exact current revisions the reviewer read: every record in the subject's
+        /// `review_basis.read_set`, plus each record cited in `materials_examined` and
+        /// `objection_refs`. The subject itself may be left out. One revision per record.
         read_set: Vec<RevisionRef>,
         method: String,
+        /// Evidence the reviewer examined: Observations, Assessments, Artifacts, Sources, Runs,
+        /// Comparisons or Conclusions of this case. Each must also be in `read_set`.
         materials_examined: Vec<Reference>,
         shared_dependencies: Vec<String>,
+        /// Objections on the subject that the review answers. A `supports` verdict must cite
+        /// every open Objection on the subject (ADR 0017). Each must also be in `read_set`.
         objection_refs: Vec<Reference>,
         verdict: ValidationVerdict,
         caveats: Vec<String>,

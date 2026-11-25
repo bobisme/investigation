@@ -203,10 +203,22 @@ impl AcceptanceChallenges {
                 }
             ));
         }
-        for comparison in &self.uncertain_comparisons {
+        // One warning for all of them (bn-30vf): a Comparison is uncertain
+        // when its outcome is unknown or when no cited Observation settles it,
+        // which is every comparison not backed by a verified, matching
+        // measurement. The stored `uncertain_comparisons` list keeps each one.
+        if !self.uncertain_comparisons.is_empty() {
+            let ids: Vec<String> = self
+                .uncertain_comparisons
+                .iter()
+                .map(|comparison| comparison.id.to_string())
+                .collect();
             out.push(format!(
-                "Decision {decision} cites uncertain comparison {}.",
-                comparison.id
+                "Decision {decision} cites {} uncertain comparison(s): the outcome is unknown, or no \
+                 cited Observation is a valid, verified measurement whose value matches the \
+                 comparison's. They are stored in acceptance_challenges.uncertain_comparisons: {}.",
+                ids.len(),
+                ids.join(", ")
             ));
         }
         for criterion in &self.conditional_hard_criteria {

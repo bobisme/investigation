@@ -29,6 +29,18 @@ Without --case, in a workspace with several cases, the case is the one that
 holds the ID. A prefix that matches records in several cases is refused with
 CASE_REQUIRED, which names the cases and gives the retry with --case.
 
+For a Decision the packet keeps the question, the compared alternatives, the
+criteria set, the comparisons, hard conditions, evidence and assumptions, and
+omits the choice. A blinded reviewer can check that the criteria apply and that
+the comparisons and evidence hold before seeing what was chosen. Judging the
+choice itself needs the Decision: read it with show <ID> --depth full and
+declare fresh_context_unblinded, or submit an inconclusive verdict.
+
+A validation review's read_set holds every record in review_basis.read_set plus
+each record it cites in materials_examined or objection_refs; a supporting
+verdict cites every open objection on the subject (see
+investigation schema review.submit).
+
 Examples:
   investigation --case <ID> review-packet <CONCLUSION_ID> --format json
   investigation --case <ID> review-packet <ID> --snapshot 12 --head-hash <DIGEST> --format json";

@@ -1192,6 +1192,7 @@ fn normalized_read_set(
     kind: ReviewKind,
     supplied: &[RevisionRef],
     required: &[RevisionRef],
+    cited: &[RevisionRef],
 ) -> Result<Vec<RevisionRef>, Failure> {
     let mut by_id = BTreeMap::new();
     for (index, reference) in supplied.iter().enumerate() {
@@ -1205,38 +1206,46 @@ fn normalized_read_set(
         }
     }
     by_id.remove(&target.header.id);
-    if required
+    let missing: Vec<RevisionRef> = required
         .iter()
-        .any(|required| by_id.get(&required.id) != Some(required))
-    {
-        // The refusal names the read that gives the current revisions, not
-        // the revisions themselves: copying them would record a review of
-        // records the reviewer never read (ADR 0018).
-        return Err(match kind {
-            ReviewKind::Validation => gate(
-                "/read_set",
-                "The review omits part of the current dependency closure. Read review_basis with \
-                 review-packet (or show --depth full for a Conclusion or Decision) and cite every \
-                 record it lists, at the revision it gives, with any objections you cite.",
-            )
-            .with_argv(packet_argv(target.header.id)),
-            ReviewKind::Blindspot => {
-                let missing: Vec<Id> = required
-                    .iter()
-                    .filter(|required| by_id.get(&required.id) != Some(required))
-                    .map(|required| required.id)
-                    .collect();
-                let mut failure = gate(
-                    "/read_set",
-                    "The read set must hold the current revision of each record the review cites. \
-                     Read each record named in actual and cite the revision you read.",
-                );
-                failure.error.actual = Some(json!({"records": missing}));
-                failure.with_argv(summary_argv(missing[0]))
-            }
-        });
+        .filter(|required| by_id.get(&required.id) != Some(required))
+        .copied()
+        .collect();
+    if missing.is_empty() {
+        return Ok(by_id.into_values().collect());
     }
-    Ok(by_id.into_values().collect())
+    // A record the review cites elsewhere in its payload (objection_refs or
+    // materials_examined for a validation review, every required record for
+    // a blindspot review) is named by ID: the reviewer chose it, so naming it
+    // reveals nothing. Members of the subject's dependency closure are not
+    // named: the refusal names the read that lists them, not its values
+    // (ADR 0018).
+    let (cited_missing, closure_missing): (Vec<RevisionRef>, Vec<RevisionRef>) = missing
+        .into_iter()
+        .partition(|reference| kind == ReviewKind::Blindspot || cited.contains(reference));
+    let cited_ids: Vec<Id> = cited_missing.iter().map(|reference| reference.id).collect();
+    let mut failure = if closure_missing.is_empty() {
+        gate(
+            "/read_set",
+            "The read set must also hold the exact revision of each record the review cites in \
+             objection_refs, materials_examined or its gap references. Add each record named in \
+             actual.records at the revision you cite and read.",
+        )
+        .with_argv(summary_argv(cited_ids[0]))
+    } else {
+        gate(
+            "/read_set",
+            "The review omits part of the current dependency closure. Read review_basis with \
+             review-packet (or show --depth full for a Conclusion or Decision) and cite every \
+             record it lists, at the revision it gives, plus each record you cite in \
+             objection_refs or materials_examined.",
+        )
+        .with_argv(packet_argv(target.header.id))
+    };
+    if !cited_ids.is_empty() {
+        failure.error.actual = Some(json!({"records": cited_ids}));
+    }
+    Err(failure)
 }
 
 fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Result<(), Failure> {
@@ -1316,8 +1325,19 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             required.extend(objection_refs.iter().copied());
             required.sort_by_key(|reference| (reference.id, reference.revision));
             required.dedup();
-            let read_set =
-                normalized_read_set(ctx, target, ReviewKind::Validation, &read_set, &required)?;
+            let cited: Vec<RevisionRef> = materials_examined
+                .iter()
+                .chain(&objection_refs)
+                .copied()
+                .collect();
+            let read_set = normalized_read_set(
+                ctx,
+                target,
+                ReviewKind::Validation,
+                &read_set,
+                &required,
+                &cited,
+            )?;
             encode(ValidationReviewBody {
                 kind: ReviewKind::Validation,
                 status: ReviewStatus::Submitted,
@@ -1375,8 +1395,14 @@ fn review_submit(payload: ReviewSubmit, ctx: &mut OperationContext<'_>) -> Resul
             let mut required = evidence_refs.clone();
             required.extend(assumption_refs.iter().copied());
             required.extend(resolved.read.iter().copied());
-            let read_set =
-                normalized_read_set(ctx, target, ReviewKind::Blindspot, &read_set, &required)?;
+            let read_set = normalized_read_set(
+                ctx,
+                target,
+                ReviewKind::Blindspot,
+                &read_set,
+                &required,
+                &[],
+            )?;
             blindspot = Some(resolved);
             json!({
                 "kind": ReviewKind::Blindspot, "status": ReviewStatus::Submitted, "subject_ref": subject_ref,
@@ -2026,8 +2052,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             "A reviewer examined the precise basis of a claim or checked a defined scope.",
             "Record verdict, context, dependence, exact materials and membership sets.",
             "Review ID and revision 1.",
-            "Supply the exact subject, basis digest, and complete current read-set for validation.",
-            "Read the claim and exact dependencies, then record review context and limitations.",
+            "Validation: supply the exact subject, its review_basis.basis_digest, and a read_set holding review_basis.read_set plus every record cited in materials_examined and objection_refs.",
+            "Read review_basis with review-packet ID (or show ID --depth full for a Conclusion or Decision), then record review context and limitations.",
             ["conclusion.validate", "objection.raise"],
             json!({
                 "kind":"validation","subject_ref":exact(Kind::Conclusion),

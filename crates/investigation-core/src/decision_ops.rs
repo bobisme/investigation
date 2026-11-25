@@ -582,7 +582,7 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
     };
     let option: OptionBody = decode(&exact(s, case, selected, Kind::Option, "/choice")?.body)?;
     if option.lifecycle != OptionLifecycle::Eligible {
-        return Err(fail("/choice", "Selected option must be eligible."));
+        return Err(not_eligible(selected, option.lifecycle));
     }
     let scope = MembershipScope::Question {
         case_id: case,
@@ -658,6 +658,91 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
     }
     Ok(())
 }
+fn lifecycle_label(lifecycle: OptionLifecycle) -> &'static str {
+    match lifecycle {
+        OptionLifecycle::Proposed => "proposed",
+        OptionLifecycle::Eligible => "eligible",
+        OptionLifecycle::RuledOut => "ruled_out",
+        OptionLifecycle::Withdrawn => "withdrawn",
+        OptionLifecycle::Superseded => "superseded",
+    }
+}
+
+/// The order that makes an option choosable. Comparisons and the Decision pin
+/// the option's exact revision, and an `eligible` option is a member of the
+/// review's scoped option set, so the disposition must come first (bn-30vf).
+const ELIGIBILITY_ORDER: &str = "Order: option.disposition to eligible, then comparison.revise \
+     each comparison of the option (they pin its revision), then decision.supersede this proposal \
+     with one that cites the new revisions, then a fresh review.submit, then decision.accept.";
+
+fn not_eligible(option: RevisionRef, lifecycle: OptionLifecycle) -> Failure {
+    let mut failure = fail(
+        "/choice",
+        &format!(
+            "Selected option {} is {}; only an eligible option can be chosen. {ELIGIBILITY_ORDER}",
+            option.id,
+            lifecycle_label(lifecycle)
+        ),
+    )
+    // The repair schema stays the refused operation's, as for every gate;
+    // the argv is the step to take first.
+    .with_argv(vec![
+        crate::PROGRAM_NAME.into(),
+        "schema".into(),
+        "option.disposition".into(),
+        "--format".into(),
+        "json".into(),
+    ]);
+    failure.error.actual = Some(json!({"option_ref": option, "lifecycle": lifecycle}));
+    failure
+}
+
+/// `decision.accept` refuses a selected option that is not eligible, and the
+/// disposition that fixes it stales what pins the option, so `propose` warns.
+fn warn_ineligible_choice(c: &mut OperationContext<'_>, b: &DecisionBody) -> Result<(), Failure> {
+    let Choice::Select { option_ref } = b.choice else {
+        return Ok(());
+    };
+    let case = c
+        .case_id()
+        .ok_or_else(|| fail("/choice", "Case missing."))?;
+    let option: OptionBody =
+        decode(&exact(c.state(), case, option_ref, Kind::Option, "/choice")?.body)?;
+    if option.lifecycle != OptionLifecycle::Eligible {
+        c.warn(format!(
+            "Selected option {} is {}; decision.accept refuses a choice that is not eligible. {ELIGIBILITY_ORDER}",
+            option_ref.id,
+            lifecycle_label(option.lifecycle)
+        ));
+    }
+    Ok(())
+}
+
+/// Other proposals for the same question stay live until they are replaced;
+/// `decision.supersede` replaces one with a reason (bn-30vf).
+fn warn_other_proposals(c: &mut OperationContext<'_>, b: &DecisionBody) {
+    let Some(case) = c.case_id() else {
+        return;
+    };
+    let others: Vec<Id> = c
+        .state()
+        .records_of_kind(Kind::Decision)
+        .filter(|record| record.header.case_id == case)
+        .filter_map(|record| {
+            let other: DecisionBody = decode(&record.body).ok()?;
+            (other.lifecycle == DecisionLifecycle::Proposed
+                && other.question_ref.id == b.question_ref.id)
+                .then_some(record.header.id)
+        })
+        .collect();
+    for other in others {
+        c.warn(format!(
+            "Decision {other} is also proposed for this question and stays proposed. To replace it, \
+             use decision.supersede on it instead of a second decision.propose."
+        ));
+    }
+}
+
 /// Everything the decision is accepted over: relevant open objections (with
 /// policy-required acknowledgments), uncertain comparisons and conditional
 /// hard criteria. Acceptance under disagreement is allowed; silence is not.
@@ -1033,6 +1118,8 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             |p: DecisionInput, c| {
                 let b = proposal_gate(c, normalize(c, p)?)?;
                 warn_unconditioned_hard(c, &b);
+                warn_ineligible_choice(c, &b)?;
+                warn_other_proposals(c, &b);
                 c.create(Kind::Decision, body(b)?)?;
                 Ok(())
             },
@@ -1136,7 +1223,10 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
             },
         ),
         OperationDescriptor::active(
-            info("decision.supersede", "Supersede an accepted decision."),
+            info(
+                "decision.supersede",
+                "Replace an accepted or proposed decision with a new proposal.",
+            ),
             json!({"decision_ref":d,"reason":"New evidence","replacement":example}),
             ok,
             |p: DecisionSupersede, c| {
@@ -1151,13 +1241,19 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 )?
                 .clone();
                 let mut previous: DecisionBody = decode(&old.body)?;
-                if previous.lifecycle != DecisionLifecycle::Accepted {
+                // A proposal is replaced the same way as an accepted
+                // decision: the old one is kept, marked superseded, with the
+                // reason and a link to its successor (bn-30vf). There is no
+                // withdrawal without a successor; a `defer` replacement
+                // records that no option is chosen.
+                if previous.lifecycle == DecisionLifecycle::Superseded {
                     return Err(fail(
                         "/decision_ref",
-                        "Only accepted decisions may be superseded.",
+                        "This decision is already superseded. Supersede its successor instead.",
                     ));
                 }
                 let mut replacement = proposal_gate(c, normalize(c, p.replacement)?)?;
+                warn_ineligible_choice(c, &replacement)?;
                 if replacement.question_ref.id != previous.question_ref.id {
                     return Err(fail(
                         "/replacement/question_ref",

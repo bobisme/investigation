@@ -428,7 +428,8 @@
       "additionalProperties": false,
       "properties": {
         "basis_digest": {
-          "$ref": "#/$defs/Digest"
+          "$ref": "#/$defs/Digest",
+          "description": "The `basis_digest` of the subject's `review_basis`, from `review-packet ID` or, for a\nConclusion or Decision, `show ID --depth full`."
         },
         "caveats": {
           "items": {
@@ -447,6 +448,7 @@
           "type": "string"
         },
         "materials_examined": {
+          "description": "Evidence the reviewer examined: Observations, Assessments, Artifacts, Sources, Runs,\nComparisons or Conclusions of this case. Each must also be in `read_set`.",
           "items": {
             "$ref": "#/$defs/Reference"
           },
@@ -456,12 +458,14 @@
           "type": "string"
         },
         "objection_refs": {
+          "description": "Objections on the subject that the review answers. A `supports` verdict must cite\nevery open Objection on the subject (ADR 0017). Each must also be in `read_set`.",
           "items": {
             "$ref": "#/$defs/Reference"
           },
           "type": "array"
         },
         "read_set": {
+          "description": "Exact current revisions the reviewer read: every record in the subject's\n`review_basis.read_set`, plus each record cited in `materials_examined` and\n`objection_refs`. The subject itself may be left out. One revision per record.",
           "items": {
             "$ref": "#/$defs/RevisionRef"
           },
@@ -474,7 +478,8 @@
           "type": "array"
         },
         "subject_ref": {
-          "$ref": "#/$defs/Reference"
+          "$ref": "#/$defs/Reference",
+          "description": "The Conclusion, Decision or Comparison reviewed, at its current revision."
         },
         "verdict": {
           "$ref": "#/$defs/ValidationVerdict"
