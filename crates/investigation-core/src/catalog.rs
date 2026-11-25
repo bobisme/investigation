@@ -274,8 +274,9 @@ impl OperationDescriptor {
         validate: fn(&P) -> Result<(), Failure>,
         handler: fn(P, &mut OperationContext<'_>) -> Result<(), Failure>,
     ) -> Self {
+        let shape = example.clone();
         let execute = move |value: &Value, context: &mut OperationContext<'_>| {
-            let payload = decode(value, info.name, validate)?;
+            let payload = decode(value, info.name, validate, &shape)?;
             handler(payload, context)
         };
         Self {
@@ -294,9 +295,9 @@ impl OperationDescriptor {
             info,
             status: Status::Deferred,
             payload_schema: Some(schema_for!(P)),
-            example: Some(example),
+            example: Some(example.clone()),
             validate: Some(Box::new(move |value| {
-                decode(value, info.name, validate).map(drop)
+                decode(value, info.name, validate, &example).map(drop)
             })),
             handler: None,
         }
@@ -417,18 +418,46 @@ impl Catalog {
     }
 }
 
-fn decode<P: DeserializeOwned>(
+fn decode<P: DeserializeOwned + JsonSchema>(
     value: &Value,
     operation: &str,
     validate: fn(&P) -> Result<(), Failure>,
+    example: &Value,
 ) -> Result<P, Failure> {
     let payload = input::decode(value).map_err(|error| {
+        let path = error.path.clone();
+        let generic = error.message;
         let failure =
             crate::likelihood::explain_decode_failure(operation, value, input_failure(error));
-        crate::confidence::explain_decode_failure(operation, value, failure).with_schema(operation)
+        let failure = crate::confidence::explain_decode_failure(operation, value, failure);
+        shape_hint::<P>(failure, generic, &path, value, operation, example).with_schema(operation)
     })?;
     validate(&payload).map_err(|error| error.with_schema(operation))?;
     Ok(payload)
+}
+
+/// A generic decode failure, explained from the payload schema: the enum
+/// values, nested type or required fields the path needed, and one example
+/// (bn-29t7). A failure a domain explainer already rewrote is kept.
+fn shape_hint<P: JsonSchema>(
+    mut failure: Failure,
+    generic: &str,
+    path: &str,
+    value: &Value,
+    operation: &str,
+    example: &Value,
+) -> Failure {
+    if failure.error.message != generic || failure.error.expected.is_some() {
+        return failure;
+    }
+    let Ok(schema) = serde_json::to_value(schema_for!(P)) else {
+        return failure;
+    };
+    if let Some(hint) = crate::schema_hint::describe(&schema, value, path, Some(example)) {
+        failure.error.message = hint.message(operation);
+        failure.error.expected = Some(hint.detail);
+    }
+    failure
 }
 
 const COMMAND_IDEMPOTENCY: &str =
@@ -492,7 +521,7 @@ pub fn standard_catalog() -> Catalog {
                         .map(|reference| context.resolve(reference, Kind::Question, "/parent"))
                         .transpose()?;
                     let body = payload.into_body(parent).map_err(|blocker| {
-                        Failure::new(ErrorCode::UnknownReference, blocker.code()).at("/parent")
+                        Failure::new(ErrorCode::UnknownReference, blocker.message()).at("/parent")
                     })?;
                     context.create(Kind::Question, record_body(body)?)?;
                     Ok(())

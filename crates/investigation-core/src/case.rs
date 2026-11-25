@@ -242,7 +242,9 @@ pub struct CaseClose {
     /// `answered` is refused while a Question is open and not listed here.
     pub unresolved_questions: Vec<Reference>,
     pub reopen_condition: Option<String>,
-    /// Existing or same-transaction Retrospective. Mutually exclusive with waiver.
+    /// Existing or same-transaction Retrospective. Mutually exclusive with waiver. Required to
+    /// close a material case: give the Retrospective's ID, or `{"client_ref": ...}` naming a
+    /// `retrospective.record` earlier in the same transaction.
     pub retrospective_ref: Option<Reference>,
     /// A short reason for omitting a Retrospective on a non-material case.
     #[schemars(length(min = 1, max = 2048))]
@@ -333,6 +335,47 @@ impl CaseBlocker {
             Self::EmptyAmendment => "CASE_AMENDMENT_EMPTY",
             Self::TitleRequired => "CASE_TITLE_REQUIRED",
         }
+    }
+
+    /// What the request needs, after the code (bn-29t7).
+    pub const fn explanation(self) -> &'static str {
+        match self {
+            Self::CaseAlreadyActive => {
+                "The case is already active; only a paused or closed case reopens."
+            }
+            Self::CaseAlreadyPaused => "The case is already paused.",
+            Self::CaseAlreadyClosed => "The case is closed; case.reopen it first.",
+            Self::CaseCannotPauseWhenClosed => {
+                "A closed case cannot be paused; case.reopen it first."
+            }
+            Self::CaseCannotCloseWhenClosed => "The case is already closed.",
+            Self::RetrospectiveRequired => {
+                "Closing a material case needs retrospective_ref: the Retrospective's ID, or the client_ref of a retrospective.record earlier in this transaction."
+            }
+            Self::RetrospectiveDispositionConflict => {
+                "Give retrospective_ref or retrospective_waived, not both."
+            }
+            Self::RetrospectiveWaiverReasonRequired => {
+                "retrospective_waived must be a nonblank reason."
+            }
+            Self::RetrospectiveWaiverRequired => {
+                "Closing this case needs retrospective_ref (a Retrospective's ID or an earlier operation's client_ref) or retrospective_waived (a reason)."
+            }
+            Self::RetrospectiveReferenceWrongKind => {
+                "retrospective_ref must name a Retrospective (retro_ ID) or an earlier operation's client_ref."
+            }
+            Self::UnresolvedQuestionWrongKind => {
+                "Each unresolved_questions entry must name a Question (q_ ID)."
+            }
+            Self::AmendmentReasonRequired => "reason must be nonblank text.",
+            Self::EmptyAmendment => "Change at least one field besides reason.",
+            Self::TitleRequired => "title must be nonblank text.",
+        }
+    }
+
+    /// The refusal message: the code, then what the request needs.
+    pub fn message(self) -> String {
+        format!("{} {}", self.code(), self.explanation())
     }
 }
 
@@ -460,6 +503,28 @@ impl QuestionReferenceBlocker {
             Self::ParentWrongKind => "QUESTION_PARENT_WRONG_KIND",
         }
     }
+
+    /// What the parent reference needs, after the code (bn-29t7).
+    pub const fn explanation(self) -> &'static str {
+        match self {
+            Self::UnexpectedResolvedParent => "This question was given no parent to resolve.",
+            Self::ResolvedParentMismatch => {
+                "parent resolved to a different question than it names."
+            }
+            Self::ExistingParentNotResolved => "parent names no current Question in this case.",
+            Self::ClientParentNotResolved => {
+                "parent's client_ref names no question.create earlier in this transaction."
+            }
+            Self::ParentWrongKind => {
+                "parent must name a Question (q_ ID) or an earlier operation's client_ref."
+            }
+        }
+    }
+
+    /// The refusal message: the code, then what the parent needs.
+    pub fn message(self) -> String {
+        format!("{} {}", self.code(), self.explanation())
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -518,6 +583,27 @@ impl QuestionBlocker {
             Self::AnswerNeedsEvidence => "QUESTION_ANSWER_NEEDS_EVIDENCE",
             Self::WrongQuestionReference => "QUESTION_REFERENCE_WRONG_KIND",
         }
+    }
+
+    /// What the resolution needs, after the code (bn-29t7).
+    pub const fn explanation(self) -> &'static str {
+        match self {
+            Self::InvalidResolution => {
+                "disposition must be answered, inconclusive, deferred or superseded, reachable from the question's current disposition."
+            }
+            Self::QuestionAlreadyResolved => "The question is already answered or inconclusive.",
+            Self::QuestionSuperseded => "The question is superseded.",
+            Self::AnswerRequired => "An answered disposition needs a nonblank answer.",
+            Self::AnswerNeedsEvidence => {
+                "An answered disposition needs at least one evidence_refs entry."
+            }
+            Self::WrongQuestionReference => "question_ref must name a Question (q_ ID).",
+        }
+    }
+
+    /// The refusal message: the code, then what the resolution needs.
+    pub fn message(self) -> String {
+        format!("{} {}", self.code(), self.explanation())
     }
 }
 

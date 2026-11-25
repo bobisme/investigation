@@ -255,9 +255,11 @@ fn pin_any(
         if allowed.contains(&kind) {
             return pin(ctx, reference, kind, path);
         }
-        return Err(invalid(
+        return Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
             path,
-            "The record kind is unsuitable for this reference.",
+            allowed,
+            kind,
         ));
     }
     for &kind in allowed {

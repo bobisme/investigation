@@ -17,7 +17,7 @@ use crate::{
     pack_policy::{self, Gate, Subject},
     retrospective_digest::draft_argv,
     retrospective_ops::{check_retrospective, material_revisions, retrospective_failure},
-    state::{OperationContext, State},
+    state::{OperationContext, Record, State},
     wire::{ErrorCode, Failure},
 };
 
@@ -36,7 +36,7 @@ pub(crate) fn operations() -> [OperationDescriptor; 5] {
     [
         OperationDescriptor::active(
             OperationInfo {
-                when_to_use: "Close a case with an attributed outcome. Order: resolve each Question with question.resolve, take the draft (retrospective --draft), record the account, then close; question.resolve, retrospective.record and case.close may share one transaction in that order.",
+                when_to_use: "Close a case with an attributed outcome. Order: resolve each Question with question.resolve, take the draft (retrospective --draft), record the account, then close; question.resolve, retrospective.record and case.close may share one transaction in that order, the close citing the account as \"retrospective_ref\": {\"client_ref\": ALIAS}.",
                 related: &["question.resolve", "retrospective.record", "case.reopen"],
                 ..info(
                     "case.close",
@@ -74,7 +74,9 @@ pub(crate) fn operations() -> [OperationDescriptor; 5] {
             json!({"reason":"The workload includes background requests","title":"Request latency with background traffic"}),
             |payload: &CaseAmend| {
                 valid_reason(&payload.reason)?;
-                payload.validate().map_err(|blocker| gate(blocker.code()))?;
+                payload
+                    .validate()
+                    .map_err(|blocker| gate(&blocker.message()))?;
                 if payload
                     .title
                     .as_ref()
@@ -191,7 +193,7 @@ fn transition(
     body.lifecycle = body
         .lifecycle
         .transition(action)
-        .map_err(|blocker| gate(blocker.code()))?;
+        .map_err(|blocker| gate(&blocker.message()))?;
     body.transition_reason = Some(reason);
     if body.lifecycle == CaseLifecycle::Active {
         body.closure_outcome = None;
@@ -212,24 +214,27 @@ fn close(payload: CaseClose, context: &mut OperationContext<'_>) -> Result<(), F
     let material = !triggers.is_empty() || !pack_triggers.is_empty();
     if let Err(blocker) = payload.validate_materiality(body.mode, material) {
         if blocker == CaseBlocker::RetrospectiveRequired {
-            let mut failure = retrospective_failure(
-                ErrorCode::RetrospectiveRequired,
-                "A material case needs a current Retrospective.",
-            )
-            .at("/retrospective_ref")
-            .with_argv(draft_argv(case));
-            failure.error.actual = Some(json!(triggers));
-            if !pack_triggers.is_empty() {
-                failure.error.expected = Some(json!({"policy_blockers": pack_triggers}));
-            }
-            return Err(failure);
+            return Err(retrospective_required(
+                context,
+                case,
+                &triggers,
+                &pack_triggers,
+            ));
         }
-        return Err(gate(blocker.code()));
+        let path = match blocker {
+            CaseBlocker::RetrospectiveDispositionConflict
+            | CaseBlocker::RetrospectiveReferenceWrongKind
+            | CaseBlocker::RetrospectiveWaiverRequired => "/retrospective_ref",
+            CaseBlocker::RetrospectiveWaiverReasonRequired => "/retrospective_waived",
+            CaseBlocker::UnresolvedQuestionWrongKind => "/unresolved_questions",
+            _ => "",
+        };
+        return Err(gate(&blocker.message()).at(path));
     }
     body.lifecycle = body
         .lifecycle
         .transition(CaseTransition::Close)
-        .map_err(|blocker| gate(blocker.code()))?;
+        .map_err(|blocker| gate(&blocker.message()))?;
     let retrospective = payload
         .retrospective_ref
         .as_ref()
@@ -398,7 +403,11 @@ fn unlisted_open_questions(state: &State, case: Id, listed: &BTreeSet<Id>) -> Re
         return Ok(());
     }
     open.sort();
-    let mut failure = gate(OPEN_QUESTIONS).at("/unresolved_questions");
+    // The first step is question.resolve, and the repair names it: the CLI
+    // keeps a schema that names another operation (bn-29t7).
+    let mut failure = gate(OPEN_QUESTIONS)
+        .at("/unresolved_questions")
+        .with_schema("question.resolve");
     failure.error.expected = Some(json!(open));
     Err(failure)
 }
@@ -434,18 +443,117 @@ pub(crate) fn answer_not_current(
     (!current).then_some(stale)
 }
 
+/// Material revisions listed in a RETROSPECTIVE_REQUIRED refusal's `actual`.
+const MAX_LISTED_TRIGGERS: usize = 20;
+
+/// A material case closed without `retrospective_ref` (bn-29t7). The refusal
+/// names the field. When this transaction already recorded a Retrospective,
+/// it names that record and how to cite it instead of offering a draft.
+fn retrospective_required(
+    context: &OperationContext<'_>,
+    case: Id,
+    triggers: &[RevisionRef],
+    pack_triggers: &[Value],
+) -> Failure {
+    let recorded = context
+        .records()
+        .filter(|record| {
+            record.header.id.kind() == Kind::Retrospective
+                && record.header.case_id == case
+                && record.header.acceptance_sequence == context.acceptance_sequence()
+        })
+        .map(Record::reference)
+        .next();
+    let count = triggers.len();
+    let mut failure = match recorded {
+        Some(retrospective) => {
+            let cite = match context.alias_of(retrospective) {
+                Some(alias) => format!("{{\"client_ref\": \"{}\"}}", alias),
+                None => format!(
+                    "{{\"client_ref\": ...}} after giving that operation a client_ref, or {{\"id\": \"{}\", \"revision\": {}}}",
+                    retrospective.id, retrospective.revision
+                ),
+            };
+            retrospective_failure(
+                ErrorCode::RetrospectiveRequired,
+                &format!(
+                    "A material case needs retrospective_ref. This transaction records \
+                     Retrospective {} in an earlier operation: cite it as \
+                     \"retrospective_ref\": {cite}.",
+                    retrospective.id
+                ),
+            )
+            .with_schema("case.close")
+        }
+        None => retrospective_failure(
+            ErrorCode::RetrospectiveRequired,
+            &format!(
+                "A material case needs retrospective_ref: a current Retrospective's ID, or the \
+                 client_ref of a retrospective.record earlier in this transaction. The case has \
+                 {count} material revision(s){}; the repair drafts a Retrospective.",
+                if count > MAX_LISTED_TRIGGERS {
+                    format!(", the first {MAX_LISTED_TRIGGERS} in actual")
+                } else {
+                    ", listed in actual".to_owned()
+                }
+            ),
+        )
+        .with_argv(draft_argv(case)),
+    }
+    .at("/retrospective_ref");
+    if let Some(repair) = &mut failure.error.repair
+        && recorded.is_some()
+    {
+        repair.argv = None;
+    }
+    failure.error.actual = Some(json!(
+        triggers
+            .iter()
+            .take(MAX_LISTED_TRIGGERS)
+            .collect::<Vec<_>>()
+    ));
+    if !pack_triggers.is_empty() {
+        failure.error.expected = Some(json!({"policy_blockers": pack_triggers}));
+    }
+    failure
+}
+
 pub(crate) fn case_for_update(
     context: &OperationContext<'_>,
 ) -> Result<(RevisionRef, CaseBody), Failure> {
     let id = context
         .case_id()
         .ok_or_else(|| invalid("Select an existing case."))?;
-    let revision = *context.preconditions().get(&id).ok_or_else(|| {
-        invalid("Include the current case ID and revision in the transaction preconditions.")
-    })?;
     let record = context
         .current(id)
         .ok_or_else(|| invalid("The selected case is absent."))?;
+    let Some(&revision) = context.preconditions().get(&id) else {
+        // The precondition belongs to the transaction, not the payload, so
+        // the path is absolute (bn-29t7). The case's current revision is a
+        // revision check, as in REVISION_CONFLICT.
+        let current = RevisionRef {
+            id,
+            revision: record.header.revision.0,
+        };
+        let mut failure = invalid(&format!(
+            "A change to the case needs the case in the transaction preconditions: add \
+             {{\"id\": \"{id}\", \"revision\": {}}} to the top-level preconditions array \
+             (the revision you read).",
+            current.revision
+        ))
+        .at("#/preconditions")
+        .with_argv(vec![
+            crate::PROGRAM_NAME.into(),
+            "show".into(),
+            id.to_string(),
+            "--depth".into(),
+            "summary".into(),
+            "--format".into(),
+            "json".into(),
+        ]);
+        failure.error.expected = Some(serde_json::json!({"preconditions": [current]}));
+        return Err(failure);
+    };
     let body = input::decode(&record.body).map_err(|_| {
         Failure::new(
             ErrorCode::IntegrityFailure,
@@ -478,7 +586,7 @@ fn resolve_question(
     })?;
     payload
         .validate_from(body.disposition)
-        .map_err(|blocker| gate(blocker.code()))?;
+        .map_err(|blocker| gate(&blocker.message()))?;
     let mut evidence = Vec::new();
     for (index, reference) in payload.evidence_refs.iter().enumerate() {
         let path = format!("/evidence_refs/{index}");

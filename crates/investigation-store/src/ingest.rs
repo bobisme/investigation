@@ -282,16 +282,28 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<(Manifest, Value), Failure> {
         derived_from.validate(&manifest)?;
     }
     reference::validate(&manifest)?;
-    if manifest.validate_as.is_some()
-        && (manifest.derived_from.is_none()
-            || reference::reference_mode(&manifest)
-            || external
-            || manifest.reverify.is_some())
-    {
-        return Err(invalid(
-            "Structured validation requires retained derivative bytes.",
-            "/validate_as",
-        ));
+    if manifest.validate_as.is_some() {
+        // Name what the option needs, not only that it was refused (bn-29t7).
+        let reason = if manifest.derived_from.is_none() {
+            Some(
+                "validate_as (strict_json) checks a retained derivative only: add derived_from, \
+                 naming the Artifact these bytes were derived from and the transformation. To \
+                 keep an original .json file, omit validate_as; ingest retains its exact bytes \
+                 either way.",
+            )
+        } else if reference::reference_mode(&manifest) || external {
+            Some(
+                "validate_as (strict_json) needs copied bytes; a reference or external \
+                 acquisition keeps none to validate. Copy the bytes, or omit validate_as.",
+            )
+        } else if manifest.reverify.is_some() {
+            Some("validate_as (strict_json) cannot be combined with reverify; omit one of them.")
+        } else {
+            None
+        };
+        if let Some(reason) = reason {
+            return Err(invalid(reason, "/validate_as"));
+        }
     }
     Ok((manifest, raw))
 }

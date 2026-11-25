@@ -262,6 +262,28 @@ impl SelectorBlocker {
             Self::DescriptorIncomplete => "SELECTOR_DESCRIPTOR_INCOMPLETE",
         }
     }
+
+    /// What the selector needs, after the code (bn-29t7).
+    pub const fn explanation(self) -> &'static str {
+        match self {
+            Self::EmptyOrReversedRange => "A byte_range needs start below end.",
+            Self::InvalidLineRange => "Lines count from 1, and start_line may not exceed end_line.",
+            Self::EmptyQuote => "A text_quote selector needs a nonempty exact passage.",
+            Self::InvalidJsonPointer => {
+                "A json_pointer is empty (the whole document) or starts with \"/\"."
+            }
+            Self::TableRowRequired => "A table_cell needs row_identity or row_index.",
+            Self::InvalidTimeWindow => "A time_window needs start below end.",
+            Self::DescriptorIncomplete => {
+                "Every descriptor field of this selector type must be nonblank: see $defs/SelectorKind in the operation's schema."
+            }
+        }
+    }
+
+    /// The refusal message: the code, then what the selector needs.
+    pub fn message(self) -> String {
+        format!("{} {}", self.code(), self.explanation())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -947,6 +969,62 @@ impl ObservationBlocker {
             Self::ArtifactReferenceWrongKind => "OBSERVATION_ARTIFACT_REFERENCE_WRONG_KIND",
             Self::ArtifactDigestMismatch => "OBSERVATION_ARTIFACT_DIGEST_MISMATCH",
             Self::UnexpectedArtifactReference => "OBSERVATION_ARTIFACT_REFERENCE_UNEXPECTED",
+        }
+    }
+
+    /// What the payload needs, after the code (bn-29t7). Empty only for
+    /// `QuoteNotFound`, which the CLI explains from the source text.
+    pub const fn explanation(self) -> &'static str {
+        match self {
+            Self::TextNeedsQuote | Self::QuoteRequired => {
+                "A text observation from a source needs basis.text_quote with the exact passage copied from the source."
+            }
+            Self::NonTextQuoteNotApplicable => {
+                "Only a text value takes basis.text_quote; remove it for a measurement or binary value."
+            }
+            Self::AssertionNeedsLabel => {
+                "basis.assertion must say who or what asserts the observation (nonblank text)."
+            }
+            Self::ObservationValueRequired => "value.statement must be nonblank text.",
+            Self::MeasurementUnitRequired => {
+                "A measurement value needs a nonblank value.unit, such as \"ms\"."
+            }
+            Self::InterventionNeedsChangedVariable => {
+                "An interventional observation (evidence_kind \"interventional\") must name each variable the intervention changed in variables_changed, a nonempty array of strings; or use another evidence_kind."
+            }
+            Self::SelectorInvalid => {
+                "basis.selector.selector has an invalid shape: see $defs/SelectorKind in `investigation schema observation.add`."
+            }
+            Self::SelectorValidationRequired | Self::QuoteValidationRequired => {
+                "The selector could not be checked against the artifact bytes; cite a retained artifact."
+            }
+            Self::QuoteNotFound => "",
+            Self::PositionalSelectorRequired => {
+                "basis.selector must locate the passage by position (text_lines, byte_range or another positional type); the quote goes in basis.text_quote."
+            }
+            Self::ArtifactReferenceUnresolved => {
+                "basis.artifact_ref names no artifact in this case."
+            }
+            Self::ArtifactReferenceMismatch => {
+                "basis.artifact_ref is not the current revision of the cited artifact."
+            }
+            Self::ArtifactReferenceWrongKind => {
+                "basis.artifact_ref must name an Artifact (art_ ID)."
+            }
+            Self::ArtifactDigestMismatch => {
+                "basis.selector.artifact_digest must equal the cited artifact's digest."
+            }
+            Self::UnexpectedArtifactReference => {
+                "An assertion basis cites no artifact; use a source basis to cite one."
+            }
+        }
+    }
+
+    /// The refusal message: the code, then what the payload needs.
+    pub fn message(self) -> String {
+        match self.explanation() {
+            "" => self.code().to_owned(),
+            explanation => format!("{} {explanation}", self.code()),
         }
     }
 }

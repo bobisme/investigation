@@ -190,9 +190,11 @@ fn resolve(
         return if kinds.contains(&kind) {
             ctx.resolve(reference, kind, path)
         } else {
-            Err(invalid(
+            Err(Failure::wrong_kind(
+                ErrorCode::InvalidInput,
                 path,
-                "This record kind is unsuitable for the reference.",
+                kinds,
+                kind,
             ))
         };
     }

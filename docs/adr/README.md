@@ -23,3 +23,4 @@
 | [0019](0019-canvas-files-known-by-content.md) | A generated `.canvas` file is written in the viewer's layout and known by its parsed content, so a viewer's re-save is not drift (bn-24y4) |
 | [0020](0020-proposals-are-superseded-and-choices-made-eligible-first.md) | A proposed Decision is replaced by `decision.supersede` (a `defer` replacement withdraws the choice); a choice is made eligible before it is compared, and the accept refusal gives that order (bn-30vf) |
 | [0021](0021-dispositions-keep-judgments-current.md) | A hypothesis disposition keeps the judgments about it current (freshness rules 8), an answered close resolves or lists each open question, and a question resolution may share the closing batch (bn-2xmp) |
+| [0022](0022-refusals-name-what-the-field-needs.md) | Refusals name the expected values or nested type, the dependent field and the accepted kinds, and one attempt reports every refusal in the optional `error.additional_errors` (bn-29t7) |

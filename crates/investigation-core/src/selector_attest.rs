@@ -228,24 +228,28 @@ fn text(value: &str, max: usize, path: &str) -> Result<(), Failure> {
 
 fn validate(payload: &SelectorAttest) -> Result<(), Failure> {
     if payload.observation_ref.id.kind() != Kind::Observation {
-        return Err(invalid(
+        return Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
             "/observation_ref",
-            "The reference has the wrong record kind.",
+            &[Kind::Observation],
+            payload.observation_ref.id.kind(),
         ));
     }
     if let Some(extraction) = payload.extraction_ref
         && extraction.id.kind() != Kind::Artifact
     {
-        return Err(invalid(
+        return Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
             "/extraction_ref",
-            "The reference has the wrong record kind.",
+            &[Kind::Artifact],
+            extraction.id.kind(),
         ));
     }
     payload
         .selector
         .selector
         .validate_shape()
-        .map_err(|blocker| invalid("/selector/selector", blocker.code()))?;
+        .map_err(|blocker| invalid("/selector/selector", blocker.message()))?;
     text(&payload.validator.name, NAME_LIMIT, "/validator/name")?;
     text(&payload.validator.version, NAME_LIMIT, "/validator/version")?;
     text(&payload.rationale, TEXT_LIMIT, "/rationale")?;

@@ -350,7 +350,7 @@ fn blocker_failure(blocker: ObservationBlocker) -> Failure {
         ObservationBlocker::MeasurementUnitRequired => "/value/unit",
         ObservationBlocker::InterventionNeedsChangedVariable => "/variables_changed",
     };
-    invalid(path, blocker.code())
+    invalid(path, blocker.message())
 }
 
 fn add(payload: ObservationAddPayload, context: &mut OperationContext<'_>) -> Result<(), Failure> {

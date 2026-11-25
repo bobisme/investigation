@@ -427,3 +427,42 @@ fn a_nonmaterial_case_waives_and_a_record_case_holding_data_needs_neither() {
     assert_eq!(closure["retrospective_waived"], Value::Null);
     assert!(retrospectives(root, &capture).is_empty());
 }
+
+/// A Retrospective recorded earlier in the closing batch but not cited is
+/// named, with the citation to add, instead of a draft (bn-29t7, DF.02 F10).
+#[test]
+fn a_close_that_does_not_cite_the_batch_retrospective_names_it() {
+    let directory = workspace();
+    let root = directory.path();
+    let case = create_case(root, "case", "measure");
+    run_record(root, "run", &case, "failed");
+    let before = case_ref(root, &case);
+    let refused = submit(
+        root,
+        &command("bare", &case, json!([before]), json!([close(json!({}))])),
+        5,
+    );
+    let draft = follow(root, &refused);
+    let batch = command(
+        "close-uncited",
+        &case,
+        json!([before]),
+        json!([
+            {"op":"retrospective.record","client_ref":"account","payload":account_from(&draft)},
+            close(json!({})),
+        ]),
+    );
+    let refused = submit(root, &batch, 5);
+    assert_eq!(refused["error"]["code"], "RETROSPECTIVE_REQUIRED");
+    assert_eq!(
+        refused["error"]["path"],
+        "/operations/1/payload/retrospective_ref"
+    );
+    let message = refused["error"]["message"].as_str().unwrap();
+    assert!(
+        message.contains(r#""retrospective_ref": {"client_ref": "account"}"#),
+        "{refused}"
+    );
+    assert!(refused["error"]["repair"]["argv"].is_null(), "{refused}");
+    assert_eq!(refused["error"]["repair"]["schema"], "case.close");
+}

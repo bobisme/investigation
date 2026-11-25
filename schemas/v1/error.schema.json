@@ -33,6 +33,13 @@
       "additionalProperties": false,
       "properties": {
         "actual": true,
+        "additional_errors": {
+          "description": "Further refusals of the same transaction, each with its own path and repair, found in the\nsame validation pass (bn-29t7). The fields above describe the first one. An operation\nthat depends on a refused operation's `client_ref` is not reported again. Absent when\nthere is only one.",
+          "items": {
+            "$ref": "#/$defs/ErrorDetail"
+          },
+          "type": "array"
+        },
         "code": {
           "$ref": "#/$defs/ErrorCode"
         },

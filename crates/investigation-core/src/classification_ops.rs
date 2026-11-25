@@ -172,7 +172,7 @@ fn downgrade_shape(payload: &ClassificationDowngrade) -> Result<(), Failure> {
         selector.selector.validate_shape().map_err(|blocker| {
             invalid(
                 &format!("/transformation/selectors/{index}"),
-                blocker.code(),
+                &blocker.message(),
             )
         })?;
     }

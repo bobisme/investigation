@@ -438,9 +438,11 @@ fn pin(
 ) -> Result<RevisionRef, Failure> {
     let resolved = ctx.resolve_reference(reference, path)?;
     if !kinds.contains(&resolved.id.kind()) {
-        return Err(invalid(
+        return Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
             path,
-            "The record kind is unsuitable for this reference.",
+            kinds,
+            resolved.id.kind(),
         ));
     }
     *reference = Reference::Existing(resolved);

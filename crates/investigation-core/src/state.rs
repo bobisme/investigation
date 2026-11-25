@@ -409,6 +409,26 @@ impl State {
             .or_default()
             .push(Arc::new(record));
     }
+
+    /// Undo a refused operation's writes to the scratch state: drop each
+    /// listed revision, newest first, if it is still the latest.
+    fn unwind(&mut self, written: &[RevisionRef]) {
+        for reference in written.iter().rev() {
+            let Some(records) = self.history.get_mut(&reference.id) else {
+                continue;
+            };
+            if records
+                .last()
+                .is_some_and(|record| record.reference() == *reference)
+            {
+                records.pop();
+            }
+            if records.is_empty() {
+                self.history.remove(&reference.id);
+            }
+        }
+        self.derived = Derived::default();
+    }
 }
 
 /// Copies of one accepted transaction's after-images, made by
@@ -593,8 +613,12 @@ fn apply_operations(
     let mut warnings = Vec::new();
     let mut final_checks = Vec::new();
     let mut case_id = command.case_id;
+    let mut refusals: Vec<Failure> = Vec::new();
+    let mut refused_aliases: BTreeSet<String> = BTreeSet::new();
+    let mut refused_ids: BTreeSet<Id> = BTreeSet::new();
     for (index, operation) in command.operations.iter().enumerate() {
         let prefix = format!("/operations/{index}");
+        let case_before = case_id;
         if let Some(alias) = operation.client_ref.as_deref()
             && aliases.contains_key(alias)
         {
@@ -623,13 +647,45 @@ fn apply_operations(
             final_checks: Vec::new(),
             warnings: Vec::new(),
         };
-        descriptor
+        let outcome = descriptor
             .execute(&operation.payload, &mut context)
-            .map_err(|error| prefix_path(error, &format!("{prefix}/payload"), ""))?;
-        if let Some(extensions) = &operation.extensions {
-            context
-                .attach_extensions(extensions)
-                .map_err(|error| prefix_path(error, &format!("{prefix}/extensions"), ""))?;
+            .map_err(|error| prefix_path(error, &format!("{prefix}/payload"), ""))
+            .and_then(|()| match &operation.extensions {
+                Some(extensions) => context
+                    .attach_extensions(extensions)
+                    .map_err(|error| prefix_path(error, &format!("{prefix}/extensions"), "")),
+                None => Ok(()),
+            });
+        if let Err(error) = outcome {
+            // Keep validating the rest of the transaction so one attempt
+            // reports every refusal it can (bn-29t7). The refused operation's
+            // own writes are undone first; an integrity failure stops at once.
+            let written: Vec<RevisionRef> = context.images.iter().map(Record::reference).collect();
+            drop(context);
+            scratch.unwind(&written);
+            case_id = case_before;
+            if error.error.code == ErrorCode::IntegrityFailure {
+                return Err(error);
+            }
+            // A later refusal of a reference or revision that a refused
+            // operation would have created or revised is its consequence,
+            // not a new failure: an alias it would have defined, or a record
+            // it also cites.
+            let dependent = matches!(
+                error.error.code,
+                ErrorCode::UnknownReference | ErrorCode::RevisionConflict
+            ) && (cites_alias(&operation.payload, &refused_aliases)
+                || cited_ids(&operation.payload)
+                    .iter()
+                    .any(|id| refused_ids.contains(id)));
+            if let Some(alias) = operation.client_ref.as_deref() {
+                refused_aliases.insert(alias.to_owned());
+            }
+            refused_ids.extend(cited_ids(&operation.payload));
+            if !dependent {
+                refusals.push(error);
+            }
+            continue;
         }
         let OperationContext {
             images,
@@ -665,7 +721,15 @@ fn apply_operations(
             records.push(image);
         }
         final_checks.extend(checks.into_iter().map(|check| (index, check)));
-        warnings.extend(operation_warnings);
+        // A warning repeated by several operations is said once (bn-29t7).
+        for warning in operation_warnings {
+            if !warnings.contains(&warning) {
+                warnings.push(warning);
+            }
+        }
+    }
+    if let Some(failure) = combine(refusals) {
+        return Err(failure);
     }
     scratch.sequence = acceptance.sequence;
     for (index, check) in final_checks {
@@ -760,6 +824,14 @@ impl OperationContext<'_> {
         self.preconditions
     }
 
+    /// The same-transaction alias of a record an earlier operation created.
+    pub fn alias_of(&self, reference: RevisionRef) -> Option<&str> {
+        self.aliases
+            .iter()
+            .find(|(_, created)| **created == reference)
+            .map(|(alias, _)| alias.as_str())
+    }
+
     pub fn current(&self, id: Id) -> Option<&Record> {
         self.state
             .current(id)
@@ -803,11 +875,12 @@ impl OperationContext<'_> {
     ) -> Result<RevisionRef, Failure> {
         let resolved = self.resolve_id(reference, path)?;
         if resolved.id.kind() != kind {
-            return Err(Failure::new(
+            return Err(Failure::wrong_kind(
                 ErrorCode::InvalidInput,
-                format!("Expected a {kind} record reference."),
-            )
-            .at(path));
+                path,
+                &[kind],
+                resolved.id.kind(),
+            ));
         }
         self.exact(resolved)
             .map(|_| resolved)
@@ -982,6 +1055,53 @@ fn revision_conflict(expected: RevisionRef, revision: u64) -> Failure {
     error
 }
 
+/// The first refusal, with the rest in `additional_errors`.
+fn combine(refusals: Vec<Failure>) -> Option<Failure> {
+    let mut refusals = refusals.into_iter();
+    let mut first = refusals.next()?;
+    first.error.additional_errors = refusals
+        .take(crate::wire::MAX_ADDITIONAL_ERRORS)
+        .map(|failure| *failure.error)
+        .collect();
+    Some(first)
+}
+
+/// Every record ID a payload names in an `id` field or as a string.
+fn cited_ids(value: &Value) -> BTreeSet<Id> {
+    let mut out = BTreeSet::new();
+    let mut stack = vec![value];
+    while let Some(value) = stack.pop() {
+        match value {
+            Value::String(text) => {
+                if let Ok(id) = text.parse::<Id>() {
+                    out.insert(id);
+                }
+            }
+            Value::Object(map) => stack.extend(map.values()),
+            Value::Array(items) => stack.extend(items),
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Whether a payload cites one of `aliases` as `{"client_ref": alias}`.
+fn cites_alias(value: &Value, aliases: &BTreeSet<String>) -> bool {
+    match value {
+        Value::Object(map) => {
+            map.get("client_ref")
+                .and_then(Value::as_str)
+                .is_some_and(|alias| aliases.contains(alias))
+                || map.values().any(|value| cites_alias(value, aliases))
+        }
+        Value::Array(items) => items.iter().any(|value| cites_alias(value, aliases)),
+        _ => false,
+    }
+}
+
+/// Put an operation error's payload-relative path under `prefix`. A handler
+/// marks a path at the transaction root, such as `/preconditions`, with a
+/// leading `#`; it is kept as it is, without the mark.
 fn prefix_path(mut error: Failure, prefix: &str, fallback: &str) -> Failure {
     let path = error
         .error
@@ -989,7 +1109,10 @@ fn prefix_path(mut error: Failure, prefix: &str, fallback: &str) -> Failure {
         .as_deref()
         .filter(|path| !path.is_empty())
         .unwrap_or(fallback);
-    error.error.path = Some(format!("{prefix}{path}"));
+    error.error.path = Some(match path.strip_prefix('#') {
+        Some(absolute) => absolute.to_owned(),
+        None => format!("{prefix}{path}"),
+    });
     error
 }
 

@@ -256,7 +256,16 @@ pub struct ErrorDetail {
     pub retry: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repair: Option<Repair>,
+    /// Further refusals of the same transaction, each with its own path and repair, found in the
+    /// same validation pass (bn-29t7). The fields above describe the first one. An operation
+    /// that depends on a refused operation's `client_ref` is not reported again. Absent when
+    /// there is only one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_errors: Vec<ErrorDetail>,
 }
+
+/// The most refusals one transaction reports beside the first.
+pub const MAX_ADDITIONAL_ERRORS: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -284,6 +293,7 @@ impl Failure {
                 actual: None,
                 retry: None,
                 repair: None,
+                additional_errors: Vec::new(),
             }),
         }
     }
@@ -317,6 +327,38 @@ impl Failure {
 
     pub fn exit_code(&self) -> u8 {
         self.error.code.exit_code()
+    }
+
+    /// A reference of a kind the field does not accept (bn-29t7): the
+    /// message, `expected.kinds` and `actual.kind` name the accepted kinds and
+    /// the given one by ID prefix.
+    pub fn wrong_kind(
+        code: ErrorCode,
+        path: &str,
+        accepted: &[crate::identity::Kind],
+        given: crate::identity::Kind,
+    ) -> Self {
+        let names: Vec<String> = accepted
+            .iter()
+            .map(|kind| format!("{kind:?} ({}_)", kind.prefix()))
+            .collect();
+        let mut failure = Self::new(
+            code,
+            format!(
+                "This reference accepts {}; it names a {given:?} ({}_).",
+                match names.len() {
+                    1 => format!("only a {}", names[0]),
+                    _ => format!("one of {}", names.join(", ")),
+                },
+                given.prefix()
+            ),
+        )
+        .at(path);
+        failure.error.expected = Some(serde_json::json!({
+            "kinds": accepted.iter().map(|kind| kind.prefix()).collect::<Vec<_>>()
+        }));
+        failure.error.actual = Some(serde_json::json!({"kind": given.prefix()}));
+        failure
     }
 }
 

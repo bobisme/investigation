@@ -69,6 +69,7 @@ pub mod review;
 pub mod review_independence;
 pub mod review_ops;
 pub mod review_packet;
+pub mod schema_hint;
 pub mod search_coverage;
 pub mod search_text;
 pub mod selector_attest;

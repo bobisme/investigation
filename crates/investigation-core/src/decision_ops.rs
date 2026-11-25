@@ -57,9 +57,14 @@ pub struct HardCondition {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReversalInput {
+    /// At least one of `assumption_ref`, `criterion_ref` and `comparison_ref` is required: the
+    /// record whose change would reverse the choice.
     pub assumption_ref: Option<Reference>,
+    /// See `assumption_ref`: one of the three links is required.
     pub criterion_ref: Option<Reference>,
+    /// See `assumption_ref`: one of the three links is required.
     pub comparison_ref: Option<Reference>,
+    /// The option the choice would reverse to; one of `compared_alternatives`.
     pub option_ref: Reference,
     pub condition: String,
 }
@@ -77,6 +82,8 @@ pub struct ReversalCondition {
 pub struct DecisionInput {
     pub question_ref: Reference,
     pub choice: ChoiceInput,
+    /// Every option weighed, at the revision compared. A `select` choice's option must be one of
+    /// them.
     pub compared_alternatives: Vec<Reference>,
     pub comparison_refs: Vec<Reference>,
     pub hard_conditions: Vec<ConditionInput>,
@@ -168,14 +175,37 @@ fn exact<'a>(
     path: &str,
 ) -> Result<&'a Record, Failure> {
     if r.id.kind() != kind {
-        return Err(fail(path, "Unexpected record kind."));
+        return Err(Failure::wrong_kind(
+            ErrorCode::GateFailed,
+            path,
+            &[kind],
+            r.id.kind(),
+        ));
     }
     let found = s
         .current(r.id)
         .filter(|v| v.header.case_id == case)
         .ok_or_else(|| fail(path, "Reference is not in this case."))?;
     if found.reference() != r {
-        let mut e = Failure::new(ErrorCode::RevisionConflict, "Reference is stale.").at(path);
+        let mut e = Failure::new(
+            ErrorCode::RevisionConflict,
+            format!(
+                "{kind:?} {} is at revision {}, not the cited {}. Read the current revision and \
+                 cite it if it still supports this; a proposal that cites the old one is replaced \
+                 with decision.supersede.",
+                r.id, found.header.revision.0, r.revision
+            ),
+        )
+        .at(path)
+        .with_argv(vec![
+            crate::PROGRAM_NAME.into(),
+            "show".into(),
+            r.id.to_string(),
+            "--depth".into(),
+            "summary".into(),
+            "--format".into(),
+            "json".into(),
+        ]);
         e.error.actual = Some(json!(found.reference()));
         return Err(e);
     }
@@ -199,7 +229,12 @@ fn pin_any(
 ) -> Result<RevisionRef, Failure> {
     let r = c.resolve_reference(r, path)?;
     if !kinds.contains(&r.id.kind()) {
-        return Err(fail(path, "Unexpected reference kind."));
+        return Err(Failure::wrong_kind(
+            ErrorCode::GateFailed,
+            path,
+            kinds,
+            r.id.kind(),
+        ));
     }
     exact(c.state(), c.case_id().unwrap(), r, r.id.kind(), path)?;
     Ok(r)
@@ -219,7 +254,8 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
     let alternatives: Vec<_> = p
         .compared_alternatives
         .iter()
-        .map(|r| pin(c, r, Kind::Option, "/compared_alternatives"))
+        .enumerate()
+        .map(|(i, r)| pin(c, r, Kind::Option, &format!("/compared_alternatives/{i}")))
         .collect::<Result<_, _>>()?;
     if alternatives
         .iter()
@@ -253,8 +289,10 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
             let r = pin(c, &option_ref, Kind::Option, "/choice/option_ref")?;
             if !alternatives.contains(&r) {
                 return Err(fail(
-                    "/choice",
-                    "Selected option must be among alternatives.",
+                    "/choice/option_ref",
+                    "The selected option must also be listed in compared_alternatives, at the same \
+                     revision: compared_alternatives holds every option weighed, the chosen one \
+                     included.",
                 ));
             }
             Choice::Select { option_ref: r }
@@ -314,25 +352,21 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
         .map(|r| pin(c, r, Kind::Assumption, "/assumption_refs"))
         .collect::<Result<Vec<_>, _>>()?;
     let mut reversal_conditions = Vec::new();
-    for r in p.reversal_conditions {
-        text(&r.condition, "/reversal_conditions/condition")?;
+    for (index, r) in p.reversal_conditions.into_iter().enumerate() {
+        let at = |field: &str| format!("/reversal_conditions/{index}{field}");
+        text(&r.condition, &at("/condition"))?;
         if r.assumption_ref.is_none() && r.criterion_ref.is_none() && r.comparison_ref.is_none() {
             return Err(fail(
-                "/reversal_conditions",
-                "Link an assumption, criterion or comparison.",
+                &at(""),
+                "A reversal condition needs at least one of assumption_ref, criterion_ref or \
+                 comparison_ref: the assumption, criterion or comparison whose change would \
+                 reverse the choice.",
             ));
         }
         let a = r
             .assumption_ref
             .as_ref()
-            .map(|v| {
-                pin(
-                    c,
-                    v,
-                    Kind::Assumption,
-                    "/reversal_conditions/assumption_ref",
-                )
-            })
+            .map(|v| pin(c, v, Kind::Assumption, &at("/assumption_ref")))
             .transpose()?;
         if let Some(a) = a
             && !assumption_refs.contains(&a)
@@ -342,30 +376,19 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
         let criterion_ref = r
             .criterion_ref
             .as_ref()
-            .map(|v| pin(c, v, Kind::Criterion, "/reversal_conditions/criterion_ref"))
+            .map(|v| pin(c, v, Kind::Criterion, &at("/criterion_ref")))
             .transpose()?;
         let comparison_ref = r
             .comparison_ref
             .as_ref()
-            .map(|v| {
-                pin(
-                    c,
-                    v,
-                    Kind::Comparison,
-                    "/reversal_conditions/comparison_ref",
-                )
-            })
+            .map(|v| pin(c, v, Kind::Comparison, &at("/comparison_ref")))
             .transpose()?;
-        let option_ref = pin(
-            c,
-            &r.option_ref,
-            Kind::Option,
-            "/reversal_conditions/option_ref",
-        )?;
+        let option_ref = pin(c, &r.option_ref, Kind::Option, &at("/option_ref"))?;
         if !alternatives.contains(&option_ref) {
             return Err(fail(
-                "/reversal_conditions/option_ref",
-                "Reversal option must be among alternatives.",
+                &at("/option_ref"),
+                "A reversal condition's option_ref must be one of compared_alternatives, at the \
+                 same revision: the option the choice would reverse to.",
             ));
         }
         if let Some(criterion) = criterion_ref {
@@ -375,7 +398,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
                     c.case_id().unwrap(),
                     criterion,
                     Kind::Criterion,
-                    "/reversal_conditions/criterion_ref",
+                    &at("/criterion_ref"),
                 )?
                 .body,
             )?;
@@ -386,7 +409,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
                     .is_some_and(|options| !options.iter().any(|r| r.id == option_ref.id))
             {
                 return Err(fail(
-                    "/reversal_conditions/criterion_ref",
+                    &at("/criterion_ref"),
                     "Criterion does not apply to the reversal option and question.",
                 ));
             }
@@ -398,7 +421,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
                     c.case_id().unwrap(),
                     comparison,
                     Kind::Comparison,
-                    "/reversal_conditions/comparison_ref",
+                    &at("/comparison_ref"),
                 )?
                 .body,
             )?;
@@ -407,7 +430,7 @@ fn normalize(c: &OperationContext<'_>, p: DecisionInput) -> Result<DecisionBody,
                 || criterion_ref.is_some_and(|r| r.id != stored.criterion_ref.id)
             {
                 return Err(fail(
-                    "/reversal_conditions/comparison_ref",
+                    &at("/comparison_ref"),
                     "Comparison does not match the stated decision basis.",
                 ));
             }
@@ -596,7 +619,7 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
             "Applicable hard criteria changed; propose and review a current decision.",
         ));
     }
-    let mut cells: BTreeMap<Id, ComparisonBody> = BTreeMap::new();
+    let mut cells: BTreeMap<Id, (RevisionRef, ComparisonBody)> = BTreeMap::new();
     for r in &b.comparison_refs {
         let cell: ComparisonBody =
             decode(&exact(s, case, *r, Kind::Comparison, "/comparison_refs")?.body)?;
@@ -606,7 +629,8 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
                 "Retracted comparison cannot support a decision.",
             ));
         }
-        if cell.option_ref.id == selected.id && cells.insert(cell.criterion_ref.id, cell).is_some()
+        if cell.option_ref.id == selected.id
+            && cells.insert(cell.criterion_ref.id, (*r, cell)).is_some()
         {
             return Err(fail(
                 "/comparison_refs",
@@ -620,9 +644,9 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
             .current(member.id)
             .ok_or_else(|| fail("/comparison_refs", "Criterion disappeared."))?;
         let cell = cells.get(&member.id);
-        let outcome = if let Some(cell) = cell {
+        let outcome = if let Some((cell_ref, cell)) = cell {
             if cell.option_ref != selected || cell.criterion_ref != cr.reference() {
-                return Err(fail("/comparison_refs", "Selected comparison is stale."));
+                return Err(stale_cell(*cell_ref, cell, selected, cr.reference()));
             }
             if verified(s, case, cell) && crate::absence_gate::comparison_basis_holds(s, case, cell)
             {
@@ -658,6 +682,46 @@ fn check_cells(s: &State, case: Id, b: &DecisionBody) -> Result<(), Failure> {
     }
     Ok(())
 }
+/// A cited comparison of the selected option that pins another revision of
+/// the option or of the criterion than the decision's (bn-29t7). The
+/// revisions are revision checks, as in REVISION_CONFLICT.
+fn stale_cell(
+    cell_ref: RevisionRef,
+    cell: &ComparisonBody,
+    option: RevisionRef,
+    criterion: RevisionRef,
+) -> Failure {
+    let mut failure = fail(
+        "/comparison_refs",
+        &format!(
+            "Comparison {} of the selected option pins option revision {} and criterion revision \
+             {}, but the decision chooses option revision {} and the criterion is at revision {}. \
+             comparison.revise it against those revisions, then decision.supersede this proposal \
+             with one that cites the new comparison revision, submit a fresh review.submit, and \
+             accept the replacement.",
+            cell_ref.id,
+            cell.option_ref.revision,
+            cell.criterion_ref.revision,
+            option.revision,
+            criterion.revision
+        ),
+    )
+    .with_argv(vec![
+        crate::PROGRAM_NAME.into(),
+        "schema".into(),
+        "comparison.revise".into(),
+        "--format".into(),
+        "json".into(),
+    ]);
+    failure.error.actual = Some(json!({
+        "comparison_ref": cell_ref,
+        "option_ref": cell.option_ref,
+        "criterion_ref": cell.criterion_ref,
+    }));
+    failure.error.expected = Some(json!({"option_ref": option, "criterion_ref": criterion}));
+    failure
+}
+
 fn lifecycle_label(lifecycle: OptionLifecycle) -> &'static str {
     match lifecycle {
         OptionLifecycle::Proposed => "proposed",
@@ -1109,10 +1173,16 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
     let q = json!({"id":"q_01890f3e-7c00-7000-8000-000000000001","revision":1});
     let d = json!({"id":"dec_01890f3e-7c00-7000-8000-000000000002","revision":1});
     let review = json!({"id":"rev_01890f3e-7c00-7000-8000-000000000003","revision":1});
+    // A template that commits with only the question replaced. The rules for
+    // a select choice (its option among compared_alternatives) and for
+    // reversal links are in the field descriptions (bn-29t7).
     let example = json!({"question_ref":q,"choice":{"kind":"defer","reason":"Await data"},"compared_alternatives":[],"comparison_refs":[],"hard_conditions":[],"evidence_refs":[],"assumption_refs":[],"tradeoffs":[],"consequences":["Choice delayed"],"reopen_trigger":"Measurement available","reversal_conditions":[]});
     vec![
         OperationDescriptor::active(
-            info("decision.propose", "Propose a decision."),
+            OperationInfo {
+                when_to_use: "Record a decision and its reviewed basis. A select choice lists its option in compared_alternatives at the same revision ({\"choice\": {\"kind\": \"select\", \"option_ref\": OPT}, \"compared_alternatives\": [OPT, ...]}), and each reversal condition links an assumption_ref, criterion_ref or comparison_ref ({\"condition\": \"...\", \"criterion_ref\": CRIT}).",
+                ..info("decision.propose", "Propose a decision.")
+            },
             example.clone(),
             ok,
             |p: DecisionInput, c| {

@@ -620,3 +620,29 @@ fn derivation_requests_are_checked_against_recorded_inputs() {
         2
     );
 }
+
+/// `validate_as` on an original file is refused with what it needs: a
+/// `derived_from`, or no `validate_as` (bn-29t7).
+#[test]
+fn strict_json_on_an_original_names_derived_from_and_the_way_to_keep_it() {
+    let (_temporary, root, mut store) = workspace();
+    let path = root.join("plain.json");
+    fs::write(&path, br#"{"n":1}"#).unwrap();
+    let manifest = json!({
+        "schema_version":"inv.ingest.v1",
+        "command_id":"plain-json",
+        "actor":"agent:derivation-test",
+        "source":{"title":"A JSON file","format":"application/json"},
+        "paths":[path],
+        "classification":"internal",
+        "new_case":{"title":"Which JSON?"},
+        "validate_as":"strict_json",
+    });
+    let failure = store
+        .ingest(&serde_json::to_vec(&manifest).unwrap(), None)
+        .unwrap_err();
+    assert_eq!(failure.error.path.as_deref(), Some("/validate_as"));
+    let message = &failure.error.message;
+    assert!(message.contains("add derived_from"), "{message}");
+    assert!(message.contains("omit validate_as"), "{message}");
+}

@@ -88,6 +88,7 @@
           "$ref": "#/$defs/ChoiceInput"
         },
         "compared_alternatives": {
+          "description": "Every option weighed, at the revision compared. A `select` choice's option must be one of\nthem.",
           "items": {
             "$ref": "#/$defs/Reference"
           },
@@ -182,7 +183,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "At least one of `assumption_ref`, `criterion_ref` and `comparison_ref` is required: the\nrecord whose change would reverse the choice."
         },
         "comparison_ref": {
           "anyOf": [
@@ -192,7 +194,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "See `assumption_ref`: one of the three links is required."
         },
         "condition": {
           "type": "string"
@@ -205,10 +208,12 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "description": "See `assumption_ref`: one of the three links is required."
         },
         "option_ref": {
-          "$ref": "#/$defs/Reference"
+          "$ref": "#/$defs/Reference",
+          "description": "The option the choice would reverse to; one of `compared_alternatives`."
         }
       },
       "required": [

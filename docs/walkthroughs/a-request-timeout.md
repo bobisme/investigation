@@ -258,7 +258,7 @@ EOF
 ```
 
 ```text
-/operations/0/payload/retrospective_ref: A material case needs a current Retrospective.
+/operations/0/payload/retrospective_ref: A material case needs retrospective_ref: a current Retrospective's ID, or the client_ref of a retrospective.record earlier in this transaction. The case has 2 material revision(s), listed in actual; the repair drafts a Retrospective.
 Retry or inspect with investigation --workspace <WORKSPACE> --case case_01a20751-8e54-7001-b14b-62fb37d7b21b retrospective --draft --format json
 See investigation schema retrospective.record
 ```

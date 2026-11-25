@@ -443,17 +443,39 @@ impl Output {
     fn failure(failure: Failure) -> Self {
         let exit = failure.exit_code();
         let mut text = failure.to_string();
-        if let Some(repair) = &failure.error.repair {
-            if let Some(argv) = &repair.argv {
-                text.push_str(&format!("\nRetry or inspect with {}", display_argv(argv)));
-            }
-            if let Some(schema) = &repair.schema {
-                text.push_str(&format!("\nSee investigation schema {schema}"));
+        push_repair(&mut text, failure.error.repair.as_ref());
+        // Every further refusal of the same attempt, each with its repair.
+        let more = &failure.error.additional_errors;
+        if !more.is_empty() {
+            text.push_str(&format!(
+                "\n{} more refusal(s) in this transaction:",
+                more.len()
+            ));
+            for detail in more {
+                text.push_str("\n- ");
+                if let Some(path) = detail.path.as_deref().filter(|path| !path.is_empty()) {
+                    text.push_str(&format!("{path}: "));
+                }
+                text.push_str(&detail.message);
+                let mut repair = String::new();
+                push_repair(&mut repair, detail.repair.as_ref());
+                text.push_str(&repair.replace('\n', "\n  "));
             }
         }
         Self {
             exit,
             ..Self::new(failure, text)
+        }
+    }
+}
+
+fn push_repair(text: &mut String, repair: Option<&investigation_core::wire::Repair>) {
+    if let Some(repair) = repair {
+        if let Some(argv) = &repair.argv {
+            text.push_str(&format!("\nRetry or inspect with {}", display_argv(argv)));
+        }
+        if let Some(schema) = &repair.schema {
+            text.push_str(&format!("\nSee investigation schema {schema}"));
         }
     }
 }
@@ -1093,7 +1115,39 @@ fn is_extension_failure(failure: &Failure) -> bool {
     }) && failure.error.repair.is_some()
 }
 
+/// Whether the refusal's repair schema names a catalog operation other than
+/// the refused one.
+fn names_other_operation(failure: &Failure, refused: &str) -> bool {
+    failure
+        .error
+        .repair
+        .as_ref()
+        .and_then(|repair| repair.schema.as_deref())
+        .is_some_and(|schema| {
+            schema != refused
+                && investigation_core::catalog::standard_catalog()
+                    .get(schema)
+                    .is_some()
+        })
+}
+
+/// [`record_repair_one`] for the refusal and each of its `additional_errors`,
+/// so every refusal of one attempt carries a runnable repair (bn-29t7).
 fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failure) -> Failure {
+    let additional = std::mem::take(&mut failure.error.additional_errors);
+    let mut failure = record_repair_one(store, command, failure);
+    failure.error.additional_errors = additional
+        .into_iter()
+        .map(|detail| {
+            let mut one = Failure::new(detail.code, String::new());
+            *one.error = detail;
+            *record_repair_one(store, command, one).error
+        })
+        .collect();
+    failure
+}
+
+fn record_repair_one(store: &mut Store, command: &RecordCommand, mut failure: Failure) -> Failure {
     let operation = failure
         .error
         .path
@@ -1113,10 +1167,33 @@ fn record_repair(store: &mut Store, command: &RecordCommand, mut failure: Failur
     if is_extension_failure(&failure) {
         return with_workspace_repair(store.workspace(), failure);
     }
+    // A gate or reference refusal names the refused operation's schema,
+    // unless the operation already named another operation's: the step to
+    // take first, such as question.resolve before an answered close or
+    // option.disposition before decision.accept (bn-29t7). The same rule
+    // keeps an argv the operation gave (below).
     if matches!(
         failure.error.code,
         ErrorCode::GateFailed | ErrorCode::UnknownReference
     ) && let Some(operation) = operation
+        && !names_other_operation(&failure, &operation.op)
+    {
+        failure = failure.with_schema(&operation.op);
+    }
+    // An invalid payload field with no repair names its operation's schema,
+    // which states the field (bn-29t7).
+    if failure.error.code == ErrorCode::InvalidInput
+        && failure
+            .error
+            .repair
+            .as_ref()
+            .is_none_or(|repair| repair.schema.is_none() && repair.argv.is_none())
+        && failure
+            .error
+            .path
+            .as_deref()
+            .is_some_and(|path| path.contains("/payload"))
+        && let Some(operation) = operation
     {
         failure = failure.with_schema(&operation.op);
     }

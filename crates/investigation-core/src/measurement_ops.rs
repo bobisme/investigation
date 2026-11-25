@@ -277,7 +277,12 @@ fn kind_in(reference: RevisionRef, kinds: &[Kind], path: &str) -> Result<(), Fai
     if kinds.contains(&reference.id.kind()) {
         Ok(())
     } else {
-        Err(invalid(path, "The reference has the wrong record kind."))
+        Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
+            path,
+            kinds,
+            reference.id.kind(),
+        ))
     }
 }
 

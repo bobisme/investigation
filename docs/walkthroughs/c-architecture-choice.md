@@ -169,7 +169,7 @@ EOF
 ```text
 /operations/0/payload/review_ref: Obtain a current review against this claim and its scoped membership.
 Retry or inspect with investigation --workspace <WORKSPACE> show dec_01a20751-a223-7000-b17d-bdb8f56d1dad --case case_01a20751-966d-7001-ae2d-5a18d7d5f0ce --depth full --format json
-See investigation schema decision.accept
+See investigation schema review.submit
 ```
 
 Nothing is committed. The repair starts with the out-of-date cells: each one

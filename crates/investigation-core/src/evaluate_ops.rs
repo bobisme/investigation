@@ -46,8 +46,11 @@ pub struct OptionAmend {
 #[serde(deny_unknown_fields)]
 pub struct OptionDispositionInput {
     pub option_ref: RevisionRef,
+    /// The new lifecycle. `proposed` is only the initial one.
     pub lifecycle: OptionLifecycle,
     pub reason: String,
+    /// Required when `lifecycle` is `ruled_out`: the active Criterion of the option's question
+    /// that rules it out. Otherwise optional.
     pub criterion_ref: Option<Reference>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
@@ -166,7 +169,12 @@ fn current(
     path: &str,
 ) -> Result<(), Failure> {
     if r.id.kind() != kind {
-        return Err(invalid(path, "Unexpected record kind."));
+        return Err(Failure::wrong_kind(
+            ErrorCode::InvalidInput,
+            path,
+            &[kind],
+            r.id.kind(),
+        ));
     }
     let record = ctx.current(r.id).ok_or_else(|| {
         Failure::new(
@@ -548,7 +556,7 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
         ),
         OperationDescriptor::active(
             info("option.disposition", "Record an option disposition."),
-            json!({"option_ref":opt,"lifecycle":"eligible","reason":"Feasible"}),
+            json!({"option_ref":opt,"lifecycle":"eligible","reason":"Feasible","criterion_ref":null}),
             ok,
             |p: OptionDispositionInput, c| {
                 text(&p.reason, "/reason")?;
@@ -570,7 +578,9 @@ pub(crate) fn operations() -> Vec<OperationDescriptor> {
                 if p.lifecycle == OptionLifecycle::RuledOut && criterion.is_none() {
                     return Err(invalid(
                         "/criterion_ref",
-                        "Ruling out an option requires a criterion.",
+                        "lifecycle ruled_out needs criterion_ref: the active Criterion of this \
+                         option's question that rules it out, as {\"id\": ..., \"revision\": ...} \
+                         or the client_ref of an earlier criterion.create.",
                     ));
                 }
                 if let Some(r) = criterion {

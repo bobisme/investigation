@@ -87,7 +87,7 @@
           "type": "null"
         }
       ],
-      "description": "Existing or same-transaction Retrospective. Mutually exclusive with waiver."
+      "description": "Existing or same-transaction Retrospective. Mutually exclusive with waiver. Required to\nclose a material case: give the Retrospective's ID, or `{\"client_ref\": ...}` naming a\n`retrospective.record` earlier in the same transaction."
     },
     "retrospective_waived": {
       "description": "A short reason for omitting a Retrospective on a non-material case.",

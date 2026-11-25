@@ -71,10 +71,12 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "description": "Required when `lifecycle` is `ruled_out`: the active Criterion of the option's question\nthat rules it out. Otherwise optional."
     },
     "lifecycle": {
-      "$ref": "#/$defs/OptionLifecycle"
+      "$ref": "#/$defs/OptionLifecycle",
+      "description": "The new lifecycle. `proposed` is only the initial one."
     },
     "option_ref": {
       "$ref": "#/$defs/RevisionRef"

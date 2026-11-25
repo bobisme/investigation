@@ -497,8 +497,11 @@ fn a_blank_descriptor_accepted_before_the_refusal_still_replays_and_reads() {
         }),
         2,
     );
-    assert_eq!(
-        refused["error"]["message"], "OBSERVATION_SELECTOR_INVALID",
+    assert!(
+        refused["error"]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("OBSERVATION_SELECTOR_INVALID "),
         "{refused}"
     );
     assert_eq!(
