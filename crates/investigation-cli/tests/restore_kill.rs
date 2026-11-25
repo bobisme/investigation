@@ -18,12 +18,13 @@ use std::{
     os::unix::{fs::symlink, process::ExitStatusExt},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    time::{Duration, Instant},
 };
 
 use investigation_render::export::restore::{PAUSE_AT, PAUSE_READY, STAGING};
 use serde_json::Value;
 
+#[path = "support/pause.rs"]
+mod pause;
 #[path = "support/restore.rs"]
 mod restore;
 
@@ -103,17 +104,7 @@ fn paused(root: &Path, verb: &str, dir: &Path, path: &Path, resume: bool, step: 
         .env(PAUSE_READY, &ready)
         .spawn()
         .unwrap();
-    let started = Instant::now();
-    while !ready.exists() {
-        if let Some(status) = child.try_wait().unwrap() {
-            panic!("{verb} exited with {status} before {step}");
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(120),
-            "{verb} never reached {step}"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    pause::wait_for_ready(&mut child, &ready, step, verb);
     fs::remove_file(&ready).unwrap();
     child
 }

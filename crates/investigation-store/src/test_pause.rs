@@ -7,7 +7,9 @@
 //! `INVESTIGATION_TEST_PAUSE_READY` names and waits while that file exists:
 //! a test then kills it there, or removes the file to let the commit go on
 //! (a race with another process). Without a ready file it waits until it is
-//! killed. Release builds have no such code.
+//! killed. Release builds have no such code. The point's name is written to
+//! a temporary file beside the ready file and renamed into place, so the
+//! ready file never exists empty or part written (bn-38ue).
 //!
 //! The points are the commit stages ([`crate::diag::Stage`] names, at the
 //! start of each stage, the first time it is entered) and
@@ -39,7 +41,7 @@ pub(crate) fn at(point: &str) {
         match std::env::var_os(PAUSE_READY) {
             Some(ready) => {
                 let ready = std::path::PathBuf::from(ready);
-                let _ = std::fs::write(&ready, point);
+                mark_ready(&ready, point);
                 while ready.exists() {
                     std::thread::sleep(pause);
                 }
@@ -51,4 +53,20 @@ pub(crate) fn at(point: &str) {
     }
     #[cfg(not(debug_assertions))]
     let _ = point;
+}
+
+/// Mark `ready` with `point` in one step: write a temporary file in the same
+/// directory and rename it onto `ready`, so a reader sees no file or the
+/// whole name, never an empty or partly written one. A test hook: a failure
+/// leaves no ready file, and the test times out naming the point.
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub fn mark_ready(ready: &std::path::Path, point: &str) {
+    // One paused process marks a given ready file, so a fixed name is enough.
+    let mut name = ready.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    let temporary = ready.with_file_name(name);
+    if std::fs::write(&temporary, point).is_ok() && std::fs::rename(&temporary, ready).is_err() {
+        let _ = std::fs::remove_file(&temporary);
+    }
 }

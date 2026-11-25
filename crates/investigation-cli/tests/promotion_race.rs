@@ -17,7 +17,6 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{Child, Stdio},
-    time::{Duration, Instant},
 };
 
 use investigation_store::test_pause::{PAUSE_COMMIT, PAUSE_READY};
@@ -25,6 +24,8 @@ use serde_json::{Value, json};
 
 #[path = "support/choice.rs"]
 mod choice;
+#[path = "support/pause.rs"]
+mod pause;
 
 use choice::{ACTOR, Choice, REVIEWER, command, envelope, hard_criterion, reference, run};
 
@@ -47,17 +48,7 @@ impl Paused {
             .spawn()
             .unwrap();
         child.stdin.take().unwrap().write_all(bytes).unwrap();
-        let started = Instant::now();
-        while !ready.exists() {
-            if let Some(status) = child.try_wait().unwrap() {
-                panic!("the promotion exited with {status} before its commit");
-            }
-            assert!(
-                started.elapsed() < Duration::from_secs(120),
-                "the promotion never reached its commit"
-            );
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        pause::wait_for_ready(&mut child, &ready, "lock", "the promotion");
         Self { child, ready }
     }
 

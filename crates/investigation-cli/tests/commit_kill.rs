@@ -35,7 +35,6 @@ use std::{
     os::unix::process::ExitStatusExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    time::{Duration, Instant},
 };
 
 use investigation_core::identity::{Id, Kind};
@@ -45,6 +44,8 @@ use investigation_store::{
 };
 use serde_json::{Value, json};
 
+#[path = "support/pause.rs"]
+mod pause;
 #[path = "support/restore.rs"]
 mod restore;
 
@@ -120,18 +121,7 @@ fn kill_at(cwd: &Path, args: &[&str], stdin: Option<&[u8]>, point: &str) {
         use std::io::Write;
         child.stdin.take().unwrap().write_all(bytes).unwrap();
     }
-    let started = Instant::now();
-    while !ready.exists() {
-        if let Some(status) = child.try_wait().unwrap() {
-            panic!("{args:?} exited with {status} before {point}");
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(120),
-            "{args:?} never reached {point}"
-        );
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    assert_eq!(fs::read_to_string(&ready).unwrap(), point);
+    pause::wait_for_ready(&mut child, &ready, point, &format!("{args:?}"));
     child.kill().unwrap();
     let status = child.wait().unwrap();
     assert_eq!(status.signal(), Some(9), "{point}: {status}");
@@ -430,4 +420,44 @@ fn a_closure_batch_killed_at_every_commit_point_leaves_both_or_neither() {
             "{point}: {retried:#}"
         );
     }
+}
+
+/// A child that creates the ready file empty and writes its point a moment
+/// later, as a create-then-write child did under load (bn-38ue): the parent
+/// waits for the whole point instead of reading the empty file.
+#[test]
+fn the_ready_handshake_waits_for_the_whole_point_name() {
+    let root = tempfile::tempdir().unwrap();
+    let ready = root.path().join(".commit-paused");
+    let mut child = Command::new("/bin/sh")
+        .args([
+            "-c",
+            r#": > "$1"; sleep 0.3; printf lock > "$1"; exec sleep 60"#,
+        ])
+        .args(["sh", ready.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .spawn()
+        .unwrap();
+    let started = std::time::Instant::now();
+    pause::wait_for_ready(&mut child, &ready, "lock", "sh");
+    assert!(started.elapsed() >= std::time::Duration::from_millis(300));
+    assert_eq!(fs::read_to_string(&ready).unwrap(), "lock");
+    child.kill().unwrap();
+    child.wait().unwrap();
+}
+
+/// A paused process marks its ready file in one rename: the file holds the
+/// whole point and no temporary file is left beside it.
+#[cfg(debug_assertions)]
+#[test]
+fn a_paused_process_marks_the_ready_file_whole() {
+    let root = tempfile::tempdir().unwrap();
+    let ready = root.path().join(".commit-paused");
+    investigation_store::test_pause::mark_ready(&ready, "journal_linked");
+    assert_eq!(fs::read_to_string(&ready).unwrap(), "journal_linked");
+    let names: Vec<_> = fs::read_dir(root.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(names, [".commit-paused"]);
 }

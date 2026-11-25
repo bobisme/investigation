@@ -53,9 +53,10 @@
 //!
 //! **Test pause.** In a build with debug assertions, setting
 //! `INVESTIGATION_TEST_PAUSE_RESTORE` to a [`Step`] name makes the process
-//! create the file named by `INVESTIGATION_TEST_PAUSE_READY` at that step
-//! and then wait until it is killed, so a test can kill a real process
-//! there. A release build has no such code.
+//! create the file named by `INVESTIGATION_TEST_PAUSE_READY` at that step,
+//! holding the step's name and renamed into place whole, and then wait
+//! until it is killed, so a test can kill a real process there. A release
+//! build has no such code.
 
 use std::{
     fs, io,
@@ -159,7 +160,10 @@ impl Step {
         #[cfg(debug_assertions)]
         if std::env::var(PAUSE_AT).is_ok_and(|at| at == format!("{self:?}")) {
             if let Ok(ready) = std::env::var(PAUSE_READY) {
-                let _ = fs::write(ready, format!("{self:?}"));
+                investigation_store::test_pause::mark_ready(
+                    Path::new(&ready),
+                    &format!("{self:?}"),
+                );
             }
             loop {
                 std::thread::sleep(std::time::Duration::from_secs(1));
