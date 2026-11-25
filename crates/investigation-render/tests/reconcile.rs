@@ -675,7 +675,7 @@ fn clean_conflicts_removes_only_the_set_aside_bytes_it_can_identify() {
         area.join(&prefix).join("link.md"),
     )
     .unwrap();
-    // A withheld generated version, which drift records name.
+    // A file in a generation folder that no withheld-version record names.
     let withheld = root.join("local/conflicts/gen_withheld/Cases/x.md");
     fs::create_dir_all(withheld.parent().unwrap()).unwrap();
     fs::write(&withheld, b"withheld\n").unwrap();
@@ -712,12 +712,9 @@ fn clean_conflicts_removes_only_the_set_aside_bytes_it_can_identify() {
         action(&previewed, &format!("{DISCARDED_DIR}/{prefix}/link.md")),
         Action::Kept(Kept::NotARegularFile)
     );
-    assert!(
-        previewed
-            .entries
-            .iter()
-            .all(|entry| !entry.path.contains("gen_withheld")),
-        "withheld versions are not looked at"
+    assert_eq!(
+        action(&previewed, "local/conflicts/gen_withheld/Cases/x.md"),
+        Action::Kept(Kept::Unrecorded)
     );
     let entry = previewed
         .entries
@@ -734,7 +731,9 @@ fn clean_conflicts_removes_only_the_set_aside_bytes_it_can_identify() {
     assert!(!root.join(PROPOSED_DIR).exists(), "empty folders go");
     assert!(root.join(&kept_discard).exists());
 
-    let done = set_aside::clean(fixture.store.workspace(), &Area::ALL).unwrap();
+    // The two set-aside areas; the withheld versions are cleaned below.
+    let set_aside_areas = [Area::Discarded, Area::Proposed];
+    let done = set_aside::clean(fixture.store.workspace(), &set_aside_areas).unwrap();
     assert_eq!(action(&done, &kept_discard), Action::Removed);
     let mut expected = before.clone();
     expected.retain(|(path, _)| path != &kept_discard && path != &kept_proposal);
@@ -765,8 +764,161 @@ fn clean_conflicts_removes_only_the_set_aside_bytes_it_can_identify() {
     assert_eq!(fixture.heads(), heads, "the journal is unchanged");
 
     // Nothing left to identify: cleaning again removes nothing.
-    let again = set_aside::clean(fixture.store.workspace(), &Area::ALL).unwrap();
+    let again = set_aside::clean(fixture.store.workspace(), &set_aside_areas).unwrap();
     assert_eq!(again.count(|action| *action == Action::Removed), 0);
+}
+
+/// The withheld version the last render kept for `path`, as its drift
+/// record names it.
+fn withheld_of(fixture: &Fixture, path: &str) -> String {
+    vault_status(fixture.store.workspace())
+        .unwrap()
+        .drift
+        .iter()
+        .find(|drift| drift.path.as_str() == path)
+        .and_then(|drift| drift.conflict.clone())
+        .unwrap_or_else(|| panic!("{path} has no withheld version"))
+}
+
+/// The withheld-version paths the render manifest records.
+fn recorded_withheld(root: &Path) -> Vec<String> {
+    let manifest: Value =
+        serde_json::from_slice(&fs::read(root.join("local/render-manifest.json")).unwrap())
+            .unwrap();
+    manifest["withheld"]
+        .as_array()
+        .map(|records| {
+            records
+                .iter()
+                .map(|record| record["path"].as_str().unwrap().to_owned())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[test]
+fn clean_conflicts_removes_withheld_versions_the_manifest_identifies() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let root = fixture.root();
+    let (open, settled, edited) = (fixture.note(0), fixture.note(1), fixture.note(2));
+    for path in [&open, &settled, &edited] {
+        fs::write(vault.join(path), b"my edit\n").unwrap();
+    }
+    fixture.render();
+    let (open_copy, settled_copy, edited_copy) = (
+        withheld_of(&fixture, &open),
+        withheld_of(&fixture, &settled),
+        withheld_of(&fixture, &edited),
+    );
+    let generated = fs::read(root.join(&settled_copy)).unwrap();
+    assert_eq!(generated, fixture.planned(&settled));
+    // A manifest written before withheld versions were recorded: the ones
+    // its open drift records name are recorded when it is next read.
+    let file = root.join("local/render-manifest.json");
+    let mut manifest: Value = serde_json::from_slice(&fs::read(&file).unwrap()).unwrap();
+    assert!(manifest["withheld"].is_array(), "{manifest:#}");
+    manifest.as_object_mut().unwrap().remove("withheld");
+    fs::write(&file, serde_json::to_vec_pretty(&manifest).unwrap()).unwrap();
+    // Reconcile two of the three: their drift records go, and so would every
+    // trace of the withheld versions' hashes, were the manifest not to keep
+    // them.
+    fixture
+        .reconcile(Disposition::PreserveAsNote, &[&settled, &edited], false)
+        .unwrap();
+    assert_eq!(fixture.drifted(), std::slice::from_ref(&open));
+    assert!(
+        root.join(&settled_copy).is_file(),
+        "reconcile removes nothing"
+    );
+    let mut recorded = vec![open_copy.clone(), settled_copy.clone(), edited_copy.clone()];
+    recorded.sort();
+    assert_eq!(recorded_withheld(&root), recorded);
+    // One withheld version changed since it was written.
+    fs::write(root.join(&edited_copy), b"changed in local/\n").unwrap();
+    let heads = fixture.heads();
+    let vault_before = files(&vault);
+    let before = files(&root);
+
+    let previewed = set_aside::preview(fixture.store.workspace(), &[Area::Withheld]).unwrap();
+    assert_eq!(files(&root), before, "a preview writes nothing");
+    let action = |report: &set_aside::CleanReport, path: &str| {
+        report
+            .entries
+            .iter()
+            .find(|entry| entry.path == path)
+            .unwrap_or_else(|| panic!("{path} is not listed: {report:?}"))
+            .action
+    };
+    assert_eq!(action(&previewed, &settled_copy), Action::WouldRemove);
+    assert_eq!(action(&previewed, &open_copy), Action::Kept(Kept::InUse));
+    assert_eq!(
+        action(&previewed, &edited_copy),
+        Action::Kept(Kept::BytesDiffer)
+    );
+    let entry = previewed
+        .entries
+        .iter()
+        .find(|entry| entry.path == settled_copy)
+        .unwrap();
+    assert_eq!(entry.area, Area::Withheld);
+    assert_eq!(entry.vault_path.as_deref(), Some(settled.as_str()));
+    assert_eq!(entry.sha256, Some(hash_bytes(&generated)));
+
+    let done = set_aside::clean(fixture.store.workspace(), &[Area::Withheld]).unwrap();
+    assert_eq!(action(&done, &settled_copy), Action::Removed);
+    assert!(!root.join(&settled_copy).exists());
+    assert!(
+        root.join(&open_copy).is_file(),
+        "an open drift keeps its copy"
+    );
+    assert_eq!(
+        fs::read(root.join(&edited_copy)).unwrap(),
+        b"changed in local/\n"
+    );
+    let mut recorded = vec![open_copy.clone(), edited_copy.clone()];
+    recorded.sort();
+    assert_eq!(
+        recorded_withheld(&root),
+        recorded,
+        "the record is forgotten"
+    );
+    assert_eq!(
+        fixture.drifted(),
+        std::slice::from_ref(&open),
+        "drift is unchanged"
+    );
+    assert_eq!(files(&vault), vault_before, "the vault is untouched");
+    assert_eq!(fixture.heads(), heads, "the journal is unchanged");
+
+    // A record whose file is gone is forgotten; nothing else is removed.
+    fs::remove_file(root.join(&edited_copy)).unwrap();
+    let previewed = set_aside::preview(fixture.store.workspace(), &[Area::Withheld]).unwrap();
+    assert_eq!(previewed.forgotten, std::slice::from_ref(&edited_copy));
+    assert_eq!(
+        recorded_withheld(&root).len(),
+        2,
+        "a preview forgets nothing"
+    );
+    let done = set_aside::clean(fixture.store.workspace(), &[Area::Withheld]).unwrap();
+    assert_eq!(done.forgotten, [edited_copy]);
+    assert_eq!(done.count(|action| *action == Action::Removed), 0);
+    assert_eq!(recorded_withheld(&root), std::slice::from_ref(&open_copy));
+
+    // Once the last drift is reconciled, its copy goes too, and the
+    // generation folders it leaves empty with it.
+    fixture
+        .reconcile(Disposition::PreserveAsNote, &[&open], false)
+        .unwrap();
+    let done = set_aside::clean(fixture.store.workspace(), &Area::ALL).unwrap();
+    assert_eq!(action(&done, &open_copy), Action::Removed);
+    assert!(recorded_withheld(&root).is_empty());
+    let generation = open_copy.split('/').take(3).collect::<Vec<_>>().join("/");
+    assert!(!root.join(&generation).exists(), "{generation}");
+    assert!(
+        root.join("local/conflicts").is_dir(),
+        "the area folder stays"
+    );
 }
 
 impl Fixture {
@@ -937,6 +1089,44 @@ fn unrelease_undoes_a_chain_of_releases_one_step_at_a_time() {
             .is_empty()
     );
     assert!(fixture.drifted().is_empty());
+}
+
+#[test]
+fn a_returned_path_released_again_counts_up_from_its_own_name() {
+    let mut fixture = Fixture::new();
+    let vault = fixture.vault();
+    let (first, second, third) = (
+        fixture.note(0),
+        fixture.relocated(0, 2),
+        fixture.relocated(0, 3),
+    );
+    fixture.release(&first, "first\n");
+    fixture.release(&second, "second\n");
+    // Return the first path while the second stays released: the second's
+    // projection now lives at the first.
+    fs::remove_file(vault.join(&first)).unwrap();
+    fixture.unrelease(&[&first]).unwrap();
+    assert_eq!(fixture.read(&first), fixture.planned_text(&first));
+
+    // Releasing the first again relocates beside its own name, not beside
+    // the released sibling's (which would be `-2-2.md`).
+    fixture.release(&first, "first again\n");
+    let status = vault_status(fixture.store.workspace()).unwrap();
+    let released: Vec<(&str, &str)> = status
+        .released
+        .iter()
+        .map(|r| (r.path.as_str(), r.relocated_to.as_str()))
+        .collect();
+    assert_eq!(
+        released,
+        [
+            (second.as_str(), third.as_str()),
+            (first.as_str(), third.as_str())
+        ],
+        "{released:?}"
+    );
+    assert!(vault.join(&third).exists());
+    assert_eq!(fs::read(vault.join(&second)).unwrap(), b"second\n");
 }
 
 #[test]

@@ -1,4 +1,4 @@
-<!-- inv.exposure-guidance.v2 -->
+<!-- inv.exposure-guidance.v3 -->
 # A secret reached the workspace: diagnosis and manual remediation
 
 Read this when a secret (a password, token, key or personal data) reached a workspace: in event text such as an observation statement or quote, in a retained file, or in a vault note.
@@ -26,7 +26,7 @@ Classification is handling policy for this tool's outputs, not access control: a
 
 ## 3. Diagnose
 
-- `investigation exposure ID --format json` traces a record, case, transaction or command ID: the events that hold each revision, the retained bytes of a Source or Artifact and of everything derived from it, the index, blob verdicts and the record's vault notes with their conflict copies.
+- `investigation exposure ID --format json` traces a record, case, transaction or command ID: the events that hold each revision, the retained bytes of a Source or Artifact and of everything derived from it, the index, blob verdicts and the record's vault notes with their conflict copies, the generated versions a render withheld from them and the edits `vault reconcile` set aside from them.
 - `investigation exposure --text-file ./exposed.txt --format json` reads every file in the workspace and lists each one that holds the text. Put the secret alone in a file, or pipe it with `--text-file -`; never pass it as an argument. One trailing line break is ignored. The text is also searched in the escaped forms the tool writes (JSON, Markdown, titles, YAML). Remove the file afterwards.
 - Give both for the fullest list. The command writes nothing and never prints the text.
 - Retained bytes of restricted Artifacts are listed as not opened. Add `--include-restricted` to search them: `investigation exposure --text-file - --include-restricted --format json`.
@@ -52,13 +52,15 @@ What each area is and what removing the text from it takes:
 | `index` | no | Delete `cache/index.sqlite` and its `-wal` and `-shm` files, then run `investigation repair index --format json`. The rebuild puts back any text the journal still holds. |
 | `blob_verdict` | no | Delete the entry; the next read hashes the blob again. |
 | `vault_note` | no | Raise the classification and render again (step 2), or render after a restore or fork. |
-| `vault_conflict_copy`, `render_conflict`, `vault`, `export`, `temporary` | no | Remove or edit the file by hand. A render never removes these. |
+| `render_conflict` | no | A generated version a render withheld from a drifted note, under `local/conflicts/<generation>/`. It stays after the drift is reconciled. Once it is, `investigation vault clean-conflicts --area withheld --apply --format json` removes it while its bytes still hash to what the render manifest recorded; run it without `--apply` first to see the list. Otherwise remove it by hand. |
+| `reconcile_set_aside` | no | Observed bytes of a drifted note, such as an edit, that `vault reconcile` set aside on discard or propose-change, under `local/conflicts/discarded/` or `local/conflicts/proposed/`. `investigation vault clean-conflicts --apply --format json` removes them while their bytes still hash to the name of their folder; run it without `--apply` first to see the list. Otherwise remove them by hand. |
+| `vault_conflict_copy`, `vault`, `export`, `temporary` | no | Remove or edit the file by hand. A render never removes these. |
 
 ## 4. Choose a remediation
 
 ### 4A. The text is only in disposable or human-owned files
 
-When no `journal_event`, `case_genesis`, `blob` or `staging` location holds it (for example, it was pasted into a human note in `Notes/`, or only an export or a conflict copy holds it): edit or remove those files by hand, delete and rebuild the index as in the table, render the vault, and run the diagnosis again until it lists nothing. The journal is untouched, so no historical guarantee changes.
+When no `journal_event`, `case_genesis`, `blob` or `staging` location holds it (for example, it was pasted into a human note in `Notes/`, or only an export or a conflict copy holds it): edit or remove those files by hand, remove the conflicts-area files with `investigation vault clean-conflicts --apply --format json` (the table says when it can), delete and rebuild the index as in the table, render the vault, and run the diagnosis again until it lists nothing. The journal is untouched, so no historical guarantee changes.
 
 ### 4B. Restore a pre-exposure copy and replay
 

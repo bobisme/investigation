@@ -93,6 +93,20 @@
 //! `projection` names the root the record was written for, in existing-vault
 //! mode ([`crate::projection`]); a render, reconcile or removal under another
 //! root refuses rather than act on the wrong folder.
+//!
+//! ## Withheld generated versions
+//!
+//! A render that finds an owned path drifted keeps the content it would have
+//! written in the workspace's conflicts area ([`crate::drift`]). The drift
+//! record names that file only while the path stays drifted, so the manifest
+//! also keeps a [`Withheld`] record of every such file, with the hash of the
+//! bytes written, until `vault clean-conflicts` removes it
+//! ([`crate::set_aside`]). The record outlives the drift it came from: once
+//! the drift is reconciled, or a later render withholds different content,
+//! the earlier file is still identified by its hash and can be removed with
+//! a preview first, never silently. A file withheld before these records
+//! were kept, or whose record was lost with the manifest, is not identified
+//! and is left in place.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -175,6 +189,20 @@ pub struct HandedOver {
     pub since: String,
 }
 
+/// A generated version a render withheld from a drifted path and kept in
+/// the conflicts area ([`crate::drift`]). It stays recorded until
+/// `vault clean-conflicts` removes the file, whether or not the drift that
+/// caused it is still open.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Withheld {
+    /// Workspace-relative path, `local/conflicts/<generation>/<vault path>`.
+    pub path: String,
+    /// The bytes written there.
+    pub sha256: Digest,
+    /// The drifted vault path the content was withheld from.
+    pub from: PlanPath,
+}
+
 /// The case head a note's bytes name, when they name one.
 fn basis_of(entry: &PlanEntry) -> Option<Snapshot> {
     match crate::NoteMarker::read(entry.content())? {
@@ -236,6 +264,8 @@ pub struct Manifest {
     /// The existing vault and managed prefix the record was written for;
     /// `None` for the workspace's own `vault/`.
     projection: Option<(String, String)>,
+    /// Withheld generated versions in the conflicts area, by path.
+    withheld: BTreeMap<String, Withheld>,
 }
 
 /// How [`Manifest::load`] found the manifest.
@@ -325,6 +355,48 @@ impl Manifest {
         }
         let owned = &self.owned;
         self.drifted.retain(|path, _| owned.contains_key(path));
+        self.record_withheld();
+        self
+    }
+
+    /// Record the withheld version every drift record names. Records are
+    /// only added here; [`Self::without_withheld`] drops them.
+    fn record_withheld(&mut self) {
+        for drift in self.drifted.values() {
+            if let (Some(path), Some(sha256)) = (&drift.conflict, &drift.generated)
+                && is_withheld_path(path)
+            {
+                self.withheld.insert(
+                    path.clone(),
+                    Withheld {
+                        path: path.clone(),
+                        sha256: sha256.clone(),
+                        from: drift.path.clone(),
+                    },
+                );
+            }
+        }
+    }
+
+    /// Withheld generated versions in the conflicts area, in path order
+    /// ([`Withheld`]), including those whose drift is no longer open.
+    pub fn withheld(&self) -> impl Iterator<Item = &Withheld> {
+        self.withheld.values()
+    }
+
+    /// Workspace-relative paths of the withheld versions an open drift
+    /// record still names.
+    pub fn withheld_in_use(&self) -> BTreeSet<&str> {
+        self.drifted
+            .values()
+            .filter_map(|drift| drift.conflict.as_deref())
+            .collect()
+    }
+
+    /// The same record without the withheld versions at `paths`: their
+    /// files were removed, or are gone.
+    pub(crate) fn without_withheld(mut self, paths: &BTreeSet<String>) -> Self {
+        self.withheld.retain(|path, _| !paths.contains(path));
         self
     }
 
@@ -739,6 +811,7 @@ impl Manifest {
             released: self.released.clone(),
             handed_over: self.handed_over.clone(),
             projection: self.projection.clone(),
+            withheld: self.withheld.clone(),
         };
         if !complete {
             let reached: BTreeSet<&PlanPath> = report
@@ -955,6 +1028,15 @@ impl Manifest {
                     existing_vault: vault.clone(),
                     managed_prefix: prefix.clone(),
                 }),
+            withheld: self
+                .withheld
+                .values()
+                .map(|withheld| WireWithheld {
+                    path: withheld.path.clone(),
+                    sha256: withheld.sha256.clone(),
+                    from: withheld.from.as_str().to_owned(),
+                })
+                .collect(),
         };
         let mut bytes = serde_json::to_vec_pretty(&wire).expect("manifest serializes");
         bytes.push(b'\n');
@@ -1133,7 +1215,29 @@ impl Manifest {
                 ));
             }
         };
-        Ok(Self {
+        let mut withheld = BTreeMap::new();
+        for record in wire.withheld {
+            let from = PlanPath::new(record.from).ok();
+            let (true, Some(from)) = (is_withheld_path(&record.path), from) else {
+                return Err(Problem::Invalid(
+                    "the manifest lists a withheld version outside the conflicts area".to_owned(),
+                ));
+            };
+            if withheld.contains_key(&record.path) {
+                return Err(Problem::Invalid(
+                    "the manifest lists a withheld version twice".to_owned(),
+                ));
+            }
+            withheld.insert(
+                record.path.clone(),
+                Withheld {
+                    path: record.path,
+                    sha256: record.sha256,
+                    from,
+                },
+            );
+        }
+        let mut manifest = Self {
             workspace_id: wire.workspace_id,
             generation: wire.generation.map(|generation| CompletedGeneration {
                 id: generation.id,
@@ -1158,8 +1262,27 @@ impl Manifest {
             released,
             handed_over,
             projection,
-        })
+            withheld,
+        };
+        // A manifest written before withheld versions were recorded still
+        // names the ones its open drift records point at.
+        manifest.record_withheld();
+        Ok(manifest)
     }
+}
+
+/// Whether `path` is a withheld version's place:
+/// `local/conflicts/<generation>/<vault path>`, outside the folders
+/// `vault reconcile` sets observed bytes aside in.
+pub(crate) fn is_withheld_path(path: &str) -> bool {
+    path.strip_prefix(CONFLICTS_DIR)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .and_then(|rest| rest.split_once('/'))
+        .is_some_and(|(generation, rest)| {
+            PlanPath::new(generation).is_ok()
+                && PlanPath::new(rest).is_ok()
+                && !matches!(generation, "discarded" | "proposed")
+        })
 }
 
 /// A drift record from the wire: an owned path, a known kind, a conflict file
@@ -1319,6 +1442,16 @@ struct Wire {
     /// Absent for the workspace's own `vault/`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     projection: Option<WireProjection>,
+    /// Absent in manifests written before withheld versions were recorded.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    withheld: Vec<WireWithheld>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct WireWithheld {
+    path: String,
+    sha256: Digest,
+    from: String,
 }
 
 #[derive(Serialize, Deserialize)]

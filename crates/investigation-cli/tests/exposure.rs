@@ -553,3 +553,125 @@ fn restricted_retained_bytes_are_listed_but_opened_only_on_request() {
     let paths: BTreeSet<String> = located(&opened, "found").keys().cloned().collect();
     assert_eq!(paths, holding(&workspace));
 }
+
+/// The location entry for `path`, which must be listed.
+fn location<'a>(report: &'a Value, path: &str) -> &'a Value {
+    report["locations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|location| location["path"] == path)
+        .unwrap_or_else(|| panic!("{path} is not listed: {report:#}"))
+}
+
+#[test]
+fn the_conflicts_area_is_searched_and_tied_to_the_record_it_was_kept_from() {
+    let fixture = fixture();
+    let workspace = fixture.workspace();
+    let note = format!(
+        "Cases/{}/Observations/{}.md",
+        fixture.case, fixture.observation
+    );
+    // The person removes the sync client's copy and edits the note, keeping
+    // the secret in the edit. The render withholds its version, and a
+    // confirmed discard sets the edit aside.
+    let vault_note = workspace.join("vault").join(&note);
+    fs::remove_file(
+        vault_note.with_file_name(format!("{} (conflicted copy).md", fixture.observation)),
+    )
+    .unwrap();
+    fs::write(&vault_note, format!("my draft: {SECRET}\n")).unwrap();
+    json_run(
+        &fixture.root,
+        &["--workspace", "ws", "vault", "render"],
+        None,
+        0,
+    );
+    let conflicts = json_run(
+        &fixture.root,
+        &["--workspace", "ws", "vault", "conflicts"],
+        None,
+        0,
+    );
+    let withheld_copy = conflicts["conflicts"][0]["retained"]
+        .as_str()
+        .unwrap_or_else(|| panic!("{conflicts:#}"))
+        .to_owned();
+    json_run(
+        &fixture.root,
+        &[
+            "--workspace",
+            "ws",
+            "vault",
+            "reconcile",
+            &note,
+            "--disposition",
+            "discard",
+            "--discard-observed",
+        ],
+        None,
+        0,
+    );
+    let set_aside: Vec<String> = files(&workspace)
+        .keys()
+        .map(|path| path.to_string_lossy().into_owned())
+        .filter(|path| path.starts_with("local/conflicts/discarded/"))
+        .collect();
+    assert_eq!(set_aside.len(), 1, "{set_aside:?}");
+    let set_aside = &set_aside[0];
+    assert!(workspace.join(&withheld_copy).is_file());
+
+    // The text search finds both, each named by its own area, tied to the
+    // record, with the command that removes it.
+    let report = json_run(
+        &fixture.root,
+        &["--workspace", "ws", "exposure", "--text-file", "secret.txt"],
+        None,
+        0,
+    );
+    let found = located(&report, "found");
+    let paths: BTreeSet<String> = found.keys().cloned().collect();
+    assert_eq!(paths, holding(&workspace), "{report:#}");
+    assert_eq!(found[set_aside.as_str()], "reconcile_set_aside");
+    assert_eq!(found[withheld_copy.as_str()], "render_conflict");
+    for path in [set_aside.as_str(), withheld_copy.as_str()] {
+        assert_eq!(
+            location(&report, path)["records"],
+            json!([fixture.observation.as_str()]),
+            "{path}"
+        );
+    }
+    assert!(
+        report["areas"]["reconcile_set_aside"]
+            .as_str()
+            .unwrap()
+            .contains("vault clean-conflicts --apply"),
+        "{report:#}"
+    );
+    assert!(
+        report["areas"]["render_conflict"]
+            .as_str()
+            .unwrap()
+            .contains("--area withheld"),
+        "{report:#}"
+    );
+
+    // The record's ID alone lists them too, without the text.
+    let traced = json_run(
+        &fixture.root,
+        &["--workspace", "ws", "exposure", &fixture.observation],
+        None,
+        0,
+    );
+    let may_hold = located(&traced, "may_hold");
+    assert_eq!(
+        may_hold.get(set_aside.as_str()).map(String::as_str),
+        Some("reconcile_set_aside"),
+        "{traced:#}"
+    );
+    assert_eq!(
+        may_hold.get(withheld_copy.as_str()).map(String::as_str),
+        Some("render_conflict"),
+        "{traced:#}"
+    );
+}

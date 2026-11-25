@@ -262,10 +262,32 @@ fn an_unplanned_or_unrendered_map_is_refused_with_its_repair() {
     assert_eq!(code, 2, "{value}");
     let message = value["error"]["message"].as_str().unwrap();
     assert!(
-        message.contains("viewer_release") && message.contains("[vault_policy]"),
+        message.contains("config set vault_policy.viewer_release"),
         "{message}"
     );
+    // The repair states the release by command, and running it works.
+    let repair: Vec<String> = value["error"]["repair"]["argv"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|arg| arg.as_str().unwrap().to_owned())
+        .collect();
+    let at = repair.iter().position(|arg| arg == "config").unwrap();
+    assert_eq!(
+        repair[at..at + 3],
+        ["config", "set", "vault_policy.viewer_release"],
+        "{repair:?}"
+    );
     assert!(!plain.vault().join("Boards/map.canvas").exists());
+    let status = Command::new(env!("CARGO_BIN_EXE_investigation"))
+        .env_clear()
+        .args(&repair[1..])
+        .output()
+        .unwrap();
+    assert!(status.status.success(), "{status:?}");
+    plain.ok(&["vault", "render"]);
+    let (_, value) = plain.run(&["vault", "copy-map", "--to", "Boards/map.canvas"]);
+    assert!(!value.to_string().contains("plans no case map"), "{value}");
 
     // A map the vault has not rendered yet: the nodes would not resolve.
     let rendered = Vault::new("scenario-a");

@@ -942,10 +942,14 @@ fn clean_conflicts_previews_then_with_apply_removes_the_discarded_bytes() {
         let preview = casework.run(&args, 0);
         assert_eq!(preview["result"], "vault_clean_conflicts_preview");
         assert_eq!(preview["apply"], false);
-        assert_eq!(preview["counts"]["would_remove"], 1, "{preview}");
+        // The discarded edit, and the generated version the render withheld
+        // while the path was drifted, which the manifest still records.
+        assert_eq!(preview["counts"]["would_remove"], 2, "{preview}");
         assert_eq!(preview["would_remove"][0]["path"], kept.as_str());
         assert_eq!(preview["would_remove"][0]["vault_path"], overview.as_str());
         assert_eq!(preview["would_remove"][0]["area"], "discarded");
+        assert_eq!(preview["would_remove"][1]["area"], "withheld", "{preview}");
+        assert_eq!(preview["would_remove"][1]["vault_path"], overview.as_str());
         assert_eq!(casework.files(), before, "a preview writes nothing");
     }
     let refused = casework.run(&["--read-only", "vault", "clean-conflicts", "--apply"], 2);
@@ -968,18 +972,31 @@ fn clean_conflicts_previews_then_with_apply_removes_the_discarded_bytes() {
         "--format".to_owned(),
         "json".to_owned()
     ]));
+    let withheld = preview["would_remove"][1]["path"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let cleaned = casework.run_argv(&next, 0);
     assert_eq!(cleaned["result"], "vault_conflicts_cleaned");
-    assert_eq!(cleaned["counts"]["removed"], 1, "{cleaned}");
+    assert_eq!(cleaned["counts"]["removed"], 2, "{cleaned}");
     assert!(!casework.root.join(&kept).exists());
+    assert!(!casework.root.join(&withheld).exists());
     assert!(!casework.root.join("local/conflicts/discarded").exists());
+    let manifest = casework.root.join("local/render-manifest.json");
     let mut expected = before.clone();
     expected.remove(&PathBuf::from(&kept));
-    assert_eq!(
-        casework.files(),
-        expected,
-        "only the set-aside file is gone"
+    expected.remove(&PathBuf::from(&withheld));
+    let mut after = casework.files();
+    let recorded = after
+        .remove(Path::new("local/render-manifest.json"))
+        .unwrap();
+    expected.remove(Path::new("local/render-manifest.json"));
+    assert_eq!(after, expected, "only the identified files are gone");
+    assert!(
+        !String::from_utf8_lossy(&recorded).contains(&withheld),
+        "the manifest forgets the removed withheld version"
     );
+    assert!(manifest.is_file());
     let status = casework.run(&["vault", "status"], 0);
     assert_eq!(status["drift_count"], 0);
     assert_eq!(argv(&cleaned)[3..5], ["vault", "status"]);
@@ -1075,6 +1092,8 @@ fn help_teaches_clean_conflicts_and_unrelease_with_examples_and_the_next_step() 
             &[
                 "local/conflicts/discarded/",
                 "local/conflicts/proposed/",
+                "local/conflicts/<generation>/",
+                "vault clean-conflicts --area withheld",
                 "--apply",
                 "--area",
                 "Examples:",

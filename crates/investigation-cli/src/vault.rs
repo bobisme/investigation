@@ -41,8 +41,8 @@ moved or deleted outside the renderer are left as found and reported as drift;
 drift never fails a render. status and conflicts read the render record only
 and write nothing. reconcile resolves listed drifted paths with one explicit
 disposition; unrelease returns a path reconcile released once your file is
-gone from it; clean-conflicts removes the edits reconcile set aside (a preview
-unless --apply). remove deletes the generated files, keeping edited ones.
+gone from it; clean-conflicts removes the edits reconcile set aside and the
+generated versions a render withheld (a preview unless --apply). remove deletes the generated files, keeping edited ones.
 snapshot-note captures a human note or board a record relies on, by hash;
 note-snapshots reports when the live file differs from the captured bytes.
 Nothing here opens a viewer.
@@ -80,7 +80,7 @@ pub(crate) enum VaultCommand {
     /// Return paths released with reconcile release-path to the projection, once your file is gone.
     #[command(after_help = crate::vault_unrelease::AFTER_HELP)]
     Unrelease(crate::vault_unrelease::UnreleaseArgs),
-    /// Remove the edits reconcile set aside under local/conflicts/; a preview unless --apply.
+    /// Remove the set-aside edits and withheld versions under local/conflicts/; a preview unless --apply.
     #[command(after_help = crate::vault_clean::AFTER_HELP)]
     CleanConflicts(crate::vault_clean::CleanArgs),
     /// Capture the exact bytes of a human note or board that records rely on; the file is only read.
@@ -668,7 +668,9 @@ fn conflicts(workspace: &Workspace, scope: &Scope) -> Result<Output, Failure> {
             --discard-observed, removes observed bytes from the vault (they stay under \
             local/conflicts/discarded/ until vault clean-conflicts --apply removes them). \
             A released path returns to the projection with vault unrelease once your file \
-            is gone from it. Render first when the vault is stale, so the \
+            is gone from it. A withheld version stays under local/conflicts/<generation>/ \
+            after its drift is resolved, until vault clean-conflicts --area withheld --apply \
+            removes it. Render first when the vault is stale, so the \
             diagnosis is current. Files in Notes/, Boards/ and Inbox/ are yours; reconcile \
             only ever adds new files under Notes/Reconciled/.",
         "scope":scope.json(),

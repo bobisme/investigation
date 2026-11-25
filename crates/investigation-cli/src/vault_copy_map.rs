@@ -34,8 +34,9 @@ release-path) or goes, the node shows as missing: re-point or delete it, or
 copy the current map to a new name.
 In existing-vault mode, Boards/ is the one inside the managed prefix, and
 the copy's file nodes carry the prefix.
-The map needs a stated viewer release ([vault_policy] viewer_release in
-investigation.toml) and a vault rendered at the current snapshot.
+The map needs a stated viewer release (investigation config set
+vault_policy.viewer_release RELEASE; config list shows the supported range)
+and a vault rendered at the current snapshot.
 Examples:
   investigation vault copy-map --to Boards/my-map.canvas --format json
   investigation vault copy-map --case CASE_ID --to Boards/rival-map.canvas
@@ -71,11 +72,14 @@ fn failure(store: &Store, error: CopyMapError) -> Failure {
             let release = &Profile::bundled().pinned_release.version;
             invalid(format!(
                 "This vault plans no case map, so there is nothing to copy: the workspace states \
-                 no supported Obsidian release. State yours in investigation.toml under \
-                 [vault_policy] (for example viewer_release = \"{release}\"), render the vault, \
-                 then copy the map again."
+                 no supported Obsidian release. State yours with config set \
+                 vault_policy.viewer_release RELEASE (the repair states the pinned release \
+                 {release}), render the vault, then copy the map again."
             ))
-            .with_argv(argv(workspace, &["vault", "render"]))
+            .with_argv(argv(
+                workspace,
+                &["config", "set", "vault_policy.viewer_release", release],
+            ))
         }
         CopyMapError::NothingToPlace => invalid(
             "This case has no record to place on a map yet, so there is nothing to copy. Record \

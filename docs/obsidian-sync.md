@@ -27,7 +27,7 @@ These paths hold canonical state, restricted material or machine-local state. Ke
 | `cache/index.sqlite`, `cache/index.sqlite-wal` | `index` | Disposable database and write-ahead log. Search text lives in it. |
 | `cache/blob-verdicts/<digest>` | `blob_verdict` | Disposable cache. |
 | `local/render-manifest.json` | `render_manifest` | The vault manifest. It records the hash of every generated file and, in existing-vault mode, the vault and prefix it was written for. On another machine it would claim files it did not write. |
-| `local/conflicts/` | `render_conflict` | Generated versions withheld because a vault file had drifted, and under `discarded/` and `proposed/` the edits `vault reconcile` set aside, which can hold text you meant to drop. `investigation vault clean-conflicts` lists those edits and, with `--apply`, removes them. |
+| `local/conflicts/` | `render_conflict` | Generated versions withheld because a vault file had drifted, and under `discarded/` and `proposed/` the edits `vault reconcile` set aside, which can hold text you meant to drop. `investigation vault clean-conflicts` lists those edits and the withheld versions the render manifest recorded and, with `--apply`, removes them. `investigation exposure` lists the edits as `reconcile_set_aside`. |
 | `local/session-reads/` | `session_reads` | Machine-local record of evidence reads. |
 | `investigation.toml` | `config` | Machine-specific settings, such as absolute import roots and `existing_vault`. |
 

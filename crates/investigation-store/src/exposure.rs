@@ -62,6 +62,7 @@ pub enum Area {
     VaultTemporary,
     Vault,
     RenderConflict,
+    ReconcileSetAside,
     RenderManifest,
     SessionReads,
     Local,
@@ -88,6 +89,7 @@ impl Area {
             Self::VaultTemporary => "vault_temporary",
             Self::Vault => "vault",
             Self::RenderConflict => "render_conflict",
+            Self::ReconcileSetAside => "reconcile_set_aside",
             Self::RenderManifest => "render_manifest",
             Self::SessionReads => "session_reads",
             Self::Local => "local",
@@ -155,7 +157,10 @@ impl Area {
                 "A vault file the renderer does not own, such as a human note; edit or remove it by hand."
             }
             Self::RenderConflict => {
-                "A generated version withheld because the vault file had drifted. A render never removes it; remove it by hand after reconciling the drift."
+                "A generated version withheld because the vault file had drifted. A render never removes it, and it stays after the drift is reconciled. Once it is, vault clean-conflicts --area withheld --apply removes it while its bytes still hash to what the render manifest recorded; otherwise remove it by hand."
+            }
+            Self::ReconcileSetAside => {
+                "A vault file's observed bytes, such as an edit, that vault reconcile set aside on discard or propose-change. A render never removes it. vault clean-conflicts --apply removes it while its bytes still hash to its folder name; otherwise remove it by hand."
             }
             Self::RenderManifest => "Render record of paths and hashes; it holds no note text.",
             Self::SessionReads => "Machine-local record of evidence reads for a session label.",
@@ -197,6 +202,7 @@ pub fn area(relative: &Path) -> Area {
             Area::VaultTemporary
         }
         ["vault", ..] => Area::Vault,
+        ["local", "conflicts", "discarded" | "proposed", ..] => Area::ReconcileSetAside,
         ["local", "conflicts", ..] => Area::RenderConflict,
         ["local", "render-manifest.json"] => Area::RenderManifest,
         ["local", "session-reads", ..] => Area::SessionReads,
@@ -531,6 +537,14 @@ mod tests {
                 Area::VaultTemporary,
             ),
             ("local/conflicts/gen_x/Cases/c/o.md", Area::RenderConflict),
+            (
+                "local/conflicts/discarded/0123456789abcdef/Cases/c/o.md",
+                Area::ReconcileSetAside,
+            ),
+            (
+                "local/conflicts/proposed/0123456789abcdef/Cases/c/o.md",
+                Area::ReconcileSetAside,
+            ),
             ("local/render-manifest.json", Area::RenderManifest),
             ("exports/bundle.tar", Area::Export),
             ("investigation.toml", Area::Config),

@@ -1,22 +1,32 @@
-//! `vault clean-conflicts`: remove the observed bytes `vault reconcile` set
-//! aside, and nothing else.
+//! `vault clean-conflicts`: remove the bytes the renderer and `vault
+//! reconcile` kept in the workspace's conflicts area, and nothing else.
 //!
-//! `discard` and `propose-change` keep the observed files of a drifted path
-//! in the workspace's conflicts area ([`crate::reconcile`]) at
-//! `local/conflicts/<area>/<hash prefix>/<vault path>`, where `<area>` is
-//! `discarded` or `proposed` and `<hash prefix>` is the first 16 hex digits
-//! of the SHA-256 of the bytes kept there. They stay until a person removes
-//! them. This module is that removal, made explicit and previewable.
+//! Three areas hold them:
 //!
-//! A file is removed only when it is identified as one reconcile wrote: a
+//! - `discard` and `propose-change` keep the observed files of a drifted path
+//!   ([`crate::reconcile`]) at `local/conflicts/<area>/<hash prefix>/<vault
+//!   path>`, where `<area>` is `discarded` or `proposed` and `<hash prefix>`
+//!   is the first 16 hex digits of the SHA-256 of the bytes kept there.
+//! - A render keeps the content it withheld from a drifted path at
+//!   `local/conflicts/<generation>/<vault path>` ([`crate::drift`]), and the
+//!   render manifest records the hash of every such file until it is
+//!   removed ([`crate::Withheld`]), after the drift is reconciled too.
+//!
+//! They stay until a person removes them. This module is that removal, made
+//! explicit and previewable.
+//!
+//! A file is removed only when it is identified as one the tool wrote: a
 //! regular file (never a link, never followed) under a folder named by 16
-//! lowercase hex digits directly inside the area, whose bytes still hash to
-//! that prefix. Everything else in the area is listed as kept with the
-//! reason, and never opened for writing: a file whose bytes changed since
-//! it was set aside, a link or special file, a file or folder not under a
-//! hash-named folder, a leftover temporary. The withheld generated versions
-//! under `local/conflicts/<generation>/` are not looked at; drift records
-//! name them, and `vault conflicts` lists them.
+//! lowercase hex digits directly inside a set-aside area, whose bytes still
+//! hash to that prefix; or a file at the path of a withheld version the
+//! manifest records, whose bytes still hash to the recorded hash, and which
+//! no open drift record names (that one is reconciled first). Everything
+//! else is listed as kept with the reason, and never opened for writing: a
+//! file whose bytes changed since it was kept, a link or special file, a
+//! file or folder not under a hash-named folder, a file no record names
+//! (such as a withheld version written before records were kept), a
+//! leftover temporary. A withheld version's record whose file is already
+//! gone is forgotten.
 //!
 //! [`preview`] lists what [`clean`] would do without taking the render lock
 //! or writing anything (not even the lock file). [`clean`] walks the area
@@ -25,10 +35,16 @@
 //! removal: renamed aside, hashed again, and unlinked only when the bytes
 //! are still the ones identified; otherwise put back and kept. Folders the
 //! removal leaves empty are removed with non-recursive `rmdir`s, the area
-//! folder last. Nothing is ever deleted recursively. Canonical state, the
-//! vault and the render manifest are not touched.
+//! folder last (never `local/conflicts/` itself). Nothing is ever deleted
+//! recursively. Then the manifest is stored without the records of the
+//! withheld versions removed or found gone; nothing else in it changes, and
+//! canonical state and the vault are not touched. A clean killed between the
+//! two leaves records naming missing files, which the next clean forgets.
 
-use std::os::fd::OwnedFd;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    os::fd::OwnedFd,
+};
 
 use investigation_core::wire::Digest;
 use investigation_store::{Workspace, journal::hash_bytes};
@@ -38,7 +54,7 @@ use rustix::{
 };
 
 use crate::{
-    RENDER_LOCK_WAIT, RenderError, RenderLock,
+    Manifest, ManifestStatus, RENDER_LOCK_WAIT, RenderError, RenderLock,
     drift::{CONFLICTS_DIR, read_regular},
     lock::{self, Probe, open_local},
     publish::{Removal, remove_verified},
@@ -55,22 +71,26 @@ const TAG: &str = "clean";
 /// Length of the hash prefix that names a set-aside folder.
 const PREFIX_LEN: usize = 16;
 
-/// One of the two places reconcile sets observed bytes aside.
+/// One of the places the tool keeps bytes in the conflicts area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Area {
     /// `local/conflicts/discarded/`: kept by a confirmed `discard`.
     Discarded,
     /// `local/conflicts/proposed/`: kept by `propose-change`.
     Proposed,
+    /// `local/conflicts/<generation>/`: generated content a render withheld
+    /// from a drifted path.
+    Withheld,
 }
 
 impl Area {
-    pub const ALL: [Self; 2] = [Self::Discarded, Self::Proposed];
+    pub const ALL: [Self; 3] = [Self::Discarded, Self::Proposed, Self::Withheld];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Discarded => "discarded",
             Self::Proposed => "proposed",
+            Self::Withheld => "withheld",
         }
     }
 
@@ -78,11 +98,13 @@ impl Area {
         Self::ALL.into_iter().find(|area| area.as_str() == text)
     }
 
-    /// The workspace-relative folder.
+    /// The workspace-relative folder, as shown; the withheld versions are
+    /// in one folder per render generation.
     pub const fn directory(self) -> &'static str {
         match self {
             Self::Discarded => DISCARDED_DIR,
             Self::Proposed => PROPOSED_DIR,
+            Self::Withheld => "local/conflicts/<generation>",
         }
     }
 }
@@ -100,6 +122,13 @@ pub enum Kept {
     Changed,
     /// Nested deeper than any vault path; not walked.
     TooDeep,
+    /// A file in a generation folder that no withheld-version record names:
+    /// written before records were kept, its record lost with the manifest,
+    /// or put there by someone else.
+    Unrecorded,
+    /// A withheld version an open drift record still names; reconcile the
+    /// drift first.
+    InUse,
 }
 
 impl Kept {
@@ -110,6 +139,8 @@ impl Kept {
             Self::BytesDiffer => "bytes_differ",
             Self::Changed => "changed",
             Self::TooDeep => "too_deep",
+            Self::Unrecorded => "unrecorded",
+            Self::InUse => "in_use",
         }
     }
 }
@@ -153,6 +184,9 @@ pub struct CleanReport {
     pub removed_folders: Vec<String>,
     /// The walk stopped at [`MAX_ENTRIES`]; run again for the rest.
     pub truncated: bool,
+    /// Withheld-version records whose file is already gone: forgotten by
+    /// [`clean`], or that would be.
+    pub forgotten: Vec<String>,
 }
 
 impl CleanReport {
@@ -182,48 +216,104 @@ pub fn preview(workspace: &Workspace, areas: &[Area]) -> Result<CleanReport, Ren
             waited: std::time::Duration::ZERO,
         });
     }
-    walk_areas(workspace, areas, false)
+    walk_areas(workspace, areas, None)
+}
+
+/// [`preview`] while a render or reconcile may run, for a diagnosis that
+/// must not wait or fail on one (`investigation exposure`): it reads the
+/// areas and the manifest as they are and writes nothing.
+pub fn list(workspace: &Workspace, areas: &[Area]) -> Result<CleanReport, RenderError> {
+    walk_areas(workspace, areas, None)
 }
 
 /// Remove every identified file in `areas` under the render lock, and the
 /// folders that leaves empty. See the module documentation.
 pub fn clean(workspace: &Workspace, areas: &[Area]) -> Result<CleanReport, RenderError> {
-    let _lock = RenderLock::acquire(workspace, RENDER_LOCK_WAIT)?;
-    walk_areas(workspace, areas, true)
+    let lock = RenderLock::acquire(workspace, RENDER_LOCK_WAIT)?;
+    walk_areas(workspace, areas, Some(&lock))
 }
 
+/// Walk `areas`, removing identified files when `lock` is given.
 fn walk_areas(
     workspace: &Workspace,
     areas: &[Area],
-    remove: bool,
+    lock: Option<&RenderLock>,
 ) -> Result<CleanReport, RenderError> {
     let local = open_local(workspace.root())?;
     let mut areas = areas.to_vec();
     areas.sort();
     areas.dedup();
+    // Only a manifest that was read whole identifies withheld versions; an
+    // unreadable one identifies none and is never stored over.
+    let loaded = Manifest::read(workspace)?;
+    let recorded = loaded.status == ManifestStatus::Loaded;
+    let manifest = loaded.manifest;
     let mut walk = Walker {
-        remove,
+        remove: lock.is_some(),
         report: CleanReport::default(),
         visited: 0,
+        withheld: manifest
+            .withheld()
+            .map(|withheld| (withheld.path.clone(), withheld.sha256.clone()))
+            .collect(),
+        in_use: manifest
+            .withheld_in_use()
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
     };
-    for area in areas {
-        let Some(directory) = open_folder(&local, &area_components(area), area.directory())? else {
-            continue;
-        };
-        let emptied = walk.area(area, &directory)?;
-        if remove && emptied && remove_folder(&local, area)? {
-            walk.report
-                .removed_folders
-                .push(area.directory().to_owned());
+    for area in &areas {
+        if *area == Area::Withheld {
+            if let Some(directory) = open_folder(&local, &["conflicts"], CONFLICTS_DIR)? {
+                walk.generations(&directory)?;
+            }
+        } else if let Some(directory) =
+            open_folder(&local, &area_components(*area), area.directory())?
+        {
+            let emptied = walk.area(*area, &directory)?;
+            if walk.remove && emptied && remove_folder(&local, *area)? {
+                walk.report
+                    .removed_folders
+                    .push(area.directory().to_owned());
+            }
         }
         if walk.report.truncated {
             break;
         }
     }
-    walk.report
+    let mut report = walk.report;
+    report
         .entries
         .sort_by(|left, right| left.path.cmp(&right.path));
-    Ok(walk.report)
+    if recorded && areas.contains(&Area::Withheld) {
+        let visited: BTreeSet<&str> = report
+            .entries
+            .iter()
+            .map(|entry| entry.path.as_str())
+            .collect();
+        if !report.truncated {
+            report.forgotten = walk
+                .withheld
+                .keys()
+                .filter(|path| !visited.contains(path.as_str()) && !walk.in_use.contains(*path))
+                .cloned()
+                .collect();
+        }
+        let gone: BTreeSet<String> = report
+            .entries
+            .iter()
+            .filter(|entry| entry.area == Area::Withheld)
+            .filter(|entry| matches!(entry.action, Action::Removed | Action::Vanished))
+            .map(|entry| entry.path.clone())
+            .chain(report.forgotten.iter().cloned())
+            .collect();
+        if let Some(lock) = lock
+            && !gone.is_empty()
+        {
+            manifest.without_withheld(&gone).store(workspace, lock)?;
+        }
+    }
+    Ok(report)
 }
 
 /// `["conflicts", "<area>"]`: the area below `local/`.
@@ -312,6 +402,10 @@ struct Walker {
     remove: bool,
     report: CleanReport,
     visited: usize,
+    /// Recorded withheld versions: workspace-relative path to hash.
+    withheld: BTreeMap<String, Digest>,
+    /// Withheld versions an open drift record names.
+    in_use: BTreeSet<String>,
 }
 
 impl Walker {
@@ -366,7 +460,37 @@ impl Walker {
         Ok(empty)
     }
 
-    /// Walk a folder below the hash-named folder `prefix`; `inside` is its
+    /// Walk the generation folders of `local/conflicts/`: every entry but
+    /// the two set-aside areas.
+    fn generations(&mut self, directory: &OwnedFd) -> Result<(), RenderError> {
+        let area = Area::Withheld;
+        for (name, kind) in listing(directory, CONFLICTS_DIR)? {
+            if name == Area::Discarded.as_str() || name == Area::Proposed.as_str() {
+                continue;
+            }
+            if !self.visit() {
+                return Ok(());
+            }
+            let path = format!("{CONFLICTS_DIR}/{name}");
+            if kind != FileType::Directory {
+                self.keep(area, path, None, Kept::UnexpectedEntry);
+                continue;
+            }
+            let Some(folder) = open_folder(directory, &[name.as_str()], &path)? else {
+                continue;
+            };
+            let emptied = self.folder(area, &folder, &name, &path, "", 0)?;
+            if self.remove && emptied && rmdir(directory, &name, &path)? {
+                self.report.removed_folders.push(path);
+            }
+            if self.report.truncated {
+                return Ok(());
+            }
+        }
+        Ok(())
+    }
+
+    /// Walk a folder below the hash-named or generation folder `prefix`; `inside` is its
     /// vault-relative path so far. Returns whether it is now empty.
     fn folder(
         &mut self,
@@ -439,12 +563,22 @@ impl Walker {
         };
         let sha256 = hash_bytes(&bytes);
         let size = bytes.len() as u64;
-        let identified = sha256
-            .as_str()
-            .trim_start_matches("sha256:")
-            .starts_with(prefix);
-        let action = if !identified {
-            Action::Kept(Kept::BytesDiffer)
+        let refusal = if area == Area::Withheld {
+            match self.withheld.get(&path) {
+                None => Some(Kept::Unrecorded),
+                Some(recorded) if *recorded != sha256 => Some(Kept::BytesDiffer),
+                Some(_) if self.in_use.contains(&path) => Some(Kept::InUse),
+                Some(_) => None,
+            }
+        } else {
+            let identified = sha256
+                .as_str()
+                .trim_start_matches("sha256:")
+                .starts_with(prefix);
+            (!identified).then_some(Kept::BytesDiffer)
+        };
+        let action = if let Some(why) = refusal {
+            Action::Kept(why)
         } else if !self.remove {
             Action::WouldRemove
         } else {
@@ -475,8 +609,9 @@ mod tests {
     fn areas_round_trip_through_their_names() {
         for area in Area::ALL {
             assert_eq!(Area::parse(area.as_str()), Some(area));
-            assert!(area.directory().ends_with(area.as_str()));
         }
+        assert!(Area::Discarded.directory().ends_with("discarded"));
+        assert!(Area::Proposed.directory().ends_with("proposed"));
         assert_eq!(Area::parse("all"), None);
     }
 

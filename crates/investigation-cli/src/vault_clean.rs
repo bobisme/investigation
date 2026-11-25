@@ -1,12 +1,15 @@
 //! `vault clean-conflicts`: remove the observed bytes `vault reconcile` set
-//! aside in `local/conflicts/discarded/` and `local/conflicts/proposed/`
-//! ([`investigation_render::set_aside`]).
+//! aside in `local/conflicts/discarded/` and `local/conflicts/proposed/`, and
+//! the generated versions a render withheld under
+//! `local/conflicts/<generation>/` ([`investigation_render::set_aside`]).
 //!
 //! It is a preview unless `--apply` is given, like `retention reclaim`: the
 //! removal cannot be undone, so it never happens without the flag. With it,
 //! the areas are walked again under the render lock and each file is removed
-//! only while its bytes still hash to the name reconcile kept it under.
-//! Canonical state, the vault and the render manifest are not touched.
+//! only while its bytes still hash to the name reconcile kept it under, or to
+//! the hash the render manifest recorded for the withheld version. The
+//! manifest then forgets the removed withheld versions; canonical state and
+//! the vault are not touched.
 
 use std::fmt::Write as _;
 
@@ -21,26 +24,31 @@ use crate::{Output, display_argv, vault::argv};
 const MAX_LISTED: usize = 50;
 
 pub(crate) const AFTER_HELP: &str = "\
-Remove the observed bytes vault reconcile set aside: local/conflicts/discarded/
-(kept by --disposition discard) and local/conflicts/proposed/ (kept by
-propose-change once the change was recorded). Without --apply this is a
-preview: it lists what would be removed and kept, and writes nothing. With
---apply the areas are walked again under the render lock, and a file is removed
-only while its bytes still hash to the prefix of the folder reconcile kept it
-under; then the folders that leaves empty are removed. Anything else there (a
-file changed since, a link, a file you put there) is listed as kept and never
-touched. The withheld generated versions under local/conflicts/<generation>/
-are not touched; vault conflicts lists them. Removed bytes cannot be recovered.
-The vault, the journal and the render manifest are unchanged.
+Remove the bytes kept in the conflicts area: the observed edits vault reconcile
+set aside in local/conflicts/discarded/ (kept by --disposition discard) and
+local/conflicts/proposed/ (kept by propose-change once the change was
+recorded), and, as area withheld, the generated versions a render kept in
+local/conflicts/<generation>/ because the vault file had drifted. Without --apply this is a preview: it lists what would be removed
+and kept, and writes nothing. With --apply the areas are walked again under the
+render lock. A set-aside file is removed only while its bytes still hash to the
+prefix of the folder reconcile kept it under; a withheld version only while its
+bytes still hash to what the render manifest recorded, and only once no open
+drift names it (in_use: reconcile that path first). Then the folders that
+leaves empty are removed. Anything else there (a file changed since, a link, a
+file you put there, a withheld version written before the manifest recorded
+them) is listed as kept and never touched. Removed bytes cannot be recovered.
+The vault and the journal are unchanged; the render manifest forgets the
+withheld versions removed.
 Examples:
   investigation --workspace ./casework vault clean-conflicts --format json
   investigation --workspace ./casework vault clean-conflicts --area discarded --apply --format json
+  investigation --workspace ./casework vault clean-conflicts --area withheld --format json
 Next: investigation --workspace ./casework vault clean-conflicts --apply --format json";
 
 #[derive(clap::Args)]
 pub(crate) struct CleanArgs {
-    /// Clean only this area: discarded or proposed (repeatable); both when omitted.
-    #[arg(long = "area", value_name = "AREA", value_parser = ["discarded", "proposed"])]
+    /// Clean only this area: discarded, proposed or withheld (repeatable); all three when omitted.
+    #[arg(long = "area", value_name = "AREA", value_parser = ["discarded", "proposed", "withheld"])]
     areas: Vec<String>,
     /// Remove the identified files; without it nothing is written.
     #[arg(long)]
@@ -128,6 +136,7 @@ fn output(workspace: &Workspace, args: &CleanArgs, areas: &[Area], report: &Clea
         "removed_bytes":report.removed_bytes(),
         "kept":kept_count,
         "removed_folders":report.removed_folders.len(),
+        "forgotten_records":report.forgotten.len(),
     });
     counts[removed_key] = json!(removed_count);
     let mut value = json!({
@@ -135,13 +144,14 @@ fn output(workspace: &Workspace, args: &CleanArgs, areas: &[Area], report: &Clea
         "areas":areas.iter().map(|area| area.directory()).collect::<Vec<_>>(),
         "counts":counts,
         "kept":capped(kept.clone()),
+        "forgotten_records":capped(report.forgotten.iter().map(|path| json!(path)).collect()),
         "truncated":report.truncated,
         "lists_capped_at":MAX_LISTED,
         "next":[{"kind":"local_write","argv":next_argv}],
     });
     value[removed_key] = json!(capped(removed));
     let mut text = format!(
-        "{} {removed_count} set-aside file(s), {} byte(s); kept {kept_count}",
+        "{} {removed_count} conflicts-area file(s), {} byte(s); kept {kept_count}",
         if args.apply {
             "removed"
         } else {

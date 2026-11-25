@@ -830,11 +830,17 @@ fn relocation(
     names: &mut Names,
 ) -> Result<PlanPath, RenderError> {
     let text = path.as_str();
-    // A relocated note released in turn counts up from the original name.
+    // A relocated note released in turn counts up from the original name:
+    // the shortest of the path and the released paths relocated to it, so a
+    // path returned by `vault unrelease` while a sibling it was relocated
+    // from stays released counts up from its own name, not the sibling's.
     let original = manifest
         .released()
-        .find(|released| &released.relocated_to == path)
-        .map_or(text, |released| released.path.as_str());
+        .filter(|released| &released.relocated_to == path)
+        .map(|released| released.path.as_str())
+        .chain(std::iter::once(text))
+        .min_by(|left, right| left.len().cmp(&right.len()).then(left.cmp(right)))
+        .unwrap_or(text);
     let markdown_note = original
         .strip_suffix(".md")
         .filter(|_| path.components().next() == Some(layout::CASES));

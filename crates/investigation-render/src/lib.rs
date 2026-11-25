@@ -261,7 +261,7 @@ pub use incremental::PublishMode;
 pub use lock::RenderLock;
 pub use manifest::{
     CompletedGeneration, HandedOver, LoadedManifest, MANIFEST_VERSION, Manifest, ManifestStatus,
-    OwnedPath, RENDER_MANIFEST, Released, RenderState,
+    OwnedPath, RENDER_MANIFEST, Released, RenderState, Withheld,
 };
 pub use marker::NoteMarker;
 pub use plan::{

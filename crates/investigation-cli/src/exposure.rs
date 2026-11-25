@@ -3,8 +3,10 @@
 //! A diagnosis, never a remedy. It lists every local location that holds the
 //! text of a record or event, or the bytes of a text read from a file: journal
 //! events, retained blobs and their staged copies, the index, blob verdicts,
-//! vault notes and their conflict copies, the render conflicts area, exports
-//! and leftovers. It removes nothing, writes nothing and never prints the
+//! vault notes and their conflict copies, the conflicts area (generated
+//! versions a render withheld, and the observed edits `vault reconcile` set
+//! aside under `local/conflicts/{discarded,proposed}/`), exports and
+//! leftovers. It removes nothing, writes nothing and never prints the
 //! searched text. The journal is append-only, so a later withdrawal,
 //! retraction or classification event adds history and leaves the old bytes
 //! in place; `investigation docs exposure` documents the manual remediation.
@@ -32,6 +34,7 @@ use investigation_core::{
 use investigation_render::{
     Manifest,
     drift::is_conflict_copy,
+    set_aside,
     text::{display_text, inline_text},
     yaml,
 };
@@ -47,7 +50,9 @@ use crate::{Global, Output};
 pub(crate) const AFTER_HELP: &str = "\
 Lists every local place that holds the exposed text: journal events, retained
 blobs and staged copies, the index, blob verdicts, vault notes and conflict
-copies, the render conflicts area, exports and leftovers. Give the record, case
+copies, the conflicts area under local/conflicts/ (generated versions a render
+withheld, and the edits vault reconcile set aside on discard or propose-change),
+exports and leftovers. Give the record, case
 or transaction ID whose text was exposed, the exposed text itself with
 --text-file, or both. Pass the text in a file or on stdin, never as an argument,
 so it stays out of shell history; it is never printed. A trailing line break is
@@ -219,6 +224,11 @@ pub(crate) struct Vault {
     by_record: BTreeMap<Id, Vec<PathBuf>>,
     /// Drift entries: owned note, withheld version, copies and moves.
     drift: Vec<(PathBuf, Option<PathBuf>, Vec<PathBuf>)>,
+    /// Files in the conflicts area, by workspace-relative path: their area
+    /// and the record of the vault path their bytes were kept from.
+    kept: BTreeMap<PathBuf, (Area, Option<Id>)>,
+    /// Why the conflicts area could not be listed, when it could not.
+    pub(crate) unlisted: Option<String>,
 }
 
 impl Vault {
@@ -235,7 +245,23 @@ impl Vault {
             }
             vault.notes.insert(path, owned.projects);
         }
+        // The record each vault path projects, or projected: owned, drifted
+        // and released paths.
+        let mut projected: BTreeMap<&str, Id> = BTreeMap::new();
+        for owned in loaded.manifest.owned() {
+            if let Some(id) = owned.projects {
+                projected.insert(owned.path.as_str(), id);
+            }
+        }
+        for released in loaded.manifest.released() {
+            if let Some(id) = released.projects {
+                projected.insert(released.path.as_str(), id);
+            }
+        }
         for drift in loaded.manifest.drift() {
+            if let Some(id) = drift.projects {
+                projected.insert(drift.path.as_str(), id);
+            }
             let mut copies: Vec<PathBuf> = drift.copies.iter().map(|p| in_vault(p)).collect();
             copies.extend(drift.renamed_to.iter().map(|p| in_vault(p)));
             vault.drift.push((
@@ -243,6 +269,34 @@ impl Vault {
                 drift.conflict.as_ref().map(PathBuf::from),
                 copies,
             ));
+        }
+        match set_aside::list(store.workspace(), &set_aside::Area::ALL) {
+            Ok(report) => {
+                for entry in report.entries {
+                    // Regular files only: those are the ones whose bytes were read.
+                    if entry.sha256.is_none() {
+                        continue;
+                    }
+                    let area = if entry.area == set_aside::Area::Withheld {
+                        Area::RenderConflict
+                    } else {
+                        Area::ReconcileSetAside
+                    };
+                    let record = entry
+                        .vault_path
+                        .as_deref()
+                        .and_then(|path| projected.get(path))
+                        .copied();
+                    vault.kept.insert(PathBuf::from(entry.path), (area, record));
+                }
+                if report.truncated {
+                    vault.unlisted = Some(format!(
+                        "the conflicts area holds more than {} entries; only the first were tied to records",
+                        set_aside::MAX_ENTRIES
+                    ));
+                }
+            }
+            Err(error) => vault.unlisted = Some(error.to_string()),
         }
         vault
     }
@@ -295,6 +349,20 @@ impl Vault {
                     ));
                 }
             }
+        }
+        for (path, (area, record)) in &self.kept {
+            if *record != Some(id) {
+                continue;
+            }
+            out.push((
+                path.clone(),
+                *area,
+                if *area == Area::ReconcileSetAside {
+                    "observed bytes of the record's note that vault reconcile set aside, such as a discarded edit"
+                } else {
+                    "generated version of the record's note, withheld while the note had drifted"
+                },
+            ));
         }
         out
     }
@@ -468,6 +536,11 @@ pub(crate) fn run(store: &mut Store, _global: &Global, args: Args) -> Result<Out
         }
     };
     let vault = Vault::load(store);
+    if let Some(reason) = &vault.unlisted {
+        limitations.push(format!(
+            "The conflicts area under local/conflicts/ was not fully listed ({reason}), so some of its files were not tied to records; --text-file still searches every file there."
+        ));
+    }
     let digest_files = exposure::digest_named_files(&root);
     let mut locations = Locations::default();
 
@@ -842,6 +915,12 @@ fn owners(journal: Option<&Journal>, vault: &Vault, path: &Path, area: Area) -> 
             .get(path)
             .copied()
             .flatten()
+            .into_iter()
+            .collect(),
+        (_, Area::RenderConflict | Area::ReconcileSetAside) => vault
+            .kept
+            .get(path)
+            .and_then(|(_, record)| *record)
             .into_iter()
             .collect(),
         _ => BTreeSet::new(),
