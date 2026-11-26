@@ -104,6 +104,8 @@ The checks cannot show that an adapter keeps no state between calls. The operato
 3. Pass that command line to `plan` as `--backend-command`, and pass the reviewed digest as `--adapter-sha256`. Repeat `--adapter-sha256` for each file that you reviewed. The plan refuses the adapter if a pinned digest matches none of its files. The sealed plan requires at least one pin and refuses an adapter file inside the repository.
 4. The plan records the digest of every adapter file: the executable, and each argument that names an existing file, such as an interpreter's script. `run` recomputes these digests and refuses to continue if any changed. The same check applies when `run --backend-command` points to the same adapter at another path.
 
+The operator's adapter for hosted CLIs, and what its development dry run showed, are described in [Operator adapter for hosted CLIs](hosted-adapter.md).
+
 ## Cost capture
 
 Each phase gets a cost record with fixed keys. A key is `null` only when no meter measured it, and `metering` names the meter.
