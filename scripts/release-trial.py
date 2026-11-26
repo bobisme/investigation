@@ -1975,8 +1975,12 @@ def trial_task_self_test(scratch, check):
     passphrase = scratch / "throwaway.key"
     passphrase.write_bytes(os.urandom(32).hex().encode())
     passphrase.chmod(0o600)
+    # The scratch copy drops any real trial-task commitments, so the throwaway seal also runs once
+    # the release's own instances are sealed (bn-1jpq).
     manifest = scratch / "manifest.json"
-    manifest.write_text(SEALED_MANIFEST.read_text(encoding="utf-8"), encoding="utf-8")
+    committed = read_json(SEALED_MANIFEST)
+    committed.pop("trial_tasks", None)
+    manifest.write_text(json.dumps(committed, indent=2) + "\n", encoding="utf-8")
     ciphertext = scratch / "trial-tasks.tar.gz.enc"
     section = seal["bundle_trial_tasks"](authoring, passphrase, {"authors": ["self-test"]}, manifest, ciphertext)
     public = json.dumps(section)

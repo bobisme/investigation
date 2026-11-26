@@ -2074,5 +2074,138 @@
         }
       }
     ]
+  },
+  "trial_tasks": {
+    "study": "Sealed instances of release-trial tasks 5-10 (W14.05b)",
+    "authorship": {
+      "declaration": "No one who built blindspot rules or onboarding wrote a sealed trial-task instance, and no product builder saw any instance's content.",
+      "coordinator": "w1405b-author-opus: a fresh Claude Code session (Claude Opus 5.5) started by the owner for W14.05b, which authored, checked and sealed every instance alone. The builder lead wrote this session's prompt but saw no task content. The session has no commits or bone assignments on the product, its blindspot rules or its onboarding.",
+      "authors": [
+        {
+          "session": "w1405b-author-opus",
+          "instances": "release-t5-01..03, release-t6-01..03, release-t7-01..03, release-t8-01..03, release-t9-01..03, release-t10-01..03"
+        }
+      ],
+      "author_inputs": "The session read only the README sections 'Authorship and independence' and 'Trial-task instances (W14.05b)', the task 5-7 and 8-10 protocols, the development instances, keys and fixtures named there, the graders and the seal tooling, and the shape of this authorship object. It did not read docs/, the top-level README, AGENTS.md, help or docs output, blindspot rule sources, methods/, notes/, .bones/, .seal/, git history or the family bundle. To learn payload shapes it used the binary's error messages and the machine schema of review.submit (investigation schema review.submit). One audit response it printed while building a task 9 setup included part of the audit's checks_run list with check conditions; on seeing that, it stopped reading check conditions and afterwards printed only reported check IDs and subjects. Every situation is synthetic, uses invented names and is new to this set.",
+      "quality_rounds": "All 18 instances pass check-trial-tasks on the frozen binary 0.1.0-2c599aff: tasks 5-7 through trial-tasks.py check, tasks 8-10 through trial-tasks-8-10.py self-check, where every correct path passes and every scripted fault fails exactly its named checks. Before sealing, the session also ran the scripted task 5 and 6 rehearsals of trial-tasks.py on every task 5 and 6 instance, and a copy of the task 7 rehearsal with each instance's own phrases substituted on every task 7 instance; all passed."
+    },
+    "bundle": {
+      "file": "trial-tasks.tar.gz.enc",
+      "ciphertext_sha256": "1e7df831d9150ced1d2c3f5998cb6cbbc0ca93502184e3e3149c1235aeac0c90",
+      "plaintext_sha256": "11077ccef98340c9a3a6ec4cbfd9a03b4ca06bcecbe33cefebd5d64c94c5d294",
+      "plaintext_files": 59,
+      "format": "deterministic PAX tar (mtime 0, uid 0, sorted paths), gzip mtime 0",
+      "encryption": "openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -pass file:<passphrase> (the families' passphrase)",
+      "opens_to": "trial-tasks/ beside sealed/ and evaluator/ in the opened directory"
+    },
+    "index": {
+      "path": "trial-tasks/trial-tasks.json",
+      "sha256": "bab7ddcdee2d02f33911dc55f0816d43241b035b10c91e8fd10d607e17b98d8e"
+    },
+    "tree": {
+      "root": "trial-tasks",
+      "files": 59,
+      "sha256": "f5717c1b62446ce1f0652f2031c6c247e212dfca34454fb96ba7054ad849f70c"
+    },
+    "counts": {
+      "5": 3,
+      "6": 3,
+      "7": 3,
+      "8": 3,
+      "9": 3,
+      "10": 3
+    },
+    "tasks": [
+      {
+        "task": 5,
+        "id": "release-t5-01",
+        "sha256": "8089012e5ed2abc914e5b2f928200bc6903706d203eac16e8f48d8bed254291c"
+      },
+      {
+        "task": 5,
+        "id": "release-t5-02",
+        "sha256": "d54a4c3f518a685519e18ebecaf7d3f900700f2289c45a574feb9d991a6aab61"
+      },
+      {
+        "task": 5,
+        "id": "release-t5-03",
+        "sha256": "0340b5a54d6421a616be2b341d408983803f5285a9105738e629bba11cf279fd"
+      },
+      {
+        "task": 6,
+        "id": "release-t6-01",
+        "sha256": "cbb48d42b95777c025aa84751f7ac770ae2825f6bd2929a7d09b35ea2abdaf81"
+      },
+      {
+        "task": 6,
+        "id": "release-t6-02",
+        "sha256": "54269c4c0517701637d516028bad06957254eb6a63cc31337507e670bb184421"
+      },
+      {
+        "task": 6,
+        "id": "release-t6-03",
+        "sha256": "a416700fdfe78531ada8f5b1704ddd01081c6efa9633e61a2ee7e6b028842c39"
+      },
+      {
+        "task": 7,
+        "id": "release-t7-01",
+        "sha256": "da413dc613f24ebe69b804ac329d805dfafa39bec3e07399cbc9617eefa7b0a3"
+      },
+      {
+        "task": 7,
+        "id": "release-t7-02",
+        "sha256": "2c3fd39c8245a276b4cac3bb94b37b7b4368daf4d75e555100fa2b552201b70f"
+      },
+      {
+        "task": 7,
+        "id": "release-t7-03",
+        "sha256": "25c36813af2305542f50d5d7b20d3342d108ef5bdca44c60302ca3527681f9b3"
+      },
+      {
+        "task": 8,
+        "id": "release-t8-01",
+        "sha256": "34586889b4ac3f1ce984d5e54ba916a2f7c540cea1ee21aefd42d58862004b62"
+      },
+      {
+        "task": 8,
+        "id": "release-t8-02",
+        "sha256": "ecc6f66e66d8ed4f145bd5f83ebff53ad92dcc5927d5d6b1e6d77bf085681e07"
+      },
+      {
+        "task": 8,
+        "id": "release-t8-03",
+        "sha256": "81221ff7d3f7686f03d71e2816313348634158b9e3aa02e2a91942a8c5e9fea2"
+      },
+      {
+        "task": 9,
+        "id": "release-t9-01",
+        "sha256": "21d7284eeee86d9cbd76ddc3db1472c1705b98d0480fe3159080ac89b119b384"
+      },
+      {
+        "task": 9,
+        "id": "release-t9-02",
+        "sha256": "ebfa3a16ae52a99e4577d20a25f0f66823d6d435525704e9f246eee90f412bb0"
+      },
+      {
+        "task": 9,
+        "id": "release-t9-03",
+        "sha256": "11c83ef25b366792216185dd003e1f0c5e842e9e669fa7bca44040fa9331429a"
+      },
+      {
+        "task": 10,
+        "id": "release-t10-01",
+        "sha256": "65155dd3742774b1cc8a452d1e7229df9b0adc67086d468fe60eb12bf9ee2e87"
+      },
+      {
+        "task": 10,
+        "id": "release-t10-02",
+        "sha256": "a184a23274870d43c6590e72c75171e6aa1b8c73f05c406f825972cd15d660a6"
+      },
+      {
+        "task": 10,
+        "id": "release-t10-03",
+        "sha256": "78058dc22a98661f200c1ce8afb51ac7b06a443196127588ab7557463ee2a986"
+      }
+    ]
   }
 }
